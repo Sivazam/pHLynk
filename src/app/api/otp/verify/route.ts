@@ -1,0 +1,192 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { otpStore, cleanupExpiredOTPs, removeActiveOTP, addCompletedPayment } from '@/lib/otp-store';
+import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import { RetailerAuthService } from '@/services/retailer-auth';
+
+interface OTPVerifyRequest {
+  paymentId: string;
+  otp: string;
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const body: OTPVerifyRequest = await request.json();
+    const { paymentId, otp } = body;
+
+    console.log('🔍 OTP VERIFICATION REQUEST:');
+    console.log('Payment ID:', paymentId);
+    console.log('OTP Code:', otp);
+    console.log('Current OTP Store contents:');
+    for (const [key, value] of otpStore.entries()) {
+      console.log(`  Payment ID: ${key}, OTP: ${value.code}, Expires: ${value.expiresAt.toISOString()}, Attempts: ${value.attempts}`);
+    }
+
+    if (!paymentId || !otp) {
+      console.log('❌ Missing required fields');
+      return NextResponse.json(
+        { error: 'Missing required fields' },
+        { status: 400 }
+      );
+    }
+
+    // Clean up expired OTPs first
+    cleanupExpiredOTPs();
+
+    // Get OTP from store
+    const otpData = otpStore.get(paymentId);
+    
+    console.log('🔍 Found OTP data:', otpData ? 'YES' : 'NO');
+    if (otpData) {
+      console.log('🔍 OTP details:', {
+        code: otpData.code,
+        expiresAt: otpData.expiresAt.toISOString(),
+        attempts: otpData.attempts,
+        isExpired: otpData.expiresAt < new Date()
+      });
+    }
+    
+    if (!otpData) {
+      console.log('❌ OTP not found or expired');
+      return NextResponse.json(
+        { error: 'OTP not found or expired' },
+        { status: 400 }
+      );
+    }
+
+    // Check if OTP is expired
+    if (otpData.expiresAt < new Date()) {
+      otpStore.delete(paymentId);
+      return NextResponse.json(
+        { error: 'OTP expired' },
+        { status: 400 }
+      );
+    }
+
+    // Check attempts
+    if (otpData.attempts >= 3) {
+      otpStore.delete(paymentId);
+      return NextResponse.json(
+        { error: 'Too many failed attempts. Please request a new OTP.' },
+        { status: 400 }
+      );
+    }
+
+    // Verify OTP
+    console.log('🔍 Comparing OTP codes:');
+    console.log('  Provided OTP:', otp);
+    console.log('  Stored OTP:', otpData.code);
+    console.log('  Match:', otpData.code === otp);
+    
+    if (otpData.code === otp) {
+      console.log('✅ OTP verification successful!');
+      
+      // Get payment details from Firestore
+      try {
+        const paymentRef = doc(db, 'payments', paymentId);
+        const paymentDoc = await getDoc(paymentRef);
+        
+        if (paymentDoc.exists()) {
+          const paymentData = paymentDoc.data();
+          console.log('📄 Payment data found:', paymentData);
+          
+          // Get retailer details from retailerUsers collection
+          const retailerUser = await RetailerAuthService.getRetailerUserByRetailerId(paymentData.retailerId);
+          
+          if (retailerUser) {
+            console.log('🏪 Retailer user data found:', retailerUser);
+            
+            // Get line worker details
+            const lineWorkerRef = doc(db, 'users', paymentData.lineWorkerId);
+            const lineWorkerDoc = await getDoc(lineWorkerRef);
+            
+            if (lineWorkerDoc.exists()) {
+              const lineWorkerData = lineWorkerDoc.data();
+              console.log('👷 Line worker data found:', lineWorkerData);
+              
+              // Calculate remaining outstanding amount
+              const remainingOutstanding = Math.max(0, (retailerUser.currentOutstanding || 0) - paymentData.totalPaid);
+              
+              // Remove the active OTP from retailer dashboard
+              removeActiveOTP(paymentId);
+              
+              // Add completed payment notification to retailer dashboard
+              addCompletedPayment({
+                retailerId: paymentData.retailerId,
+                amount: paymentData.totalPaid,
+                paymentId: paymentId,
+                lineWorkerName: lineWorkerData.name || 'Line Worker',
+                remainingOutstanding: remainingOutstanding
+              });
+              
+              console.log('✅ Added completed payment notification for retailer:', paymentData.retailerId);
+            } else {
+              console.log('❌ Line worker data not found');
+              // Still remove active OTP and add basic notification
+              removeActiveOTP(paymentId);
+              addCompletedPayment({
+                retailerId: paymentData.retailerId,
+                amount: paymentData.totalPaid,
+                paymentId: paymentId,
+                lineWorkerName: 'Line Worker',
+                remainingOutstanding: 0
+              });
+            }
+          } else {
+            console.log('❌ Retailer user data not found');
+            // Still remove active OTP and add basic notification
+            removeActiveOTP(paymentId);
+            addCompletedPayment({
+              retailerId: paymentData.retailerId,
+              amount: paymentData.totalPaid,
+              paymentId: paymentId,
+              lineWorkerName: 'Line Worker',
+              remainingOutstanding: 0
+            });
+          }
+        } else {
+          console.log('❌ Payment data not found');
+          // Still remove active OTP
+          removeActiveOTP(paymentId);
+        }
+      } catch (error) {
+        console.error('❌ Error getting payment details for notification:', error);
+        // Still remove active OTP
+        removeActiveOTP(paymentId);
+      }
+      
+      // OTP is correct, remove from store
+      otpStore.delete(paymentId);
+      
+      return NextResponse.json({
+        success: true,
+        message: 'OTP verified successfully',
+        verified: true
+      });
+    } else {
+      console.log('❌ OTP verification failed!');
+      // Increment attempts
+      otpData.attempts++;
+      
+      // Update the store
+      otpStore.set(paymentId, otpData);
+      
+      const remainingAttempts = 3 - otpData.attempts;
+      
+      return NextResponse.json(
+        { 
+          error: `Invalid OTP. ${remainingAttempts} attempts remaining.`,
+          remainingAttempts 
+        },
+        { status: 400 }
+      );
+    }
+
+  } catch (error) {
+    console.error('Error verifying OTP:', error);
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}
