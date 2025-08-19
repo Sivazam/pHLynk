@@ -9,11 +9,22 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { DashboardNavigation, NavItem, NotificationItem } from '@/components/DashboardNavigation';
 import { useAuth, useSuperAdmin } from '@/contexts/AuthContext';
-import { tenantService, userService } from '@/services/firestore';
-import { Tenant, CreateTenantForm } from '@/types';
-import { formatTimestamp } from '@/lib/timestamp-utils';
+import { 
+  tenantService, 
+  userService, 
+  areaService, 
+  retailerService, 
+  invoiceService, 
+  paymentService,
+  Timestamp
+} from '@/services/firestore';
+import { Tenant, CreateTenantForm, User, Area, Retailer, Invoice, Payment } from '@/types';
+import { formatTimestamp, formatTimestampWithTime, formatCurrency } from '@/lib/timestamp-utils';
 import { 
   Building2, 
   Users, 
@@ -24,8 +35,78 @@ import {
   LogOut,
   Loader2,
   TrendingUp,
-  AlertCircle
+  AlertCircle,
+  Eye,
+  UserCheck,
+  UserX,
+  MapPin,
+  Store,
+  CreditCard,
+  Calendar,
+  Search,
+  Filter,
+  Download,
+  BarChart3,
+  Clock,
+  CheckCircle,
+  XCircle,
+  LayoutDashboard,
+  Bell,
+  Menu,
+  X,
+  RefreshCw
 } from 'lucide-react';
+
+interface TenantDetails {
+  tenant: Tenant;
+  users: User[];
+  areas: Area[];
+  retailers: Retailer[];
+  invoices: Invoice[];
+  payments: Payment[];
+  stats: {
+    totalUsers: number;
+    activeUsers: number;
+    totalAreas: number;
+    activeAreas: number;
+    totalRetailers: number;
+    activeRetailers: number;
+    totalInvoices: number;
+    totalPayments: number;
+    totalRevenue: number;
+    outstandingAmount: number;
+  };
+}
+
+interface AnalyticsData {
+  totalRevenue: number;
+  totalOutstanding: number;
+  totalTenants: number;
+  totalUsers: number;
+  totalRetailers: number;
+  totalPayments: number;
+  totalInvoices: number;
+  activeTenants: number;
+  suspendedTenants: number;
+  avgRevenuePerUser: number;
+  avgRevenuePerRetailer: number;
+  paymentSuccessRate: number;
+  collectionEfficiency: number;
+  tenantAnalytics: Array<{
+    tenantId: string;
+    tenantName: string;
+    revenue: number;
+    outstanding: number;
+    users: number;
+    retailers: number;
+    payments: number;
+    invoices: number;
+    activeUsers: number;
+    activeRetailers: number;
+    avgRevenuePerUser: number;
+    collectionRate: number;
+  }>;
+}
 
 export function SuperAdminDashboard() {
   const { user, logout } = useAuth();
@@ -35,12 +116,246 @@ export function SuperAdminDashboard() {
   const [error, setError] = useState<string | null>(null);
   const [showCreateTenant, setShowCreateTenant] = useState(false);
   const [selectedTenant, setSelectedTenant] = useState<Tenant | null>(null);
+  const [tenantDetails, setTenantDetails] = useState<TenantDetails | null>(null);
+  const [loadingTenantDetails, setLoadingTenantDetails] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>('ALL');
+  const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
+  const [notificationCount, setNotificationCount] = useState(0);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [recentActivities, setRecentActivities] = useState<any[]>([]);
+  const [selectedTenantForAnalytics, setSelectedTenantForAnalytics] = useState<string>('ALL');
+  const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const refreshData = async () => {
+    setIsRefreshing(true);
+    try {
+      await Promise.all([fetchTenants(), fetchAnalytics(), fetchRecentActivities()]);
+      setLastUpdate(new Date());
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  const generateNotifications = (tenantsData: any[], tenantAnalytics: any[], activities: any[] = []) => {
+    const newNotifications: NotificationItem[] = [];
+    
+    // Add real activity notifications first
+    activities.forEach(activity => {
+      newNotifications.push({
+        id: activity.id,
+        type: activity.type,
+        title: activity.title,
+        message: activity.message,
+        timestamp: activity.timestamp,
+        read: false
+      });
+    });
+
+    // Add notifications for suspended tenants
+    const suspendedTenants = tenantsData.filter(t => t.status === 'SUSPENDED');
+    suspendedTenants.forEach(tenant => {
+      newNotifications.push({
+        id: `suspended-${tenant.id}`,
+        type: 'warning',
+        title: 'Tenant Suspended',
+        message: `${tenant.name} has been suspended due to inactivity`,
+        timestamp: new Date(),
+        read: false
+      });
+    });
+
+    // Add notifications for high outstanding amounts
+    const highOutstandingTenants = tenantAnalytics.filter(t => t.outstanding > 10000);
+    highOutstandingTenants.forEach(tenant => {
+      newNotifications.push({
+        id: `outstanding-${tenant.tenantId}`,
+        type: 'warning',
+        title: 'High Outstanding Amount',
+        message: `${tenant.tenantName} has outstanding amount of ${formatCurrency(tenant.outstanding)}`,
+        timestamp: new Date(),
+        read: false
+      });
+    });
+
+    // Add notifications for low collection rates
+    const lowCollectionTenants = tenantAnalytics.filter(t => t.collectionRate < 50);
+    lowCollectionTenants.forEach(tenant => {
+      newNotifications.push({
+        id: `collection-${tenant.tenantId}`,
+        type: 'info',
+        title: 'Low Collection Rate',
+        message: `${tenant.tenantName} has a collection rate of ${tenant.collectionRate.toFixed(1)}%`,
+        timestamp: new Date(),
+        read: false
+      });
+    });
+
+    // Add success notifications for active tenants
+    const activeTenants = tenantsData.filter(t => t.status === 'ACTIVE');
+    if (activeTenants.length > 0) {
+      newNotifications.push({
+        id: 'active-tenants',
+        type: 'success',
+        title: 'System Status',
+        message: `${activeTenants.length} tenants are actively operating`,
+        timestamp: new Date(),
+        read: false
+      });
+    }
+
+    return newNotifications.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+  };
+
+  const fetchRecentActivities = async () => {
+    try {
+      const tenantsData = await tenantService.getAllTenants();
+      const activities = [];
+
+      for (const tenant of tenantsData) {
+        try {
+          const [users, retailers, payments, invoices] = await Promise.all([
+            userService.getAll(tenant.id),
+            retailerService.getAll(tenant.id),
+            paymentService.getAll(tenant.id),
+            invoiceService.getAll(tenant.id)
+          ]);
+
+          // Get recent users (last 7 days)
+          const recentUsers = users.filter(u => {
+            const userDate = new Date(u.createdAt || Date.now());
+            const weekAgo = new Date();
+            weekAgo.setDate(weekAgo.getDate() - 7);
+            return userDate > weekAgo;
+          });
+
+          // Get recent retailers (last 7 days)
+          const recentRetailers = retailers.filter(r => {
+            const retailerDate = new Date(r.createdAt || Date.now());
+            const weekAgo = new Date();
+            weekAgo.setDate(weekAgo.getDate() - 7);
+            return retailerDate > weekAgo;
+          });
+
+          // Get recent payments (last 7 days)
+          const recentPayments = payments.filter(p => {
+            const paymentDate = new Date(p.createdAt || Date.now());
+            const weekAgo = new Date();
+            weekAgo.setDate(weekAgo.getDate() - 7);
+            return paymentDate > weekAgo && p.state === 'COMPLETED';
+          });
+
+          // Get recent invoices (last 7 days)
+          const recentInvoices = invoices.filter(i => {
+            const invoiceDate = new Date(i.createdAt || Date.now());
+            const weekAgo = new Date();
+            weekAgo.setDate(weekAgo.getDate() - 7);
+            return invoiceDate > weekAgo;
+          });
+
+          // Count line workers
+          const lineWorkers = users.filter(u => u.roles?.includes('LINE_WORKER'));
+
+          // Add activities for this tenant
+          if (recentRetailers.length > 0) {
+            activities.push({
+              id: `retailers-${tenant.id}-${Date.now()}`,
+              type: 'info',
+              title: 'New Retailers Added',
+              message: `${tenant.name} added ${recentRetailers.length} new retailer${recentRetailers.length > 1 ? 's' : ''}`,
+              timestamp: new Date(),
+              tenant: tenant.name,
+              count: recentRetailers.length,
+              icon: Store
+            });
+          }
+
+          if (recentUsers.length > 0) {
+            const newLineWorkers = recentUsers.filter(u => u.roles?.includes('LINE_WORKER'));
+            if (newLineWorkers.length > 0) {
+              activities.push({
+                id: `workers-${tenant.id}-${Date.now()}`,
+                type: 'success',
+                title: 'New Line Workers',
+                message: `${tenant.name} added ${newLineWorkers.length} new line worker${newLineWorkers.length > 1 ? 's' : ''}`,
+                timestamp: new Date(),
+                tenant: tenant.name,
+                count: newLineWorkers.length,
+                icon: UserCheck
+              });
+            }
+          }
+
+          if (recentPayments.length > 0) {
+            const totalAmount = recentPayments.reduce((sum, p) => sum + p.totalPaid, 0);
+            activities.push({
+              id: `payments-${tenant.id}-${Date.now()}`,
+              type: 'success',
+              title: 'Payments Processed',
+              message: `${tenant.name} processed ${recentPayments.length} payment${recentPayments.length > 1 ? 's' : ''} totaling ${formatCurrency(totalAmount)}`,
+              timestamp: new Date(),
+              tenant: tenant.name,
+              count: recentPayments.length,
+              amount: totalAmount,
+              icon: CreditCard
+            });
+          }
+
+          if (recentInvoices.length > 0) {
+            activities.push({
+              id: `invoices-${tenant.id}-${Date.now()}`,
+              type: 'info',
+              title: 'New Invoices Created',
+              message: `${tenant.name} created ${recentInvoices.length} new invoice${recentInvoices.length > 1 ? 's' : ''}`,
+              timestamp: new Date(),
+              tenant: tenant.name,
+              count: recentInvoices.length,
+              icon: FileText
+            });
+          }
+
+        } catch (error) {
+          console.error(`Failed to fetch activities for tenant ${tenant.id}:`, error);
+        }
+      }
+
+      const sortedActivities = activities.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime()).slice(0, 10);
+      setRecentActivities(sortedActivities);
+      return sortedActivities;
+    } catch (error) {
+      console.error('Failed to fetch recent activities:', error);
+      setRecentActivities([]);
+      return [];
+    }
+  };
+
+  // Navigation items
+  const navItems: NavItem[] = [
+    { id: 'overview', label: 'Overview', icon: LayoutDashboard },
+    { id: 'tenants', label: 'Tenants', icon: Building2 },
+    { id: 'users', label: 'Users', icon: Users },
+    { id: 'line-workers', label: 'Line Workers', icon: UserCheck },
+    { id: 'analytics', label: 'Analytics', icon: BarChart3 },
+    { id: 'activity', label: 'Activity', icon: TrendingUp },
+    { id: 'settings', label: 'Settings', icon: Menu },
+  ];
+
+  const [activeNav, setActiveNav] = useState('overview');
 
   useEffect(() => {
     if (isSuperAdmin) {
       fetchTenants();
+      fetchAnalytics();
+      fetchRecentActivities();
+      // Set up real-time updates every 60 seconds
+      const interval = setInterval(() => {
+        refreshData();
+      }, 60000);
+      
+      return () => clearInterval(interval);
     }
-  }, [isSuperAdmin]);
+  }, [isSuperAdmin, activeNav]);
 
   const fetchTenants = async () => {
     setLoading(true);
@@ -49,6 +364,7 @@ export function SuperAdminDashboard() {
     try {
       const tenantsData = await tenantService.getAllTenants();
       setTenants(tenantsData);
+      setLastUpdate(new Date());
     } catch (err: any) {
       setError(err.message || 'Failed to fetch tenants');
     } finally {
@@ -56,15 +372,144 @@ export function SuperAdminDashboard() {
     }
   };
 
+  const fetchAnalytics = async () => {
+    setLoading(true);
+    try {
+      const tenantsData = await tenantService.getAllTenants();
+      let totalRevenue = 0;
+      let totalOutstanding = 0;
+      let totalUsers = 0;
+      let totalRetailers = 0;
+      let totalPayments = 0;
+      let totalInvoices = 0;
+      
+      const tenantAnalytics = [];
+
+      for (const tenant of tenantsData) {
+        try {
+          const [users, retailers, payments, invoices] = await Promise.all([
+            userService.getAll(tenant.id),
+            retailerService.getAll(tenant.id),
+            paymentService.getAll(tenant.id),
+            invoiceService.getAll(tenant.id)
+          ]);
+
+          const tenantRevenue = payments
+            .filter(p => p.state === 'COMPLETED')
+            .reduce((sum, p) => sum + p.totalPaid, 0);
+          
+          const tenantOutstanding = retailers
+            .reduce((sum, r) => sum + r.currentOutstanding, 0);
+
+          totalRevenue += tenantRevenue;
+          totalOutstanding += tenantOutstanding;
+          totalUsers += users.length;
+          totalRetailers += retailers.length;
+          totalPayments += payments.filter(p => p.state === 'COMPLETED').length;
+          totalInvoices += invoices.length;
+
+          tenantAnalytics.push({
+            tenantId: tenant.id,
+            tenantName: tenant.name,
+            revenue: tenantRevenue,
+            outstanding: tenantOutstanding,
+            users: users.length,
+            retailers: retailers.length,
+            payments: payments.filter(p => p.state === 'COMPLETED').length,
+            invoices: invoices.length,
+            activeUsers: users.filter(u => u.active).length,
+            activeRetailers: retailers.filter(r => r.active).length,
+            avgRevenuePerUser: users.length > 0 ? tenantRevenue / users.length : 0,
+            collectionRate: tenantRevenue + tenantOutstanding > 0 ? 
+              (tenantRevenue / (tenantRevenue + tenantOutstanding)) * 100 : 0
+          });
+        } catch (error) {
+          console.error(`Failed to fetch analytics for tenant ${tenant.id}:`, error);
+        }
+      }
+
+      setAnalytics({
+        totalRevenue,
+        totalOutstanding,
+        totalTenants: tenantsData.length,
+        totalUsers,
+        totalRetailers,
+        totalPayments,
+        totalInvoices,
+        activeTenants: tenantsData.filter(t => t.status === 'ACTIVE').length,
+        suspendedTenants: tenantsData.filter(t => t.status === 'SUSPENDED').length,
+        avgRevenuePerUser: totalUsers > 0 ? totalRevenue / totalUsers : 0,
+        avgRevenuePerRetailer: totalRetailers > 0 ? totalRevenue / totalRetailers : 0,
+        paymentSuccessRate: totalUsers > 0 ? (totalPayments / totalUsers) * 100 : 0,
+        collectionEfficiency: totalRevenue + totalOutstanding > 0 ? 
+          (totalRevenue / (totalRevenue + totalOutstanding)) * 100 : 0,
+        tenantAnalytics
+      });
+
+      // Generate notifications
+      const activities = await fetchRecentActivities();
+      const newNotifications = generateNotifications(tenantsData, tenantAnalytics, activities);
+      setNotifications(newNotifications);
+      setNotificationCount(newNotifications.length);
+      setLastUpdate(new Date());
+    } catch (error) {
+      console.error('Failed to fetch analytics:', error);
+      setError('Failed to fetch analytics data');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchTenantDetails = async (tenantId: string) => {
+    setLoadingTenantDetails(true);
+    try {
+      const [tenant, users, areas, retailers, invoices, payments] = await Promise.all([
+        tenantService.getById(tenantId, 'system'),
+        userService.getAll(tenantId),
+        areaService.getAll(tenantId),
+        retailerService.getAll(tenantId),
+        invoiceService.getAll(tenantId),
+        paymentService.getAll(tenantId)
+      ]);
+
+      if (!tenant) return;
+
+      const stats = {
+        totalUsers: users.length,
+        activeUsers: users.filter(u => u.active).length,
+        totalAreas: areas.length,
+        activeAreas: areas.filter(a => a.active).length,
+        totalRetailers: retailers.length,
+        activeRetailers: retailers.length,
+        totalInvoices: invoices.length,
+        totalPayments: payments.filter(p => p.state === 'COMPLETED').length,
+        totalRevenue: payments.filter(p => p.state === 'COMPLETED').reduce((sum, p) => sum + p.totalPaid, 0),
+        outstandingAmount: retailers.reduce((sum, r) => sum + r.currentOutstanding, 0)
+      };
+
+      setTenantDetails({
+        tenant,
+        users,
+        areas,
+        retailers,
+        invoices,
+        payments,
+        stats
+      });
+    } catch (err: any) {
+      setError(err.message || 'Failed to fetch tenant details');
+    } finally {
+      setLoadingTenantDetails(false);
+    }
+  };
+
   const handleCreateTenant = async (data: CreateTenantForm) => {
     try {
-      // Create the tenant first
       const tenantId = await tenantService.createTenant({
         name: data.name,
         plan: data.plan
       });
       
-      // Create the admin user with authentication
       await userService.createUserWithAuth(tenantId, {
         email: data.adminEmail,
         password: data.adminPassword,
@@ -74,9 +519,52 @@ export function SuperAdminDashboard() {
       });
       
       await fetchTenants();
+      await fetchAnalytics();
       setShowCreateTenant(false);
     } catch (err: any) {
       setError(err.message || 'Failed to create tenant and admin user');
+    }
+  };
+
+  const handleToggleTenantStatus = async (tenantId: string, currentStatus: string) => {
+    try {
+      const newStatus = currentStatus === 'ACTIVE' ? 'SUSPENDED' : 'ACTIVE';
+      await tenantService.update(tenantId, { status: newStatus }, 'system');
+      
+      if (newStatus === 'SUSPENDED') {
+        const users = await userService.getAll(tenantId);
+        await Promise.all(
+          users.map(user => 
+            userService.update(user.id, { active: false }, tenantId)
+          )
+        );
+      } else {
+        const users = await userService.getAll(tenantId);
+        await Promise.all(
+          users.map(user => 
+            userService.update(user.id, { active: true }, tenantId)
+          )
+        );
+      }
+      
+      await fetchTenants();
+      await fetchAnalytics();
+      if (selectedTenant?.id === tenantId) {
+        await fetchTenantDetails(tenantId);
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to update tenant status');
+    }
+  };
+
+  const handleToggleUserStatus = async (userId: string, tenantId: string, currentActive: boolean) => {
+    try {
+      await userService.update(userId, { active: !currentActive }, tenantId);
+      if (selectedTenant) {
+        await fetchTenantDetails(selectedTenant.id);
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to update user status');
     }
   };
 
@@ -91,24 +579,1106 @@ export function SuperAdminDashboard() {
     }
   };
 
-  if (!isSuperAdmin) {
+  const getRoleColor = (role: string) => {
+    switch (role) {
+      case 'SUPER_ADMIN':
+        return 'bg-purple-100 text-purple-800';
+      case 'WHOLESALER_ADMIN':
+        return 'bg-blue-100 text-blue-800';
+      case 'LINE_WORKER':
+        return 'bg-green-100 text-green-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const filteredTenants = tenants.filter(tenant => {
+    const matchesSearch = tenant.name.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesStatus = statusFilter === 'ALL' || tenant.status === statusFilter;
+    return matchesSearch && matchesStatus;
+  });
+
+  // Overview Component
+  const Overview = () => (
+    <div className="space-y-6">
+      {analytics && (
+        <>
+          {/* Stats Overview */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <Card className="hover:shadow-lg transition-shadow duration-300 border-l-4 border-l-blue-500">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium text-gray-600">Total Revenue</CardTitle>
+                <div className="bg-blue-100 p-2 rounded-full">
+                  <DollarSign className="h-4 w-4 text-blue-600" />
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-gray-900">{formatCurrency(analytics.totalRevenue)}</div>
+                <p className="text-xs text-gray-500">Across all tenants</p>
+              </CardContent>
+            </Card>
+
+            <Card className="hover:shadow-lg transition-shadow duration-300 border-l-4 border-l-red-500">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium text-gray-600">Total Outstanding</CardTitle>
+                <div className="bg-red-100 p-2 rounded-full">
+                  <AlertCircle className="h-4 w-4 text-red-600" />
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-gray-900">{formatCurrency(analytics.totalOutstanding)}</div>
+                <p className="text-xs text-gray-500">Total unpaid amount</p>
+              </CardContent>
+            </Card>
+
+            <Card className="hover:shadow-lg transition-shadow duration-300 border-l-4 border-l-green-500">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium text-gray-600">Active Tenants</CardTitle>
+                <div className="bg-green-100 p-2 rounded-full">
+                  <Building2 className="h-4 w-4 text-green-600" />
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-gray-900">
+                  {analytics.activeTenants}
+                </div>
+                <p className="text-xs text-gray-500">of {analytics.totalTenants} total</p>
+              </CardContent>
+            </Card>
+
+            <Card className="hover:shadow-lg transition-shadow duration-300 border-l-4 border-l-purple-500">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium text-gray-600">Total Users</CardTitle>
+                <div className="bg-purple-100 p-2 rounded-full">
+                  <Users className="h-4 w-4 text-purple-600" />
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-gray-900">{analytics.totalUsers}</div>
+                <p className="text-xs text-gray-500">Across all tenants</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Additional Overview Stats */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <Card className="hover:shadow-lg transition-shadow duration-300 border-l-4 border-l-orange-500">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium text-gray-600">Total Invoices</CardTitle>
+                <div className="bg-orange-100 p-2 rounded-full">
+                  <FileText className="h-4 w-4 text-orange-600" />
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-gray-900">{analytics.totalInvoices}</div>
+                <p className="text-xs text-gray-500">Total invoices generated</p>
+              </CardContent>
+            </Card>
+
+            <Card className="hover:shadow-lg transition-shadow duration-300 border-l-4 border-l-teal-500">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium text-gray-600">Total Payments</CardTitle>
+                <div className="bg-teal-100 p-2 rounded-full">
+                  <CreditCard className="h-4 w-4 text-teal-600" />
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-gray-900">{analytics.totalPayments}</div>
+                <p className="text-xs text-gray-500">Completed payments</p>
+              </CardContent>
+            </Card>
+
+            <Card className="hover:shadow-lg transition-shadow duration-300 border-l-4 border-l-indigo-500">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium text-gray-600">Collection Rate</CardTitle>
+                <div className="bg-indigo-100 p-2 rounded-full">
+                  <TrendingUp className="h-4 w-4 text-indigo-600" />
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-gray-900">{analytics.collectionEfficiency.toFixed(1)}%</div>
+                <p className="text-xs text-gray-500">Overall collection efficiency</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Top Performing Tenants */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Top Performing Tenants</CardTitle>
+              <CardDescription>Revenue and outstanding amounts by tenant</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {analytics.tenantAnalytics
+                  .sort((a, b) => b.revenue - a.revenue)
+                  .slice(0, 5)
+                  .map((tenant, index) => (
+                    <div key={tenant.tenantId} className="flex items-center justify-between p-4 border rounded-lg">
+                      <div className="flex items-center space-x-4">
+                        <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                          <span className="text-sm font-medium text-blue-600">{index + 1}</span>
+                        </div>
+                        <div>
+                          <div className="font-medium">{tenant.tenantName}</div>
+                          <div className="text-sm text-gray-500">{tenant.users} users, {tenant.retailers} retailers</div>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="font-medium text-green-600">{formatCurrency(tenant.revenue)}</div>
+                        <div className="text-sm text-red-500">{formatCurrency(tenant.outstanding)} outstanding</div>
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Quick Actions */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Quick Actions</CardTitle>
+              <CardDescription>Common administrative tasks</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <Button 
+                  onClick={() => setActiveNav('tenants')} 
+                  className="flex items-center space-x-2"
+                >
+                  <Building2 className="h-4 w-4" />
+                  <span>Manage Tenants</span>
+                </Button>
+                <Button 
+                  onClick={() => setActiveNav('users')} 
+                  variant="outline"
+                  className="flex items-center space-x-2"
+                >
+                  <Users className="h-4 w-4" />
+                  <span>Manage Users</span>
+                </Button>
+                <Button 
+                  onClick={() => setActiveNav('analytics')} 
+                  variant="outline"
+                  className="flex items-center space-x-2"
+                >
+                  <BarChart3 className="h-4 w-4" />
+                  <span>View Analytics</span>
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </>
+      )}
+    </div>
+  );
+
+  // Tenants Management Component
+  const TenantsManagement = () => (
+    <div className="space-y-6">
+      {/* Header with Create Button */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">Tenant Management</h2>
+          <p className="text-gray-600">Manage all tenants and their settings</p>
+        </div>
+        <Dialog open={showCreateTenant} onOpenChange={setShowCreateTenant}>
+          <DialogTrigger asChild>
+            <Button>
+              <Plus className="h-4 w-4 mr-2" />
+              Create Tenant
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Create New Tenant</DialogTitle>
+              <DialogDescription>
+                Set up a new tenant with admin user
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="tenantName">Tenant Name</Label>
+                <Input id="tenantName" placeholder="Enter tenant name" />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="adminEmail">Admin Email</Label>
+                <Input id="adminEmail" type="email" placeholder="admin@tenant.com" />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="adminPassword">Admin Password</Label>
+                <Input id="adminPassword" type="password" placeholder="Enter password" />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="adminName">Admin Name</Label>
+                <Input id="adminName" placeholder="Admin Display Name" />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="adminPhone">Admin Phone</Label>
+                <Input id="adminPhone" type="tel" placeholder="+1234567890" />
+              </div>
+              <div className="flex space-x-2">
+                <Button onClick={() => {
+                  const name = (document.getElementById('tenantName') as HTMLInputElement)?.value;
+                  const email = (document.getElementById('adminEmail') as HTMLInputElement)?.value;
+                  const password = (document.getElementById('adminPassword') as HTMLInputElement)?.value;
+                  const adminName = (document.getElementById('adminName') as HTMLInputElement)?.value;
+                  const phone = (document.getElementById('adminPhone') as HTMLInputElement)?.value;
+                  
+                  if (name && email && password && adminName) {
+                    handleCreateTenant({
+                      name,
+                      adminEmail: email,
+                      adminPassword: password,
+                      adminName,
+                      adminPhone: phone,
+                      plan: 'STANDARD'
+                    });
+                  }
+                }}>
+                  Create Tenant
+                </Button>
+                <Button variant="outline" onClick={() => setShowCreateTenant(false)}>
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      </div>
+
+      {/* Filters */}
+      <Card>
+        <CardContent className="pt-6">
+          <div className="flex flex-col sm:flex-row gap-4">
+            <div className="flex-1">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                <Input
+                  placeholder="Search tenants..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+            </div>
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-full sm:w-48">
+                <SelectValue placeholder="Filter by status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">All Status</SelectItem>
+                <SelectItem value="ACTIVE">Active</SelectItem>
+                <SelectItem value="SUSPENDED">Suspended</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Tenants Table */}
+      <Card>
+        <CardHeader>
+          <CardTitle>All Tenants</CardTitle>
+          <CardDescription>Manage and monitor all tenant accounts</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Tenant</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Plan</TableHead>
+                  <TableHead>Created</TableHead>
+                  <TableHead>Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredTenants.map((tenant) => (
+                  <TableRow key={tenant.id}>
+                    <TableCell>
+                      <div className="flex items-center space-x-3">
+                        <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                          <Building2 className="h-5 w-5 text-blue-600" />
+                        </div>
+                        <div>
+                          <div className="font-medium">{tenant.name}</div>
+                          <div className="text-sm text-gray-500">{tenant.id}</div>
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge className={getStatusColor(tenant.status)}>
+                        {tenant.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline">{tenant.plan}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      {formatTimestamp(tenant.createdAt)}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center space-x-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setSelectedTenant(tenant);
+                            fetchTenantDetails(tenant.id);
+                          }}
+                        >
+                          <Eye className="h-4 w-4 mr-1" />
+                          View
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleToggleTenantStatus(tenant.id, tenant.status)}
+                        >
+                          {tenant.status === 'ACTIVE' ? (
+                            <>
+                              <UserX className="h-4 w-4 mr-1" />
+                              Suspend
+                            </>
+                          ) : (
+                            <>
+                              <UserCheck className="h-4 w-4 mr-1" />
+                              Activate
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Tenant Details Modal */}
+      {selectedTenant && tenantDetails && (
+        <Dialog open={!!selectedTenant} onOpenChange={() => setSelectedTenant(null)}>
+          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Tenant Details - {selectedTenant.name}</DialogTitle>
+              <DialogDescription>
+                Detailed information and statistics for this tenant
+              </DialogDescription>
+            </DialogHeader>
+            
+            {loadingTenantDetails ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-8 w-8 animate-spin" />
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {/* Stats Overview */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <Card>
+                    <CardContent className="pt-4">
+                      <div className="text-2xl font-bold">{tenantDetails.stats.totalUsers}</div>
+                      <p className="text-xs text-gray-500">Total Users</p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="pt-4">
+                      <div className="text-2xl font-bold">{tenantDetails.stats.totalRetailers}</div>
+                      <p className="text-xs text-gray-500">Retailers</p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="pt-4">
+                      <div className="text-2xl font-bold">{formatCurrency(tenantDetails.stats.totalRevenue)}</div>
+                      <p className="text-xs text-gray-500">Total Revenue</p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="pt-4">
+                      <div className="text-2xl font-bold">{formatCurrency(tenantDetails.stats.outstandingAmount)}</div>
+                      <p className="text-xs text-gray-500">Outstanding</p>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Users Table */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Users</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>User</TableHead>
+                            <TableHead>Role</TableHead>
+                            <TableHead>Status</TableHead>
+                            <TableHead>Actions</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {tenantDetails.users.map((user) => (
+                            <TableRow key={user.id}>
+                              <TableCell>
+                                <div>
+                                  <div className="font-medium">{user.displayName}</div>
+                                  <div className="text-sm text-gray-500">{user.email}</div>
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <Badge className={getRoleColor(user.roles[0])}>
+                                  {user.roles[0]}
+                                </Badge>
+                              </TableCell>
+                              <TableCell>
+                                <Badge className={user.active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}>
+                                  {user.active ? 'Active' : 'Inactive'}
+                                </Badge>
+                              </TableCell>
+                              <TableCell>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleToggleUserStatus(user.id, selectedTenant.id, user.active)}
+                                >
+                                  {user.active ? 'Deactivate' : 'Activate'}
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
+      )}
+    </div>
+  );
+
+  // Users Overview Component
+  const UsersOverview = () => (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-bold text-gray-900">Users Overview</h2>
+        <p className="text-gray-600">All users across all tenants</p>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Users by Tenant</CardTitle>
+          <CardDescription>Breakdown of users across all tenant organizations</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            {analytics?.tenantAnalytics.map((tenant) => (
+              <div key={tenant.tenantId} className="flex items-center justify-between p-4 border rounded-lg">
+                <div className="flex items-center space-x-4">
+                  <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                    <Users className="h-5 w-5 text-blue-600" />
+                  </div>
+                  <div>
+                    <div className="font-medium">{tenant.tenantName}</div>
+                    <div className="text-sm text-gray-500">{tenant.retailers} retailers</div>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="font-medium">{tenant.users} users</div>
+                  <div className="text-sm text-gray-500">{tenant.payments} payments</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+
+  // Line Workers Component
+  const LineWorkers = () => (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-bold text-gray-900">Line Workers</h2>
+        <p className="text-gray-600">Manage line workers across all tenants</p>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Line Workers by Tenant</CardTitle>
+          <CardDescription>Overview of line workers and their activities</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            {analytics?.tenantAnalytics.map((tenant) => (
+              <div key={tenant.tenantId} className="flex items-center justify-between p-4 border rounded-lg">
+                <div className="flex items-center space-x-4">
+                  <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
+                    <UserCheck className="h-5 w-5 text-green-600" />
+                  </div>
+                  <div>
+                    <div className="font-medium">{tenant.tenantName}</div>
+                    <div className="text-sm text-gray-500">{tenant.activeUsers} active users</div>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="font-medium">{tenant.users} total users</div>
+                  <div className="text-sm text-gray-500">{tenant.retailers} retailers served</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Line Worker Activities</CardTitle>
+          <CardDescription>Recent activities and performance metrics</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between p-4 border rounded-lg">
+              <div className="flex items-center space-x-4">
+                <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                  <UserCheck className="h-5 w-5 text-blue-600" />
+                </div>
+                <div>
+                  <div className="font-medium">John Doe</div>
+                  <div className="text-sm text-gray-500">Demo Pharmacy</div>
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="font-medium">Active</div>
+                <div className="text-sm text-gray-500">Last activity: 2 hours ago</div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between p-4 border rounded-lg">
+              <div className="flex items-center space-x-4">
+                <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
+                  <UserCheck className="h-5 w-5 text-green-600" />
+                </div>
+                <div>
+                  <div className="font-medium">Jane Smith</div>
+                  <div className="text-sm text-gray-500">MediStore</div>
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="font-medium">Active</div>
+                <div className="text-sm text-gray-500">Last activity: 1 hour ago</div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between p-4 border rounded-lg">
+              <div className="flex items-center space-x-4">
+                <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center">
+                  <UserCheck className="h-5 w-5 text-gray-600" />
+                </div>
+                <div>
+                  <div className="font-medium">Mike Johnson</div>
+                  <div className="text-sm text-gray-500">HealthPlus</div>
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="font-medium">Inactive</div>
+                <div className="text-sm text-gray-500">Last activity: 2 days ago</div>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+
+  const getFilteredAnalytics = () => {
+    if (!analytics) return null;
+    
+    if (selectedTenantForAnalytics === 'ALL') {
+      return analytics;
+    }
+    
+    const selectedTenantData = analytics.tenantAnalytics.find(t => t.tenantId === selectedTenantForAnalytics);
+    if (!selectedTenantData) return analytics;
+    
+    return {
+      ...analytics,
+      totalRevenue: selectedTenantData.revenue,
+      totalOutstanding: selectedTenantData.outstanding,
+      totalTenants: 1,
+      totalUsers: selectedTenantData.users,
+      totalRetailers: selectedTenantData.retailers,
+      totalPayments: selectedTenantData.payments,
+      totalInvoices: selectedTenantData.invoices,
+      activeTenants: 1,
+      suspendedTenants: 0,
+      avgRevenuePerUser: selectedTenantData.avgRevenuePerUser,
+      avgRevenuePerRetailer: selectedTenantData.revenue / selectedTenantData.retailers,
+      paymentSuccessRate: selectedTenantData.users > 0 ? (selectedTenantData.payments / selectedTenantData.users) * 100 : 0,
+      collectionEfficiency: selectedTenantData.collectionRate,
+      tenantAnalytics: [selectedTenantData]
+    };
+  };
+
+  // Analytics Component
+  const Analytics = () => {
+    const filteredAnalytics = getFilteredAnalytics();
+    
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Card className="w-full max-w-md">
-          <CardContent className="pt-6">
-            <div className="text-center">
-              <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
-              <h3 className="text-lg font-semibold mb-2">Access Denied</h3>
-              <p className="text-gray-600 mb-4">
-                You don't have permission to access this area.
-              </p>
-              <Button onClick={logout}>Logout</Button>
+      <div className="space-y-6">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900">Analytics</h2>
+            <p className="text-gray-600">Comprehensive analytics across all tenants</p>
+          </div>
+          
+          {/* Tenant Filter */}
+          <div className="flex items-center space-x-2">
+            <Label htmlFor="tenant-filter" className="text-sm font-medium">Filter by Tenant:</Label>
+            <Select value={selectedTenantForAnalytics} onValueChange={setSelectedTenantForAnalytics}>
+              <SelectTrigger className="w-64">
+                <SelectValue placeholder="Select tenant" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">All Tenants</SelectItem>
+                {analytics?.tenantAnalytics.map((tenant) => (
+                  <SelectItem key={tenant.tenantId} value={tenant.tenantId}>
+                    {tenant.tenantName}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        {filteredAnalytics && (
+          <>
+            {/* Key Metrics Overview */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              <Card className="hover:shadow-lg transition-shadow duration-300 border-l-4 border-l-blue-500">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium text-gray-600">Avg Revenue per User</CardTitle>
+                  <div className="bg-blue-100 p-2 rounded-full">
+                    <TrendingUp className="h-4 w-4 text-blue-600" />
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-gray-900">
+                    {filteredAnalytics.totalUsers > 0 ? formatCurrency(filteredAnalytics.totalRevenue / filteredAnalytics.totalUsers) : formatCurrency(0)}
+                  </div>
+                  <p className="text-xs text-gray-500">Per user across {selectedTenantForAnalytics === 'ALL' ? 'all tenants' : 'selected tenant'}</p>
+                </CardContent>
+              </Card>
+
+              <Card className="hover:shadow-lg transition-shadow duration-300 border-l-4 border-l-green-500">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium text-gray-600">Avg Revenue per Retailer</CardTitle>
+                  <div className="bg-green-100 p-2 rounded-full">
+                    <Store className="h-4 w-4 text-green-600" />
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-gray-900">
+                    {filteredAnalytics.totalRetailers > 0 ? formatCurrency(filteredAnalytics.totalRevenue / filteredAnalytics.totalRetailers) : formatCurrency(0)}
+                  </div>
+                  <p className="text-xs text-gray-500">Per retailer across {selectedTenantForAnalytics === 'ALL' ? 'all tenants' : 'selected tenant'}</p>
+                </CardContent>
+              </Card>
+
+              <Card className="hover:shadow-lg transition-shadow duration-300 border-l-4 border-l-purple-500">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium text-gray-600">Payment Success Rate</CardTitle>
+                  <div className="bg-purple-100 p-2 rounded-full">
+                    <CheckCircle className="h-4 w-4 text-purple-600" />
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-gray-900">
+                    {filteredAnalytics.totalUsers > 0 ? ((filteredAnalytics.totalPayments / filteredAnalytics.totalUsers) * 100).toFixed(1) : '0'}%
+                  </div>
+                  <p className="text-xs text-gray-500">Payments per user ratio</p>
+                </CardContent>
+              </Card>
+
+              <Card className="hover:shadow-lg transition-shadow duration-300 border-l-4 border-l-orange-500">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium text-gray-600">Collection Efficiency</CardTitle>
+                  <div className="bg-orange-100 p-2 rounded-full">
+                    <CreditCard className="h-4 w-4 text-orange-600" />
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-gray-900">
+                    {filteredAnalytics.totalRevenue + filteredAnalytics.totalOutstanding > 0 ? 
+                      ((filteredAnalytics.totalRevenue / (filteredAnalytics.totalRevenue + filteredAnalytics.totalOutstanding)) * 100).toFixed(1) : '0'}%
+                  </div>
+                  <p className="text-xs text-gray-500">Revenue collection rate</p>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Revenue Distribution */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Revenue Distribution</CardTitle>
+                  <CardDescription>Revenue breakdown by tenant</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {filteredAnalytics.tenantAnalytics
+                      .sort((a, b) => b.revenue - a.revenue)
+                      .map((tenant, index) => {
+                        const percentage = filteredAnalytics.totalRevenue > 0 ? (tenant.revenue / filteredAnalytics.totalRevenue) * 100 : 0;
+                        return (
+                          <div key={tenant.tenantId} className="space-y-2">
+                            <div className="flex justify-between items-center">
+                              <span className="text-sm font-medium">{tenant.tenantName}</span>
+                              <span className="text-sm text-gray-500">{percentage.toFixed(1)}%</span>
+                            </div>
+                            <div className="w-full bg-gray-200 rounded-full h-2">
+                              <div 
+                                className="bg-blue-600 h-2 rounded-full" 
+                                style={{ width: `${percentage}%` }}
+                              />
+                            </div>
+                            <div className="flex justify-between items-center text-xs text-gray-500">
+                              <span>{formatCurrency(tenant.revenue)}</span>
+                              <span>{tenant.payments} payments</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Outstanding Analysis</CardTitle>
+                  <CardDescription>Outstanding amounts by tenant</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {filteredAnalytics.tenantAnalytics
+                      .sort((a, b) => b.outstanding - a.outstanding)
+                      .map((tenant) => {
+                        const percentage = filteredAnalytics.totalOutstanding > 0 ? (tenant.outstanding / filteredAnalytics.totalOutstanding) * 100 : 0;
+                        return (
+                          <div key={tenant.tenantId} className="space-y-2">
+                            <div className="flex justify-between items-center">
+                              <span className="text-sm font-medium">{tenant.tenantName}</span>
+                              <span className="text-sm text-gray-500">{percentage.toFixed(1)}%</span>
+                            </div>
+                            <div className="w-full bg-gray-200 rounded-full h-2">
+                              <div 
+                                className="bg-red-600 h-2 rounded-full" 
+                                style={{ width: `${percentage}%` }}
+                              />
+                            </div>
+                            <div className="flex justify-between items-center text-xs text-gray-500">
+                              <span>{formatCurrency(tenant.outstanding)}</span>
+                              <span>{tenant.retailers} retailers</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Tenant Performance Matrix */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Tenant Performance Matrix</CardTitle>
+              <CardDescription>Comprehensive performance analysis for {selectedTenantForAnalytics === 'ALL' ? 'all tenants' : 'selected tenant'}</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Tenant Name</TableHead>
+                        <TableHead className="text-right">Revenue</TableHead>
+                        <TableHead className="text-right">Outstanding</TableHead>
+                        <TableHead className="text-right">Users</TableHead>
+                        <TableHead className="text-right">Retailers</TableHead>
+                        <TableHead className="text-right">Payments</TableHead>
+                        <TableHead className="text-right">Revenue/User</TableHead>
+                        <TableHead className="text-right">Collection Rate</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredAnalytics.tenantAnalytics
+                        .sort((a, b) => b.revenue - a.revenue)
+                        .map((tenant) => {
+                          const revenuePerUser = tenant.users > 0 ? tenant.revenue / tenant.users : 0;
+                          const collectionRate = tenant.revenue + tenant.outstanding > 0 ? 
+                            (tenant.revenue / (tenant.revenue + tenant.outstanding)) * 100 : 0;
+                          
+                          return (
+                            <TableRow key={tenant.tenantId}>
+                              <TableCell className="font-medium">{tenant.tenantName}</TableCell>
+                              <TableCell className="text-right">{formatCurrency(tenant.revenue)}</TableCell>
+                              <TableCell className="text-right">{formatCurrency(tenant.outstanding)}</TableCell>
+                              <TableCell className="text-right">{tenant.users}</TableCell>
+                              <TableCell className="text-right">{tenant.retailers}</TableCell>
+                              <TableCell className="text-right">{tenant.payments}</TableCell>
+                              <TableCell className="text-right">{formatCurrency(revenuePerUser)}</TableCell>
+                              <TableCell className="text-right">
+                                <Badge className={
+                                  collectionRate >= 80 ? 'bg-green-100 text-green-800' :
+                                  collectionRate >= 60 ? 'bg-yellow-100 text-yellow-800' :
+                                  'bg-red-100 text-red-800'
+                                }>
+                                  {collectionRate.toFixed(1)}%
+                                </Badge>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Insights and Recommendations */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Key Insights</CardTitle>
+                  <CardDescription>Important observations from the data</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    <div className="flex items-start space-x-3">
+                      <div className="w-2 h-2 bg-blue-600 rounded-full mt-2"></div>
+                      <div>
+                        <div className="font-medium text-sm">Top Performing Tenant</div>
+                        <div className="text-sm text-gray-600">
+                          {filteredAnalytics.tenantAnalytics.length > 0 ? 
+                            `${filteredAnalytics.tenantAnalytics.reduce((max, tenant) => tenant.revenue > max.revenue ? tenant : max).tenantName} leads with ${formatCurrency(filteredAnalytics.tenantAnalytics.reduce((max, tenant) => tenant.revenue > max.revenue ? tenant : max).revenue)}` :
+                            'No tenant data available'
+                          }
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-start space-x-3">
+                      <div className="w-2 h-2 bg-red-600 rounded-full mt-2"></div>
+                      <div>
+                        <div className="font-medium text-sm">Highest Outstanding</div>
+                        <div className="text-sm text-gray-600">
+                          {filteredAnalytics.tenantAnalytics.length > 0 ? 
+                          `${filteredAnalytics.tenantAnalytics.reduce((max, tenant) => tenant.outstanding > max.outstanding ? tenant : max).tenantName} has ${formatCurrency(filteredAnalytics.tenantAnalytics.reduce((max, tenant) => tenant.outstanding > max.outstanding ? tenant : max).outstanding)} outstanding` :
+                          'No tenant data available'
+                        }
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-start space-x-3">
+                    <div className="w-2 h-2 bg-green-600 rounded-full mt-2"></div>
+                    <div>
+                      <div className="font-medium text-sm">Best Collection Rate</div>
+                      <div className="text-sm text-gray-600">
+                        {filteredAnalytics.tenantAnalytics.length > 0 ? 
+                          (() => {
+                            const best = filteredAnalytics.tenantAnalytics.reduce((best, tenant) => {
+                              const rate = tenant.revenue + tenant.outstanding > 0 ? 
+                                (tenant.revenue / (tenant.revenue + tenant.outstanding)) * 100 : 0;
+                              const bestRate = best.revenue + best.outstanding > 0 ? 
+                                (best.revenue / (best.revenue + best.outstanding)) * 100 : 0;
+                              return rate > bestRate ? tenant : best;
+                            });
+                            const bestRate = best.revenue + best.outstanding > 0 ? 
+                              (best.revenue / (best.revenue + best.outstanding)) * 100 : 0;
+                            return `${best.tenantName} with ${bestRate.toFixed(1)}% collection rate`;
+                          })() :
+                          'No tenant data available'
+                        }
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Recommendations</CardTitle>
+                <CardDescription>Suggested actions based on analytics</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="flex items-start space-x-3">
+                    <div className="w-2 h-2 bg-orange-600 rounded-full mt-2"></div>
+                    <div>
+                      <div className="font-medium text-sm">Focus on High Outstanding</div>
+                      <div className="text-sm text-gray-600">
+                        Prioritize follow-up with tenants having outstanding amounts above {formatCurrency(filteredAnalytics.totalOutstanding / filteredAnalytics.tenantAnalytics.length * 1.5)}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-start space-x-3">
+                    <div className="w-2 h-2 bg-blue-600 rounded-full mt-2"></div>
+                    <div>
+                      <div className="font-medium text-sm">Improve User Engagement</div>
+                      <div className="text-sm text-gray-600">
+                        Target tenants with low payment rates to improve user engagement and collection
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-start space-x-3">
+                    <div className="w-2 h-2 bg-green-600 rounded-full mt-2"></div>
+                    <div>
+                      <div className="font-medium text-sm">Expand Successful Models</div>
+                      <div className="text-sm text-gray-600">
+                        Analyze and replicate strategies from top-performing tenants across the network
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
+
+  // Activity Component
+  const Activity = () => (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-bold text-gray-900">Recent Activity</h2>
+        <p className="text-gray-600">Latest activities across all tenants (last 7 days)</p>
+      </div>
+
+      <Card>
+        <CardContent className="pt-6">
+          <div className="space-y-4">
+            {recentActivities.length > 0 ? (
+              recentActivities.map((activity) => {
+                const Icon = activity.icon;
+                return (
+                  <div key={activity.id} className="flex items-center space-x-4 p-4 border rounded-lg">
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                      activity.type === 'success' ? 'bg-green-100' : 
+                      activity.type === 'warning' ? 'bg-yellow-100' : 
+                      activity.type === 'info' ? 'bg-blue-100' : 'bg-gray-100'
+                    }`}>
+                      <Icon className={`h-5 w-5 ${
+                        activity.type === 'success' ? 'text-green-600' : 
+                        activity.type === 'warning' ? 'text-yellow-600' : 
+                        activity.type === 'info' ? 'text-blue-600' : 'text-gray-600'
+                      }`} />
+                    </div>
+                    <div className="flex-1">
+                      <div className="font-medium">{activity.title}</div>
+                      <div className="text-sm text-gray-500">{activity.message}</div>
+                    </div>
+                    <div className="text-sm text-gray-500">
+                      {formatTimestampWithTime(activity.timestamp)}
+                    </div>
+                  </div>
+                );
+              })
+            ) : (
+              <div className="text-center py-8">
+                <Clock className="h-12 w-12 mx-auto text-gray-400 mb-4" />
+                <p className="text-gray-500">No recent activities found</p>
+                <p className="text-sm text-gray-400">Activities from the last 7 days will appear here</p>
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+
+  // Settings Component
+  const Settings = () => (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-bold text-gray-900">Settings</h2>
+        <p className="text-gray-600">System-wide settings and configuration</p>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>System Configuration</CardTitle>
+            <CardDescription>Configure system-wide settings</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="font-medium">Email Notifications</div>
+                <div className="text-sm text-gray-500">Send email notifications for important events</div>
+              </div>
+              <Switch defaultChecked />
+            </div>
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="font-medium">SMS Notifications</div>
+                <div className="text-sm text-gray-500">Send SMS notifications for critical alerts</div>
+              </div>
+              <Switch />
+            </div>
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="font-medium">Auto Backup</div>
+                <div className="text-sm text-gray-500">Automatically backup system data daily</div>
+              </div>
+              <Switch defaultChecked />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Security Settings</CardTitle>
+            <CardDescription>Configure security and access controls</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="font-medium">Two-Factor Authentication</div>
+                <div className="text-sm text-gray-500">Require 2FA for all admin users</div>
+              </div>
+              <Switch />
+            </div>
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="font-medium">Session Timeout</div>
+                <div className="text-sm text-gray-500">Automatically log out after 30 minutes</div>
+              </div>
+              <Switch defaultChecked />
+            </div>
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="font-medium">IP Restrictions</div>
+                <div className="text-sm text-gray-500">Restrict access by IP address</div>
+              </div>
+              <Switch />
             </div>
           </CardContent>
         </Card>
       </div>
-    );
-  }
+    </div>
+  );
 
   if (loading) {
     return (
@@ -118,309 +1688,86 @@ export function SuperAdminDashboard() {
     );
   }
 
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center">
-              <div className="bg-blue-600 p-2 rounded-lg">
-                <Building2 className="h-6 w-6 text-white" />
-              </div>
-              <div className="ml-3">
-                <h1 className="text-2xl font-bold text-gray-900">PharmaLynk Collections</h1>
-                <p className="text-sm text-gray-500">Super Admin Dashboard</p>
-              </div>
-            </div>
-            <div className="flex items-center space-x-4">
-              <div className="text-right">
-                <div className="text-sm font-medium text-gray-900">
-                  Welcome, {user?.displayName || user?.email}
-                </div>
-                <div className="text-xs text-gray-500">
-                  Super Admin
-                </div>
-              </div>
-              <Button variant="outline" onClick={logout} className="hover:bg-gray-50 transition-colors">
-                <LogOut className="h-4 w-4 mr-2" />
-                Logout
-              </Button>
-            </div>
-          </div>
+  if (!isSuperAdmin) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+          <h2 className="text-xl font-bold text-gray-900 mb-2">Access Denied</h2>
+          <p className="text-gray-600">You don't have permission to access this dashboard.</p>
         </div>
-      </header>
+      </div>
+    );
+  }
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+  return (
+    <div className="min-h-screen bg-gray-50 flex flex-col">
+      {/* Navigation */}
+      <DashboardNavigation
+        activeNav={activeNav}
+        setActiveNav={setActiveNav}
+        navItems={navItems}
+        title="PharmaLynk Super Admin"
+        subtitle="System Administration Dashboard"
+        notificationCount={notificationCount}
+        notifications={notifications}
+        user={user}
+        onLogout={logout}
+      />
+
+      {/* Main Content */}
+      <main className="flex-1 p-4 lg:p-6 overflow-y-auto">
+        {/* Header with refresh */}
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">
+              {navItems.find(item => item.id === activeNav)?.label || 'Dashboard'}
+            </h1>
+            <p className="text-sm text-gray-500">
+              Last updated: {formatTimestampWithTime(lastUpdate)}
+            </p>
+          </div>
+          <Button 
+            onClick={refreshData} 
+            disabled={isRefreshing}
+            className="flex items-center space-x-2"
+          >
+            {isRefreshing ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4" />
+            )}
+            <span>{isRefreshing ? 'Refreshing...' : 'Refresh Data'}</span>
+          </Button>
+        </div>
+
         {error && (
           <Alert variant="destructive" className="mb-6">
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         )}
 
-        {/* Stats Overview */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <Card className="hover:shadow-lg transition-shadow duration-300 border-l-4 border-l-blue-500">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">Total Tenants</CardTitle>
-              <div className="bg-blue-100 p-2 rounded-full">
-                <Building2 className="h-4 w-4 text-blue-600" />
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-gray-900">{tenants.length}</div>
-              <p className="text-xs text-gray-500">
-                {tenants.filter(t => t.status === 'ACTIVE').length} active
-              </p>
-            </CardContent>
-          </Card>
+        {/* Loading state */}
+        {loading && (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="h-8 w-8 animate-spin mr-3" />
+            <span>Loading dashboard data...</span>
+          </div>
+        )}
 
-          <Card className="hover:shadow-lg transition-shadow duration-300 border-l-4 border-l-green-500">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">Active Tenants</CardTitle>
-              <div className="bg-green-100 p-2 rounded-full">
-                <TrendingUp className="h-4 w-4 text-green-600" />
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-gray-900">
-                {tenants.filter(t => t.status === 'ACTIVE').length}
-              </div>
-              <p className="text-xs text-gray-500">
-                +2 from last month
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card className="hover:shadow-lg transition-shadow duration-300 border-l-4 border-l-red-500">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">Suspended</CardTitle>
-              <div className="bg-red-100 p-2 rounded-full">
-                <AlertCircle className="h-4 w-4 text-red-600" />
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-gray-900">
-                {tenants.filter(t => t.status === 'SUSPENDED').length}
-              </div>
-              <p className="text-xs text-gray-500">
-                Need attention
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card className="hover:shadow-lg transition-shadow duration-300 border-l-4 border-l-yellow-500">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">Total Revenue</CardTitle>
-              <div className="bg-yellow-100 p-2 rounded-full">
-                <DollarSign className="h-4 w-4 text-yellow-600" />
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-gray-900">₹45,231</div>
-              <p className="text-xs text-gray-500">
-                +20.1% from last month
-              </p>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Main Content */}
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-3xl font-bold text-gray-900">Tenant Management</h2>
-          <Dialog open={showCreateTenant} onOpenChange={setShowCreateTenant}>
-            <DialogTrigger asChild>
-              <Button>
-                <Plus className="h-4 w-4 mr-2" />
-                Create Tenant
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-md">
-              <DialogHeader>
-                <DialogTitle>Create New Tenant</DialogTitle>
-                <DialogDescription>
-                  Set up a new wholesaler tenant on the platform
-                </DialogDescription>
-              </DialogHeader>
-              <CreateTenantForm onSubmit={handleCreateTenant} />
-            </DialogContent>
-          </Dialog>
-        </div>
-
-        {/* Tenants Table */}
-        <Card>
-          <CardHeader>
-            <CardTitle>All Tenants</CardTitle>
-            <CardDescription>
-              Manage all wholesaler tenants on the platform
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Plan</TableHead>
-                  <TableHead>Subscription</TableHead>
-                  <TableHead>Created</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {tenants.map((tenant) => (
-                  <TableRow key={tenant.id}>
-                    <TableCell className="font-medium">{tenant.name}</TableCell>
-                    <TableCell>
-                      <Badge className={getStatusColor(tenant.status)}>
-                        {tenant.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>{tenant.plan}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{tenant.subscriptionStatus}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      {formatTimestamp(tenant.createdAt)}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex space-x-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            console.log('View tenant details:', tenant);
-                            alert(`Viewing details for ${tenant.name}`);
-                          }}
-                        >
-                          <Settings className="h-4 w-4 mr-1" />
-                          Manage
-                        </Button>
-                        <Button 
-                          variant="outline" 
-                          size="sm"
-                          onClick={() => {
-                            console.log('View tenant users:', tenant);
-                            alert(`Viewing users for ${tenant.name}`);
-                          }}
-                        >
-                          <Users className="h-4 w-4 mr-1" />
-                          Users
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+        {/* Content based on active navigation */}
+        {!loading && (
+          <div className="space-y-6">
+            {activeNav === 'overview' && <Overview />}
+            {activeNav === 'tenants' && <TenantsManagement />}
+            {activeNav === 'users' && <UsersOverview />}
+            {activeNav === 'line-workers' && <LineWorkers />}
+            {activeNav === 'analytics' && <Analytics />}
+            {activeNav === 'activity' && <Activity />}
+            {activeNav === 'settings' && <Settings />}
+          </div>
+        )}
       </main>
     </div>
-  );
-}
-
-// Create Tenant Form Component
-function CreateTenantForm({ onSubmit }: { onSubmit: (data: CreateTenantForm) => void }) {
-  const [formData, setFormData] = useState<CreateTenantForm>({
-    name: '',
-    plan: 'BASIC',
-    adminEmail: '',
-    adminPassword: '',
-    adminPhone: '',
-    adminName: ''
-  });
-  const [loading, setLoading] = useState(false);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    
-    try {
-      await onSubmit(formData);
-    } catch (error) {
-      console.error('Error creating tenant:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="space-y-2">
-        <Label htmlFor="name">Tenant Name</Label>
-        <Input
-          id="name"
-          value={formData.name}
-          onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
-          required
-        />
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="plan">Plan</Label>
-        <select
-          id="plan"
-          value={formData.plan}
-          onChange={(e) => setFormData(prev => ({ ...prev, plan: e.target.value }))}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-          required
-        >
-          <option value="BASIC">Basic</option>
-          <option value="PRO">Professional</option>
-          <option value="ENTERPRISE">Enterprise</option>
-        </select>
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="adminName">Admin Name</Label>
-        <Input
-          id="adminName"
-          value={formData.adminName}
-          onChange={(e) => setFormData(prev => ({ ...prev, adminName: e.target.value }))}
-        />
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="adminEmail">Admin Email</Label>
-        <Input
-          id="adminEmail"
-          type="email"
-          value={formData.adminEmail}
-          onChange={(e) => setFormData(prev => ({ ...prev, adminEmail: e.target.value }))}
-          required
-        />
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="adminPhone">Admin Phone</Label>
-        <Input
-          id="adminPhone"
-          value={formData.adminPhone}
-          onChange={(e) => setFormData(prev => ({ ...prev, adminPhone: e.target.value }))}
-        />
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="adminPassword">Admin Password</Label>
-        <Input
-          id="adminPassword"
-          type="password"
-          value={formData.adminPassword}
-          onChange={(e) => setFormData(prev => ({ ...prev, adminPassword: e.target.value }))}
-          required
-        />
-      </div>
-
-      <div className="flex space-x-2">
-        <Button type="submit" disabled={loading}>
-          {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-          Create Tenant
-        </Button>
-        <Button type="button" variant="outline" onClick={() => onSubmit(formData)}>
-          Cancel
-        </Button>
-      </div>
-    </form>
   );
 }

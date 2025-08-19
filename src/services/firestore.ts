@@ -21,7 +21,7 @@ import {
   arrayRemove
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { db, storage, COLLECTIONS } from '@/lib/firebase';
+import { db, storage, COLLECTIONS, ROLES } from '@/lib/firebase';
 import { toMillis, toDate, compareTimestamps } from '@/lib/timestamp-utils';
 import { RetailerAuthService } from './retailer-auth';
 import { 
@@ -34,6 +34,7 @@ import {
   PaymentEvent, 
   Subscription,
   Config,
+  OTP,
   BaseDocument,
   CreateTenantForm,
   CreateAreaForm,
@@ -276,6 +277,12 @@ export class UserService extends FirestoreService<User> {
     ]);
   }
 
+  async getAllUsersByRole(tenantId: string, role: string): Promise<User[]> {
+    return this.query(tenantId, [
+      where('roles', 'array-contains', role)
+    ]);
+  }
+
   async getLineWorkersForArea(tenantId: string, areaId: string): Promise<User[]> {
     return this.query(tenantId, [
       where('roles', 'array-contains', 'LINE_WORKER'),
@@ -315,6 +322,10 @@ export class AreaService extends FirestoreService<Area> {
       where('active', '==', true),
       where('zipcodes', 'array-contains', zipcode)
     ]);
+  }
+
+  async deleteArea(tenantId: string, areaId: string): Promise<void> {
+    return this.delete(areaId, tenantId);
   }
 }
 
@@ -371,9 +382,167 @@ export class RetailerService extends FirestoreService<Retailer> {
     const retailer = await this.getById(retailerId, tenantId);
     if (retailer) {
       await this.update(retailerId, { 
-        currentOutstanding: Math.max(0, retailer.currentOutstanding + amount) 
+        currentOutstanding: Math.max(0, retailer.currentOutstanding + amount),
+        computedAt: Timestamp.now()
       }, tenantId);
     }
+  }
+
+  // Update retailer computed fields when invoice is created
+  async updateForInvoice(retailerId: string, tenantId: string, invoice: any): Promise<void> {
+    const retailer = await this.getById(retailerId, tenantId);
+    if (retailer) {
+      const newOutstanding = retailer.currentOutstanding + invoice.totalAmount;
+      const newTotalInvoiceAmount = (retailer.totalInvoiceAmount || 0) + invoice.totalAmount;
+      const newTotalInvoicesCount = (retailer.totalInvoicesCount || 0) + 1;
+      
+      // Update recent invoices (keep last 5)
+      const recentInvoices = retailer.recentInvoices || [];
+      const newInvoiceSummary = {
+        id: invoice.id,
+        invoiceNumber: invoice.invoiceNumber,
+        totalAmount: invoice.totalAmount,
+        issueDate: invoice.issueDate,
+        status: invoice.status
+      };
+      
+      const updatedRecentInvoices = [newInvoiceSummary, ...recentInvoices].slice(0, 5);
+      
+      await this.update(retailerId, {
+        currentOutstanding: newOutstanding,
+        totalInvoiceAmount: newTotalInvoiceAmount,
+        totalInvoicesCount: newTotalInvoicesCount,
+        lastInvoiceDate: invoice.issueDate,
+        recentInvoices: updatedRecentInvoices,
+        computedAt: Timestamp.now()
+      }, tenantId);
+      
+      console.log(`✅ Updated retailer ${retailerId} for new invoice: +₹${invoice.totalAmount}, outstanding: ₹${newOutstanding}`);
+    }
+  }
+
+  // Update retailer computed fields when payment is completed
+  async updateForPayment(retailerId: string, tenantId: string, payment: any): Promise<void> {
+    const retailer = await this.getById(retailerId, tenantId);
+    if (retailer) {
+      const newOutstanding = Math.max(0, retailer.currentOutstanding - payment.totalPaid);
+      const newTotalPaidAmount = (retailer.totalPaidAmount || 0) + payment.totalPaid;
+      const newTotalPaymentsCount = (retailer.totalPaymentsCount || 0) + 1;
+      
+      // Update recent payments (keep last 5)
+      const recentPayments = retailer.recentPayments || [];
+      const newPaymentSummary = {
+        id: payment.id,
+        amount: payment.totalPaid,
+        method: payment.method,
+        date: payment.createdAt,
+        state: payment.state
+      };
+      
+      const updatedRecentPayments = [newPaymentSummary, ...recentPayments].slice(0, 5);
+      
+      await this.update(retailerId, {
+        currentOutstanding: newOutstanding,
+        totalPaidAmount: newTotalPaidAmount,
+        totalPaymentsCount: newTotalPaymentsCount,
+        lastPaymentDate: payment.createdAt,
+        recentPayments: updatedRecentPayments,
+        computedAt: Timestamp.now()
+      }, tenantId);
+      
+      console.log(`✅ Updated retailer ${retailerId} for payment: -₹${payment.totalPaid}, outstanding: ₹${newOutstanding}`);
+    }
+  }
+
+  // Recompute all retailer data from scratch (for data correction/migration)
+  async recomputeRetailerData(retailerId: string, tenantId: string): Promise<void> {
+    try {
+      console.log(`🔄 Recomputing data for retailer ${retailerId}`);
+      
+      // Get all related data
+      const invoiceService = new InvoiceService();
+      const paymentService = new PaymentService();
+      
+      const invoices = await invoiceService.getInvoicesByRetailer(tenantId, retailerId);
+      const payments = await paymentService.getPaymentsByRetailer(tenantId, retailerId);
+      
+      console.log(`📊 Retailer ${retailerId} - Found ${invoices.length} invoices and ${payments.length} payments`);
+      
+      // Log invoice details
+      invoices.forEach((inv, index) => {
+        console.log(`📄 Invoice ${index + 1}: ID=${inv.id}, Amount=₹${inv.totalAmount}, Status=${inv.status}`);
+      });
+      
+      // Log payment details
+      payments.forEach((p, index) => {
+        console.log(`💳 Payment ${index + 1}: ID=${p.id}, Amount=₹${p.totalPaid}, State=${p.state}, Date=${p.createdAt}`);
+      });
+      
+      // Compute totals
+      const totalInvoiceAmount = invoices.reduce((sum, inv) => sum + inv.totalAmount, 0);
+      const totalPaidAmount = payments.filter(p => p.state === 'COMPLETED')
+                                   .reduce((sum, p) => sum + p.totalPaid, 0);
+      const currentOutstanding = totalInvoiceAmount - totalPaidAmount;
+      
+      console.log(`💰 Retailer ${retailerId} - Total Invoices: ₹${totalInvoiceAmount}, Total Paid: ₹${totalPaidAmount}, Outstanding: ₹${currentOutstanding}`);
+      
+      // Get recent invoices
+      const recentInvoices = invoices
+        .sort((a, b) => toMillis(b.issueDate) - toMillis(a.issueDate))
+        .slice(0, 5)
+        .map(inv => ({
+          id: inv.id,
+          invoiceNumber: inv.invoiceNumber,
+          totalAmount: inv.totalAmount,
+          issueDate: inv.issueDate,
+          status: inv.status
+        }));
+      
+      // Get recent payments
+      const recentPayments = payments
+        .sort((a, b) => toMillis(b.createdAt) - toMillis(a.createdAt))
+        .slice(0, 5)
+        .map(p => ({
+          id: p.id,
+          amount: p.totalPaid,
+          method: p.method,
+          date: p.createdAt,
+          state: p.state
+        }));
+      
+      // Get last dates
+      const lastInvoiceDate = invoices.length > 0 ? 
+        invoices.reduce((latest, inv) => toMillis(inv.issueDate) > toMillis(latest) ? inv : latest).issueDate : 
+        null;
+      
+      const lastPaymentDate = payments.length > 0 ? 
+        payments.reduce((latest, p) => toMillis(p.createdAt) > toMillis(latest) ? p : latest).createdAt : 
+        null;
+      
+      // Update retailer with computed data
+      await this.update(retailerId, {
+        currentOutstanding,
+        totalInvoiceAmount,
+        totalPaidAmount,
+        totalInvoicesCount: invoices.length,
+        totalPaymentsCount: payments.length,
+        lastInvoiceDate,
+        lastPaymentDate,
+        recentInvoices,
+        recentPayments,
+        computedAt: Timestamp.now()
+      }, tenantId);
+      
+      console.log(`✅ Recomputed data for retailer ${retailerId}: outstanding ₹${currentOutstanding}, invoices ${invoices.length}, payments ${payments.length}`);
+      
+    } catch (error) {
+      console.error(`❌ Error recomputing data for retailer ${retailerId}:`, error);
+      throw error;
+    }
+  }
+
+  async deleteRetailer(tenantId: string, retailerId: string): Promise<void> {
+    return this.delete(retailerId, tenantId);
   }
 }
 
@@ -407,12 +576,19 @@ export class InvoiceService extends FirestoreService<Invoice> {
       attachments: []
     }, tenantId);
 
-    // Update retailer's outstanding amount
+    // Update retailer computed fields
     try {
       const retailerService = new RetailerService();
-      await retailerService.updateOutstanding(data.retailerId, tenantId, totalAmount);
+      const invoiceData = {
+        id: invoiceId,
+        invoiceNumber: this.generateInvoiceNumber(tenantId),
+        totalAmount: totalAmount,
+        issueDate: Timestamp.now(),
+        status: 'OPEN'
+      };
+      await retailerService.updateForInvoice(data.retailerId, tenantId, invoiceData);
     } catch (error) {
-      console.error('Error updating retailer outstanding amount:', error);
+      console.error('Error updating retailer computed fields:', error);
       // Don't throw here - the invoice was created successfully
     }
 
@@ -543,8 +719,15 @@ export class PaymentService extends FirestoreService<Payment> {
         // Update invoice outstanding amount
         await invoiceService.updateInvoiceOutstanding(paymentId, tenantId, payment.totalPaid);
 
-        // Update retailer outstanding amount (reduce by payment amount)
-        await retailerService.updateOutstanding(payment.retailerId, tenantId, -payment.totalPaid);
+        // Update retailer computed fields
+        const paymentData = {
+          id: paymentId,
+          totalPaid: payment.totalPaid,
+          method: payment.method,
+          createdAt: Timestamp.now(),
+          state: 'COMPLETED'
+        };
+        await retailerService.updateForPayment(payment.retailerId, tenantId, paymentData);
       } catch (error) {
         console.error('Error updating outstanding amounts:', error);
         // Don't throw here - we still want to update the payment state
@@ -691,16 +874,19 @@ export class DashboardService {
       const retailers = await new RetailerService().getAll(tenantId);
       const totalOutstanding = retailers.reduce((sum, retailer) => sum + retailer.currentOutstanding, 0);
 
+      // Get all completed payments
+      const allPayments = await new PaymentService().query(tenantId, [
+        where('state', '==', 'COMPLETED')
+      ]);
+      
+      // Calculate total revenue from all completed payments
+      const totalRevenue = allPayments.reduce((sum, payment) => sum + payment.totalPaid, 0);
+
       // Get today's completed payments
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       const tomorrow = new Date(today);
       tomorrow.setDate(tomorrow.getDate() + 1);
-
-      // Get all completed payments and filter in memory
-      const allPayments = await new PaymentService().query(tenantId, [
-        where('state', '==', 'COMPLETED')
-      ]);
       
       // Filter for today's payments in memory
       const todayPayments = allPayments.filter(payment => {
@@ -722,6 +908,7 @@ export class DashboardService {
       const topLineWorkers = [];
 
       return {
+        totalRevenue,
         totalOutstanding,
         todayCollections,
         agingBuckets,
@@ -744,6 +931,114 @@ export class DashboardService {
   }
 }
 
+export class OTPService extends FirestoreService<OTP> {
+  constructor() {
+    super(COLLECTIONS.OTPS);
+  }
+
+  async createOTP(data: {
+    paymentId: string;
+    retailerId: string;
+    code: string;
+    amount: number;
+    lineWorkerName: string;
+    expiresAt: Timestamp;
+  }): Promise<string> {
+    return this.create({
+      paymentId: data.paymentId,
+      retailerId: data.retailerId,
+      code: data.code,
+      amount: data.amount,
+      lineWorkerName: data.lineWorkerName,
+      expiresAt: data.expiresAt,
+      isUsed: false,
+      createdAt: Timestamp.now()
+    }, 'system'); // Use system tenantId for OTPs
+  }
+
+  async getActiveOTPsForRetailer(retailerId: string): Promise<OTP[]> {
+    try {
+      const now = new Date();
+      const q = query(
+        collection(db, this.collectionName),
+        where('retailerId', '==', retailerId),
+        where('isUsed', '==', false)
+      );
+      
+      const querySnapshot = await getDocs(q);
+      const otps: OTP[] = [];
+      
+      querySnapshot.forEach((doc: QueryDocumentSnapshot) => {
+        const otp = { id: doc.id, ...doc.data() } as OTP;
+        // Check if OTP is still valid (not expired)
+        if (toDate(otp.expiresAt) > now) {
+          otps.push(otp);
+        }
+      });
+      
+      // Sort by creation time (newest first)
+      return otps.sort((a, b) => toMillis(b.createdAt) - toMillis(a.createdAt));
+    } catch (error) {
+      console.error('Error getting active OTPs for retailer:', error);
+      return [];
+    }
+  }
+
+  async markOTPAsUsed(otpId: string): Promise<void> {
+    try {
+      await this.update(otpId, {
+        isUsed: true,
+        usedAt: Timestamp.now()
+      }, 'system');
+    } catch (error) {
+      console.error('Error marking OTP as used:', error);
+      throw error;
+    }
+  }
+
+  async getOTPByPaymentId(paymentId: string): Promise<OTP | null> {
+    try {
+      const q = query(
+        collection(db, this.collectionName),
+        where('paymentId', '==', paymentId),
+        where('isUsed', '==', false)
+      );
+      
+      const querySnapshot = await getDocs(q);
+      if (!querySnapshot.empty) {
+        const doc = querySnapshot.docs[0];
+        return { id: doc.id, ...doc.data() } as OTP;
+      }
+      return null;
+    } catch (error) {
+      console.error('Error getting OTP by payment ID:', error);
+      return null;
+    }
+  }
+
+  async cleanupExpiredOTPs(): Promise<void> {
+    try {
+      const now = new Date();
+      const q = query(
+        collection(db, this.collectionName),
+        where('expiresAt', '<', Timestamp.fromDate(now))
+      );
+      
+      const querySnapshot = await getDocs(q);
+      const batch = writeBatch(db);
+      
+      querySnapshot.forEach((doc: QueryDocumentSnapshot) => {
+        batch.delete(doc.ref);
+      });
+      
+      await batch.commit();
+      console.log(`Cleaned up ${querySnapshot.size} expired OTPs`);
+    } catch (error) {
+      console.error('Error cleaning up expired OTPs:', error);
+    }
+  }
+}
+
 // Export service instances and Firebase utilities
 export const tenantService = new TenantService();
 export const userService = new UserService();
@@ -753,4 +1048,5 @@ export const invoiceService = new InvoiceService();
 export const paymentService = new PaymentService();
 export const paymentEventService = new PaymentEventService();
 export const subscriptionService = new SubscriptionService();
+export const otpService = new OTPService();
 export { Timestamp };

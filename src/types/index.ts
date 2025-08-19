@@ -44,6 +44,39 @@ export interface Retailer extends BaseDocument {
   areaId?: string;
   zipcodes: string[];
   currentOutstanding: number;
+  
+  // Computed fields for performance
+  totalInvoiceAmount?: number;
+  totalPaidAmount?: number;
+  totalInvoicesCount?: number;
+  totalPaymentsCount?: number;
+  lastInvoiceDate?: Timestamp;
+  lastPaymentDate?: Timestamp;
+  recentInvoices?: InvoiceSummary[];
+  recentPayments?: PaymentSummary[];
+  computedAt?: Timestamp;
+  
+  // Additional fields
+  creditLimit?: number;
+  gstNumber?: string;
+  paymentTerms?: string;
+}
+
+// Summary interfaces for recent activity
+export interface InvoiceSummary {
+  id: string;
+  invoiceNumber: string;
+  totalAmount: number;
+  issueDate: Timestamp;
+  status: string;
+}
+
+export interface PaymentSummary {
+  id: string;
+  amount: number;
+  method: string;
+  date: Timestamp;
+  state: string;
 }
 
 // Invoice Line Item
@@ -90,6 +123,19 @@ export interface PaymentOTP {
   hash: string;
   expiresAt: Timestamp;
   attempts: number;
+}
+
+// Standalone OTP Document for Firestore collection
+export interface OTP extends BaseDocument {
+  paymentId: string;
+  retailerId: string;
+  code: string;
+  amount: number;
+  lineWorkerName: string;
+  expiresAt: Timestamp;
+  isUsed: boolean;
+  usedAt?: Timestamp;
+  createdAt: Timestamp;
 }
 
 // Payment UPI Data
@@ -164,6 +210,7 @@ export interface Config extends BaseDocument {
 
 // UI Related Types
 export interface DashboardStats {
+  totalRevenue: number;
   totalOutstanding: number;
   todayCollections: number;
   agingBuckets: {

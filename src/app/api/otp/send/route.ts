@@ -3,6 +3,8 @@ import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firesto
 import { db } from '@/lib/firebase';
 import { otpStore, generateOTP, sendOTPToRetailer, cleanupExpiredOTPs, addActiveOTP } from '@/lib/otp-store';
 import { RetailerAuthService } from '@/services/retailer-auth';
+import { otpService } from '@/services/firestore';
+import { Timestamp } from 'firebase/firestore';
 
 interface OTPRequest {
   retailerId: string;
@@ -60,6 +62,23 @@ export async function POST(request: NextRequest) {
     });
 
     console.log('📝 OTP stored in otpStore with paymentId:', paymentId);
+
+    // Save OTP to Firestore for persistence
+    try {
+      const firestoreExpiresAt = Timestamp.fromDate(expiresAt);
+      await otpService.createOTP({
+        paymentId,
+        retailerId,
+        code: otp,
+        amount,
+        lineWorkerName: lineWorkerName || 'Line Worker',
+        expiresAt: firestoreExpiresAt
+      });
+      console.log('✅ OTP saved to Firestore successfully');
+    } catch (firestoreError) {
+      console.error('❌ Error saving OTP to Firestore:', firestoreError);
+      // Don't fail the request if Firestore save fails, still continue with in-memory storage
+    }
 
     // Add OTP to active OTPs for retailer dashboard display
     addActiveOTP({

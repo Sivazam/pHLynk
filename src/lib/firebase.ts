@@ -34,7 +34,8 @@ export const COLLECTIONS = {
   PAYMENTS: 'payments',
   PAYMENT_EVENTS: 'paymentEvents',
   SUBSCRIPTIONS: 'subscriptions',
-  CONFIG: 'config'
+  CONFIG: 'config',
+  OTPS: 'otps'
 } as const;
 
 // User roles

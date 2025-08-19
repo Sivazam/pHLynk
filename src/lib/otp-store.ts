@@ -55,6 +55,13 @@ export function cleanupExpiredOTPs() {
       activeOTPs.delete(key);
     }
   }
+
+  // Clean up expired OTPs from Firestore (async, don't wait)
+  import('@/services/firestore').then(({ otpService }) => {
+    otpService.cleanupExpiredOTPs().catch(error => {
+      console.error('Error cleaning up expired OTPs from Firestore:', error);
+    });
+  });
 }
 
 export function addActiveOTP(otpData: {

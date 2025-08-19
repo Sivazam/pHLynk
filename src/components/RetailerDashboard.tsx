@@ -2,15 +2,17 @@
 
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { retailerService, paymentService } from '@/services/firestore';
+import { DashboardNavigation, NavItem } from '@/components/DashboardNavigation';
+import { retailerService, paymentService, otpService } from '@/services/firestore';
 import { RetailerAuthService } from '@/services/retailer-auth';
 import { Retailer, Payment } from '@/types';
-import { formatTimestamp, formatTimestampWithTime } from '@/lib/timestamp-utils';
+import { formatTimestamp, formatTimestampWithTime, formatCurrency } from '@/lib/timestamp-utils';
 import { getActiveOTPsForRetailer, getCompletedPaymentsForRetailer, removeCompletedPayment } from '@/lib/otp-store';
 import { 
   Store, 
@@ -30,7 +32,10 @@ import {
   FileText,
   Bell,
   Eye,
-  Volume2
+  Volume2,
+  LayoutDashboard,
+  CreditCard,
+  TrendingUp
 } from 'lucide-react';
 
 export function RetailerDashboard() {
@@ -64,6 +69,17 @@ export function RetailerDashboard() {
     completedAt: Date;
     remainingOutstanding: number;
   } | null>(null);
+  const [shownOTPpopups, setShownOTPpopups] = useState<Set<string>>(new Set());
+  const [notificationCount, setNotificationCount] = useState(0);
+
+  // Navigation items
+  const navItems: NavItem[] = [
+    { id: 'overview', label: 'Overview', icon: LayoutDashboard },
+    { id: 'payments', label: 'Payments', icon: CreditCard },
+    { id: 'history', label: 'History', icon: History },
+  ];
+
+  const [activeNav, setActiveNav] = useState('overview');
 
   useEffect(() => {
     const storedRetailerId = localStorage.getItem('retailerId');
@@ -74,10 +90,10 @@ export function RetailerDashboard() {
 
   useEffect(() => {
     // Check for active OTPs every 5 seconds
-    const interval = setInterval(() => {
+    const interval = setInterval(async () => {
       const storedRetailerId = localStorage.getItem('retailerId');
       if (storedRetailerId) {
-        checkActiveOTPs();
+        await checkActiveOTPs();
       }
     }, 5000);
 
@@ -100,6 +116,8 @@ export function RetailerDashboard() {
       
       console.log('Retailer user data found:', retailerUserData);
       console.log('Tenant ID from user data:', retailerUserData.tenantId);
+      console.log('📋 Retailer user data fields:', Object.keys(retailerUserData || {}));
+      console.log('🏠 Address from retailer user data:', retailerUserData.address);
       
       // Try to get retailer details from retailers collection first
       let retailerData;
@@ -114,6 +132,20 @@ export function RetailerDashboard() {
             ...retailerDoc.data()
           };
           console.log('✅ Retailer data found in retailers collection:', retailerData);
+          console.log('📋 Retailer document fields:', Object.keys(retailerDoc.data() || {}));
+          console.log('🏠 Address from retailer document:', retailerDoc.data()?.address);
+          console.log('🏠 retailerData.address after spread:', retailerData.address);
+          console.log('🏠 typeof retailerData.address:', typeof retailerData.address);
+          console.log('🏠 retailerData.address length:', retailerData.address?.length);
+          
+          // If retailer document doesn't have address, try to get from user data
+          if (!retailerData.address && retailerUserData.address) {
+            retailerData.address = retailerUserData.address;
+            console.log('🏠 Using address from retailer user data:', retailerData.address);
+          }
+          
+          // Final address value
+          console.log('🏠 Final retailerData.address:', retailerData.address);
         } else {
           console.log('⚠️ Retailer document not found in retailers collection, using user data');
           // Fallback to user data
@@ -123,7 +155,7 @@ export function RetailerDashboard() {
             phone: retailerUserData.phone,
             email: retailerUserData.email || '',
             tenantId: retailerUserData.tenantId,
-            address: 'Address not specified',
+            address: retailerUserData.address || 'Address not specified',
             currentOutstanding: 0,
             areaId: '',
             zipcodes: []
@@ -138,7 +170,7 @@ export function RetailerDashboard() {
           phone: retailerUserData.phone,
           email: retailerUserData.email || '',
           tenantId: retailerUserData.tenantId,
-          address: 'Address not specified',
+          address: retailerUserData.address || 'Address not specified',
           currentOutstanding: 0,
           areaId: '',
           zipcodes: []
@@ -148,6 +180,18 @@ export function RetailerDashboard() {
       // Get payment history using the tenantId and retailerId from user data
       const paymentsData = await paymentService.getPaymentsByRetailer(retailerUserData.tenantId, retailerUserData.retailerId);
       
+      // Get invoice data to calculate proper outstanding amount
+      let totalInvoiceAmount = 0;
+      try {
+        const invoiceService = new (await import('@/services/firestore')).InvoiceService();
+        const invoicesData = await invoiceService.getInvoicesByRetailer(retailerUserData.tenantId, retailerUserData.retailerId);
+        totalInvoiceAmount = invoicesData.reduce((sum, invoice) => sum + invoice.totalAmount, 0);
+        console.log('Total invoice amount:', totalInvoiceAmount);
+        console.log('Invoices found:', invoicesData.length);
+      } catch (error) {
+        console.warn('Could not fetch invoice data:', error);
+      }
+      
       console.log('Payments data fetched:', paymentsData);
       console.log('Payments details:', paymentsData.map(p => ({ 
         id: p.id, 
@@ -156,19 +200,30 @@ export function RetailerDashboard() {
         method: p.method 
       })));
       
-      // Calculate current outstanding from payments
+      // Calculate total paid from completed payments
       const completedPayments = paymentsData.filter(p => p.state === 'COMPLETED');
       const totalPaid = completedPayments.reduce((sum, p) => sum + p.totalPaid, 0);
       
+      // Calculate current outstanding: Total Invoice Amount - Total Paid
+      const currentOutstanding = Math.max(0, totalInvoiceAmount - totalPaid);
+      
       console.log('Completed payments:', completedPayments.length);
       console.log('Total paid amount:', totalPaid);
+      console.log('Total invoice amount:', totalInvoiceAmount);
+      console.log('Calculated outstanding amount:', currentOutstanding);
       console.log('Outstanding from retailer document:', retailerData.currentOutstanding);
       
-      // Use the outstanding from retailer document if available, otherwise calculate from payments
-      const finalOutstanding = retailerData.currentOutstanding || totalPaid;
+      // Use the calculated outstanding amount (more accurate than retailer document)
+      retailerData.currentOutstanding = currentOutstanding;
       
-      // Update the retailer object with calculated outstanding
-      retailerData.currentOutstanding = finalOutstanding;
+      // Calculate notification count
+      const activeOTPCount = activeOTPs.length;
+      const outstandingCount = currentOutstanding > 0 ? 1 : 0;
+      setNotificationCount(activeOTPCount + outstandingCount);
+      
+      // Final debugging before setting state
+      console.log('🏠 FINAL retailerData.address before setState:', retailerData.address);
+      console.log('🏠 FINAL retailerData object:', retailerData);
       
       setRetailer(retailerData as any);
       setPayments(paymentsData);
@@ -176,7 +231,7 @@ export function RetailerDashboard() {
       
       console.log('Final retailer data:', retailerData);
       console.log('Payments loaded:', paymentsData.length);
-      console.log('Final outstanding amount:', finalOutstanding);
+      console.log('Final outstanding amount:', currentOutstanding);
       
     } catch (err: any) {
       console.error('Error fetching retailer data:', err);
@@ -186,15 +241,58 @@ export function RetailerDashboard() {
     }
   };
 
-  const checkActiveOTPs = () => {
+  const checkActiveOTPs = async () => {
     const storedRetailerId = localStorage.getItem('retailerId');
     if (!storedRetailerId) return;
     
+    // Get OTPs from in-memory store
     const activeOTPsForRetailer = getActiveOTPsForRetailer(storedRetailerId);
     const completedPaymentsForRetailer = getCompletedPaymentsForRetailer(storedRetailerId);
     
+    // If no OTPs found in memory, try to fetch from Firestore
+    let firestoreOTPs: any[] = [];
+    if (activeOTPsForRetailer.length === 0) {
+      try {
+        const firestoreOTPData = await otpService.getActiveOTPsForRetailer(storedRetailerId);
+        firestoreOTPs = firestoreOTPData.map(otp => ({
+          code: otp.code,
+          amount: otp.amount,
+          paymentId: otp.paymentId,
+          lineWorkerName: otp.lineWorkerName,
+          expiresAt: otp.expiresAt.toDate(),
+          createdAt: otp.createdAt.toDate()
+        }));
+        console.log('📱 Fetched OTPs from Firestore:', firestoreOTPs.length);
+      } catch (error) {
+        console.error('❌ Error fetching OTPs from Firestore:', error);
+      }
+    }
+    
+    // Combine in-memory and Firestore OTPs, removing duplicates
+    const allOTPs = [...activeOTPsForRetailer, ...firestoreOTPs];
+    const uniqueOTPs = allOTPs.filter((otp, index, self) => 
+      index === self.findIndex(o => o.paymentId === otp.paymentId)
+    );
+    
+    // Filter out expired OTPs (older than 3 minutes)
+    const now = new Date();
+    const validOTPs = uniqueOTPs.filter(otp => {
+      const timeSinceCreation = now.getTime() - otp.createdAt.getTime();
+      return timeSinceCreation < 180000; // 3 minutes in milliseconds
+    });
+    
+    // Log expired OTPs that were removed
+    const expiredOTPs = uniqueOTPs.filter(otp => {
+      const timeSinceCreation = now.getTime() - otp.createdAt.getTime();
+      return timeSinceCreation >= 180000; // 3 minutes in milliseconds
+    });
+    
+    if (expiredOTPs.length > 0) {
+      console.log('🕐 Expired OTPs removed:', expiredOTPs.map(otp => otp.paymentId));
+    }
+    
     // Check if there are new OTPs
-    const newOTPs = activeOTPsForRetailer.filter(otp => 
+    const newOTPs = validOTPs.filter(otp => 
       !activeOTPs.some(existingOtp => existingOtp.paymentId === otp.paymentId)
     );
     
@@ -205,8 +303,19 @@ export function RetailerDashboard() {
     
     if (newOTPs.length > 0) {
       console.log('🔔 New OTP detected for retailer:', newOTPs);
-      setActiveOTPs(activeOTPsForRetailer);
-      setShowOTPPopup(true);
+      setActiveOTPs(validOTPs);
+      
+      // Check if any of the new OTPs haven't been shown as popup yet
+      const unshownOTPs = newOTPs.filter(otp => !shownOTPpopups.has(otp.paymentId));
+      
+      if (unshownOTPs.length > 0) {
+        setShowOTPPopup(true);
+        
+        // Mark these OTPs as shown
+        const newShownPopups = new Set(shownOTPpopups);
+        unshownOTPs.forEach(otp => newShownPopups.add(otp.paymentId));
+        setShownOTPpopups(newShownPopups);
+      }
       
       // Set the latest new payment for notification
       const latestOTP = newOTPs[newOTPs.length - 1];
@@ -228,7 +337,7 @@ export function RetailerDashboard() {
         updatedAt: latestOTP.createdAt
       });
     } else {
-      setActiveOTPs(activeOTPsForRetailer);
+      setActiveOTPs(validOTPs);
     }
     
     if (newCompleted.length > 0) {
@@ -315,565 +424,352 @@ export function RetailerDashboard() {
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin" />
-      </div>
-    );
-  }
+  const formatTimeRemainingFromCreation = (createdAt: Date) => {
+    const now = new Date();
+    const diff = (createdAt.getTime() + 180000) - now.getTime(); // 3 minutes from creation
+    const minutes = Math.floor(diff / (1000 * 60));
+    const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+    
+    if (diff <= 0) return 'Expired';
+    
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  };
 
-  if (!retailer) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Card className="w-full max-w-md">
-          <CardContent className="pt-6">
-            <div className="text-center">
-              <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
-              <h3 className="text-lg font-semibold mb-2">Retailer Not Found</h3>
-              <p className="text-gray-600 mb-4">
-                Your retailer account could not be found.
-              </p>
-              <Button onClick={handleLogout}>Logout</Button>
+  // Overview Component
+  const Overview = () => (
+    <div className="space-y-6">
+      {/* Retailer Info Card */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center space-x-2">
+            <Store className="h-5 w-5" />
+            <span>Your Information</span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <Label className="text-sm font-medium text-gray-500">Business Name</Label>
+              <div className="text-lg font-semibold">{retailer?.name}</div>
+            </div>
+            <div>
+              <Label className="text-sm font-medium text-gray-500">Phone Number</Label>
+              <div className="text-lg font-semibold">{retailer?.phone}</div>
+            </div>
+            <div className="md:col-span-2">
+              <Label className="text-sm font-medium text-gray-500">Address</Label>
+              <div className="text-lg font-semibold">{retailer?.address}</div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <Card className="hover:shadow-lg transition-shadow duration-300 border-l-4 border-l-red-500">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-gray-600">Outstanding Amount</CardTitle>
+            <div className="bg-red-100 p-2 rounded-full">
+              <DollarSign className="h-4 w-4 text-red-600" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-gray-900">
+              {formatCurrency(retailer?.currentOutstanding || 0)}
+            </div>
+            <p className="text-xs text-gray-500">Total unpaid amount</p>
+          </CardContent>
+        </Card>
+
+        <Card className="hover:shadow-lg transition-shadow duration-300 border-l-4 border-l-green-500">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-gray-600">Total Payments</CardTitle>
+            <div className="bg-green-100 p-2 rounded-full">
+              <CheckCircle className="h-4 w-4 text-green-600" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-gray-900">
+              {payments.filter(p => p.state === 'COMPLETED').length}
+            </div>
+            <p className="text-xs text-gray-500">Completed payments</p>
+          </CardContent>
+        </Card>
+
+        <Card className="hover:shadow-lg transition-shadow duration-300 border-l-4 border-l-blue-500">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-gray-600">Active OTPs</CardTitle>
+            <div className="bg-blue-100 p-2 rounded-full">
+              <Smartphone className="h-4 w-4 text-blue-600" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-gray-900">{activeOTPs.length}</div>
+            <p className="text-xs text-gray-500">Pending verifications</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Active OTPs */}
+      {activeOTPs.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2">
+              <Smartphone className="h-5 w-5" />
+              <span>Active OTP Requests</span>
+            </CardTitle>
+            <CardDescription>Payment verification requests waiting for your confirmation</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {activeOTPs.map((otp) => (
+                <div key={otp.paymentId} className="flex items-center justify-between p-4 border rounded-lg bg-yellow-50">
+                  <div className="flex items-center space-x-4">
+                    <div className="w-10 h-10 bg-yellow-100 rounded-full flex items-center justify-center">
+                      <Volume2 className="h-5 w-5 text-yellow-600" />
+                    </div>
+                    <div>
+                      <div className="font-medium">Payment Request</div>
+                      <div className="text-sm text-gray-500">
+                        From: {otp.lineWorkerName} • Amount: {formatCurrency(otp.amount)}
+                      </div>
+                      <div className="text-sm text-gray-500">
+                        Expires in: {formatTimeRemainingFromCreation(otp.createdAt)}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-sm font-medium text-yellow-600">OTP: {otp.code}</div>
+                    <div className="text-xs text-gray-500">Share with line worker</div>
+                  </div>
+                </div>
+              ))}
             </div>
           </CardContent>
         </Card>
+      )}
+    </div>
+  );
+
+  // Payments Component
+  const PaymentsComponent = () => (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-bold text-gray-900">Payment History</h2>
+        <p className="text-gray-600">All your payment transactions</p>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>All Payments</CardTitle>
+          <CardDescription>Your complete payment history</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Line Worker</TableHead>
+                  <TableHead>Amount</TableHead>
+                  <TableHead>Method</TableHead>
+                  <TableHead>Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {payments.map((payment) => (
+                  <TableRow key={payment.id}>
+                    <TableCell>{formatTimestampWithTime(payment.createdAt)}</TableCell>
+                    <TableCell>{retailerUser?.name || 'Unknown'}</TableCell>
+                    <TableCell>
+                      <div className="text-right">
+                        <div className="font-medium">{formatCurrency(payment.totalPaid)}</div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline">{payment.method}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge className={getPaymentStatusColor(payment.state)}>
+                        <div className="flex items-center space-x-1">
+                          {getPaymentStatusIcon(payment.state)}
+                          <span>{payment.state}</span>
+                        </div>
+                      </Badge>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+
+  // History Component
+  const HistoryComponent = () => (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-bold text-gray-900">Activity History</h2>
+        <p className="text-gray-600">Your recent activities and transactions</p>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Recent Activities</CardTitle>
+          <CardDescription>Your latest payment activities</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            {payments
+              .sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis())
+              .slice(0, 10)
+              .map((payment) => (
+                <div key={payment.id} className="flex items-center space-x-4 p-4 border rounded-lg">
+                  <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                    {payment.state === 'COMPLETED' && <CheckCircle className="h-5 w-5 text-green-600" />}
+                    {payment.state === 'OTP_SENT' && <Clock className="h-5 w-5 text-yellow-600" />}
+                    {payment.state === 'CANCELLED' && <XCircle className="h-5 w-5 text-red-600" />}
+                  </div>
+                  <div className="flex-1">
+                    <div className="font-medium">
+                      {payment.state === 'COMPLETED' ? 'Payment Completed' : 
+                       payment.state === 'OTP_SENT' ? 'Payment Requested' : 
+                       'Payment Cancelled'}
+                    </div>
+                    <div className="text-sm text-gray-500">
+                      {formatTimestampWithTime(payment.createdAt)}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="font-medium">{formatCurrency(payment.totalPaid)}</div>
+                    <div className="text-sm text-gray-500">{payment.method}</div>
+                  </div>
+                </div>
+              ))}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
+        <p className="text-gray-600">Loading your dashboard...</p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-green-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center">
-              <div className="bg-green-600 p-2 rounded-lg">
-                <Store className="h-6 w-6 text-white" />
-              </div>
-              <div className="ml-3">
-                <h1 className="text-xl font-semibold text-gray-900">Retailer Dashboard</h1>
-                <p className="text-sm text-gray-500">PharmaLynk Collections</p>
-              </div>
-            </div>
-            <div className="flex items-center space-x-4">
-              <div className="text-right">
-                <p className="text-sm font-medium text-gray-900">{retailer.name}</p>
-                <p className="text-xs text-gray-500">{retailer.phone}</p>
-              </div>
-              <Button variant="outline" size="sm" onClick={handleLogout}>
-                <LogOut className="h-4 w-4 mr-2" />
-                Logout
-              </Button>
-            </div>
-          </div>
-        </div>
-      </header>
+    <div className="min-h-screen bg-gray-50 flex flex-col">
+      {/* Navigation */}
+      <DashboardNavigation
+        activeNav={activeNav}
+        setActiveNav={setActiveNav}
+        navItems={navItems}
+        title="PharmaLynk Collections"
+        subtitle="Retailer Dashboard"
+        notificationCount={notificationCount}
+        user={retailerUser ? { displayName: retailerUser.name, email: retailerUser.email } : undefined}
+        onLogout={handleLogout}
+      />
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Error Alert */}
+      <main className="flex-1 p-4 lg:p-6 overflow-y-auto">
         {error && (
-          <Alert className="mb-6 border-red-200 bg-red-50">
-            <AlertCircle className="h-4 w-4 text-red-600" />
-            <AlertDescription className="text-red-800">{error}</AlertDescription>
+          <Alert variant="destructive" className="mb-6">
+            <AlertDescription>{error}</AlertDescription>
           </Alert>
         )}
 
-        {/* Account Status Alert */}
-        {retailerUser && retailerUser.verificationStatus === 'pending' && (
-          <Alert className="mb-6 border-yellow-200 bg-yellow-50">
-            <Shield className="h-4 w-4 text-yellow-600" />
-            <AlertDescription className="text-yellow-800">
-              <strong>Account Pending Verification:</strong> Your account has been created but not yet verified. 
-              This is your first login - your account is now fully active and ready to use.
-            </AlertDescription>
-          </Alert>
-        )}
-
-        {/* Account Status Alert */}
-        {retailerUser && retailerUser.verificationStatus === 'verified' && (
-          <Alert className="mb-6 border-green-200 bg-green-50">
-            <CheckCircle className="h-4 w-4 text-green-600" />
-            <AlertDescription className="text-green-800">
-              <strong>Account Verified:</strong> Your account is fully verified and active.
-            </AlertDescription>
-          </Alert>
-        )}
-
-        {/* Test OTP Generation (for development) */}
-        {process.env.NODE_ENV === 'development' && (
-          <div className="mb-6">
-            <Card className="border-dashed border-2 border-gray-300">
-              <CardHeader>
-                <CardTitle className="flex items-center text-lg">
-                  <Smartphone className="h-5 w-5 mr-2 text-blue-600" />
-                  Development Tools
-                </CardTitle>
-                <CardDescription>
-                  Test OTP generation and display functionality
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="flex flex-wrap gap-4">
-                  <Button 
-                    onClick={async () => {
-                      const storedRetailerId = localStorage.getItem('retailerId');
-                      if (storedRetailerId) {
-                        try {
-                          const response = await fetch('/api/test-otp', {
-                            method: 'POST',
-                            headers: {
-                              'Content-Type': 'application/json',
-                            },
-                            body: JSON.stringify({
-                              retailerId: storedRetailerId,
-                              amount: Math.floor(Math.random() * 5000) + 500, // Random amount between 500-5500
-                              lineWorkerName: 'Test Worker ' + Math.floor(Math.random() * 100)
-                            }),
-                          });
-                          
-                          const result = await response.json();
-                          if (result.success) {
-                            console.log('✅ Test OTP generated:', result);
-                            // Force refresh OTPs
-                            checkActiveOTPs();
-                          } else {
-                            console.error('❌ Failed to generate test OTP:', result);
-                          }
-                        } catch (error) {
-                          console.error('❌ Error generating test OTP:', error);
-                        }
-                      }
-                    }}
-                    className="bg-blue-600 hover:bg-blue-700"
-                  >
-                    <Smartphone className="h-4 w-4 mr-2" />
-                    Generate Test OTP
-                  </Button>
-                  
-                  <Button 
-                    onClick={() => {
-                      // Clear all OTPs for testing
-                      const storedRetailerId = localStorage.getItem('retailerId');
-                      if (storedRetailerId) {
-                        // Import dynamically to avoid circular dependencies
-                        import('@/lib/otp-store').then(({ activeOTPs }) => {
-                          // Clear all OTPs for this retailer
-                          for (const [paymentId, otpData] of activeOTPs.entries()) {
-                            if (otpData.retailerId === storedRetailerId) {
-                              activeOTPs.delete(paymentId);
-                            }
-                          }
-                          setActiveOTPs([]);
-                          console.log('🗑️ Cleared all OTPs for testing');
-                        });
-                      }
-                    }}
-                    variant="outline"
-                    className="border-red-300 text-red-600 hover:bg-red-50"
-                  >
-                    <XCircle className="h-4 w-4 mr-2" />
-                    Clear All OTPs
-                  </Button>
-                  
-                  <Button 
-                    onClick={() => {
-                      // Simulate completed payment
-                      const storedRetailerId = localStorage.getItem('retailerId');
-                      if (storedRetailerId) {
-                        // Import dynamically to avoid circular dependencies
-                        import('@/lib/otp-store').then(({ addCompletedPayment }) => {
-                          addCompletedPayment({
-                            retailerId: storedRetailerId,
-                            amount: Math.floor(Math.random() * 3000) + 200,
-                            paymentId: 'test_completed_' + Date.now(),
-                            lineWorkerName: 'Test Worker',
-                            remainingOutstanding: Math.floor(Math.random() * 1000)
-                          });
-                          console.log('✅ Added test completed payment');
-                          checkActiveOTPs();
-                        });
-                      }
-                    }}
-                    variant="outline"
-                    className="border-green-300 text-green-600 hover:bg-green-50"
-                  >
-                    <CheckCircle className="h-4 w-4 mr-2" />
-                    Simulate Payment
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        )}
-
-        {/* Persistent OTP Display */}
-        {activeOTPs.length > 0 && (
-          <div className="mb-6">
-            <div className="bg-gradient-to-r from-red-500 via-orange-500 to-yellow-500 text-white p-6 rounded-lg shadow-2xl border-2 border-yellow-300 animate-pulse">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center">
-                  <Bell className="h-8 w-8 mr-3 animate-bounce" />
-                  <div>
-                    <h2 className="text-2xl font-bold">🚨 ACTIVE OTP REQUESTS</h2>
-                    <p className="text-sm text-yellow-100">Share these codes with line workers immediately</p>
-                  </div>
-                </div>
-                <Badge variant="secondary" className="bg-white text-red-800 text-lg px-3 py-1">
-                  {activeOTPs.length} Active
-                </Badge>
-              </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {activeOTPs.map((otp, index) => (
-                  <div key={otp.paymentId} className="bg-white/30 backdrop-blur-sm p-6 rounded-xl border-2 border-white/50 shadow-lg transform hover:scale-105 transition-transform duration-200">
-                    <div className="text-center">
-                      <div className="mb-3">
-                        <div className="inline-flex items-center justify-center w-12 h-12 bg-white/20 rounded-full mb-2">
-                          <Smartphone className="h-6 w-6 text-white" />
-                        </div>
-                        <p className="text-lg font-semibold text-white/90">OTP CODE #{index + 1}</p>
-                      </div>
-                      
-                      <div className="bg-white p-4 rounded-xl border-4 border-yellow-300 mb-4 shadow-inner">
-                        <p className="text-4xl font-mono font-bold text-red-600 tracking-wider">
-                          {otp.code}
-                        </p>
-                      </div>
-                      
-                      <div className="space-y-2 text-sm text-white/95">
-                        <div className="flex justify-between items-center">
-                          <span className="font-semibold">Amount:</span>
-                          <span className="text-xl font-bold text-yellow-200">₹{otp.amount.toLocaleString()}</span>
-                        </div>
-                        <div className="flex justify-between items-center">
-                          <span className="font-semibold">Line Worker:</span>
-                          <span className="text-yellow-100">{otp.lineWorkerName}</span>
-                        </div>
-                        <div className="flex justify-between items-center">
-                          <span className="font-semibold">Expires in:</span>
-                          <span className={`font-bold ${formatTimeRemaining(otp.expiresAt).includes('Expired') ? 'text-red-200' : 'text-green-200'}`}>
-                            {formatTimeRemaining(otp.expiresAt)}
-                          </span>
-                        </div>
-                        <div className="text-xs text-white/70 mt-2">
-                          Generated: {otp.createdAt.toLocaleTimeString()}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              
-              <div className="mt-6 text-center bg-black/20 p-4 rounded-lg">
-                <p className="text-lg text-white font-semibold mb-2">
-                  📱 Please share the OTP code(s) above with the line worker to complete the payment(s)
-                </p>
-                <p className="text-sm text-yellow-100 mb-4">
-                  Each OTP is valid for 10 minutes. New OTP requests will appear automatically.
-                </p>
-                <div className="flex justify-center space-x-4">
-                  <Button 
-                    variant="secondary" 
-                    className="bg-white text-red-800 hover:bg-yellow-100 font-semibold px-6 py-2"
-                    onClick={() => setShowOTPPopup(true)}
-                  >
-                    <Eye className="h-4 w-4 mr-2" />
-                    View Details
-                  </Button>
-                  <Button 
-                    variant="outline" 
-                    className="bg-transparent border-white text-white hover:bg-white/20 font-semibold px-6 py-2"
-                    onClick={() => {
-                      // Play a sound (in production, you'd use an actual sound file)
-                      console.log('🔔 Playing notification sound');
-                    }}
-                  >
-                    <Volume2 className="h-4 w-4 mr-2" />
-                    Test Sound
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Outstanding Amount Card */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <Card className="bg-gradient-to-r from-blue-500 to-blue-600 text-white">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-blue-100 text-sm">Current Outstanding</p>
-                  <p className="text-2xl font-bold">₹{retailer.currentOutstanding.toLocaleString()}</p>
-                </div>
-                <DollarSign className="h-8 w-8 text-blue-200" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-gradient-to-r from-green-500 to-green-600 text-white">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-green-100 text-sm">Total Paid</p>
-                  <p className="text-2xl font-bold">
-                    ₹{payments
-                      .filter(p => p.state === 'COMPLETED')
-                      .reduce((sum, p) => sum + p.totalPaid, 0)
-                      .toLocaleString()}
-                  </p>
-                </div>
-                <CheckCircle className="h-8 w-8 text-green-200" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-gradient-to-r from-yellow-500 to-yellow-600 text-white">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-yellow-100 text-sm">Active OTPs</p>
-                  <p className="text-2xl font-bold">{activeOTPs.length}</p>
-                </div>
-                <Smartphone className="h-8 w-8 text-yellow-200" />
-              </div>
-            </CardContent>
-          </Card>
+        {/* Content based on active navigation */}
+        <div className="space-y-6">
+          {activeNav === 'overview' && <Overview />}
+          {activeNav === 'payments' && <PaymentsComponent />}
+          {activeNav === 'history' && <HistoryComponent />}
         </div>
-
-        {/* Retailer Information */}
-        <Card className="mb-8">
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <Store className="h-5 w-5 mr-2" />
-              Store Information
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <div className="flex items-center text-sm">
-                  <Store className="h-4 w-4 mr-2 text-gray-500" />
-                  <span className="font-medium">Store Name:</span>
-                  <span className="ml-2">{retailer.name}</span>
-                </div>
-                <div className="flex items-center text-sm">
-                  <Phone className="h-4 w-4 mr-2 text-gray-500" />
-                  <span className="font-medium">Phone:</span>
-                  <span className="ml-2">{retailer.phone}</span>
-                </div>
-                <div className="flex items-center text-sm">
-                  <MapPin className="h-4 w-4 mr-2 text-gray-500" />
-                  <span className="font-medium">Address:</span>
-                  <span className="ml-2">{retailer.address || 'Not provided'}</span>
-                </div>
-              </div>
-              <div className="space-y-2">
-                <div className="flex items-center text-sm">
-                  <DollarSign className="h-4 w-4 mr-2 text-gray-500" />
-                  <span className="font-medium">Credit Limit:</span>
-                  <span className="ml-2">₹{retailer.creditLimit?.toLocaleString() || 'Not set'}</span>
-                </div>
-                <div className="flex items-center text-sm">
-                  <FileText className="h-4 w-4 mr-2 text-gray-500" />
-                  <span className="font-medium">GST Number:</span>
-                  <span className="ml-2">{retailer.gstNumber || 'Not provided'}</span>
-                </div>
-                <div className="flex items-center text-sm">
-                  <Clock className="h-4 w-4 mr-2 text-gray-500" />
-                  <span className="font-medium">Payment Terms:</span>
-                  <span className="ml-2">{retailer.paymentTerms || 'Not set'}</span>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Payment History */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <History className="h-5 w-5 mr-2" />
-              Payment History
-            </CardTitle>
-            <CardDescription>
-              View all your payment transactions and their status
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {payments.length === 0 ? (
-              <div className="text-center py-8">
-                <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                <p className="text-gray-500">No payment history found</p>
-              </div>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Amount</TableHead>
-                    <TableHead>Method</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Line Worker</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {payments
-                    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-                    .map((payment) => (
-                    <TableRow key={payment.id}>
-                      <TableCell>
-                        <div>
-                          <div className="font-medium">{formatTimestamp(payment.createdAt)}</div>
-                          <div className="text-sm text-gray-500">{formatTimestampWithTime(payment.createdAt)}</div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center">
-                          <IndianRupee className="h-4 w-4 mr-1" />
-                          {payment.totalPaid.toLocaleString()}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline">
-                          {payment.method}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center space-x-2">
-                          {getPaymentStatusIcon(payment.state)}
-                          <Badge className={getPaymentStatusColor(payment.state)}>
-                            {payment.state}
-                          </Badge>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="text-sm">
-                          {payment.lineWorkerId ? (
-                            <span className="font-medium">Line Worker</span>
-                          ) : (
-                            <span className="text-gray-500">-</span>
-                          )}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </CardContent>
-        </Card>
       </main>
 
       {/* OTP Popup */}
-      <Dialog open={showOTPPopup} onOpenChange={setShowOTPPopup}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center">
-              <Bell className="h-5 w-5 mr-2 text-yellow-600" />
-              New OTP Request
-            </DialogTitle>
-            <DialogDescription>
-              A new payment has been initiated. Please share the OTP with the line worker.
-            </DialogDescription>
-          </DialogHeader>
-          {newPayment && (
+      {showOTPPopup && newPayment && (
+        <Dialog open={showOTPPopup} onOpenChange={setShowOTPPopup}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center space-x-2">
+                <Volume2 className="h-5 w-5" />
+                <span>New Payment Request</span>
+              </DialogTitle>
+              <DialogDescription>
+                A line worker has initiated a payment that requires your verification
+              </DialogDescription>
+            </DialogHeader>
             <div className="space-y-4">
-              <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
-                <div className="text-center">
-                  <p className="text-sm text-gray-600 mb-2">Your OTP is:</p>
-                  <div className="bg-white p-4 rounded border-2 border-yellow-300">
-                    <p className="text-3xl font-mono font-bold text-yellow-800">
-                      {activeOTPs.find(otp => otp.paymentId === newPayment.id)?.code || '------'}
-                    </p>
-                  </div>
-                  <p className="text-sm text-gray-600 mt-2">
-                    Amount: ₹{newPayment.totalPaid.toLocaleString()}
-                  </p>
+              <div className="bg-blue-50 p-4 rounded-lg">
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div>Amount:</div>
+                  <div className="font-medium">{formatCurrency(newPayment.totalPaid)}</div>
+                  <div>Line Worker:</div>
+                  <div className="font-medium">{activeOTPs[0]?.lineWorkerName || 'Unknown'}</div>
+                  <div>Method:</div>
+                  <div className="font-medium">{newPayment.method}</div>
+                  <div>OTP Code:</div>
+                  <div className="font-medium text-blue-600">{activeOTPs[0]?.code}</div>
                 </div>
               </div>
-              <div className="text-sm text-gray-600">
-                <p className="font-medium mb-2">Instructions:</p>
-                <ol className="list-decimal list-inside space-y-1">
-                  <li>Share this OTP with the line worker</li>
-                  <li>The line worker will enter this OTP to complete the payment</li>
-                  <li>This OTP will expire in 10 minutes</li>
-                  <li>You can view all active OTPs in your dashboard</li>
-                </ol>
-              </div>
-              <div className="flex justify-end space-x-2">
-                <Button variant="outline" onClick={() => setShowOTPPopup(false)}>
-                  Close
-                </Button>
+              <p className="text-sm text-gray-600">
+                Please share this OTP code with the line worker to complete the payment verification.
+              </p>
+              <div className="flex space-x-2">
                 <Button onClick={() => setShowOTPPopup(false)}>
                   I Understand
                 </Button>
               </div>
             </div>
-          )}
-        </DialogContent>
-      </Dialog>
+          </DialogContent>
+        </Dialog>
+      )}
 
       {/* Settlement Popup */}
-      <Dialog open={showSettlementPopup} onOpenChange={setShowSettlementPopup}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center">
-              <CheckCircle className="h-5 w-5 mr-2 text-green-600" />
-              Payment Completed Successfully
-            </DialogTitle>
-            <DialogDescription>
-              Your payment has been successfully processed and settled.
-            </DialogDescription>
-          </DialogHeader>
-          {newCompletedPayment && (
+      {showSettlementPopup && newCompletedPayment && (
+        <Dialog open={showSettlementPopup} onOpenChange={setShowSettlementPopup}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center space-x-2">
+                <CheckCircle className="h-5 w-5 text-green-600" />
+                <span>Payment Completed</span>
+              </DialogTitle>
+              <DialogDescription>
+                A payment has been successfully completed for your account
+              </DialogDescription>
+            </DialogHeader>
             <div className="space-y-4">
-              <div className="bg-green-50 p-4 rounded-lg border border-green-200">
-                <div className="text-center">
-                  <div className="text-green-800 mb-2">
-                    <CheckCircle className="h-8 w-8 mx-auto mb-2" />
-                  </div>
-                  <p className="text-lg font-semibold text-green-800 mb-2">
-                    Payment Settled
-                  </p>
-                  <div className="bg-white p-3 rounded border border-green-300 mb-3">
-                    <p className="text-2xl font-bold text-green-700">
-                      ₹{newCompletedPayment.amount.toLocaleString()}
-                    </p>
-                  </div>
-                  <p className="text-sm text-gray-600">
-                    Processed by: {newCompletedPayment.lineWorkerName}
-                  </p>
-                  <p className="text-sm text-gray-600">
-                    Remaining Outstanding: ₹{newCompletedPayment.remainingOutstanding.toLocaleString()}
-                  </p>
+              <div className="bg-green-50 p-4 rounded-lg">
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div>Amount Paid:</div>
+                  <div className="font-medium">{formatCurrency(newCompletedPayment.amount)}</div>
+                  <div>Line Worker:</div>
+                  <div className="font-medium">{newCompletedPayment.lineWorkerName}</div>
+                  <div>Completed At:</div>
+                  <div className="font-medium">{formatTimestampWithTime(newCompletedPayment.completedAt)}</div>
+                  <div>Remaining Outstanding:</div>
+                  <div className="font-medium">{formatCurrency(newCompletedPayment.remainingOutstanding)}</div>
                 </div>
               </div>
-              <div className="text-sm text-gray-600">
-                <p className="font-medium mb-2">Payment Details:</p>
-                <ul className="list-disc list-inside space-y-1">
-                  <li>Payment ID: {newCompletedPayment.paymentId}</li>
-                  <li>Amount Paid: ₹{newCompletedPayment.amount.toLocaleString()}</li>
-                  <li>Remaining Outstanding: ₹{newCompletedPayment.remainingOutstanding.toLocaleString()}</li>
-                  <li>Processed by: {newCompletedPayment.lineWorkerName}</li>
-                  <li>Completed at: {newCompletedPayment.completedAt.toLocaleString()}</li>
-                </ul>
-              </div>
-              <div className="flex justify-end space-x-2">
-                <Button variant="outline" onClick={() => setShowSettlementPopup(false)}>
-                  Close
-                </Button>
+              <p className="text-sm text-gray-600">
+                Thank you for your payment! Your outstanding balance has been updated.
+              </p>
+              <div className="flex space-x-2">
                 <Button onClick={() => handleAcknowledgeSettlement(newCompletedPayment.paymentId)}>
                   Acknowledge
                 </Button>
               </div>
             </div>
-          )}
-        </DialogContent>
-      </Dialog>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }

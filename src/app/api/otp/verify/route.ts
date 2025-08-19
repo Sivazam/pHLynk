@@ -3,6 +3,7 @@ import { otpStore, cleanupExpiredOTPs, removeActiveOTP, addCompletedPayment } fr
 import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { RetailerAuthService } from '@/services/retailer-auth';
+import { otpService } from '@/services/firestore';
 
 interface OTPVerifyRequest {
   paymentId: string;
@@ -33,8 +34,33 @@ export async function POST(request: NextRequest) {
     // Clean up expired OTPs first
     cleanupExpiredOTPs();
 
-    // Get OTP from store
-    const otpData = otpStore.get(paymentId);
+    // Get OTP from in-memory store first
+    let otpData = otpStore.get(paymentId);
+    console.log('🔍 OTP found in in-memory store:', otpData ? 'YES' : 'NO');
+    
+    // If not found in memory, try to get from Firestore
+    if (!otpData) {
+      console.log('🔍 OTP not in memory, checking Firestore...');
+      try {
+        const firestoreOTP = await otpService.getOTPByPaymentId(paymentId);
+        console.log('🔍 Firestore OTP result:', firestoreOTP ? 'FOUND' : 'NOT FOUND');
+        if (firestoreOTP) {
+          // Convert Firestore OTP to in-memory format
+          otpData = {
+            code: firestoreOTP.code,
+            expiresAt: firestoreOTP.expiresAt.toDate(),
+            attempts: 0 // Firestore OTPs don't have attempt tracking
+          };
+          console.log('🔍 Found OTP in Firestore, converted to memory format:', {
+            code: otpData.code,
+            expiresAt: otpData.expiresAt.toISOString(),
+            attempts: otpData.attempts
+          });
+        }
+      } catch (error) {
+        console.error('❌ Error getting OTP from Firestore:', error);
+      }
+    }
     
     console.log('🔍 Found OTP data:', otpData ? 'YES' : 'NO');
     if (otpData) {
@@ -80,6 +106,20 @@ export async function POST(request: NextRequest) {
     
     if (otpData.code === otp) {
       console.log('✅ OTP verification successful!');
+      
+      // Mark OTP as used in Firestore
+      try {
+        const firestoreOTP = await otpService.getOTPByPaymentId(paymentId);
+        if (firestoreOTP) {
+          await otpService.markOTPAsUsed(firestoreOTP.id);
+          console.log('✅ OTP marked as used in Firestore');
+        } else {
+          console.log('⚠️ OTP not found in Firestore (might be an older OTP)');
+        }
+      } catch (firestoreError) {
+        console.error('❌ Error marking OTP as used in Firestore:', firestoreError);
+        // Don't fail the verification if Firestore update fails
+      }
       
       // Get payment details from Firestore
       try {
@@ -155,8 +195,11 @@ export async function POST(request: NextRequest) {
         removeActiveOTP(paymentId);
       }
       
-      // OTP is correct, remove from store
-      otpStore.delete(paymentId);
+      // OTP is correct, remove from in-memory store if it exists
+      if (otpStore.has(paymentId)) {
+        otpStore.delete(paymentId);
+        console.log('🗑️ Removed OTP from in-memory store');
+      }
       
       return NextResponse.json({
         success: true,
@@ -165,17 +208,24 @@ export async function POST(request: NextRequest) {
       });
     } else {
       console.log('❌ OTP verification failed!');
-      // Increment attempts
-      otpData.attempts++;
       
-      // Update the store
-      otpStore.set(paymentId, otpData);
+      // Only increment attempts if OTP came from in-memory store
+      if (otpStore.has(paymentId)) {
+        otpData.attempts++;
+        // Update the store
+        otpStore.set(paymentId, otpData);
+        console.log(`🔢 Incremented attempts to ${otpData.attempts} for in-memory OTP`);
+      } else {
+        // For Firestore OTPs, we don't track attempts, so we'll allow unlimited attempts
+        // or implement a different strategy if needed
+        console.log('🔢 OTP from Firestore, no attempt tracking implemented');
+      }
       
-      const remainingAttempts = 3 - otpData.attempts;
+      const remainingAttempts = otpStore.has(paymentId) ? 3 - otpData.attempts : 'unlimited';
       
       return NextResponse.json(
         { 
-          error: `Invalid OTP. ${remainingAttempts} attempts remaining.`,
+          error: `Invalid OTP. ${remainingAttempts === 'unlimited' ? 'Please try again.' : `${remainingAttempts} attempts remaining.`}`,
           remainingAttempts 
         },
         { status: 400 }

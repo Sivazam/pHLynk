@@ -10,6 +10,7 @@ export interface RetailerUser {
   tenantId: string;
   name: string;
   email?: string;
+  address?: string;
   createdAt: any;
   lastLoginAt: any;
   isActive: boolean;
@@ -39,7 +40,8 @@ export class RetailerAuthService {
           tenantId: tenantId,
           name: retailerData.name,
           phone: retailerData.phone,
-          email: retailerData.email || ''
+          email: retailerData.email || '',
+          address: retailerData.address || ''
         });
       } else {
         console.log('🆕 Creating new retailer user...');
@@ -50,6 +52,7 @@ export class RetailerAuthService {
           tenantId: tenantId,
           name: retailerData.name,
           email: retailerData.email || '',
+          address: retailerData.address || '',
           createdAt: serverTimestamp(),
           lastLoginAt: serverTimestamp(),
           isActive: true,
@@ -66,6 +69,7 @@ export class RetailerAuthService {
         tenantId: tenantId,
         name: retailerData.name,
         email: retailerData.email,
+        address: retailerData.address,
         createdAt: serverTimestamp(),
         lastLoginAt: serverTimestamp(),
         isActive: true,
@@ -99,6 +103,7 @@ export class RetailerAuthService {
           tenantId: userData.tenantId,
           name: userData.name,
           email: userData.email,
+          address: userData.address,
           createdAt: userData.createdAt,
           lastLoginAt: userData.lastLoginAt,
           isActive: userData.isActive,
@@ -135,6 +140,7 @@ export class RetailerAuthService {
           tenantId: userData.tenantId,
           name: userData.name,
           email: userData.email,
+          address: userData.address,
           createdAt: userData.createdAt,
           lastLoginAt: userData.lastLoginAt,
           isActive: userData.isActive,
@@ -199,6 +205,7 @@ export class RetailerAuthService {
           tenantId: userData.tenantId,
           name: userData.name,
           email: userData.email,
+          address: userData.address,
           createdAt: userData.createdAt,
           lastLoginAt: userData.lastLoginAt,
           isActive: userData.isActive,
@@ -243,6 +250,7 @@ export class RetailerAuthService {
           tenantId: userData.tenantId,
           name: userData.name,
           email: userData.email,
+          address: userData.address,
           createdAt: userData.createdAt,
           lastLoginAt: userData.lastLoginAt,
           isActive: userData.isActive,
@@ -281,6 +289,7 @@ export class RetailerAuthService {
             tenantId: userData.tenantId,
             name: userData.name,
             email: userData.email,
+            address: userData.address,
             createdAt: userData.createdAt,
             lastLoginAt: userData.lastLoginAt,
             isActive: userData.isActive,
