@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
@@ -67,7 +68,8 @@ import {
   ArrowDownRight,
   Target,
   Zap,
-  Shield
+  Shield,
+  Loader2
 } from 'lucide-react';
 
 // Activity Log Type
@@ -117,6 +119,7 @@ export function WholesalerAdminDashboard() {
   const [dateRange, setDateRange] = useState<{ from: Date; to: Date } | null>(null);
   const [selectedLineWorker, setSelectedLineWorker] = useState<string>("all");
   const [selectedRetailer, setSelectedRetailer] = useState<string>("all");
+  const [selectedArea, setSelectedArea] = useState<string>("all");
   const [searchTerm, setSearchTerm] = useState('');
   const [showInactiveWorkers, setShowInactiveWorkers] = useState<boolean>(false);
   
@@ -130,6 +133,7 @@ export function WholesalerAdminDashboard() {
     { id: 'overview', label: 'Overview', icon: LayoutDashboard },
     { id: 'areas', label: 'Areas', icon: MapPin },
     { id: 'retailers', label: 'Retailers', icon: Store },
+    { id: 'retailer-details', label: 'Retailer Details', icon: Eye },
     { id: 'invoices', label: 'Invoices', icon: FileText },
     { id: 'workers', label: 'Line Workers', icon: Users },
     { id: 'transactions', label: 'Transactions', icon: CreditCard },
@@ -186,6 +190,20 @@ export function WholesalerAdminDashboard() {
       setLineWorkers(lineWorkersData);
       setPayments(paymentsQuery);
       setDashboardStats(stats);
+      
+      // Recompute retailer data for accuracy
+      try {
+        console.log('🔄 Recomputing retailer data for accuracy...');
+        for (const retailer of retailersData) {
+          await retailerService.recomputeRetailerData(retailer.id, user.tenantId);
+        }
+        // Refresh retailers after recomputation
+        const updatedRetailers = await retailerService.getAll(user.tenantId);
+        setRetailers(updatedRetailers);
+        console.log('✅ Retailer data recomputed and updated');
+      } catch (error) {
+        console.warn('Warning: Could not recompute retailer data:', error);
+      }
       
       // Generate activity logs
       const logs = generateActivityLogs(paymentsQuery, invoicesData, retailersData, lineWorkersData);
@@ -1578,6 +1596,446 @@ const generateActivityLogs = (payments: Payment[], invoices: Invoice[], retailer
     );
   }
 
+  // Filter functions for retailer details
+  const getFilteredRetailers = () => {
+    return retailers.filter(retailer => {
+      // Area filter
+      if (selectedArea !== "all" && retailer.areaId !== selectedArea) {
+        return false;
+      }
+      
+      // Retailer filter
+      if (selectedRetailer !== "all" && retailer.id !== selectedRetailer) {
+        return false;
+      }
+      
+      // Search filter
+      if (searchTerm) {
+        const searchLower = searchTerm.toLowerCase();
+        const matchesName = retailer.name.toLowerCase().includes(searchLower);
+        const matchesPhone = retailer.phone.toLowerCase().includes(searchLower);
+        const matchesAddress = retailer.address?.toLowerCase().includes(searchLower);
+        const matchesZipcodes = retailer.zipcodes.some(zip => zip.toLowerCase().includes(searchLower));
+        
+        if (!matchesName && !matchesPhone && !matchesAddress && !matchesZipcodes) {
+          return false;
+        }
+      }
+      
+      return true;
+    });
+  };
+
+  const getFilteredInvoices = () => {
+    const filteredRetailerIds = getFilteredRetailers().map(r => r.id);
+    return invoices.filter(invoice => {
+      // Only include invoices from filtered retailers
+      if (!filteredRetailerIds.includes(invoice.retailerId)) {
+        return false;
+      }
+      
+      // Date range filter
+      if (dateRange) {
+        const invoiceDate = toDate(invoice.issueDate);
+        if (invoiceDate < dateRange.from || invoiceDate > dateRange.to) {
+          return false;
+        }
+      }
+      
+      return true;
+    });
+  };
+
+  const getFilteredPayments = () => {
+    const filteredRetailerIds = getFilteredRetailers().map(r => r.id);
+    return payments.filter(payment => {
+      // Only include payments from filtered retailers
+      if (!filteredRetailerIds.includes(payment.retailerId)) {
+        return false;
+      }
+      
+      // Date range filter
+      if (dateRange) {
+        const paymentDate = toDate(payment.createdAt);
+        if (paymentDate < dateRange.from || paymentDate > dateRange.to) {
+          return false;
+        }
+      }
+      
+      return true;
+    });
+  };
+
+  // Retailer Details Component - Complete detailed logs of retailers
+  const RetailerDetails = () => (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-bold text-gray-900">Retailer Details & Logs</h2>
+        <p className="text-gray-600">Complete detailed logs of all retailers including invoices and payments</p>
+      </div>
+
+      {loading && (
+        <div className="flex items-center justify-center py-8">
+          <Loader2 className="h-8 w-8 animate-spin text-blue-600 mr-3" />
+          <span className="text-gray-600">Loading retailer data...</span>
+        </div>
+      )}
+
+      {error && (
+        <Alert className="border-red-200 bg-red-50">
+          <AlertCircle className="h-4 w-4 text-red-600" />
+          <AlertDescription className="text-red-800">{error}</AlertDescription>
+        </Alert>
+      )}
+
+      {!loading && !error && (
+        <>
+        {/* Filter Controls */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Filters</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div>
+                <Label htmlFor="filterArea">Filter by Area</Label>
+                <Select value={selectedArea} onValueChange={setSelectedArea}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select area" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Areas</SelectItem>
+                    {areas.map(area => (
+                      <SelectItem key={area.id} value={area.id}>{area.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="filterRetailer">Filter by Retailer</Label>
+                <Select value={selectedRetailer} onValueChange={setSelectedRetailer}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select retailer" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Retailers</SelectItem>
+                    {retailers.map(retailer => (
+                      <SelectItem key={retailer.id} value={retailer.id}>{retailer.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="searchRetailer">Search Retailers</Label>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                  <Input
+                    id="searchRetailer"
+                    placeholder="Search by name or phone..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-10"
+                  />
+                </div>
+              </div>
+              <div>
+                <Label htmlFor="dateRange">Date Range</Label>
+                <DatePicker
+                  selected={dateRange?.from}
+                  onChange={(range) => setDateRange(range)}
+                  selectsRange
+                  placeholderText="Select date range"
+                  className="w-full"
+                />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Summary Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+          <Card className="border-l-4 border-l-blue-500">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-gray-600">Total Retailers</CardTitle>
+              <Store className="h-4 w-4 text-blue-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-gray-900">{getFilteredRetailers().length}</div>
+              <p className="text-xs text-gray-500">
+                {getFilteredRetailers().filter(r => r.currentOutstanding > 0).length} with outstanding balance
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="border-l-4 border-l-green-500">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-gray-600">Total Invoices</CardTitle>
+              <FileText className="h-4 w-4 text-green-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-gray-900">{getFilteredInvoices().length}</div>
+              <p className="text-xs text-gray-500">
+                {getFilteredInvoices().filter(i => i.status === 'PAID').length} paid
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="border-l-4 border-l-purple-500">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-gray-600">Total Payments</CardTitle>
+              <CreditCard className="h-4 w-4 text-purple-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-gray-900">{getFilteredPayments().length}</div>
+              <p className="text-xs text-gray-500">
+                {getFilteredPayments().filter(p => p.state === 'COMPLETED').length} completed
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="border-l-4 border-l-green-600">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-gray-600">Total Collected</CardTitle>
+              <DollarSign className="h-4 w-4 text-green-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-gray-900">
+                {formatCurrency(getFilteredPayments().filter(p => p.state === 'COMPLETED').reduce((sum, pay) => sum + pay.totalPaid, 0))}
+              </div>
+              <p className="text-xs text-gray-500">
+                From completed payments only
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="border-l-4 border-l-orange-500">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-gray-600">Total Outstanding</CardTitle>
+              <AlertCircle className="h-4 w-4 text-orange-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-gray-900">
+                {formatCurrency(getFilteredRetailers().reduce((sum, r) => sum + r.currentOutstanding, 0))}
+              </div>
+              <p className="text-xs text-gray-500">
+                Across filtered retailers
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Retailers with Detailed Logs */}
+        <div className="space-y-6">
+          {getFilteredRetailers().map(retailer => {
+            const retailerInvoices = getFilteredInvoices().filter(inv => inv.retailerId === retailer.id);
+            const retailerPayments = getFilteredPayments().filter(pay => pay.retailerId === retailer.id);
+            const assignedLineWorker = lineWorkers.find(worker => 
+              worker.assignedAreas?.includes(retailer.areaId || '') ||
+              (worker.assignedZips && retailer.zipcodes.some(zip => worker.assignedZips?.includes(zip)))
+            );
+
+            return (
+              <Card key={retailer.id} className="overflow-hidden">
+                <CardHeader className="bg-gray-50">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <CardTitle className="text-lg">{retailer.name}</CardTitle>
+                      <CardDescription className="mt-1">
+                        <div className="flex flex-wrap gap-4 text-sm">
+                          <span>📞 {retailer.phone}</span>
+                          <span>📍 {areas.find(a => a.id === retailer.areaId)?.name || 'Unassigned'}</span>
+                          <span>🏷️ {retailer.zipcodes.join(', ')}</span>
+                          <span>👤 {assignedLineWorker?.displayName || 'Unassigned'}</span>
+                        </div>
+                      </CardDescription>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-lg font-bold text-red-600">
+                        {formatCurrency(retailer.currentOutstanding)}
+                      </div>
+                      <div className="text-sm text-gray-500">Outstanding</div>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="p-4">
+                  {/* Quick Stats */}
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                    <div className="text-center p-2 bg-blue-50 rounded-lg border border-blue-100">
+                      <div className="text-xl font-bold text-blue-600">{retailerInvoices.length}</div>
+                      <div className="text-xs text-gray-600">Invoices</div>
+                    </div>
+                    <div className="text-center p-2 bg-green-50 rounded-lg border border-green-100">
+                      <div className="text-xl font-bold text-green-600">{retailerPayments.length}</div>
+                      <div className="text-xs text-gray-600">Payments</div>
+                    </div>
+                    <div className="text-center p-2 bg-purple-50 rounded-lg border border-purple-100">
+                      <div className="text-lg font-bold text-purple-600">
+                        {formatCurrency(retailerInvoices.reduce((sum, inv) => sum + inv.totalAmount, 0))}
+                      </div>
+                      <div className="text-xs text-gray-600">Billed</div>
+                    </div>
+                    <div className="text-center p-2 bg-orange-50 rounded-lg border border-orange-100">
+                      <div className="text-lg font-bold text-orange-600">
+                        {formatCurrency(retailerPayments.filter(p => p.state === 'COMPLETED').reduce((sum, pay) => sum + pay.totalPaid, 0))}
+                      </div>
+                      <div className="text-xs text-gray-600">Paid</div>
+                    </div>
+                  </div>
+
+                  {/* Payment Status Breakdown */}
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4 text-xs">
+                    <div className="text-center p-1 bg-green-50 rounded">
+                      <div className="font-medium text-green-700">
+                        {retailerPayments.filter(p => p.state === 'COMPLETED').length}
+                      </div>
+                      <div className="text-green-600">Completed</div>
+                    </div>
+                    <div className="text-center p-1 bg-yellow-50 rounded">
+                      <div className="font-medium text-yellow-700">
+                        {retailerPayments.filter(p => p.state === 'INITIATED').length}
+                      </div>
+                      <div className="text-yellow-600">Initiated</div>
+                    </div>
+                    <div className="text-center p-1 bg-blue-50 rounded">
+                      <div className="font-medium text-blue-700">
+                        {retailerPayments.filter(p => p.state === 'OTP_SENT').length}
+                      </div>
+                      <div className="text-blue-600">OTP Sent</div>
+                    </div>
+                    <div className="text-center p-1 bg-red-50 rounded">
+                      <div className="font-medium text-red-700">
+                        {retailerPayments.filter(p => p.state === 'FAILED').length}
+                      </div>
+                      <div className="text-red-600">Failed</div>
+                    </div>
+                  </div>
+
+                  {/* Tabs for Invoices and Payments */}
+                  <Tabs defaultValue="invoices" className="w-full">
+                    <TabsList className="grid w-full grid-cols-2 h-8">
+                      <TabsTrigger value="invoices" className="text-xs">Invoices ({retailerInvoices.length})</TabsTrigger>
+                      <TabsTrigger value="payments" className="text-xs">Payments ({retailerPayments.length})</TabsTrigger>
+                    </TabsList>
+                    
+                    <TabsContent value="invoices" className="space-y-4 mt-4">
+                      {retailerInvoices.length > 0 ? (
+                        <div className="overflow-x-auto border rounded-lg">
+                          <Table>
+                            <TableHeader className="bg-gray-50">
+                              <TableRow>
+                                <TableHead className="text-xs font-medium text-gray-700 uppercase tracking-wider">Invoice #</TableHead>
+                                <TableHead className="text-xs font-medium text-gray-700 uppercase tracking-wider">Date</TableHead>
+                                <TableHead className="text-xs font-medium text-gray-700 uppercase tracking-wider">Due Date</TableHead>
+                                <TableHead className="text-xs font-medium text-gray-700 uppercase tracking-wider">Amount</TableHead>
+                                <TableHead className="text-xs font-medium text-gray-700 uppercase tracking-wider">Status</TableHead>
+                                <TableHead className="text-xs font-medium text-gray-700 uppercase tracking-wider">Outstanding</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody className="divide-y divide-gray-200">
+                              {retailerInvoices.map(invoice => (
+                                <TableRow key={invoice.id} className="hover:bg-gray-50">
+                                  <TableCell className="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-900">{invoice.invoiceNumber}</TableCell>
+                                  <TableCell className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{formatTimestamp(invoice.issueDate)}</TableCell>
+                                  <TableCell className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{formatTimestamp(invoice.dueDate)}</TableCell>
+                                  <TableCell className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{formatCurrency(invoice.totalAmount)}</TableCell>
+                                  <TableCell className="px-4 py-2 whitespace-nowrap">
+                                    <Badge className={
+                                      invoice.status === 'PAID' ? 'bg-green-100 text-green-800' :
+                                      invoice.status === 'OVERDUE' ? 'bg-red-100 text-red-800' :
+                                      'bg-yellow-100 text-yellow-800'
+                                    }>
+                                      {invoice.status}
+                                    </Badge>
+                                  </TableCell>
+                                  <TableCell className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{formatCurrency(invoice.outstandingAmount)}</TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      ) : (
+                        <div className="text-center py-6 text-gray-500 bg-gray-50 rounded-lg">
+                          <FileText className="h-8 w-8 mx-auto mb-2 text-gray-400" />
+                          No invoices found for this retailer
+                        </div>
+                      )}
+                    </TabsContent>
+                    
+                    <TabsContent value="payments" className="space-y-4 mt-4">
+                      {retailerPayments.length > 0 ? (
+                        <div className="overflow-x-auto border rounded-lg">
+                          <Table>
+                            <TableHeader className="bg-gray-50">
+                              <TableRow>
+                                <TableHead className="text-xs font-medium text-gray-700 uppercase tracking-wider">Payment ID</TableHead>
+                                <TableHead className="text-xs font-medium text-gray-700 uppercase tracking-wider">Date</TableHead>
+                                <TableHead className="text-xs font-medium text-gray-700 uppercase tracking-wider">Amount</TableHead>
+                                <TableHead className="text-xs font-medium text-gray-700 uppercase tracking-wider">Method</TableHead>
+                                <TableHead className="text-xs font-medium text-gray-700 uppercase tracking-wider">Status</TableHead>
+                                <TableHead className="text-xs font-medium text-gray-700 uppercase tracking-wider">Line Worker</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody className="divide-y divide-gray-200">
+                              {retailerPayments.map(payment => (
+                                <TableRow key={payment.id} className="hover:bg-gray-50">
+                                  <TableCell className="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-900">{payment.id.slice(0, 8)}...</TableCell>
+                                  <TableCell className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{formatTimestampWithTime(payment.createdAt)}</TableCell>
+                                  <TableCell className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{formatCurrency(payment.totalPaid)}</TableCell>
+                                  <TableCell className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{payment.method}</TableCell>
+                                  <TableCell className="px-4 py-2 whitespace-nowrap">
+                                    <Badge className={
+                                      payment.state === 'COMPLETED' ? 'bg-green-100 text-green-800' :
+                                      payment.state === 'INITIATED' ? 'bg-yellow-100 text-yellow-800' :
+                                      payment.state === 'FAILED' ? 'bg-red-100 text-red-800' :
+                                      'bg-blue-100 text-blue-800'
+                                    }>
+                                      {payment.state}
+                                    </Badge>
+                                  </TableCell>
+                                  <TableCell className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{getLineWorkerName(payment.lineWorkerId)}</TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      ) : (
+                        <div className="text-center py-6 text-gray-500 bg-gray-50 rounded-lg">
+                          <CreditCard className="h-8 w-8 mx-auto mb-2 text-gray-400" />
+                          No payments found for this retailer
+                        </div>
+                      )}
+                    </TabsContent>
+                  </Tabs>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+        </>
+      )}
+      
+      {!loading && !error && getFilteredRetailers().length === 0 && (
+        <div className="text-center py-12">
+          <Store className="h-16 w-16 mx-auto mb-4 text-gray-400" />
+          <h3 className="text-lg font-medium text-gray-900 mb-2">No retailers found</h3>
+          <p className="text-gray-500 mb-4">Try adjusting your filters or search terms</p>
+          <Button 
+            variant="outline" 
+            onClick={() => {
+              setSelectedArea("all");
+              setSelectedRetailer("all");
+              setSearchTerm('');
+              setDateRange(null);
+            }}
+          >
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Clear Filters
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       {/* Navigation */}
@@ -1606,6 +2064,7 @@ const generateActivityLogs = (payments: Payment[], invoices: Invoice[], retailer
           {activeNav === 'overview' && <Overview />}
           {activeNav === 'areas' && <Areas />}
           {activeNav === 'retailers' && <Retailers />}
+          {activeNav === 'retailer-details' && <RetailerDetails />}
           {activeNav === 'invoices' && <Invoices />}
           {activeNav === 'workers' && <LineWorkers />}
           {activeNav === 'transactions' && <Transactions />}

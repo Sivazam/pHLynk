@@ -11,17 +11,19 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { DashboardNavigation, NavItem } from '@/components/DashboardNavigation';
+import { DashboardNavigation, NavItem, NotificationItem } from '@/components/DashboardNavigation';
 import { useAuth, useLineWorker } from '@/contexts/AuthContext';
 import { 
   retailerService, 
   invoiceService, 
   paymentService,
+  areaService,
   PaymentInvoiceAllocation,
   Timestamp
 } from '@/services/firestore';
-import { Retailer, Invoice, Payment } from '@/types';
+import { Retailer, Invoice, Payment, Area } from '@/types';
 import { formatTimestamp, formatTimestampWithTime, formatCurrency } from '@/lib/timestamp-utils';
+import { notificationService } from '@/services/notification-service';
 import { 
   Store, 
   DollarSign, 
@@ -53,6 +55,7 @@ export function LineWorkerDashboard() {
   const [retailers, setRetailers] = useState<Retailer[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
+  const [areas, setAreas] = useState<Area[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showPaymentDialog, setShowPaymentDialog] = useState(false);
@@ -70,14 +73,22 @@ export function LineWorkerDashboard() {
   const [otpSent, setOtpSent] = useState(false);
   const [otpSending, setOtpSending] = useState(false);
   const [showPaymentDetails, setShowPaymentDetails] = useState(false);
+  const [viewingPayment, setViewingPayment] = useState<Payment | null>(null);
   const [resendTimer, setResendTimer] = useState(0);
   const [resendDisabled, setResendDisabled] = useState(false);
   const [notificationCount, setNotificationCount] = useState(0);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [previousAssignments, setPreviousAssignments] = useState<{
+    areas: string[];
+    zips: string[];
+    retailers: string[];
+  } | null>(null);
 
   // Navigation items
   const navItems: NavItem[] = [
     { id: 'overview', label: 'Overview', icon: LayoutDashboard },
     { id: 'retailers', label: 'Retailers', icon: Store },
+    { id: 'retailer-details', label: 'Retailer Details', icon: Eye },
     { id: 'payments', label: 'Payments', icon: CreditCard },
     { id: 'history', label: 'History', icon: History },
   ];
@@ -117,6 +128,89 @@ export function LineWorkerDashboard() {
     };
   }, [resendTimer]);
 
+  // Notification service integration
+  useEffect(() => {
+    // Set up notification listener
+    const handleNotificationsUpdate = (newNotifications: NotificationItem[]) => {
+      setNotifications(newNotifications);
+      setNotificationCount(newNotifications.filter(n => !n.read).length);
+    };
+
+    notificationService.addListener(handleNotificationsUpdate);
+    
+    // Initialize with current notifications
+    const currentNotifications = notificationService.getNotifications();
+    setNotifications(currentNotifications);
+    setNotificationCount(notificationService.getUnreadCount());
+
+    return () => {
+      notificationService.removeListener(handleNotificationsUpdate);
+    };
+  }, []);
+
+  // Check for milestones and generate notifications
+  useEffect(() => {
+    if (payments.length > 0 && retailers.length > 0) {
+      checkForMilestones();
+    }
+  }, [payments, retailers]);
+
+  const checkForMilestones = () => {
+    const completedPayments = payments.filter(p => p.state === 'COMPLETED');
+    const totalCollected = completedPayments.reduce((sum, p) => sum + p.totalPaid, 0);
+    
+    // Check for payment milestones
+    if (completedPayments.length === 10) {
+      notificationService.addLineWorkerMilestone(
+        'PAYMENTS',
+        10,
+        '🎉 Congratulations! You\'ve completed 10 payments!'
+      );
+    }
+    
+    if (completedPayments.length === 50) {
+      notificationService.addLineWorkerMilestone(
+        'PAYMENTS',
+        50,
+        '🎉 Amazing! You\'ve completed 50 payments!'
+      );
+    }
+    
+    // Check for amount milestones
+    if (totalCollected >= 10000 && totalCollected < 11000) {
+      notificationService.addLineWorkerMilestone(
+        'AMOUNT',
+        10000,
+        '🎉 Fantastic! You\'ve collected ₹10,000+ in total!'
+      );
+    }
+    
+    if (totalCollected >= 50000 && totalCollected < 51000) {
+      notificationService.addLineWorkerMilestone(
+        'AMOUNT',
+        50000,
+        '🎉 Outstanding! You\'ve collected ₹50,000+ in total!'
+      );
+    }
+    
+    // Check for high-value collections (single payment > 5000)
+    const recentHighValuePayments = completedPayments.filter(p => 
+      p.totalPaid > 5000 && 
+      new Date().getTime() - p.createdAt.toDate().getTime() < 24 * 60 * 60 * 1000
+    );
+    
+    recentHighValuePayments.forEach(payment => {
+      const retailer = retailers.find(r => r.id === payment.retailerId);
+      if (retailer) {
+        notificationService.addLineWorkerHighValueCollection(
+          retailer.name,
+          payment.totalPaid,
+          payment.id
+        );
+      }
+    });
+  };
+
   const fetchLineWorkerData = async () => {
     if (!user?.tenantId) return;
     
@@ -139,6 +233,7 @@ export function LineWorkerDashboard() {
       // Get all retailers first
       const allRetailers = await retailerService.getAll(user.tenantId);
       const allInvoices = await invoiceService.getAll(user.tenantId);
+      const allAreas = await areaService.getAll(user.tenantId);
       const paymentsData = await paymentService.getPaymentsByLineWorker(user.tenantId, user.uid);
 
       console.log('Total retailers found:', allRetailers.length);
@@ -182,6 +277,7 @@ export function LineWorkerDashboard() {
       setRetailers(assignedRetailers);
       setInvoices(assignedInvoices);
       setPayments(paymentsData);
+      setAreas(allAreas);
       
       // Calculate notification count
       const overdueRetailers = assignedRetailers.filter(r => r.currentOutstanding > 0).length;
@@ -211,6 +307,9 @@ export function LineWorkerDashboard() {
         console.warn('Warning: Could not recompute retailer data:', error);
       }
       
+      // Check for new assignments and send notifications
+      checkForNewAssignments(assignedRetailers, allAreas);
+      
       if (assignedRetailers.length === 0) {
         setError('No retailers assigned to your areas. Please contact your administrator.');
       }
@@ -220,6 +319,55 @@ export function LineWorkerDashboard() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const checkForNewAssignments = (currentRetailers: Retailer[], currentAreas: Area[]) => {
+    if (!user) return;
+    
+    const currentAreaIds = user.assignedAreas || [];
+    const currentZipIds = user.assignedZips || [];
+    const currentRetailerIds = currentRetailers.map(r => r.id);
+    
+    if (previousAssignments) {
+      // Check for new areas
+      const newAreaIds = currentAreaIds.filter(areaId => !previousAssignments.areas.includes(areaId));
+      if (newAreaIds.length > 0) {
+        newAreaIds.forEach(areaId => {
+          const area = currentAreas.find(a => a.id === areaId);
+          if (area) {
+            const retailersInArea = currentRetailers.filter(r => r.areaId === areaId);
+            notificationService.addLineWorkerNewAreaAssignment(
+              area.name,
+              area.zipcodes.length,
+              retailersInArea.length
+            );
+          }
+        });
+      }
+      
+      // Check for new retailers
+      const newRetailerIds = currentRetailerIds.filter(retailerId => !previousAssignments.retailers.includes(retailerId));
+      if (newRetailerIds.length > 0) {
+        newRetailerIds.forEach(retailerId => {
+          const retailer = currentRetailers.find(r => r.id === retailerId);
+          if (retailer) {
+            const area = currentAreas.find(a => a.id === retailer.areaId);
+            notificationService.addLineWorkerNewRetailerAssignment(
+              retailer.name,
+              area?.name || 'Unknown Area',
+              newRetailerIds.length
+            );
+          }
+        });
+      }
+    }
+    
+    // Update previous assignments
+    setPreviousAssignments({
+      areas: currentAreaIds,
+      zips: currentZipIds,
+      retailers: currentRetailerIds
+    });
   };
 
   const initiatePayment = (retailer: Retailer) => {
@@ -286,6 +434,13 @@ export function LineWorkerDashboard() {
       setOtpSending(false);
       setResendDisabled(true);
       setResendTimer(30); // Start 30-second timer
+      
+      // Send payment initiated notification
+      notificationService.addLineWorkerPaymentInitiatedNotification(
+        selectedRetailer.name,
+        paymentForm.totalPaid,
+        paymentId
+      );
       
       // Set the current payment with updated state
       const updatedPayment: Payment = {
@@ -376,8 +531,9 @@ export function LineWorkerDashboard() {
     }
   };
 
-  const handleVerifyOtp = async () => {
-    if (!currentPayment || !otpCode) return;
+  const handleVerifyOtp = async (paymentId?: string) => {
+    const payment = paymentId ? viewingPayment : currentPayment;
+    if (!payment || !otpCode) return;
     
     try {
       // Call actual OTP verification API
@@ -387,7 +543,7 @@ export function LineWorkerDashboard() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          paymentId: currentPayment.id,
+          paymentId: payment.id,
           otp: otpCode
         })
       });
@@ -399,33 +555,48 @@ export function LineWorkerDashboard() {
       }
 
       // OTP verified successfully, complete the payment
-      await paymentService.updatePaymentState(currentPayment.id, currentPayment.tenantId, 'COMPLETED', {
+      await paymentService.updatePaymentState(payment.id, payment.tenantId, 'COMPLETED', {
         timeline: {
-          ...currentPayment.timeline,
+          ...payment.timeline,
           completedAt: Timestamp.now()
         }
       });
       
       console.log('✅ OTP verified and payment completed successfully');
       
-      // Send notification about the collection
-      try {
-        const { notificationService } = await import('@/services/notification-service');
-        notificationService.addPaymentCollectedNotification(
-          user?.displayName || 'Line Worker',
-          selectedRetailer?.name || 'Retailer',
-          currentPayment.totalPaid,
-          currentPayment.id
+      // Send line worker specific notification about the collection
+      const retailer = retailers.find(r => r.id === payment.retailerId);
+      if (retailer) {
+        notificationService.addLineWorkerPaymentCompletedNotification(
+          retailer.name,
+          payment.totalPaid,
+          payment.id
         );
-      } catch (error) {
-        console.warn('Warning: Could not send notification:', error);
+        
+        // Check for high-value collection
+        if (payment.totalPaid > 5000) {
+          notificationService.addLineWorkerHighValueCollection(
+            retailer.name,
+            payment.totalPaid,
+            payment.id
+          );
+        }
       }
       
-      setShowPaymentDialog(false);
-      setShowOtpSection(false);
-      setOtpSent(false);
+      // Close appropriate dialog and reset states
+      if (paymentId) {
+        // Called from payment details dialog
+        setShowPaymentDetails(false);
+        setViewingPayment(null);
+      } else {
+        // Called from main payment dialog
+        setShowPaymentDialog(false);
+        setShowOtpSection(false);
+        setOtpSent(false);
+        setCurrentPayment(null);
+      }
+      
       setOtpCode('');
-      setCurrentPayment(null);
       setResendTimer(0);
       setResendDisabled(false);
       
@@ -719,7 +890,10 @@ export function LineWorkerDashboard() {
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      <Button variant="outline" size="sm" onClick={() => setShowPaymentDetails(true)}>
+                      <Button variant="outline" size="sm" onClick={() => {
+                        setViewingPayment(payment);
+                        setShowPaymentDetails(true);
+                      }}>
                         <Eye className="h-4 w-4 mr-1" />
                         View
                       </Button>
@@ -782,6 +956,294 @@ export function LineWorkerDashboard() {
     </div>
   );
 
+  // Retailer Details Component - Complete detailed logs of assigned retailers
+  const RetailerDetails = () => (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-bold text-gray-900">Retailer Details & Logs</h2>
+        <p className="text-gray-600">Complete detailed logs of your assigned retailers including invoices and payments</p>
+      </div>
+
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <Card className="border-l-4 border-l-blue-500">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-gray-600">Total Retailers</CardTitle>
+            <Store className="h-4 w-4 text-blue-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-gray-900">{retailers.length}</div>
+            <p className="text-xs text-gray-500">
+              {retailers.filter(r => r.currentOutstanding > 0).length} with outstanding balance
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="border-l-4 border-l-green-500">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-gray-600">Total Invoices</CardTitle>
+            <FileText className="h-4 w-4 text-green-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-gray-900">{invoices.length}</div>
+            <p className="text-xs text-gray-500">
+              {invoices.filter(i => i.status === 'PAID').length} paid
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="border-l-4 border-l-purple-500">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-gray-600">My Payments</CardTitle>
+            <CreditCard className="h-4 w-4 text-purple-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-gray-900">{payments.length}</div>
+            <p className="text-xs text-gray-500">
+              {payments.filter(p => p.state === 'COMPLETED').length} completed
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="border-l-4 border-l-orange-500">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-gray-600">Total Outstanding</CardTitle>
+            <AlertCircle className="h-4 w-4 text-orange-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-gray-900">
+              {formatCurrency(retailers.reduce((sum, r) => sum + r.currentOutstanding, 0))}
+            </div>
+            <p className="text-xs text-gray-500">
+              Across your retailers
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Retailers with Detailed Logs */}
+      <div className="space-y-6">
+        {retailers.map(retailer => {
+          const retailerInvoices = invoices.filter(inv => inv.retailerId === retailer.id);
+          const retailerPayments = payments.filter(pay => pay.retailerId === retailer.id);
+          
+          // Calculate performance metrics for this retailer
+          const totalBilled = retailerInvoices.reduce((sum, inv) => sum + inv.totalAmount, 0);
+          const totalPaid = retailerPayments.filter(p => p.state === 'COMPLETED').reduce((sum, pay) => sum + pay.totalPaid, 0);
+          const paymentSuccessRate = retailerPayments.length > 0 
+            ? (retailerPayments.filter(p => p.state === 'COMPLETED').length / retailerPayments.length) * 100 
+            : 0;
+
+          return (
+            <Card key={retailer.id} className="overflow-hidden">
+              <CardHeader className="bg-gray-50">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <CardTitle className="text-lg">{retailer.name}</CardTitle>
+                    <CardDescription className="mt-1">
+                      <div className="flex flex-wrap gap-4 text-sm">
+                        <span>📞 {retailer.phone}</span>
+                        <span>📍 {retailer.address}</span>
+                        <span>🏷️ {retailer.zipcodes.join(', ')}</span>
+                        <span>📊 Success Rate: {paymentSuccessRate.toFixed(1)}%</span>
+                      </div>
+                    </CardDescription>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-lg font-bold text-red-600">
+                      {formatCurrency(retailer.currentOutstanding)}
+                    </div>
+                    <div className="text-sm text-gray-500">Outstanding</div>
+                    <Button
+                      onClick={() => initiatePayment(retailer)}
+                      disabled={retailer.currentOutstanding <= 0}
+                      size="sm"
+                      className="mt-2"
+                    >
+                      <IndianRupee className="h-4 w-4 mr-1" />
+                      Collect
+                    </Button>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="p-6">
+                {/* Quick Stats */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                  <div className="text-center p-3 bg-blue-50 rounded-lg">
+                    <div className="text-2xl font-bold text-blue-600">{retailerInvoices.length}</div>
+                    <div className="text-sm text-gray-600">Total Invoices</div>
+                  </div>
+                  <div className="text-center p-3 bg-green-50 rounded-lg">
+                    <div className="text-2xl font-bold text-green-600">{retailerPayments.length}</div>
+                    <div className="text-sm text-gray-600">Payment Attempts</div>
+                  </div>
+                  <div className="text-center p-3 bg-purple-50 rounded-lg">
+                    <div className="text-2xl font-bold text-purple-600">
+                      {formatCurrency(totalBilled)}
+                    </div>
+                    <div className="text-sm text-gray-600">Total Billed</div>
+                  </div>
+                  <div className="text-center p-3 bg-orange-50 rounded-lg">
+                    <div className="text-2xl font-bold text-orange-600">
+                      {formatCurrency(totalPaid)}
+                    </div>
+                    <div className="text-sm text-gray-600">Total Collected</div>
+                  </div>
+                </div>
+
+                {/* Performance Indicators */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                  <div className="p-3 bg-gradient-to-r from-green-50 to-green-100 rounded-lg">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-sm text-gray-600">Collection Rate</div>
+                        <div className="text-lg font-bold text-green-700">
+                          {totalBilled > 0 ? ((totalPaid / totalBilled) * 100).toFixed(1) : 0}%
+                        </div>
+                      </div>
+                      <TrendingUp className="h-6 w-6 text-green-600" />
+                    </div>
+                  </div>
+                  
+                  <div className="p-3 bg-gradient-to-r from-blue-50 to-blue-100 rounded-lg">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-sm text-gray-600">Last Payment</div>
+                        <div className="text-lg font-bold text-blue-700">
+                          {retailerPayments.length > 0 
+                            ? formatTimestamp(retailerPayments[retailerPayments.length - 1].createdAt)
+                            : 'Never'
+                          }
+                        </div>
+                      </div>
+                      <Clock className="h-6 w-6 text-blue-600" />
+                    </div>
+                  </div>
+                  
+                  <div className="p-3 bg-gradient-to-r from-purple-50 to-purple-100 rounded-lg">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-sm text-gray-600">Avg Payment</div>
+                        <div className="text-lg font-bold text-purple-700">
+                          {retailerPayments.filter(p => p.state === 'COMPLETED').length > 0
+                            ? formatCurrency(totalPaid / retailerPayments.filter(p => p.state === 'COMPLETED').length)
+                            : '₹0'
+                          }
+                        </div>
+                      </div>
+                      <DollarSign className="h-6 w-6 text-purple-600" />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Tabs for Invoices and Payments */}
+                <Tabs defaultValue="invoices" className="w-full">
+                  <TabsList className="grid w-full grid-cols-2">
+                    <TabsTrigger value="invoices">Invoices ({retailerInvoices.length})</TabsTrigger>
+                    <TabsTrigger value="payments">Payments ({retailerPayments.length})</TabsTrigger>
+                  </TabsList>
+                  
+                  <TabsContent value="invoices" className="space-y-4">
+                    {retailerInvoices.length > 0 ? (
+                      <div className="overflow-x-auto">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Invoice #</TableHead>
+                              <TableHead>Date</TableHead>
+                              <TableHead>Due Date</TableHead>
+                              <TableHead>Amount</TableHead>
+                              <TableHead>Status</TableHead>
+                              <TableHead>Outstanding</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {retailerInvoices.map(invoice => (
+                              <TableRow key={invoice.id}>
+                                <TableCell className="font-medium">{invoice.invoiceNumber}</TableCell>
+                                <TableCell>{formatTimestamp(invoice.issueDate)}</TableCell>
+                                <TableCell>{formatTimestamp(invoice.dueDate)}</TableCell>
+                                <TableCell>{formatCurrency(invoice.totalAmount)}</TableCell>
+                                <TableCell>
+                                  <Badge className={
+                                    invoice.status === 'PAID' ? 'bg-green-100 text-green-800' :
+                                    invoice.status === 'OVERDUE' ? 'bg-red-100 text-red-800' :
+                                    'bg-yellow-100 text-yellow-800'
+                                  }>
+                                    {invoice.status}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell>{formatCurrency(invoice.outstandingAmount)}</TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    ) : (
+                      <div className="text-center py-8 text-gray-500">
+                        No invoices found for this retailer
+                      </div>
+                    )}
+                  </TabsContent>
+                  
+                  <TabsContent value="payments" className="space-y-4">
+                    {retailerPayments.length > 0 ? (
+                      <div className="overflow-x-auto">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Date</TableHead>
+                              <TableHead>Amount</TableHead>
+                              <TableHead>Method</TableHead>
+                              <TableHead>Status</TableHead>
+                              <TableHead>Actions</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {retailerPayments.map(payment => (
+                              <TableRow key={payment.id}>
+                                <TableCell>{formatTimestampWithTime(payment.createdAt)}</TableCell>
+                                <TableCell>{formatCurrency(payment.totalPaid)}</TableCell>
+                                <TableCell>{payment.method}</TableCell>
+                                <TableCell>
+                                  <Badge className={
+                                    payment.state === 'COMPLETED' ? 'bg-green-100 text-green-800' :
+                                    payment.state === 'OTP_SENT' ? 'bg-yellow-100 text-yellow-800' :
+                                    payment.state === 'FAILED' ? 'bg-red-100 text-red-800' :
+                                    'bg-blue-100 text-blue-800'
+                                  }>
+                                    {payment.state}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell>
+                                  <Button variant="outline" size="sm" onClick={() => {
+                                    setViewingPayment(payment);
+                                    setShowPaymentDetails(true);
+                                  }}>
+                                    <Eye className="h-4 w-4 mr-1" />
+                                    View
+                                  </Button>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    ) : (
+                      <div className="text-center py-8 text-gray-500">
+                        No payments found for this retailer
+                      </div>
+                    )}
+                  </TabsContent>
+                </Tabs>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
+    </div>
+  );
+
   if (!isLineWorker) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -815,6 +1277,7 @@ export function LineWorkerDashboard() {
         title="PharmaLynk Collections"
         subtitle="Line Worker Dashboard"
         notificationCount={notificationCount}
+        notifications={notifications}
         user={user}
         onLogout={logout}
       />
@@ -831,6 +1294,7 @@ export function LineWorkerDashboard() {
         <div className="space-y-6">
           {activeNav === 'overview' && <Overview />}
           {activeNav === 'retailers' && <RetailersComponent />}
+          {activeNav === 'retailer-details' && <RetailerDetails />}
           {activeNav === 'payments' && <PaymentsComponent />}
           {activeNav === 'history' && <HistoryComponent />}
         </div>
@@ -974,6 +1438,116 @@ export function LineWorkerDashboard() {
                     <div className="font-medium">{currentPayment.method}</div>
                     <div>Status:</div>
                     <div className="font-medium">{currentPayment.state}</div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Payment Details Dialog */}
+      <Dialog open={showPaymentDetails} onOpenChange={setShowPaymentDetails}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Payment Details</DialogTitle>
+            <DialogDescription>
+              View detailed information about this payment
+            </DialogDescription>
+          </DialogHeader>
+          
+          {viewingPayment && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Payment ID</Label>
+                  <div className="font-medium">{viewingPayment.id}</div>
+                </div>
+                <div>
+                  <Label>Amount</Label>
+                  <div className="font-medium">{formatCurrency(viewingPayment.totalPaid)}</div>
+                </div>
+                <div>
+                  <Label>Payment Method</Label>
+                  <div className="font-medium">{viewingPayment.method}</div>
+                </div>
+                <div>
+                  <Label>Status</Label>
+                  <div className="font-medium">
+                    <Badge variant={viewingPayment.state === 'COMPLETED' ? 'default' : 'secondary'}>
+                      {viewingPayment.state}
+                    </Badge>
+                  </div>
+                </div>
+                <div>
+                  <Label>Created At</Label>
+                  <div className="font-medium">{formatTimestampWithTime(viewingPayment.createdAt)}</div>
+                </div>
+                <div>
+                  <Label>Retailer ID</Label>
+                  <div className="font-medium">{viewingPayment.retailerId}</div>
+                </div>
+              </div>
+
+              {/* Timeline */}
+              <div>
+                <h4 className="font-medium mb-2">Payment Timeline</h4>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span>Initiated:</span>
+                    <span>{formatTimestampWithTime(viewingPayment.timeline.initiatedAt)}</span>
+                  </div>
+                  {viewingPayment.timeline.otpSentAt && (
+                    <div className="flex justify-between">
+                      <span>OTP Sent:</span>
+                      <span>{formatTimestampWithTime(viewingPayment.timeline.otpSentAt)}</span>
+                    </div>
+                  )}
+                  {viewingPayment.timeline.verifiedAt && (
+                    <div className="flex justify-between">
+                      <span>Verified:</span>
+                      <span>{formatTimestampWithTime(viewingPayment.timeline.verifiedAt)}</span>
+                    </div>
+                  )}
+                  {viewingPayment.timeline.completedAt && (
+                    <div className="flex justify-between">
+                      <span>Completed:</span>
+                      <span>{formatTimestampWithTime(viewingPayment.timeline.completedAt)}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* OTP Section for pending payments */}
+              {viewingPayment.state === 'OTP_SENT' && (
+                <div className="space-y-4">
+                  <div className="text-center">
+                    <QrCode className="h-16 w-16 mx-auto mb-4 text-blue-600" />
+                    <h3 className="text-lg font-semibold mb-2">OTP Verification</h3>
+                    <p className="text-gray-600 mb-4">
+                      Enter the OTP sent to the retailer to complete this payment.
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="otp">Enter OTP</Label>
+                    <Input
+                      id="otp"
+                      type="text"
+                      placeholder="Enter 6-digit OTP"
+                      value={otpCode}
+                      onChange={(e) => setOtpCode(e.target.value)}
+                      maxLength={6}
+                    />
+                  </div>
+
+                  <div className="flex justify-between">
+                    <Button variant="outline" onClick={() => setShowPaymentDetails(false)}>
+                      Cancel
+                    </Button>
+                    <Button onClick={() => handleVerifyOtp(viewingPayment.id)}>
+                      Verify OTP
+                    </Button>
                   </div>
                 </div>
               )}

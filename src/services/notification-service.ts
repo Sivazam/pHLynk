@@ -144,6 +144,151 @@ export class NotificationService {
     });
   }
 
+  // Line Worker Specific Notifications
+  
+  // Add payment completion notification for line worker
+  addLineWorkerPaymentCompletedNotification(
+    retailerName: string,
+    amount: number,
+    paymentId: string
+  ): string {
+    return this.addNotification({
+      type: 'success',
+      title: 'Payment collected successfully',
+      message: `Successfully collected ₹${amount.toLocaleString()} from ${retailerName}`,
+      timestamp: new Date(),
+      read: false,
+      amount,
+      retailerName,
+      paymentId
+    });
+  }
+
+  // Add payment initiated notification for line worker
+  addLineWorkerPaymentInitiatedNotification(
+    retailerName: string,
+    amount: number,
+    paymentId: string
+  ): string {
+    return this.addNotification({
+      type: 'info',
+      title: 'Payment initiated',
+      message: `Payment of ₹${amount.toLocaleString()} initiated for ${retailerName}`,
+      timestamp: new Date(),
+      read: false,
+      amount,
+      retailerName,
+      paymentId
+    });
+  }
+
+  // Add payment failed notification for line worker
+  addLineWorkerPaymentFailedNotification(
+    retailerName: string,
+    amount: number,
+    paymentId: string
+  ): string {
+    return this.addNotification({
+      type: 'warning',
+      title: 'Payment failed',
+      message: `Payment of ₹${amount.toLocaleString()} failed for ${retailerName}`,
+      timestamp: new Date(),
+      read: false,
+      amount,
+      retailerName,
+      paymentId
+    });
+  }
+
+  // Add new retailer assignment notification for line worker
+  addLineWorkerNewRetailerAssignment(
+    retailerName: string,
+    areaName: string,
+    retailerCount: number
+  ): string {
+    return this.addNotification({
+      type: 'info',
+      title: 'New retailer assigned',
+      message: `${retailerName} in ${areaName} has been assigned to you`,
+      timestamp: new Date(),
+      read: false,
+      retailerName,
+      areaName,
+      retailerCount
+    });
+  }
+
+  // Add new area assignment notification for line worker
+  addLineWorkerNewAreaAssignment(
+    areaName: string,
+    zipCount: number,
+    retailerCount: number
+  ): string {
+    return this.addNotification({
+      type: 'info',
+      title: 'New area assigned',
+      message: `Area ${areaName} with ${zipCount} zip codes and ${retailerCount} retailers assigned to you`,
+      timestamp: new Date(),
+      read: false,
+      areaName,
+      zipCount,
+      retailerCount
+    });
+  }
+
+  // Add daily collection summary notification for line worker
+  addLineWorkerDailySummary(
+    totalCollections: number,
+    paymentCount: number,
+    retailerCount: number
+  ): string {
+    return this.addNotification({
+      type: 'success',
+      title: 'Daily collection summary',
+      message: `Collected ₹${totalCollections.toLocaleString()} from ${paymentCount} payments across ${retailerCount} retailers today`,
+      timestamp: new Date(),
+      read: false,
+      totalCollections,
+      paymentCount,
+      retailerCount
+    });
+  }
+
+  // Add high-value collection notification for line worker
+  addLineWorkerHighValueCollection(
+    retailerName: string,
+    amount: number,
+    paymentId: string
+  ): string {
+    return this.addNotification({
+      type: 'success',
+      title: 'High-value collection!',
+      message: `Excellent! Collected ₹${amount.toLocaleString()} from ${retailerName}`,
+      timestamp: new Date(),
+      read: false,
+      amount,
+      retailerName,
+      paymentId
+    });
+  }
+
+  // Add milestone notification for line worker
+  addLineWorkerMilestone(
+    milestoneType: 'PAYMENTS' | 'AMOUNT' | 'RETAILERS',
+    milestoneValue: number,
+    description: string
+  ): string {
+    return this.addNotification({
+      type: 'success',
+      title: 'Milestone achieved!',
+      message: description,
+      timestamp: new Date(),
+      read: false,
+      milestoneType,
+      milestoneValue
+    });
+  }
+
   // Get all notifications
   getNotifications(): NotificationItem[] {
     return [...this.notifications];
