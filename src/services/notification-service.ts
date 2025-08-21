@@ -9,8 +9,8 @@ export class NotificationService {
   private listeners: Set<(notifications: NotificationItem[]) => void> = new Set();
 
   private constructor() {
-    // Initialize with some sample notifications for testing
-    this.addSampleNotifications();
+    // Initialize empty notifications - no sample data
+    this.notifications = [];
   }
 
   static getInstance(): NotificationService {
@@ -22,13 +22,59 @@ export class NotificationService {
 
   // Add a new notification
   addNotification(notification: Omit<NotificationItem, 'id'>): string {
+    // Check for duplicate notifications based on content and recent timestamp
+    const isDuplicate = this.notifications.some(existingNotification => {
+      const timeDiff = Math.abs(
+        new Date(notification.timestamp).getTime() - 
+        new Date(existingNotification.timestamp).getTime()
+      );
+      
+      // Consider it a duplicate if:
+      // 1. Same title and message
+      // 2. Same type
+      // 3. Within 10 seconds of each other (increased from 5 to catch more duplicates)
+      // 4. Same unique identifier if present
+      // 5. Same amount and retailer/worker combination for payment notifications
+      const hasSameUniqueId = (
+        notification._id && 
+        existingNotification._id && 
+        notification._id === existingNotification._id
+      );
+      
+      const hasSamePaymentDetails = (
+        notification.amount && 
+        existingNotification.amount && 
+        notification.amount === existingNotification.amount &&
+        (
+          (notification.retailerName && existingNotification.retailerName && 
+           notification.retailerName === existingNotification.retailerName) ||
+          (notification.workerName && existingNotification.workerName && 
+           notification.workerName === existingNotification.workerName)
+        )
+      );
+      
+      return (
+        (existingNotification.title === notification.title &&
+        existingNotification.message === notification.message &&
+        existingNotification.type === notification.type &&
+        timeDiff < 10000) || // 10 seconds
+        hasSameUniqueId ||
+        hasSamePaymentDetails
+      );
+    });
+
+    if (isDuplicate) {
+      console.log('🔔 Duplicate notification detected, skipping:', notification.title);
+      return '';
+    }
+
     const id = `notification_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const fullNotification: NotificationItem = {
       id,
       ...notification
     };
     
-    this.notifications.unshift(fullNotification); // Add to beginning
+    this.notifications.unshift(fullNotification); // Add to beginning (most recent first)
     this.notifyListeners();
     
     console.log('New notification added:', fullNotification);
@@ -291,7 +337,8 @@ export class NotificationService {
 
   // Get all notifications
   getNotifications(): NotificationItem[] {
-    return [...this.notifications];
+    // Return notifications sorted by timestamp (most recent first)
+    return [...this.notifications].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
   }
 
   // Get unread notification count
@@ -320,6 +367,13 @@ export class NotificationService {
     this.notifyListeners();
   }
 
+  // Clear all notifications
+  clearNotifications(): void {
+    console.log('🔔 Clearing all notifications');
+    this.notifications = [];
+    this.notifyListeners();
+  }
+
   // Add a listener for notification changes
   addListener(listener: (notifications: NotificationItem[]) => void): void {
     this.listeners.add(listener);
@@ -339,20 +393,6 @@ export class NotificationService {
       } catch (error) {
         console.error('Error in notification listener:', error);
       }
-    });
-  }
-
-  // Add sample notifications for testing
-  private addSampleNotifications(): void {
-    console.log('Adding sample notifications...');
-    
-    // Add a system ready notification
-    this.addNotification({
-      type: 'info',
-      title: 'System ready',
-      message: 'Notification system is active and monitoring payment activities',
-      timestamp: new Date(),
-      read: false
     });
   }
 }

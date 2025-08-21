@@ -18,7 +18,8 @@ import {
   QueryConstraint,
   writeBatch,
   arrayUnion,
-  arrayRemove
+  arrayRemove,
+  deleteField
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage, COLLECTIONS, ROLES } from '@/lib/firebase';
@@ -108,8 +109,21 @@ export class FirestoreService<T extends BaseDocument> {
   async update(id: string, data: Partial<T>, tenantId: string): Promise<void> {
     try {
       const docRef = doc(db, this.collectionName, id);
+      
+      // Process the data to handle field deletions
+      const processedData: any = {};
+      Object.keys(data).forEach(key => {
+        const value = (data as any)[key];
+        if (value === null) {
+          // Use deleteField() to remove the field
+          processedData[key] = deleteField();
+        } else if (value !== undefined) {
+          processedData[key] = value;
+        }
+      });
+      
       await updateDoc(docRef, {
-        ...data,
+        ...processedData,
         updatedAt: Timestamp.now()
       });
     } catch (error) {
@@ -544,6 +558,30 @@ export class RetailerService extends FirestoreService<Retailer> {
   async deleteRetailer(tenantId: string, retailerId: string): Promise<void> {
     return this.delete(retailerId, tenantId);
   }
+
+  async assignLineWorker(tenantId: string, retailerId: string, lineWorkerId: string | null): Promise<void> {
+    try {
+      await this.update(retailerId, {
+        assignedLineWorkerId: lineWorkerId || undefined
+      }, tenantId);
+      console.log(`✅ ${lineWorkerId ? 'Assigned' : 'Unassigned'} retailer ${retailerId} ${lineWorkerId ? 'to' : 'from'} line worker ${lineWorkerId || '(unassigned)'}`);
+    } catch (error) {
+      console.error('Error assigning line worker to retailer:', error);
+      throw error;
+    }
+  }
+
+  async getRetailersByLineWorker(tenantId: string, lineWorkerId: string): Promise<Retailer[]> {
+    return this.query(tenantId, [
+      where('assignedLineWorkerId', '==', lineWorkerId)
+    ]);
+  }
+
+  async getUnassignedRetailers(tenantId: string): Promise<Retailer[]> {
+    return this.query(tenantId, [
+      where('assignedLineWorkerId', '==', null)
+    ]);
+  }
 }
 
 export class InvoiceService extends FirestoreService<Invoice> {
@@ -560,10 +598,14 @@ export class InvoiceService extends FirestoreService<Invoice> {
     }, 0);
     const totalAmount = subtotal + gstAmount;
 
+    // Use provided invoice number or generate one
+    const invoiceNumber = data.invoiceNumber || this.generateInvoiceNumber(tenantId);
+
     // Create the invoice
     const invoiceId = await this.create({
       retailerId: data.retailerId,
-      invoiceNumber: this.generateInvoiceNumber(tenantId),
+      invoiceNumber: invoiceNumber,
+      userInvoiceNumber: data.userInvoiceNumber,
       issueDate: Timestamp.fromDate(data.issueDate),
       dueDate: data.dueDate ? Timestamp.fromDate(data.dueDate) : undefined,
       subtotal,
@@ -581,9 +623,9 @@ export class InvoiceService extends FirestoreService<Invoice> {
       const retailerService = new RetailerService();
       const invoiceData = {
         id: invoiceId,
-        invoiceNumber: this.generateInvoiceNumber(tenantId),
+        invoiceNumber: invoiceNumber,
         totalAmount: totalAmount,
-        issueDate: Timestamp.now(),
+        issueDate: Timestamp.fromDate(data.issueDate),
         status: 'OPEN'
       };
       await retailerService.updateForInvoice(data.retailerId, tenantId, invoiceData);

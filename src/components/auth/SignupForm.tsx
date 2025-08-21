@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useAuth } from '@/contexts/AuthContext';
-import { Loader2, Mail, Lock, User, Chrome } from 'lucide-react';
+import { Loader2, Mail, Lock, User as UserIcon, Chrome } from 'lucide-react';
 
 const signupSchema = z.object({
   displayName: z.string().min(2, 'Name must be at least 2 characters'),
@@ -86,7 +86,7 @@ export function SignupForm({ onToggleMode }: SignupFormProps) {
           <div className="space-y-2">
             <Label htmlFor="displayName">Full Name</Label>
             <div className="relative">
-              <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+              <UserIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
               <Input
                 id="displayName"
                 type="text"

@@ -9,11 +9,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { DashboardNavigation, NavItem } from '@/components/DashboardNavigation';
-import { retailerService, paymentService, otpService } from '@/services/firestore';
+import { retailerService, paymentService, otpService, invoiceService } from '@/services/firestore';
+import { realtimeNotificationService } from '@/services/realtime-notifications';
+import { notificationService } from '@/services/notification-service';
 import { RetailerAuthService } from '@/services/retailer-auth';
-import { Retailer, Payment } from '@/types';
+import { Retailer, Payment, Invoice } from '@/types';
 import { formatTimestamp, formatTimestampWithTime, formatCurrency } from '@/lib/timestamp-utils';
 import { getActiveOTPsForRetailer, getCompletedPaymentsForRetailer, removeCompletedPayment } from '@/lib/otp-store';
+import { Skeleton } from '@/components/ui/skeleton';
 import { 
   Store, 
   DollarSign, 
@@ -35,14 +38,15 @@ import {
   Volume2,
   LayoutDashboard,
   CreditCard,
-  TrendingUp
+  TrendingUp,
+  RefreshCw
 } from 'lucide-react';
 
 export function RetailerDashboard() {
   const [retailer, setRetailer] = useState<Retailer | null>(null);
   const [retailerUser, setRetailerUser] = useState<any>(null);
   const [payments, setPayments] = useState<Payment[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [activeOTPs, setActiveOTPs] = useState<Array<{
     code: string;
@@ -71,10 +75,13 @@ export function RetailerDashboard() {
   } | null>(null);
   const [shownOTPpopups, setShownOTPpopups] = useState<Set<string>>(new Set());
   const [notificationCount, setNotificationCount] = useState(0);
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [refreshLoading, setRefreshLoading] = useState(false);
 
   // Navigation items
   const navItems: NavItem[] = [
     { id: 'overview', label: 'Overview', icon: LayoutDashboard },
+    { id: 'invoices', label: 'Invoices', icon: FileText },
     { id: 'payments', label: 'Payments', icon: CreditCard },
     { id: 'history', label: 'History', icon: History },
   ];
@@ -85,23 +92,29 @@ export function RetailerDashboard() {
     const storedRetailerId = localStorage.getItem('retailerId');
     if (storedRetailerId) {
       fetchRetailerData(storedRetailerId);
+      
+      // Start real-time notifications
+      realtimeNotificationService.startListening(
+        storedRetailerId,
+        'RETAILER',
+        'retailer', // Retailers use their own ID as tenant ID
+        (newNotifications) => {
+          setNotifications(newNotifications);
+          setNotificationCount(newNotifications.filter(n => !n.read).length);
+        }
+      );
     }
-  }, []);
 
-  useEffect(() => {
-    // Check for active OTPs every 5 seconds
-    const interval = setInterval(async () => {
+    // Cleanup on unmount
+    return () => {
       const storedRetailerId = localStorage.getItem('retailerId');
       if (storedRetailerId) {
-        await checkActiveOTPs();
+        realtimeNotificationService.stopListening(storedRetailerId);
       }
-    }, 5000);
-
-    return () => clearInterval(interval);
+    };
   }, []);
 
   const fetchRetailerData = async (retailerId: string) => {
-    setLoading(true);
     setError(null);
     
     try {
@@ -182,9 +195,9 @@ export function RetailerDashboard() {
       
       // Get invoice data to calculate proper outstanding amount
       let totalInvoiceAmount = 0;
+      let invoicesData: Invoice[] = [];
       try {
-        const invoiceService = new (await import('@/services/firestore')).InvoiceService();
-        const invoicesData = await invoiceService.getInvoicesByRetailer(retailerUserData.tenantId, retailerUserData.retailerId);
+        invoicesData = await invoiceService.getInvoicesByRetailer(retailerUserData.tenantId, retailerUserData.retailerId);
         totalInvoiceAmount = invoicesData.reduce((sum, invoice) => sum + invoice.totalAmount, 0);
         console.log('Total invoice amount:', totalInvoiceAmount);
         console.log('Invoices found:', invoicesData.length);
@@ -227,6 +240,7 @@ export function RetailerDashboard() {
       
       setRetailer(retailerData as any);
       setPayments(paymentsData);
+      setInvoices(invoicesData);
       setRetailerUser(retailerUserData);
       
       console.log('Final retailer data:', retailerData);
@@ -236,8 +250,6 @@ export function RetailerDashboard() {
     } catch (err: any) {
       console.error('Error fetching retailer data:', err);
       setError(err.message || 'Failed to fetch retailer data');
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -393,6 +405,52 @@ export function RetailerDashboard() {
     }
   };
 
+  const getInvoiceStatusColor = (status: string) => {
+    switch (status) {
+      case 'PAID':
+        return 'bg-green-100 text-green-800';
+      case 'PARTIALLY_PAID':
+        return 'bg-yellow-100 text-yellow-800';
+      case 'OVERDUE':
+        return 'bg-red-100 text-red-800';
+      case 'DRAFT':
+        return 'bg-gray-100 text-gray-800';
+      default:
+        return 'bg-blue-100 text-blue-800';
+    }
+  };
+
+  const getInvoiceStatusIcon = (status: string) => {
+    switch (status) {
+      case 'PAID':
+        return <CheckCircle className="h-4 w-4" />;
+      case 'PARTIALLY_PAID':
+        return <Clock className="h-4 w-4" />;
+      case 'OVERDUE':
+        return <XCircle className="h-4 w-4" />;
+      case 'DRAFT':
+        return <FileText className="h-4 w-4" />;
+      default:
+        return <FileText className="h-4 w-4" />;
+    }
+  };
+
+  const calculateInvoiceStatus = (invoice: Invoice, payments: Payment[]): string => {
+    const totalPaid = payments
+      .filter(p => p.state === 'COMPLETED')
+      .reduce((sum, p) => sum + p.totalPaid, 0);
+    
+    if (totalPaid >= invoice.totalAmount) {
+      return 'PAID';
+    } else if (totalPaid > 0) {
+      return 'PARTIALLY_PAID';
+    } else if (new Date() > new Date(invoice.dueDate.toDate())) {
+      return 'OVERDUE';
+    } else {
+      return 'PENDING';
+    }
+  };
+
   const handleAcknowledgeSettlement = (paymentId: string) => {
     removeCompletedPayment(paymentId);
     setShowSettlementPopup(false);
@@ -411,6 +469,23 @@ export function RetailerDashboard() {
     localStorage.removeItem('retailerId');
     // Redirect to retailer login page
     window.location.href = '/retailer-login';
+  };
+
+  const handleManualRefresh = async () => {
+    const storedRetailerId = localStorage.getItem('retailerId');
+    if (!storedRetailerId) return;
+    
+    setRefreshLoading(true);
+    try {
+      // Refresh main data
+      await fetchRetailerData(storedRetailerId);
+      // Check for active OTPs
+      await checkActiveOTPs();
+    } catch (error) {
+      console.error('Error during manual refresh:', error);
+    } finally {
+      setRefreshLoading(false);
+    }
   };
 
   const formatTimeRemaining = (expiresAt: Date) => {
@@ -438,6 +513,27 @@ export function RetailerDashboard() {
   // Overview Component
   const Overview = () => (
     <div className="space-y-6">
+      {/* Header with refresh button */}
+      <div className="flex justify-between items-center">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">Overview</h2>
+          <p className="text-gray-600">Your business summary and outstanding amounts</p>
+        </div>
+        <Button 
+          onClick={handleManualRefresh} 
+          disabled={refreshLoading}
+          variant="outline"
+          className="flex items-center space-x-2"
+        >
+          {refreshLoading ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <RefreshCw className="h-4 w-4" />
+          )}
+          <span>Refresh</span>
+        </Button>
+      </div>
+
       {/* Retailer Info Card */}
       <Card>
         <CardHeader>
@@ -465,7 +561,7 @@ export function RetailerDashboard() {
       </Card>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <Card className="hover:shadow-lg transition-shadow duration-300 border-l-4 border-l-red-500">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium text-gray-600">Outstanding Amount</CardTitle>
@@ -478,6 +574,19 @@ export function RetailerDashboard() {
               {formatCurrency(retailer?.currentOutstanding || 0)}
             </div>
             <p className="text-xs text-gray-500">Total unpaid amount</p>
+          </CardContent>
+        </Card>
+
+        <Card className="hover:shadow-lg transition-shadow duration-300 border-l-4 border-l-blue-500">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-gray-600">Total Invoices</CardTitle>
+            <div className="bg-blue-100 p-2 rounded-full">
+              <FileText className="h-4 w-4 text-blue-600" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-gray-900">{invoices.length}</div>
+            <p className="text-xs text-gray-500">Invoice documents</p>
           </CardContent>
         </Card>
 
@@ -496,11 +605,11 @@ export function RetailerDashboard() {
           </CardContent>
         </Card>
 
-        <Card className="hover:shadow-lg transition-shadow duration-300 border-l-4 border-l-blue-500">
+        <Card className="hover:shadow-lg transition-shadow duration-300 border-l-4 border-l-purple-500">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium text-gray-600">Active OTPs</CardTitle>
-            <div className="bg-blue-100 p-2 rounded-full">
-              <Smartphone className="h-4 w-4 text-blue-600" />
+            <div className="bg-purple-100 p-2 rounded-full">
+              <Smartphone className="h-4 w-4 text-purple-600" />
             </div>
           </CardHeader>
           <CardContent>
@@ -551,12 +660,174 @@ export function RetailerDashboard() {
     </div>
   );
 
+  // Invoices Component
+  const InvoicesComponent = () => (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">Invoice Management</h2>
+          <p className="text-gray-600">View and manage your invoices</p>
+        </div>
+        <Button 
+          onClick={handleManualRefresh} 
+          disabled={refreshLoading}
+          variant="outline"
+          className="flex items-center space-x-2"
+        >
+          {refreshLoading ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <RefreshCw className="h-4 w-4" />
+          )}
+          <span>Refresh</span>
+        </Button>
+      </div>
+
+      {/* Invoice Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center space-x-2">
+              <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                <FileText className="h-4 w-4 text-blue-600" />
+              </div>
+              <div>
+                <div className="text-2xl font-bold">{invoices.length}</div>
+                <div className="text-sm text-gray-500">Total Invoices</div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center space-x-2">
+              <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
+                <CheckCircle className="h-4 w-4 text-green-600" />
+              </div>
+              <div>
+                <div className="text-2xl font-bold">
+                  {invoices.filter(inv => calculateInvoiceStatus(inv, payments) === 'PAID').length}
+                </div>
+                <div className="text-sm text-gray-500">Paid Invoices</div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center space-x-2">
+              <div className="w-8 h-8 bg-yellow-100 rounded-full flex items-center justify-center">
+                <Clock className="h-4 w-4 text-yellow-600" />
+              </div>
+              <div>
+                <div className="text-2xl font-bold">
+                  {invoices.filter(inv => calculateInvoiceStatus(inv, payments) === 'PARTIALLY_PAID').length}
+                </div>
+                <div className="text-sm text-gray-500">Partial Payments</div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center space-x-2">
+              <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center">
+                <XCircle className="h-4 w-4 text-red-600" />
+              </div>
+              <div>
+                <div className="text-2xl font-bold">
+                  {invoices.filter(inv => calculateInvoiceStatus(inv, payments) === 'OVERDUE').length}
+                </div>
+                <div className="text-sm text-gray-500">Overdue Invoices</div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Invoices Table */}
+      <Card>
+        <CardHeader>
+          <CardTitle>All Invoices</CardTitle>
+          <CardDescription>Your complete invoice history with payment status</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Invoice #</TableHead>
+                  <TableHead>Issue Date</TableHead>
+                  <TableHead>Due Date</TableHead>
+                  <TableHead>Total Amount</TableHead>
+                  <TableHead>Paid Amount</TableHead>
+                  <TableHead>Balance</TableHead>
+                  <TableHead>Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {invoices.map((invoice) => {
+                  const status = calculateInvoiceStatus(invoice, payments);
+                  const paidAmount = payments
+                    .filter(p => p.state === 'COMPLETED')
+                    .reduce((sum, p) => sum + p.totalPaid, 0);
+                  const balance = invoice.totalAmount - paidAmount;
+                  
+                  return (
+                    <TableRow key={invoice.id}>
+                      <TableCell className="font-medium">{invoice.invoiceNumber}</TableCell>
+                      <TableCell>{formatTimestamp(invoice.issueDate)}</TableCell>
+                      <TableCell>{formatTimestamp(invoice.dueDate)}</TableCell>
+                      <TableCell className="text-right">{formatCurrency(invoice.totalAmount)}</TableCell>
+                      <TableCell className="text-right">{formatCurrency(paidAmount)}</TableCell>
+                      <TableCell className="text-right">
+                        <span className={balance > 0 ? 'text-red-600 font-medium' : 'text-green-600'}>
+                          {formatCurrency(balance)}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <Badge className={getInvoiceStatusColor(status)}>
+                          <div className="flex items-center space-x-1">
+                            {getInvoiceStatusIcon(status)}
+                            <span>{status}</span>
+                          </div>
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+
   // Payments Component
   const PaymentsComponent = () => (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold text-gray-900">Payment History</h2>
-        <p className="text-gray-600">All your payment transactions</p>
+      <div className="flex justify-between items-center">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">Payment History</h2>
+          <p className="text-gray-600">All your payment transactions</p>
+        </div>
+        <Button 
+          onClick={handleManualRefresh} 
+          disabled={refreshLoading}
+          variant="outline"
+          className="flex items-center space-x-2"
+        >
+          {refreshLoading ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <RefreshCw className="h-4 w-4" />
+          )}
+          <span>Refresh</span>
+        </Button>
       </div>
 
       <Card>
@@ -608,60 +879,155 @@ export function RetailerDashboard() {
   );
 
   // History Component
-  const HistoryComponent = () => (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold text-gray-900">Activity History</h2>
-        <p className="text-gray-600">Your recent activities and transactions</p>
-      </div>
+  const HistoryComponent = () => {
+    // Combine invoice and payment activities
+    const activities = [
+      ...invoices.map(invoice => ({
+        id: `invoice_${invoice.id}`,
+        type: 'invoice',
+        title: 'Invoice Generated',
+        description: `Invoice #${invoice.invoiceNumber} for ${formatCurrency(invoice.totalAmount)}`,
+        timestamp: invoice.issueDate.toDate(),
+        amount: invoice.totalAmount,
+        status: calculateInvoiceStatus(invoice, payments),
+        icon: FileText,
+        color: 'text-blue-600'
+      })),
+      ...payments.map(payment => ({
+        id: `payment_${payment.id}`,
+        type: 'payment',
+        title: payment.state === 'COMPLETED' ? 'Payment Completed' : 'Payment Initiated',
+        description: `${payment.method} payment of ${formatCurrency(payment.totalPaid)}`,
+        timestamp: payment.createdAt.toDate(),
+        amount: payment.totalPaid,
+        status: payment.state,
+        icon: payment.state === 'COMPLETED' ? CheckCircle : Clock,
+        color: payment.state === 'COMPLETED' ? 'text-green-600' : 'text-yellow-600'
+      }))
+    ].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Recent Activities</CardTitle>
-          <CardDescription>Your latest payment activities</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {payments
-              .sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis())
-              .slice(0, 10)
-              .map((payment) => (
-                <div key={payment.id} className="flex items-center space-x-4 p-4 border rounded-lg">
-                  <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-                    {payment.state === 'COMPLETED' && <CheckCircle className="h-5 w-5 text-green-600" />}
-                    {payment.state === 'OTP_SENT' && <Clock className="h-5 w-5 text-yellow-600" />}
-                    {payment.state === 'CANCELLED' && <XCircle className="h-5 w-5 text-red-600" />}
+    return (
+      <div className="space-y-6">
+        <div className="flex justify-between items-center">
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900">Activity History</h2>
+            <p className="text-gray-600">Your recent invoice and payment activities</p>
+          </div>
+          <Button 
+            onClick={handleManualRefresh} 
+            disabled={refreshLoading}
+            variant="outline"
+            className="flex items-center space-x-2"
+          >
+            {refreshLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4" />
+            )}
+            <span>Refresh</span>
+          </Button>
+        </div>
+
+        {/* Activity Summary Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center space-x-2">
+                <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                  <FileText className="h-4 w-4 text-blue-600" />
+                </div>
+                <div>
+                  <div className="text-2xl font-bold">{invoices.length}</div>
+                  <div className="text-sm text-gray-500">Total Invoices</div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center space-x-2">
+                <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
+                  <CheckCircle className="h-4 w-4 text-green-600" />
+                </div>
+                <div>
+                  <div className="text-2xl font-bold">
+                    {payments.filter(p => p.state === 'COMPLETED').length}
+                  </div>
+                  <div className="text-sm text-gray-500">Completed Payments</div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center space-x-2">
+                <div className="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center">
+                  <TrendingUp className="h-4 w-4 text-purple-600" />
+                </div>
+                <div>
+                  <div className="text-2xl font-bold">
+                    {formatCurrency(payments.filter(p => p.state === 'COMPLETED').reduce((sum, p) => sum + p.totalPaid, 0))}
+                  </div>
+                  <div className="text-sm text-gray-500">Total Paid</div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Activity Timeline */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Recent Activities</CardTitle>
+            <CardDescription>Timeline of your invoice and payment activities</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {activities.slice(0, 20).map((activity) => (
+                <div key={activity.id} className="flex items-start space-x-4 p-4 border rounded-lg hover:bg-gray-50 transition-colors">
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                    activity.type === 'invoice' ? 'bg-blue-100' : 
+                    activity.status === 'COMPLETED' ? 'bg-green-100' : 'bg-yellow-100'
+                  }`}>
+                    <activity.icon className={`h-5 w-5 ${activity.color}`} />
                   </div>
                   <div className="flex-1">
-                    <div className="font-medium">
-                      {payment.state === 'COMPLETED' ? 'Payment Completed' : 
-                       payment.state === 'OTP_SENT' ? 'Payment Requested' : 
-                       'Payment Cancelled'}
+                    <div className="flex items-center justify-between">
+                      <div className="font-medium">{activity.title}</div>
+                      <div className="text-sm text-gray-500">
+                        {formatTimestampWithTime(activity.timestamp)}
+                      </div>
                     </div>
-                    <div className="text-sm text-gray-500">
-                      {formatTimestampWithTime(payment.createdAt)}
+                    <div className="text-sm text-gray-600 mt-1">
+                      {activity.description}
                     </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="font-medium">{formatCurrency(payment.totalPaid)}</div>
-                    <div className="text-sm text-gray-500">{payment.method}</div>
+                    <div className="flex items-center space-x-4 mt-2">
+                      <div className="text-sm font-medium">
+                        Amount: {formatCurrency(activity.amount)}
+                      </div>
+                      <Badge 
+                        variant="outline" 
+                        className={
+                          activity.type === 'invoice' ? getInvoiceStatusColor(activity.status) :
+                          getPaymentStatusColor(activity.status)
+                        }
+                      >
+                        {activity.status}
+                      </Badge>
+                    </div>
                   </div>
                 </div>
               ))}
-          </div>
-        </CardContent>
-      </Card>
-    </div>
-  );
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
-        <p className="text-gray-600">Loading your dashboard...</p>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     );
-  }
+  };
+
+  // Main component return - no global loading state
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -688,6 +1054,7 @@ export function RetailerDashboard() {
         {/* Content based on active navigation */}
         <div className="space-y-6">
           {activeNav === 'overview' && <Overview />}
+          {activeNav === 'invoices' && <InvoicesComponent />}
           {activeNav === 'payments' && <PaymentsComponent />}
           {activeNav === 'history' && <HistoryComponent />}
         </div>

@@ -14,21 +14,26 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { DatePicker } from '@/components/ui/date-picker';
+import { Skeleton } from '@/components/ui/skeleton';
 import { DashboardNavigation, NavItem, NotificationItem } from '@/components/DashboardNavigation';
-import { useAuth, useWholesalerAdmin } from '@/contexts/AuthContext';
+import { useAuth, useWholesalerAdmin, useSuperAdmin } from '@/contexts/AuthContext';
 import { 
   areaService, 
   retailerService, 
   invoiceService, 
   userService,
   paymentService,
-  DashboardService
+  DashboardService,
+  tenantService
 } from '@/services/firestore';
+import { realtimeNotificationService } from '@/services/realtime-notifications';
+import { notificationService } from '@/services/notification-service';
 import { Area, Retailer, Invoice, User, Payment, DashboardStats } from '@/types';
 import { Timestamp } from 'firebase/firestore';
 import { formatTimestamp, formatTimestampWithTime, formatCurrency, toDate } from '@/lib/timestamp-utils';
 import { CreateAreaForm } from '@/components/ui/create-area-form';
 import { CreateRetailerForm } from '@/components/ui/create-retailer-form';
+import { CreateInvoiceForm } from '@/components/CreateInvoiceForm';
 import { WholesalerAnalytics } from '@/components/WholesalerAnalytics';
 import { 
   // Navigation
@@ -62,7 +67,7 @@ import {
   XCircle,
   AlertCircle,
   CreditCard,
-  User,
+  User as UserIcon,
   Building2,
   ArrowUpRight,
   ArrowDownRight,
@@ -90,6 +95,7 @@ interface ActivityLog {
 export function WholesalerAdminDashboard() {
   const { user, logout } = useAuth();
   const isWholesalerAdmin = useWholesalerAdmin();
+  const isSuperAdminUser = useSuperAdmin();
   const [areas, setAreas] = useState<Area[]>([]);
   const [retailers, setRetailers] = useState<Retailer[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -97,7 +103,6 @@ export function WholesalerAdminDashboard() {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null);
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
   // UI States
@@ -115,6 +120,9 @@ export function WholesalerAdminDashboard() {
   const [viewingInvoice, setViewingInvoice] = useState<Invoice | null>(null);
   const [viewingPayment, setViewingPayment] = useState<Payment | null>(null);
   
+  // Invoice creation state
+  const [creatingInvoice, setCreatingInvoice] = useState(false);
+  
   // Filter States
   const [dateRange, setDateRange] = useState<{ from: Date; to: Date } | null>(null);
   const [selectedLineWorker, setSelectedLineWorker] = useState<string>("all");
@@ -127,6 +135,54 @@ export function WholesalerAdminDashboard() {
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
   const [notificationCount, setNotificationCount] = useState(0);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [refreshLoading, setRefreshLoading] = useState(false);
+  
+  // Tenant management for super admin
+  const [tenants, setTenants] = useState<any[]>([]);
+  const [selectedTenant, setSelectedTenant] = useState<string>('');
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  
+  // Retailer assignment state
+  const [showRetailerAssignment, setShowRetailerAssignment] = useState(false);
+  const [assigningRetailer, setAssigningRetailer] = useState<Retailer | null>(null);
+  const [selectedLineWorkerForAssignment, setSelectedLineWorkerForAssignment] = useState<string>('');
+
+  // Debug logging for notifications
+  useEffect(() => {
+    console.log('🔔 Notification state updated:', {
+      count: notificationCount,
+      notifications: notifications.length,
+      notificationList: notifications.map(n => ({ id: n.id, title: n.title, read: n.read }))
+    });
+  }, [notificationCount, notifications]);
+
+  // Initialize super admin state and fetch tenants
+  useEffect(() => {
+    setIsSuperAdmin(isSuperAdminUser);
+    if (isSuperAdminUser) {
+      fetchTenants();
+    }
+  }, [isSuperAdminUser]);
+
+  const fetchTenants = async () => {
+    try {
+      const tenantsData = await tenantService.getAllTenants();
+      setTenants(tenantsData);
+      if (tenantsData.length > 0 && !selectedTenant) {
+        setSelectedTenant(tenantsData[0].id);
+      }
+    } catch (error) {
+      console.error('Error fetching tenants:', error);
+    }
+  };
+
+  // Helper function to get the current tenant ID
+  const getCurrentTenantId = (): string | null => {
+    if (isSuperAdmin && selectedTenant) {
+      return selectedTenant;
+    }
+    return user?.tenantId && user.tenantId !== 'system' ? user.tenantId : null;
+  };
 
   // Navigation items
   const navItems: NavItem[] = [
@@ -141,35 +197,92 @@ export function WholesalerAdminDashboard() {
   ];
 
   useEffect(() => {
-    if (isWholesalerAdmin && user?.tenantId) {
+    const currentTenantId = getCurrentTenantId();
+    if (isWholesalerAdmin && user?.uid && currentTenantId) {
+      console.log('🔔 Setting up wholesaler admin real-time notifications for user:', user.uid, 'tenant:', currentTenantId);
       fetchDashboardData();
-      // Set up real-time updates every 30 seconds
-      const interval = setInterval(() => {
-        fetchDashboardData();
-      }, 30000);
       
-      return () => clearInterval(interval);
+      // Start real-time notifications - ensure it's always set up
+      realtimeNotificationService.startListening(
+        user.uid,
+        'WHOLESALER_ADMIN',
+        currentTenantId,
+        (newNotifications) => {
+          console.log('🔔 Received real-time notifications callback:', newNotifications.length, 'notifications');
+          console.log('🔔 Real-time notification details:', newNotifications.map(n => ({ id: n.id, title: n.title, read: n.read })));
+          setNotifications(newNotifications);
+          setNotificationCount(newNotifications.filter(n => !n.read).length);
+        }
+      );
     }
-  }, [isWholesalerAdmin, user, activeNav, dateRange, selectedLineWorker, selectedRetailer]);
+
+    // Cleanup on unmount
+    return () => {
+      if (user?.uid) {
+        console.log('🔔 Cleaning up real-time notifications for user:', user.uid);
+        realtimeNotificationService.stopListening(user.uid);
+      }
+    };
+  }, [isWholesalerAdmin, user, selectedTenant]); // Restart when selected tenant changes
+
+  // Separate effect for data fetching when filters change
+  useEffect(() => {
+    const currentTenantId = getCurrentTenantId();
+    if (isWholesalerAdmin && user?.uid && currentTenantId) {
+      fetchDashboardData();
+    }
+  }, [activeNav, dateRange, selectedLineWorker, selectedRetailer, selectedTenant]); // Also fetch when tenant changes
+
+  // Effect to sync notifications with notification service
+  useEffect(() => {
+    if (isWholesalerAdmin && user?.uid) {
+      console.log('🔔 Setting up notification service sync for user:', user.uid);
+      
+      // Add a listener to the notification service to ensure we stay in sync
+      const notificationListener = (newNotifications: NotificationItem[]) => {
+        console.log('🔔 Notification service update received:', newNotifications.length, 'notifications');
+        console.log('🔔 Notification details:', newNotifications.map(n => ({ id: n.id, title: n.title, read: n.read })));
+        setNotifications(newNotifications);
+        setNotificationCount(newNotifications.filter(n => !n.read).length);
+      };
+
+      notificationService.addListener(notificationListener);
+
+      // Initial sync
+      const currentNotifications = notificationService.getNotifications();
+      console.log('🔔 Initial notification sync:', currentNotifications.length, 'notifications');
+      console.log('🔔 Initial notification details:', currentNotifications.map(n => ({ id: n.id, title: n.title, read: n.read })));
+      setNotifications(currentNotifications);
+      setNotificationCount(currentNotifications.filter(n => !n.read).length);
+
+      return () => {
+        console.log('🔔 Cleaning up notification service listener for user:', user.uid);
+        notificationService.removeListener(notificationListener);
+      };
+    }
+  }, [isWholesalerAdmin, user]);
 
   const fetchDashboardData = async () => {
-    if (!user?.tenantId) return;
+    const currentTenantId = getCurrentTenantId();
+    if (!currentTenantId) {
+      setError('No tenant selected. Please select a tenant to continue.');
+      return;
+    }
     
-    setLoading(true);
     setError(null);
     
     try {
       // Fetch base data
       const [areasData, retailersData, invoicesData, lineWorkersData, stats] = await Promise.all([
-        areaService.getActiveAreas(user.tenantId),
-        retailerService.getAll(user.tenantId),
-        invoiceService.getAll(user.tenantId),
-        userService.getAllUsersByRole(user.tenantId, 'LINE_WORKER'),
-        DashboardService.getWholesalerDashboardStats(user.tenantId)
+        areaService.getActiveAreas(currentTenantId),
+        retailerService.getAll(currentTenantId),
+        invoiceService.getAll(currentTenantId),
+        userService.getAllUsersByRole(currentTenantId, 'LINE_WORKER'),
+        DashboardService.getWholesalerDashboardStats(currentTenantId)
       ]);
 
       // Fetch payments with filters
-      let paymentsData = await paymentService.getAll(user.tenantId);
+      let paymentsData = await paymentService.getAll(currentTenantId);
       let paymentsQuery = paymentsData;
       if (selectedLineWorker && selectedLineWorker !== "all") {
         paymentsQuery = paymentsQuery.filter(p => p.lineWorkerId === selectedLineWorker);
@@ -188,6 +301,12 @@ export function WholesalerAdminDashboard() {
       setRetailers(retailersData);
       setInvoices(invoicesData);
       setLineWorkers(lineWorkersData);
+      console.log('📊 Fetched line workers:', lineWorkersData.map(w => ({
+        id: w.id,
+        displayName: w.displayName,
+        assignedAreas: w.assignedAreas
+      })));
+      
       setPayments(paymentsQuery);
       setDashboardStats(stats);
       
@@ -195,10 +314,10 @@ export function WholesalerAdminDashboard() {
       try {
         console.log('🔄 Recomputing retailer data for accuracy...');
         for (const retailer of retailersData) {
-          await retailerService.recomputeRetailerData(retailer.id, user.tenantId);
+          await retailerService.recomputeRetailerData(retailer.id, currentTenantId);
         }
         // Refresh retailers after recomputation
-        const updatedRetailers = await retailerService.getAll(user.tenantId);
+        const updatedRetailers = await retailerService.getAll(currentTenantId);
         setRetailers(updatedRetailers);
         console.log('✅ Retailer data recomputed and updated');
       } catch (error) {
@@ -209,19 +328,50 @@ export function WholesalerAdminDashboard() {
       const logs = generateActivityLogs(paymentsQuery, invoicesData, retailersData, lineWorkersData);
       setActivityLogs(logs);
       
-      // Generate detailed notifications
-      const notificationList = generateNotifications(paymentsQuery, invoicesData, retailersData, lineWorkersData);
-      console.log('Generated notifications:', notificationList.length, notificationList);
-      setNotifications(notificationList);
-      setNotificationCount(notificationList.filter(n => !n.read).length);
+      // Note: Notifications are now handled by real-time service only
+      // Local notification generation removed to prevent conflicts
       
       setLastUpdate(new Date());
       
     } catch (err: any) {
       setError(err.message || 'Failed to fetch dashboard data');
-    } finally {
-      setLoading(false);
     }
+  };
+
+  const handleManualRefresh = async () => {
+    const currentTenantId = getCurrentTenantId();
+    if (!currentTenantId) return;
+    
+    setRefreshLoading(true);
+    try {
+      await fetchDashboardData();
+      
+      // Also refresh notifications manually
+      const currentNotifications = notificationService.getNotifications();
+      console.log('🔔 Manual notification refresh:', currentNotifications.length, 'notifications');
+      console.log('🔔 Manual refresh notification details:', currentNotifications.map(n => ({ id: n.id, title: n.title, read: n.read })));
+      setNotifications(currentNotifications);
+      setNotificationCount(currentNotifications.filter(n => !n.read).length);
+      
+    } catch (error) {
+      console.error('Error during manual refresh:', error);
+    } finally {
+      setRefreshLoading(false);
+    }
+  };
+
+  // Test function to add a notification
+  const addTestNotification = () => {
+    console.log('🔔 Adding test notification');
+    const testNotification = {
+      type: 'success' as const,
+      title: 'Test Notification',
+      message: 'This is a test notification to verify the system is working',
+      timestamp: new Date(),
+      read: false
+    };
+    const notificationId = notificationService.addNotification(testNotification);
+    console.log('🔔 Test notification added with ID:', notificationId);
   };
 
   const generateNotifications = (payments: Payment[], invoices: Invoice[], retailers: Retailer[], workers: User[]): NotificationItem[] => {
@@ -399,99 +549,124 @@ export function WholesalerAdminDashboard() {
       });
     });
 
-    // If no notifications, create a sample one for testing
-    if (notifications.length === 0) {
-      console.log('No notifications generated, creating sample notification');
-      notifications.push({
-        id: 'sample_notification',
-        type: 'info',
-        title: 'System ready',
-        message: 'Notification system is active and monitoring payment activities',
-        timestamp: now,
-        read: false
-      });
-    }
-
-    console.log('Final notifications count:', notifications.length);
-    
-    // Sort by timestamp (newest first) and limit to 20
-    const sortedNotifications = notifications
-      .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
-      .slice(0, 20);
-    
-    console.log('Sorted notifications:', sortedNotifications);
-    
-    return sortedNotifications;
+    return notifications;
   };
 
-const generateActivityLogs = (payments: Payment[], invoices: Invoice[], retailers: Retailer[], workers: User[]): ActivityLog[] => {
+  const generateActivityLogs = (payments: Payment[], invoices: Invoice[], retailers: Retailer[], workers: User[]): ActivityLog[] => {
     const logs: ActivityLog[] = [];
-    
+    const now = new Date();
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
     // Payment activities
-    payments.forEach(payment => {
+    const recentPayments = payments.filter(p => toDate(p.createdAt) >= sevenDaysAgo);
+    
+    recentPayments.forEach(payment => {
       const worker = workers.find(w => w.id === payment.lineWorkerId);
       const retailer = retailers.find(r => r.id === payment.retailerId);
       
-      if (payment.state === 'COMPLETED') {
-        logs.push({
-          id: `payment_${payment.id}`,
-          type: 'PAYMENT',
-          action: 'COLLECTED',
-          description: `Payment collected from ${retailer?.name || 'Unknown'}`,
-          amount: payment.totalPaid,
-          actorName: worker?.displayName || 'Unknown',
-          actorType: 'LINE_WORKER',
-          targetName: retailer?.name || 'Unknown',
-          targetType: 'RETAILER',
-          timestamp: payment.createdAt,
-          metadata: {
-            paymentId: payment.id,
-            method: payment.method
-          }
-        });
-      }
+      logs.push({
+        id: `payment_${payment.id}`,
+        type: 'PAYMENT',
+        action: payment.state.toLowerCase(),
+        description: `${payment.state} payment of ₹${payment.totalPaid.toLocaleString()} from ${retailer?.name || 'retailer'}`,
+        amount: payment.totalPaid,
+        actorName: worker?.displayName || 'Unknown',
+        actorType: 'LINE_WORKER',
+        targetName: retailer?.name || 'retailer',
+        targetType: 'RETAILER',
+        timestamp: payment.createdAt
+      });
     });
-    
+
     // Invoice activities
-    invoices.slice(0, 10).forEach(invoice => {
+    const recentInvoices = invoices.filter(i => toDate(i.issueDate) >= sevenDaysAgo);
+    
+    recentInvoices.forEach(invoice => {
       const retailer = retailers.find(r => r.id === invoice.retailerId);
+      
+      // Use userInvoiceNumber if available, otherwise fall back to system invoiceNumber
+      const displayInvoiceNumber = invoice.userInvoiceNumber || invoice.invoiceNumber;
+      
       logs.push({
         id: `invoice_${invoice.id}`,
         type: 'INVOICE',
-        action: 'CREATED',
-        description: `Invoice created for ${retailer?.name || 'Unknown'}`,
+        action: 'created',
+        description: `Invoice #${displayInvoiceNumber} created for ${retailer?.name || 'retailer'}`,
         amount: invoice.totalAmount,
-        actorName: user?.displayName || 'System',
-        actorType: 'WHOLESALER_ADMIN',
-        targetName: retailer?.name || 'Unknown',
+        actorName: 'System',
+        actorType: 'SYSTEM',
+        targetName: retailer?.name || 'retailer',
         targetType: 'RETAILER',
-        timestamp: invoice.createdAt,
-        metadata: {
-          invoiceId: invoice.id,
-          invoiceNumber: invoice.invoiceNumber
-        }
+        timestamp: invoice.issueDate
       });
     });
     
     // Sort by timestamp (newest first)
-    return logs.sort((a, b) => b.timestamp.toMillis() - a.timestamp.toMillis()).slice(0, 20);
+    return logs.sort((a, b) => b.timestamp.toMillis() - a.timestamp.toMillis());
   };
 
-  const getLineWorkerName = (workerId: string) => {
-    const worker = lineWorkers.find(w => w.id === workerId);
-    return worker?.displayName || 'Unknown';
+  // Helper function to check if an area is already assigned to another line worker
+  const isAreaAssignedToOtherWorker = (areaId: string, currentWorkerId?: string): boolean => {
+    return lineWorkers.some(worker => 
+      worker.id !== currentWorkerId && 
+      worker.assignedAreas?.includes(areaId)
+    );
   };
 
-  const getRetailerName = (retailerId: string) => {
+  // Helper function to get assigned line worker for an area
+  const getAssignedWorkerForArea = (areaId: string): User | null => {
+    return lineWorkers.find(worker => worker.assignedAreas?.includes(areaId)) || null;
+  };
+
+  // Helper function to check if retailer is available for assignment
+  const isRetailerAvailableForAssignment = (retailerId: string): boolean => {
     const retailer = retailers.find(r => r.id === retailerId);
-    return retailer?.name || 'Unknown';
+    return !retailer?.assignedLineWorkerId;
   };
 
-  const handleCreateArea = async (data: { name: string; zipcodes: string[] }) => {
-    if (!user?.tenantId) return;
+  // Handler for retailer assignment
+  const handleAssignRetailer = async (retailerId: string, lineWorkerId: string | null) => {
+    const currentTenantId = getCurrentTenantId();
+    if (!currentTenantId) return;
+    
+    // Check if there's actually a change being made
+    const retailer = retailers.find(r => r.id === retailerId);
+    if (retailer && retailer.assignedLineWorkerId === lineWorkerId) {
+      // No change needed, just close the dialog
+      setShowRetailerAssignment(false);
+      setAssigningRetailer(null);
+      setSelectedLineWorkerForAssignment('');
+      setError(null);
+      return;
+    }
     
     try {
-      await areaService.createArea(user.tenantId, data);
+      await retailerService.assignLineWorker(currentTenantId, retailerId, lineWorkerId);
+      await fetchDashboardData();
+      setShowRetailerAssignment(false);
+      setAssigningRetailer(null);
+      setSelectedLineWorkerForAssignment('');
+      setError(null);
+    } catch (err: any) {
+      setError(err.message || 'Failed to assign retailer');
+    }
+  };
+
+  // Handler functions
+  const handleCreateArea = async (data: { name: string; zipcodes: string[] }) => {
+    const currentTenantId = getCurrentTenantId();
+    if (!currentTenantId) {
+      setError('No tenant selected. Please select a tenant to continue.');
+      return;
+    }
+    
+    try {
+      await areaService.create({
+        name: data.name,
+        zipcodes: data.zipcodes,
+        active: true
+      }, currentTenantId);
+      
       await fetchDashboardData();
       setShowCreateArea(false);
     } catch (err: any) {
@@ -499,11 +674,26 @@ const generateActivityLogs = (payments: Payment[], invoices: Invoice[], retailer
     }
   };
 
-  const handleCreateRetailer = async (data: { name: string; phone: string; address?: string; areaId?: string; zipcodes: string[] }) => {
-    if (!user?.tenantId) return;
+  const handleCreateRetailer = async (data: { name: string; phone: string; address: string; areaId: string; zipcodes: string[] }) => {
+    const currentTenantId = getCurrentTenantId();
+    if (!currentTenantId) {
+      setError('No tenant selected. Please select a tenant to continue.');
+      return;
+    }
     
     try {
-      await retailerService.createRetailer(user.tenantId, data);
+      await retailerService.create({
+        name: data.name,
+        phone: data.phone,
+        address: data.address,
+        areaId: data.areaId,
+        zipcodes: data.zipcodes,
+        active: true,
+        currentOutstanding: 0,
+        totalCollected: 0,
+        totalBilled: 0
+      }, currentTenantId);
+      
       await fetchDashboardData();
       setShowCreateRetailer(false);
     } catch (err: any) {
@@ -511,37 +701,26 @@ const generateActivityLogs = (payments: Payment[], invoices: Invoice[], retailer
     }
   };
 
-  const handleCreateInvoice = async (data: { retailerId: string; issueDate: Date; dueDate?: Date; lineItems: any[] }) => {
-    if (!user?.tenantId) return;
-    
-    try {
-      await invoiceService.createInvoice(user.tenantId, data);
-      await fetchDashboardData();
-      setShowCreateInvoice(false);
-    } catch (err: any) {
-      setError(err.message || 'Failed to create invoice');
-    }
-  };
-
   const handleCreateLineWorker = async (data: { email: string; password: string; displayName?: string; phone?: string; assignedAreas?: string[] }) => {
-    if (!user?.tenantId) return;
+    const currentTenantId = getCurrentTenantId();
+    if (!currentTenantId) return;
     
     try {
-      const assignedZips = data.assignedAreas 
-        ? areas
-            .filter(area => data.assignedAreas!.includes(area.id))
-            .flatMap(area => area.zipcodes)
-        : [];
-      
-      await userService.createUserWithAuth(user.tenantId, {
+      const userData: any = {
         email: data.email,
         password: data.password,
-        displayName: data.displayName,
+        displayName: data.displayName || data.email,
         phone: data.phone,
-        roles: ['LINE_WORKER'],
-        assignedAreas: data.assignedAreas,
-        assignedZips: assignedZips
-      });
+        roles: ['LINE_WORKER']
+      };
+      
+      // Only include assignedAreas if it has values
+      if (data.assignedAreas && data.assignedAreas.length > 0) {
+        userData.assignedAreas = data.assignedAreas;
+      }
+      
+      await userService.createUserWithAuth(currentTenantId, userData);
+      
       await fetchDashboardData();
       setShowCreateLineWorker(false);
     } catch (err: any) {
@@ -549,64 +728,114 @@ const generateActivityLogs = (payments: Payment[], invoices: Invoice[], retailer
     }
   };
 
+  const handleToggleArea = (areaId: string) => {
+    const area = areas.find(a => a.id === areaId);
+    if (area) {
+      setEditingArea(area);
+    }
+  };
+
   const handleDeleteArea = async (areaId: string) => {
-    if (!user?.tenantId) return;
+    const currentTenantId = getCurrentTenantId();
+    if (!currentTenantId) return;
     
-    try {
-      await areaService.deleteArea(user.tenantId, areaId);
-      await fetchDashboardData();
-    } catch (err: any) {
-      setError(err.message || 'Failed to delete area');
+    if (confirm('Are you sure you want to delete this area? This will affect all retailers in this area.')) {
+      try {
+        await areaService.delete(areaId, currentTenantId);
+        await fetchDashboardData();
+      } catch (err: any) {
+        setError(err.message || 'Failed to delete area');
+      }
     }
   };
 
   const handleDeleteRetailer = async (retailerId: string) => {
-    if (!user?.tenantId) return;
+    const currentTenantId = getCurrentTenantId();
+    if (!currentTenantId) return;
     
-    try {
-      await retailerService.deleteRetailer(user.tenantId, retailerId);
-      await fetchDashboardData();
-    } catch (err: any) {
-      setError(err.message || 'Failed to delete retailer');
+    if (confirm('Are you sure you want to delete this retailer? This action cannot be undone.')) {
+      try {
+        await retailerService.delete(retailerId, currentTenantId);
+        await fetchDashboardData();
+      } catch (err: any) {
+        setError(err.message || 'Failed to delete retailer');
+      }
     }
   };
 
   const handleDeleteLineWorker = async (workerId: string) => {
-    if (!user?.tenantId) return;
+    const currentTenantId = getCurrentTenantId();
+    if (!currentTenantId) return;
     
-    try {
-      await userService.update(workerId, { active: false }, user.tenantId);
-      await fetchDashboardData();
-    } catch (err: any) {
-      setError(err.message || 'Failed to delete line worker');
+    if (confirm('Are you sure you want to delete this line worker? This action cannot be undone.')) {
+      try {
+        await userService.delete(workerId, currentTenantId);
+        await fetchDashboardData();
+      } catch (err: any) {
+        setError(err.message || 'Failed to delete line worker');
+      }
     }
   };
 
-  const handleEditLineWorker = (worker: User) => {
-    setEditingLineWorker(worker);
-    setEditingSelectedAreas(worker.assignedAreas || []);
-    setEditingActiveStatus(worker.active);
-    setShowEditLineWorkerDialog(true);
-  };
-
-  const handleUpdateLineWorker = async (data: { active: boolean; displayName?: string; phone?: string }) => {
-    if (!user?.tenantId || !editingLineWorker) return;
+  const handleToggleLineWorkerStatus = async (workerId: string, currentStatus: boolean) => {
+    const currentTenantId = getCurrentTenantId();
+    if (!currentTenantId) return;
     
     try {
-      const assignedZips = editingSelectedAreas.length > 0
-        ? areas
-            .filter(area => editingSelectedAreas.includes(area.id))
-            .flatMap(area => area.zipcodes)
-        : [];
+      await userService.update(workerId, {
+        active: !currentStatus
+      }, currentTenantId);
+      await fetchDashboardData();
+    } catch (err: any) {
+      setError(err.message || 'Failed to update line worker status');
+    }
+  };
+
+  const handleUpdateLineWorker = async (data: { active?: boolean; displayName?: string; phone?: string }) => {
+    const currentTenantId = getCurrentTenantId();
+    if (!currentTenantId || !editingLineWorker) return;
+    
+    // Check for area conflicts
+    const areaConflicts = editingSelectedAreas.filter(areaId => 
+      isAreaAssignedToOtherWorker(areaId, editingLineWorker.id)
+    );
+    
+    if (areaConflicts.length > 0) {
+      const conflictAreas = areaConflicts.map(areaId => {
+        const area = areas.find(a => a.id === areaId);
+        const worker = getAssignedWorkerForArea(areaId);
+        return `${area?.name || 'Unknown'} (assigned to ${worker?.displayName || 'another worker'})`;
+      }).join(', ');
       
-      await userService.update(editingLineWorker.id, {
-        displayName: data.displayName || editingLineWorker.displayName,
-        phone: data.phone || editingLineWorker.phone,
+      setError(`Cannot save: The following areas are already assigned to other workers: ${conflictAreas}`);
+      return;
+    }
+    
+    try {
+      const updateData: any = {
         active: data.active,
-        assignedAreas: editingSelectedAreas,
-        assignedZips: assignedZips
+        displayName: data.displayName,
+        phone: data.phone
+      };
+      
+      // Handle assignedAreas - include if has values, explicitly delete if empty
+      if (editingSelectedAreas.length > 0) {
+        updateData.assignedAreas = editingSelectedAreas;
+      } else if (editingLineWorker.assignedAreas && editingLineWorker.assignedAreas.length > 0) {
+        // If worker currently has areas but we're removing them all, delete the field
+        updateData.assignedAreas = null; // This will remove the field from Firestore
+      }
+      
+      console.log('🔧 Updating line worker:', {
+        workerId: editingLineWorker.id,
+        updateData,
+        currentAssignedAreas: editingLineWorker.assignedAreas,
+        newSelectedAreas: editingSelectedAreas
       });
       
+      await userService.update(editingLineWorker.id, updateData, currentTenantId);
+      
+      console.log('✅ Line worker updated, fetching fresh data...');
       await fetchDashboardData();
       setShowEditLineWorkerDialog(false);
       setEditingLineWorker(null);
@@ -617,21 +846,75 @@ const generateActivityLogs = (payments: Payment[], invoices: Invoice[], retailer
     }
   };
 
-  const handleToggleLineWorkerStatus = async (workerId: string, currentStatus: boolean) => {
-    if (!user?.tenantId) return;
-    
-    try {
-      await userService.update(workerId, { active: !currentStatus }, user.tenantId);
-      await fetchDashboardData();
-    } catch (err: any) {
-      setError(err.message || 'Failed to update line worker status');
-    }
+  // Utility functions
+  const getRetailerName = (retailerId: string) => {
+    return retailers.find(r => r.id === retailerId)?.name || 'Unknown';
   };
 
-  const handleToggleArea = (areaId: string) => {
-    const area = areas.find(a => a.id === areaId);
-    if (area) {
-      setEditingArea(area);
+  const getLineWorkerName = (workerId: string) => {
+    return lineWorkers.find(w => w.id === workerId)?.displayName || 'Unknown';
+  };
+
+  // Invoice Creation Helper Functions
+  const generateSystemInvoiceId = (userInvoiceNumber: string): string => {
+    const timestamp = Date.now();
+    const random = Math.random().toString(36).substr(2, 6);
+    return `INV-${timestamp}-${random}-${userInvoiceNumber}`;
+  };
+
+  // New invoice creation handler
+  const handleCreateInvoice = async (formData: any) => {
+    const currentTenantId = getCurrentTenantId();
+    if (!currentTenantId) return;
+    
+    setCreatingInvoice(true);
+    
+    try {
+      // Calculate totals
+      const subtotal = formData.lineItems.reduce((sum: number, item: any) => sum + (item.qty * item.unitPrice), 0);
+      const gstAmount = formData.lineItems.reduce((sum: number, item: any) => {
+        const gstPercent = item.gstPercent || 0;
+        return sum + (item.qty * item.unitPrice * gstPercent / 100);
+      }, 0);
+      const totalAmount = subtotal + gstAmount;
+      
+      // Generate system invoice ID
+      const systemInvoiceId = generateSystemInvoiceId(formData.invoiceNumber);
+      
+      // Create invoice data
+      const invoiceData = {
+        retailerId: formData.retailerId,
+        invoiceNumber: systemInvoiceId, // Use system ID as the primary invoice number
+        userInvoiceNumber: formData.invoiceNumber, // Store user input separately
+        issueDate: formData.issueDate,
+        dueDate: formData.dueDate,
+        subtotal,
+        gstAmount,
+        totalAmount,
+        outstandingAmount: totalAmount,
+        status: 'PENDING' as const,
+        lineItems: formData.lineItems.filter((item: any) => item.name.trim()),
+        version: 1,
+        attachments: []
+      };
+      
+      // Create invoice
+      const invoiceId = await invoiceService.createInvoice(user.tenantId, invoiceData);
+      
+      // Refresh data
+      await fetchDashboardData();
+      
+      // Close dialog
+      setShowCreateInvoice(false);
+      
+      // Show success message
+      alert(`Invoice created successfully! System ID: ${systemInvoiceId}`);
+      
+    } catch (error: any) {
+      console.error('Error creating invoice:', error);
+      alert(`Failed to create invoice: ${error.message}`);
+    } finally {
+      setCreatingInvoice(false);
     }
   };
 
@@ -709,6 +992,35 @@ const generateActivityLogs = (payments: Payment[], invoices: Invoice[], retailer
   // Overview Component
   const Overview = () => (
     <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">Dashboard Overview</h2>
+          <p className="text-gray-600">Welcome back! Here's what's happening with your business.</p>
+        </div>
+        <div className="flex space-x-2">
+          {/* Test Notification Button - Temporary for debugging */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={addTestNotification}
+            className="text-xs"
+          >
+            Test Notification
+          </Button>
+          <Button
+            variant="outline"
+            onClick={handleManualRefresh}
+            disabled={refreshLoading}
+          >
+            {refreshLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4" />
+            )}
+            <span className="sr-only">Refresh</span>
+          </Button>
+        </div>
+      </div>
       <StatsCards />
       
       {/* Recent Activity */}
@@ -719,27 +1031,48 @@ const generateActivityLogs = (payments: Payment[], invoices: Invoice[], retailer
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {activityLogs.slice(0, 5).map((log) => (
-              <div key={log.id} className="flex items-center space-x-4 p-3 border rounded-lg">
-                <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-                  {log.type === 'PAYMENT' && <DollarSign className="h-5 w-5 text-blue-600" />}
-                  {log.type === 'INVOICE' && <FileText className="h-5 w-5 text-blue-600" />}
-                  {log.type === 'RETAILER' && <Store className="h-5 w-5 text-blue-600" />}
-                  {log.type === 'LINEWORKER' && <Users className="h-5 w-5 text-blue-600" />}
-                </div>
-                <div className="flex-1">
-                  <div className="font-medium">{log.description}</div>
-                  <div className="text-sm text-gray-500">
-                    {log.actorName} • {formatTimestamp(log.timestamp)}
+            {refreshLoading ? (
+              <>
+                {[...Array(5)].map((_, index) => (
+                  <div key={index} className="flex items-center space-x-4 p-3 border rounded-lg">
+                    <Skeleton className="w-10 h-10 rounded-full animate-pulse" />
+                    <div className="flex-1 space-y-2">
+                      <Skeleton className="h-4 w-48 animate-pulse" />
+                      <Skeleton className="h-3 w-32 animate-pulse" />
+                    </div>
+                    <Skeleton className="h-4 w-16 animate-pulse" />
                   </div>
-                </div>
-                {log.amount && (
-                  <div className="text-right">
-                    <div className="font-medium text-green-600">{formatCurrency(log.amount)}</div>
+                ))}
+              </>
+            ) : activityLogs.length > 0 ? (
+              activityLogs.slice(0, 5).map((log) => (
+                <div key={log.id} className="flex items-center space-x-4 p-3 border rounded-lg">
+                  <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                    {log.type === 'PAYMENT' && <DollarSign className="h-5 w-5 text-blue-600" />}
+                    {log.type === 'INVOICE' && <FileText className="h-5 w-5 text-blue-600" />}
+                    {log.type === 'RETAILER' && <Store className="h-5 w-5 text-blue-600" />}
+                    {log.type === 'LINEWORKER' && <Users className="h-5 w-5 text-blue-600" />}
                   </div>
-                )}
+                  <div className="flex-1">
+                    <div className="font-medium">{log.description}</div>
+                    <div className="text-sm text-gray-500">
+                      {log.actorName} • {formatTimestamp(log.timestamp)}
+                    </div>
+                  </div>
+                  {log.amount && (
+                    <div className="text-right">
+                      <div className="font-medium text-green-600">{formatCurrency(log.amount)}</div>
+                    </div>
+                  )}
+                </div>
+              ))
+            ) : (
+              <div className="text-center py-8">
+                <Clock className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-gray-900 mb-2">No recent activities</h3>
+                <p className="text-gray-500">There have been no payments or invoice activities in the last 7 days.</p>
               </div>
-            ))}
+            )}
           </div>
         </CardContent>
       </Card>
@@ -754,26 +1087,40 @@ const generateActivityLogs = (payments: Payment[], invoices: Invoice[], retailer
           <h2 className="text-2xl font-bold text-gray-900">Areas Management</h2>
           <p className="text-gray-600">Manage your service areas and zip codes</p>
         </div>
-        <Dialog open={showCreateArea} onOpenChange={setShowCreateArea}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="h-4 w-4 mr-2" />
-              Create Area
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-md">
-            <DialogHeader>
-              <DialogTitle>Create New Area</DialogTitle>
-              <DialogDescription>
-                Add a new service area with zip codes
-              </DialogDescription>
-            </DialogHeader>
-            <CreateAreaForm 
-              onSubmit={handleCreateArea}
-              onCancel={() => setShowCreateArea(false)}
-            />
-          </DialogContent>
-        </Dialog>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={handleManualRefresh}
+            disabled={refreshLoading}
+          >
+            {refreshLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4" />
+            )}
+            <span className="sr-only">Refresh</span>
+          </Button>
+          <Dialog open={showCreateArea} onOpenChange={setShowCreateArea}>
+            <DialogTrigger asChild>
+              <Button>
+                <Plus className="h-4 w-4 mr-2" />
+                Create Area
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle>Create New Area</DialogTitle>
+                <DialogDescription>
+                  Add a new service area with zip codes
+                </DialogDescription>
+              </DialogHeader>
+              <CreateAreaForm 
+                onSubmit={handleCreateArea}
+                onCancel={() => setShowCreateArea(false)}
+              />
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
 
       <Card>
@@ -783,39 +1130,59 @@ const generateActivityLogs = (payments: Payment[], invoices: Invoice[], retailer
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {areas.map((area) => (
-              <div key={area.id} className="flex items-center justify-between p-4 border rounded-lg">
-                <div className="flex items-center space-x-4">
-                  <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-                    <MapPin className="h-5 w-5 text-blue-600" />
-                  </div>
-                  <div>
-                    <div className="font-medium">{area.name}</div>
-                    <div className="text-sm text-gray-500">
-                      {area.zipcodes.length} zip codes
+            {refreshLoading ? (
+              <>
+                {[...Array(5)].map((_, index) => (
+                  <div key={index} className="flex items-center justify-between p-4 border rounded-lg">
+                    <div className="flex items-center space-x-4">
+                      <Skeleton className="w-10 h-10 rounded-full animate-pulse" />
+                      <div className="space-y-2">
+                        <Skeleton className="h-4 w-32 animate-pulse" />
+                        <Skeleton className="h-3 w-24 animate-pulse" />
+                      </div>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <Skeleton className="h-8 w-16 animate-pulse" />
+                      <Skeleton className="h-8 w-16 animate-pulse" />
                     </div>
                   </div>
+                ))}
+              </>
+            ) : (
+              areas.map((area) => (
+                <div key={area.id} className="flex items-center justify-between p-4 border rounded-lg">
+                  <div className="flex items-center space-x-4">
+                    <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                      <MapPin className="h-5 w-5 text-blue-600" />
+                    </div>
+                    <div>
+                      <div className="font-medium">{area.name}</div>
+                      <div className="text-sm text-gray-500">
+                        {area.zipcodes.length} zip codes
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleToggleArea(area.id)}
+                    >
+                      <Edit className="h-4 w-4 mr-1" />
+                      Edit
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleDeleteArea(area.id)}
+                    >
+                      <Trash2 className="h-4 w-4 mr-1" />
+                      Delete
+                    </Button>
+                  </div>
                 </div>
-                <div className="flex items-center space-x-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleToggleArea(area.id)}
-                  >
-                    <Edit className="h-4 w-4 mr-1" />
-                    Edit
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleDeleteArea(area.id)}
-                  >
-                    <Trash2 className="h-4 w-4 mr-1" />
-                    Delete
-                  </Button>
-                </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </CardContent>
       </Card>
@@ -833,23 +1200,22 @@ const generateActivityLogs = (payments: Payment[], invoices: Invoice[], retailer
             {editingArea && (
               <CreateAreaForm 
                 onSubmit={async (data) => {
-                  if (!user?.tenantId) return;
+                  const currentTenantId = getCurrentTenantId();
+                  if (!currentTenantId) return;
                   
                   try {
                     await areaService.update(editingArea.id, {
                       name: data.name,
                       zipcodes: data.zipcodes
-                    }, user.tenantId);
+                    }, currentTenantId);
                     await fetchDashboardData();
                     setEditingArea(null);
                   } catch (err: any) {
                     setError(err.message || 'Failed to update area');
                   }
                 }}
-                initialData={{
-                  name: editingArea.name,
-                  zipcodes: editingArea.zipcodes
-                }}
+                onCancel={() => setEditingArea(null)}
+                initialData={editingArea}
               />
             )}
           </DialogContent>
@@ -866,27 +1232,40 @@ const generateActivityLogs = (payments: Payment[], invoices: Invoice[], retailer
           <h2 className="text-2xl font-bold text-gray-900">Retailers Management</h2>
           <p className="text-gray-600">Manage your retailer network</p>
         </div>
-        <Dialog open={showCreateRetailer} onOpenChange={setShowCreateRetailer}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="h-4 w-4 mr-2" />
-              Create Retailer
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-md">
-            <DialogHeader>
-              <DialogTitle>Create New Retailer</DialogTitle>
-              <DialogDescription>
-                Add a new retailer to your network
-              </DialogDescription>
-            </DialogHeader>
-            <CreateRetailerForm 
-              onSubmit={handleCreateRetailer}
-              areas={areas}
-              onCancel={() => setShowCreateRetailer(false)}
-            />
-          </DialogContent>
-        </Dialog>
+        <div className="flex gap-2">
+          <Button
+            onClick={handleManualRefresh}
+            disabled={refreshLoading}
+          >
+            {refreshLoading ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4 mr-2" />
+            )}
+            Refresh
+          </Button>
+          <Dialog open={showCreateRetailer} onOpenChange={setShowCreateRetailer}>
+            <DialogTrigger asChild>
+              <Button>
+                <Plus className="h-4 w-4 mr-2" />
+                Create Retailer
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle>Create New Retailer</DialogTitle>
+                <DialogDescription>
+                  Add a new retailer to your network
+                </DialogDescription>
+              </DialogHeader>
+              <CreateRetailerForm 
+                onSubmit={handleCreateRetailer}
+                areas={areas}
+                onCancel={() => setShowCreateRetailer(false)}
+              />
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
 
       <Card>
@@ -895,58 +1274,78 @@ const generateActivityLogs = (payments: Payment[], invoices: Invoice[], retailer
           <CardDescription>Manage your retailer network</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Retailer</TableHead>
-                  <TableHead>Area</TableHead>
-                  <TableHead>Phone</TableHead>
-                  <TableHead>Outstanding</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {retailers.map((retailer) => (
-                  <TableRow key={retailer.id}>
-                    <TableCell>
-                      <div className="font-medium">{retailer.name}</div>
-                      <div className="text-sm text-gray-500">{retailer.address}</div>
-                    </TableCell>
-                    <TableCell>
-                      {areas.find(a => a.id === retailer.areaId)?.name || 'Unassigned'}
-                    </TableCell>
-                    <TableCell>{retailer.phone}</TableCell>
-                    <TableCell>
-                      <div className="text-right">
-                        <div className="font-medium">{formatCurrency(retailer.currentOutstanding)}</div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center space-x-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setEditingRetailer(retailer)}
-                        >
-                          <Edit className="h-4 w-4 mr-1" />
-                          Edit
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleDeleteRetailer(retailer.id)}
-                        >
-                          <Trash2 className="h-4 w-4 mr-1" />
-                          Delete
-                        </Button>
-                      </div>
-                    </TableCell>
+          {refreshLoading ? (
+            <div className="space-y-4">
+              {[...Array(5)].map((_, index) => (
+                <div key={index} className="flex items-center space-x-4">
+                  <div className="space-y-2 flex-1">
+                    <Skeleton className="h-4 w-48 animate-pulse" />
+                    <Skeleton className="h-3 w-32 animate-pulse" />
+                  </div>
+                  <Skeleton className="h-4 w-24 animate-pulse" />
+                  <Skeleton className="h-4 w-20 animate-pulse" />
+                  <Skeleton className="h-4 w-16 animate-pulse" />
+                  <div className="flex space-x-2">
+                    <Skeleton className="h-8 w-16 animate-pulse" />
+                    <Skeleton className="h-8 w-16 animate-pulse" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Retailer</TableHead>
+                    <TableHead>Area</TableHead>
+                    <TableHead>Phone</TableHead>
+                    <TableHead>Outstanding</TableHead>
+                    <TableHead>Actions</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+                </TableHeader>
+                <TableBody>
+                  {retailers.map((retailer) => (
+                    <TableRow key={retailer.id}>
+                      <TableCell>
+                        <div className="font-medium">{retailer.name}</div>
+                        <div className="text-sm text-gray-500">{retailer.address}</div>
+                      </TableCell>
+                      <TableCell>
+                        {areas.find(a => a.id === retailer.areaId)?.name || 'Unassigned'}
+                      </TableCell>
+                      <TableCell>{retailer.phone}</TableCell>
+                      <TableCell>
+                        <div className="text-right">
+                          <div className="font-medium">{formatCurrency(retailer.currentOutstanding)}</div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center space-x-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setEditingRetailer(retailer)}
+                          >
+                            <Edit className="h-4 w-4 mr-1" />
+                            Edit
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleDeleteRetailer(retailer.id)}
+                          >
+                            <Trash2 className="h-4 w-4 mr-1" />
+                            Delete
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -963,7 +1362,8 @@ const generateActivityLogs = (payments: Payment[], invoices: Invoice[], retailer
             {editingRetailer && (
               <CreateRetailerForm 
                 onSubmit={async (data) => {
-                  if (!user?.tenantId) return;
+                  const currentTenantId = getCurrentTenantId();
+                  if (!currentTenantId) return;
                   
                   try {
                     await retailerService.update(editingRetailer.id, {
@@ -972,7 +1372,7 @@ const generateActivityLogs = (payments: Payment[], invoices: Invoice[], retailer
                       address: data.address,
                       areaId: data.areaId,
                       zipcodes: data.zipcodes
-                    }, user.tenantId);
+                    }, currentTenantId);
                     await fetchDashboardData();
                     setEditingRetailer(null);
                   } catch (err: any) {
@@ -980,13 +1380,8 @@ const generateActivityLogs = (payments: Payment[], invoices: Invoice[], retailer
                   }
                 }}
                 areas={areas}
-                initialData={{
-                  name: editingRetailer.name,
-                  phone: editingRetailer.phone,
-                  address: editingRetailer.address || '',
-                  areaId: editingRetailer.areaId || "none",
-                  zipcodes: editingRetailer.zipcodes || []
-                }}
+                onCancel={() => setEditingRetailer(null)}
+                initialData={editingRetailer}
               />
             )}
           </DialogContent>
@@ -1003,26 +1398,43 @@ const generateActivityLogs = (payments: Payment[], invoices: Invoice[], retailer
           <h2 className="text-2xl font-bold text-gray-900">Invoices Management</h2>
           <p className="text-gray-600">Manage all invoices in your system</p>
         </div>
-        <Dialog open={showCreateInvoice} onOpenChange={setShowCreateInvoice}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="h-4 w-4 mr-2" />
-              Create Invoice
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-2xl">
-            <DialogHeader>
-              <DialogTitle>Create New Invoice</DialogTitle>
-              <DialogDescription>
-                Generate a new invoice for a retailer
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4">
-              <p className="text-gray-500">Invoice creation form will be implemented here.</p>
-              <Button onClick={() => setShowCreateInvoice(false)}>Cancel</Button>
-            </div>
-          </DialogContent>
-        </Dialog>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={handleManualRefresh}
+            disabled={refreshLoading}
+          >
+            {refreshLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4" />
+            )}
+            <span className="sr-only">Refresh</span>
+          </Button>
+          <Dialog open={showCreateInvoice} onOpenChange={setShowCreateInvoice}>
+            <DialogTrigger asChild>
+              <Button>
+                <Plus className="h-4 w-4 mr-2" />
+                Create Invoice
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl">
+              <DialogHeader>
+                <DialogTitle>Create New Invoice</DialogTitle>
+                <DialogDescription>
+                  Generate a new invoice for a retailer
+                </DialogDescription>
+              </DialogHeader>
+              <CreateInvoiceForm 
+                retailers={retailers}
+                onCreateInvoice={handleCreateInvoice}
+                onCancel={() => setShowCreateInvoice(false)}
+                creatingInvoice={creatingInvoice}
+                key="invoice-form" // Add key to prevent remounting
+              />
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
 
       <Card>
@@ -1031,53 +1443,72 @@ const generateActivityLogs = (payments: Payment[], invoices: Invoice[], retailer
           <CardDescription>Manage all invoices in your system</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Invoice #</TableHead>
-                  <TableHead>Retailer</TableHead>
-                  <TableHead>Issue Date</TableHead>
-                  <TableHead>Due Date</TableHead>
-                  <TableHead>Amount</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {invoices.map((invoice) => (
-                  <TableRow key={invoice.id}>
-                    <TableCell>
-                      <div className="font-medium">{invoice.invoiceNumber}</div>
-                    </TableCell>
-                    <TableCell>{getRetailerName(invoice.retailerId)}</TableCell>
-                    <TableCell>{formatTimestamp(invoice.issueDate)}</TableCell>
-                    <TableCell>{formatTimestamp(invoice.dueDate)}</TableCell>
-                    <TableCell>
-                      <div className="text-right">
-                        <div className="font-medium">{formatCurrency(invoice.totalAmount)}</div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge className={
-                        invoice.status === 'PAID' ? 'bg-green-100 text-green-800' :
-                        invoice.status === 'PARTIAL' ? 'bg-yellow-100 text-yellow-800' :
-                        'bg-red-100 text-red-800'
-                      }>
-                        {invoice.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Button variant="outline" size="sm" onClick={() => setViewingInvoice(invoice)}>
-                        <Eye className="h-4 w-4 mr-1" />
-                        View
-                      </Button>
-                    </TableCell>
+          {refreshLoading ? (
+            <div className="space-y-4">
+              {[...Array(5)].map((_, index) => (
+                <div key={index} className="flex items-center space-x-4">
+                  <Skeleton className="h-4 w-20 animate-pulse" />
+                  <Skeleton className="h-4 w-32 animate-pulse" />
+                  <Skeleton className="h-4 w-24 animate-pulse" />
+                  <Skeleton className="h-4 w-24 animate-pulse" />
+                  <Skeleton className="h-4 w-16 animate-pulse" />
+                  <Skeleton className="h-6 w-16 animate-pulse" />
+                  <Skeleton className="h-8 w-16 animate-pulse" />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Invoice #</TableHead>
+                    <TableHead>Retailer</TableHead>
+                    <TableHead>Issue Date</TableHead>
+                    <TableHead>Due Date</TableHead>
+                    <TableHead>Amount</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Actions</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+                </TableHeader>
+                <TableBody>
+                  {invoices.map((invoice) => (
+                    <TableRow key={invoice.id}>
+                      <TableCell>
+                        <div className="font-medium">{invoice.invoiceNumber}</div>
+                        {invoice.userInvoiceNumber && (
+                          <div className="text-sm text-gray-500">User: {invoice.userInvoiceNumber}</div>
+                        )}
+                      </TableCell>
+                      <TableCell>{getRetailerName(invoice.retailerId)}</TableCell>
+                      <TableCell>{formatTimestamp(invoice.issueDate)}</TableCell>
+                      <TableCell>{formatTimestamp(invoice.dueDate)}</TableCell>
+                      <TableCell>
+                        <div className="text-right">
+                          <div className="font-medium">{formatCurrency(invoice.totalAmount)}</div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge className={
+                          invoice.status === 'PAID' ? 'bg-green-100 text-green-800' :
+                          invoice.status === 'PARTIAL' ? 'bg-yellow-100 text-yellow-800' :
+                          'bg-red-100 text-red-800'
+                        }>
+                          {invoice.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Button variant="outline" size="sm" onClick={() => setViewingInvoice(invoice)}>
+                          <Eye className="h-4 w-4 mr-1" />
+                          View
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
@@ -1091,104 +1522,125 @@ const generateActivityLogs = (payments: Payment[], invoices: Invoice[], retailer
           <h2 className="text-2xl font-bold text-gray-900">Line Workers Management</h2>
           <p className="text-gray-600">Manage your line workers and their assignments</p>
         </div>
-        <Dialog open={showCreateLineWorker} onOpenChange={setShowCreateLineWorker}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="h-4 w-4 mr-2" />
-              Create Line Worker
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-md">
-            <DialogHeader>
-              <DialogTitle>Create New Line Worker</DialogTitle>
-              <DialogDescription>
-                Add a new line worker to your team
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="workerEmail">Email</Label>
-                <Input
-                  id="workerEmail"
-                  type="email"
-                  placeholder="Enter email address"
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="workerPassword">Password</Label>
-                <Input
-                  id="workerPassword"
-                  type="password"
-                  placeholder="Enter password"
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="workerDisplayName">Display Name</Label>
-                <Input
-                  id="workerDisplayName"
-                  placeholder="Enter display name"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="workerPhone">Phone</Label>
-                <Input
-                  id="workerPhone"
-                  type="tel"
-                  placeholder="Enter phone number"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Assigned Areas</Label>
-                <div className="space-y-2 max-h-32 overflow-y-auto">
-                  {areas.map((area) => (
-                    <div key={area.id} className="flex items-center space-x-2">
-                      <input
-                        type="checkbox"
-                        id={`area-${area.id}`}
-                        value={area.id}
-                        className="rounded"
-                      />
-                      <label htmlFor={`area-${area.id}`} className="text-sm">{area.name}</label>
-                    </div>
-                  ))}
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={handleManualRefresh}
+            disabled={refreshLoading}
+          >
+            {refreshLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4" />
+            )}
+            <span className="sr-only">Refresh</span>
+          </Button>
+          <Dialog open={showCreateLineWorker} onOpenChange={setShowCreateLineWorker}>
+            <DialogTrigger asChild>
+              <Button>
+                <Plus className="h-4 w-4 mr-2" />
+                Create Line Worker
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle>Create New Line Worker</DialogTitle>
+                <DialogDescription>
+                  Add a new line worker to your team
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="workerEmail">Email</Label>
+                  <Input
+                    id="workerEmail"
+                    type="email"
+                    placeholder="Enter email address"
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="workerPassword">Password</Label>
+                  <Input
+                    id="workerPassword"
+                    type="password"
+                    placeholder="Enter password"
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="workerDisplayName">Display Name</Label>
+                  <Input
+                    id="workerDisplayName"
+                    placeholder="Enter display name"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="workerPhone">Phone</Label>
+                  <Input
+                    id="workerPhone"
+                    type="tel"
+                    placeholder="Enter phone number"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Assigned Areas</Label>
+                  <p className="text-xs text-gray-500">Optional: Leave all unchecked to create worker without area assignments.</p>
+                  <div className="space-y-2 max-h-32 overflow-y-auto">
+                    {areas.map((area) => (
+                      <div key={area.id} className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          id={`area-${area.id}`}
+                          value={area.id}
+                          className="rounded"
+                        />
+                        <label htmlFor={`area-${area.id}`} className="text-sm">{area.name}</label>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="flex space-x-2">
+                  <Button onClick={() => {
+                    const email = (document.getElementById('workerEmail') as HTMLInputElement)?.value;
+                    const password = (document.getElementById('workerPassword') as HTMLInputElement)?.value;
+                    const displayName = (document.getElementById('workerDisplayName') as HTMLInputElement)?.value;
+                    const phone = (document.getElementById('workerPhone') as HTMLInputElement)?.value;
+                    const assignedAreas: string[] = [];
+                    
+                    areas.forEach(area => {
+                      const checkbox = document.getElementById(`area-${area.id}`) as HTMLInputElement;
+                      if (checkbox?.checked) {
+                        assignedAreas.push(area.id);
+                      }
+                    });
+
+                    if (email && password) {
+                      const createData: any = {
+                        email,
+                        password,
+                        displayName: displayName || undefined,
+                        phone: phone || undefined
+                      };
+                      
+                      // Only include assignedAreas if it has values
+                      if (assignedAreas.length > 0) {
+                        createData.assignedAreas = assignedAreas;
+                      }
+                      
+                      handleCreateLineWorker(createData);
+                    }
+                  }}>
+                    Create Line Worker
+                  </Button>
+                  <Button variant="outline" onClick={() => setShowCreateLineWorker(false)}>
+                    Cancel
+                  </Button>
                 </div>
               </div>
-              <div className="flex space-x-2">
-                <Button onClick={() => {
-                  const email = (document.getElementById('workerEmail') as HTMLInputElement)?.value;
-                  const password = (document.getElementById('workerPassword') as HTMLInputElement)?.value;
-                  const displayName = (document.getElementById('workerDisplayName') as HTMLInputElement)?.value;
-                  const phone = (document.getElementById('workerPhone') as HTMLInputElement)?.value;
-                  const assignedAreas: string[] = [];
-                  
-                  areas.forEach(area => {
-                    const checkbox = document.getElementById(`area-${area.id}`) as HTMLInputElement;
-                    if (checkbox?.checked) {
-                      assignedAreas.push(area.id);
-                    }
-                  });
-
-                  if (email && password) {
-                    handleCreateLineWorker({
-                      email,
-                      password,
-                      displayName: displayName || undefined,
-                      phone: phone || undefined,
-                      assignedAreas: assignedAreas.length > 0 ? assignedAreas : undefined
-                    });
-                  }
-                }}>
-                  Create Line Worker
-                </Button>
-                <Button variant="outline" onClick={() => setShowCreateLineWorker(false)}>
-                  Cancel
-                </Button>
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
 
       <Card>
@@ -1198,60 +1650,88 @@ const generateActivityLogs = (payments: Payment[], invoices: Invoice[], retailer
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {lineWorkers
-              .map((worker) => (
-                <div key={worker.id} className="flex items-center justify-between p-4 border rounded-lg">
-                  <div className="flex items-center space-x-4">
-                    <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-                      <Users className="h-5 w-5 text-blue-600" />
+            {refreshLoading ? (
+              <>
+                {[...Array(5)].map((_, index) => (
+                  <div key={index} className="flex items-center justify-between p-4 border rounded-lg">
+                    <div className="flex items-center space-x-4">
+                      <Skeleton className="w-10 h-10 rounded-full animate-pulse" />
+                      <div className="space-y-2">
+                        <Skeleton className="h-4 w-32 animate-pulse" />
+                        <Skeleton className="h-3 w-48 animate-pulse" />
+                        <Skeleton className="h-3 w-36 animate-pulse" />
+                      </div>
                     </div>
-                    <div>
-                      <div className="font-medium">{worker.displayName}</div>
-                      <div className="text-sm text-gray-500">{worker.email}</div>
-                      <div className="text-sm text-gray-500">{worker.phone}</div>
+                    <div className="flex items-center space-x-4">
+                      <Skeleton className="h-6 w-16 animate-pulse" />
+                      <Skeleton className="h-8 w-20 animate-pulse" />
+                      <Skeleton className="h-8 w-16 animate-pulse" />
+                      <Skeleton className="h-8 w-16 animate-pulse" />
                     </div>
                   </div>
-                  <div className="flex items-center space-x-4">
-                    <Badge className={worker.active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}>
-                      {worker.active ? 'Active' : 'Inactive'}
-                    </Badge>
-                    <Button
-                      variant={worker.active ? "outline" : "default"}
-                      size="sm"
-                      onClick={() => handleToggleLineWorkerStatus(worker.id, worker.active)}
-                      className={worker.active ? "hover:bg-red-50 hover:text-red-600 hover:border-red-200" : "hover:bg-green-50 hover:text-green-600 hover:border-green-200"}
-                    >
-                      {worker.active ? (
-                        <>
-                          <XCircle className="h-4 w-4 mr-1" />
-                          Deactivate
-                        </>
-                      ) : (
-                        <>
-                          <CheckCircle className="h-4 w-4 mr-1" />
-                          Activate
-                        </>
-                      )}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleEditLineWorker(worker)}
-                    >
-                      <Edit className="h-4 w-4 mr-1" />
-                      Edit
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleDeleteLineWorker(worker.id)}
-                    >
-                      <Trash2 className="h-4 w-4 mr-1" />
-                      Delete
-                    </Button>
+                ))}
+              </>
+            ) : (
+              lineWorkers
+                .map((worker) => (
+                  <div key={worker.id} className="flex items-center justify-between p-4 border rounded-lg">
+                    <div className="flex items-center space-x-4">
+                      <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                        <Users className="h-5 w-5 text-blue-600" />
+                      </div>
+                      <div>
+                        <div className="font-medium">{worker.displayName}</div>
+                        <div className="text-sm text-gray-500">{worker.email}</div>
+                        <div className="text-sm text-gray-500">{worker.phone}</div>
+                      </div>
+                    </div>
+                    <div className="flex items-center space-x-4">
+                      <Badge className={worker.active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}>
+                        {worker.active ? 'Active' : 'Inactive'}
+                      </Badge>
+                      <Button
+                        variant={worker.active ? "outline" : "default"}
+                        size="sm"
+                        onClick={() => handleToggleLineWorkerStatus(worker.id, worker.active)}
+                        className={worker.active ? "hover:bg-red-50 hover:text-red-600 hover:border-red-200" : "hover:bg-green-50 hover:text-green-600 hover:border-green-200"}
+                      >
+                        {worker.active ? (
+                          <>
+                            <XCircle className="h-4 w-4 mr-1" />
+                            Deactivate
+                          </>
+                        ) : (
+                          <>
+                            <CheckCircle className="h-4 w-4 mr-1" />
+                            Activate
+                          </>
+                        )}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setEditingLineWorker(worker);
+                          setEditingSelectedAreas(worker.assignedAreas || []);
+                          setEditingActiveStatus(worker.active);
+                          setShowEditLineWorkerDialog(true);
+                        }}
+                      >
+                        <Edit className="h-4 w-4 mr-1" />
+                        Edit
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleDeleteLineWorker(worker.id)}
+                      >
+                        <Trash2 className="h-4 w-4 mr-1" />
+                        Delete
+                      </Button>
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))
+            )}
           </div>
         </CardContent>
       </Card>
@@ -1286,15 +1766,20 @@ const generateActivityLogs = (payments: Payment[], invoices: Invoice[], retailer
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Retailers</SelectItem>
-              {retailers.map((retailer) => (
-                <SelectItem key={retailer.id} value={retailer.id}>
-                  {retailer.name}
-                </SelectItem>
+              {retailers.map(retailer => (
+                <SelectItem key={retailer.id} value={retailer.id}>{retailer.name}</SelectItem>
               ))}
             </SelectContent>
           </Select>
-          <Button onClick={fetchDashboardData}>
-            <RefreshCw className="h-4 w-4 mr-2" />
+          <Button
+            onClick={handleManualRefresh}
+            disabled={refreshLoading}
+          >
+            {refreshLoading ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4 mr-2" />
+            )}
             Refresh
           </Button>
         </div>
@@ -1307,51 +1792,67 @@ const generateActivityLogs = (payments: Payment[], invoices: Invoice[], retailer
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Retailer</TableHead>
-                  <TableHead>Line Worker</TableHead>
-                  <TableHead>Amount</TableHead>
-                  <TableHead>Method</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {payments.map((payment) => (
-                  <TableRow key={payment.id}>
-                    <TableCell>{formatTimestampWithTime(payment.createdAt)}</TableCell>
-                    <TableCell>{getRetailerName(payment.retailerId)}</TableCell>
-                    <TableCell>{getLineWorkerName(payment.lineWorkerId)}</TableCell>
-                    <TableCell>
-                      <div className="text-right">
-                        <div className="font-medium">{formatCurrency(payment.totalPaid)}</div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{payment.method}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge className={
-                        payment.state === 'COMPLETED' ? 'bg-green-100 text-green-800' :
-                        payment.state === 'INITIATED' ? 'bg-yellow-100 text-yellow-800' :
-                        'bg-red-100 text-red-800'
-                      }>
-                        {payment.state}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Button variant="outline" size="sm" onClick={() => setViewingPayment(payment)}>
-                        <Eye className="h-4 w-4 mr-1" />
-                        View
-                      </Button>
-                    </TableCell>
-                  </TableRow>
+            {refreshLoading ? (
+              <div className="space-y-4">
+                {[...Array(5)].map((_, index) => (
+                  <div key={index} className="flex items-center space-x-4">
+                    <Skeleton className="h-4 w-24 animate-pulse" />
+                    <Skeleton className="h-4 w-32 animate-pulse" />
+                    <Skeleton className="h-4 w-28 animate-pulse" />
+                    <Skeleton className="h-4 w-16 animate-pulse" />
+                    <Skeleton className="h-4 w-20 animate-pulse" />
+                    <Skeleton className="h-6 w-16 animate-pulse" />
+                    <Skeleton className="h-8 w-16 animate-pulse" />
+                  </div>
                 ))}
-              </TableBody>
-            </Table>
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Retailer</TableHead>
+                    <TableHead>Line Worker</TableHead>
+                    <TableHead>Amount</TableHead>
+                    <TableHead>Method</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {payments.map((payment) => (
+                    <TableRow key={payment.id}>
+                      <TableCell>{formatTimestampWithTime(payment.createdAt)}</TableCell>
+                      <TableCell>{getRetailerName(payment.retailerId)}</TableCell>
+                      <TableCell>{getLineWorkerName(payment.lineWorkerId)}</TableCell>
+                      <TableCell>
+                        <div className="text-right">
+                          <div className="font-medium">{formatCurrency(payment.totalPaid)}</div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{payment.method}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge className={
+                          payment.state === 'COMPLETED' ? 'bg-green-100 text-green-800' :
+                          payment.state === 'INITIATED' ? 'bg-yellow-100 text-yellow-800' :
+                          'bg-red-100 text-red-800'
+                        }>
+                          {payment.state}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Button variant="outline" size="sm" onClick={() => setViewingPayment(payment)}>
+                          <Eye className="h-4 w-4 mr-1" />
+                          View
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -1361,9 +1862,11 @@ const generateActivityLogs = (payments: Payment[], invoices: Invoice[], retailer
   // Analytics Component
   const AnalyticsComponent = () => (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold text-gray-900">Analytics</h2>
-        <p className="text-gray-600">Comprehensive analytics and insights</p>
+      <div className="flex justify-between items-center">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">Analytics</h2>
+          <p className="text-gray-600">Comprehensive analytics and insights</p>
+        </div>
       </div>
 
       <WholesalerAnalytics 
@@ -1372,6 +1875,8 @@ const generateActivityLogs = (payments: Payment[], invoices: Invoice[], retailer
         lineWorkers={lineWorkers}
         invoices={invoices}
         areas={areas}
+        onRefresh={handleManualRefresh}
+        refreshLoading={refreshLoading}
       />
     </div>
   );
@@ -1523,26 +2028,57 @@ const generateActivityLogs = (payments: Payment[], invoices: Invoice[], retailer
             </div>
             <div className="space-y-2">
               <Label>Assigned Areas</Label>
+              <p className="text-xs text-gray-500">Uncheck areas to remove assignment. Areas can be unassigned from all workers.</p>
               <div className="space-y-2 max-h-32 overflow-y-auto">
-                {areas.map((area) => (
-                  <div key={area.id} className="flex items-center space-x-2">
-                    <input
-                      type="checkbox"
-                      id={`edit-area-${area.id}`}
-                      value={area.id}
-                      defaultChecked={editingSelectedAreas.includes(area.id)}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          setEditingSelectedAreas([...editingSelectedAreas, area.id]);
-                        } else {
-                          setEditingSelectedAreas(editingSelectedAreas.filter(id => id !== area.id));
-                        }
-                      }}
-                      className="rounded"
-                    />
-                    <label htmlFor={`edit-area-${area.id}`} className="text-sm">{area.name}</label>
-                  </div>
-                ))}
+                {areas.map((area) => {
+                  const isAssignedToOther = isAreaAssignedToOtherWorker(area.id, editingLineWorker?.id);
+                  const assignedWorker = getAssignedWorkerForArea(area.id);
+                  const isCurrentlyAssigned = editingSelectedAreas.includes(area.id);
+                  
+                  return (
+                    <div key={area.id} className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        id={`edit-area-${area.id}`}
+                        value={area.id}
+                        defaultChecked={isCurrentlyAssigned}
+                        disabled={isAssignedToOther && !isCurrentlyAssigned}
+                        onChange={(e) => {
+                          console.log('🔄 Area checkbox changed:', {
+                            areaId: area.id,
+                            areaName: area.name,
+                            checked: e.target.checked,
+                            currentSelectedAreas: editingSelectedAreas,
+                            isAssignedToOther,
+                            isCurrentlyAssigned
+                          });
+                          
+                          if (e.target.checked) {
+                            const newSelectedAreas = [...editingSelectedAreas, area.id];
+                            console.log('✅ Adding area to selection:', newSelectedAreas);
+                            setEditingSelectedAreas(newSelectedAreas);
+                          } else {
+                            const newSelectedAreas = editingSelectedAreas.filter(id => id !== area.id);
+                            console.log('❌ Removing area from selection:', newSelectedAreas);
+                            setEditingSelectedAreas(newSelectedAreas);
+                          }
+                        }}
+                        className={`rounded ${isAssignedToOther && !isCurrentlyAssigned ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      />
+                      <label 
+                        htmlFor={`edit-area-${area.id}`} 
+                        className={`text-sm ${isAssignedToOther && !isCurrentlyAssigned ? 'text-gray-400' : ''}`}
+                      >
+                        {area.name}
+                        {isAssignedToOther && !isCurrentlyAssigned && (
+                          <span className="text-xs text-red-500 ml-2">
+                            (Assigned to {assignedWorker?.displayName || 'another worker'})
+                          </span>
+                        )}
+                      </label>
+                    </div>
+                  );
+                })}
               </div>
             </div>
             <div className="flex space-x-2">
@@ -1573,16 +2109,81 @@ const generateActivityLogs = (payments: Payment[], invoices: Invoice[], retailer
     </Dialog>
   );
 
-  if (loading) {
+  const RetailerAssignmentDialog = () => {
+    const currentAssignedWorker = assigningRetailer?.assignedLineWorkerId 
+      ? lineWorkers.find(worker => worker.id === assigningRetailer.assignedLineWorkerId)
+      : null;
+
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading dashboard...</p>
-        </div>
-      </div>
+      <Dialog open={showRetailerAssignment} onOpenChange={setShowRetailerAssignment}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {currentAssignedWorker ? 'Reassign Retailer' : 'Assign Retailer'}
+            </DialogTitle>
+            <DialogDescription>
+              {assigningRetailer ? (
+                <div>
+                  <p>{assigningRetailer.name}</p>
+                  {currentAssignedWorker && (
+                    <p className="text-sm text-gray-600 mt-1">
+                      Currently assigned to: <strong>{currentAssignedWorker.displayName || currentAssignedWorker.email}</strong>
+                    </p>
+                  )}
+                </div>
+              ) : 'Select a retailer to assign'}
+            </DialogDescription>
+          </DialogHeader>
+          {assigningRetailer && (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="lineWorkerSelect">
+                  {currentAssignedWorker ? 'Select New Line Worker' : 'Select Line Worker'}
+                </Label>
+                <Select value={selectedLineWorkerForAssignment} onValueChange={setSelectedLineWorkerForAssignment}>
+                  <SelectTrigger>
+                    <SelectValue placeholder={currentAssignedWorker ? "Choose a new line worker or unassign" : "Choose a line worker"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {currentAssignedWorker && (
+                      <SelectItem value="unassign">Unassign (Remove Assignment)</SelectItem>
+                    )}
+                    {lineWorkers
+                      .filter(worker => worker.active && worker.id !== currentAssignedWorker?.id)
+                      .map(worker => (
+                        <SelectItem key={worker.id} value={worker.id}>
+                          {worker.displayName || worker.email}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex space-x-2">
+                <Button 
+                  onClick={() => handleAssignRetailer(assigningRetailer.id, selectedLineWorkerForAssignment === "unassign" ? null : selectedLineWorkerForAssignment || null)}
+                  disabled={!selectedLineWorkerForAssignment && !currentAssignedWorker}
+                >
+                  {selectedLineWorkerForAssignment === "unassign" ? 'Unassign' : 
+                   selectedLineWorkerForAssignment ? 'Assign' : 
+                   currentAssignedWorker ? 'Keep Current Assignment' : 'Assign'}
+                </Button>
+                <Button variant="outline" onClick={() => {
+                  setShowRetailerAssignment(false);
+                  setAssigningRetailer(null);
+                  setSelectedLineWorkerForAssignment('');
+                  setError(null);
+                }}>
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     );
-  }
+  };
+
+  // Main component return - no global loading state
 
   if (!isWholesalerAdmin) {
     return (
@@ -1669,16 +2270,49 @@ const generateActivityLogs = (payments: Payment[], invoices: Invoice[], retailer
   // Retailer Details Component - Complete detailed logs of retailers
   const RetailerDetails = () => (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold text-gray-900">Retailer Details & Logs</h2>
-        <p className="text-gray-600">Complete detailed logs of all retailers including invoices and payments</p>
+      <div className="flex justify-between items-center">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">Retailer Details & Logs</h2>
+          <p className="text-gray-600">Complete detailed logs of all retailers including invoices and payments</p>
+        </div>
+        <Button
+          onClick={handleManualRefresh}
+          disabled={refreshLoading}
+        >
+          {refreshLoading ? (
+            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+          ) : (
+            <RefreshCw className="h-4 w-4 mr-2" />
+          )}
+          Refresh
+        </Button>
       </div>
 
-      {loading && (
-        <div className="flex items-center justify-center py-8">
-          <Loader2 className="h-8 w-8 animate-spin text-blue-600 mr-3" />
-          <span className="text-gray-600">Loading retailer data...</span>
-        </div>
+      {refreshLoading && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Retailer Details Loading</CardTitle>
+            <CardDescription>Please wait while we fetch the retailer data</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {[...Array(5)].map((_, index) => (
+                <div key={index} className="flex items-center space-x-4 p-4 border rounded-lg">
+                  <Skeleton className="w-10 h-10 rounded-full animate-pulse" />
+                  <div className="flex-1 space-y-2">
+                    <Skeleton className="h-4 w-32 animate-pulse" />
+                    <Skeleton className="h-3 w-48 animate-pulse" />
+                    <Skeleton className="h-3 w-36 animate-pulse" />
+                  </div>
+                  <div className="flex space-x-2">
+                    <Skeleton className="h-8 w-16 animate-pulse" />
+                    <Skeleton className="h-8 w-16 animate-pulse" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       {error && (
@@ -1688,7 +2322,7 @@ const generateActivityLogs = (payments: Payment[], invoices: Invoice[], retailer
         </Alert>
       )}
 
-      {!loading && !error && (
+      {!error && (
         <>
         {/* Filter Controls */}
         <Card>
@@ -1829,23 +2463,39 @@ const generateActivityLogs = (payments: Payment[], invoices: Invoice[], retailer
           {getFilteredRetailers().map(retailer => {
             const retailerInvoices = getFilteredInvoices().filter(inv => inv.retailerId === retailer.id);
             const retailerPayments = getFilteredPayments().filter(pay => pay.retailerId === retailer.id);
-            const assignedLineWorker = lineWorkers.find(worker => 
-              worker.assignedAreas?.includes(retailer.areaId || '') ||
-              (worker.assignedZips && retailer.zipcodes.some(zip => worker.assignedZips?.includes(zip)))
-            );
+            // Check for direct assignment first, then fall back to area-based assignment
+            const assignedLineWorker = retailer.assignedLineWorkerId 
+              ? lineWorkers.find(worker => worker.id === retailer.assignedLineWorkerId)
+              : lineWorkers.find(worker => 
+                  worker.assignedAreas?.includes(retailer.areaId || '') ||
+                  (worker.assignedZips && retailer.zipcodes.some(zip => worker.assignedZips?.includes(zip)))
+                );
 
             return (
               <Card key={retailer.id} className="overflow-hidden">
                 <CardHeader className="bg-gray-50">
                   <div className="flex justify-between items-start">
                     <div>
-                      <CardTitle className="text-lg">{retailer.name}</CardTitle>
+                      <CardTitle className="text-lg flex items-center gap-2">
+                        {retailer.name}
+                        {retailer.assignedLineWorkerId && (
+                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                            <UserIcon className="h-3 w-3 mr-1" />
+                            Directly Assigned
+                          </span>
+                        )}
+                      </CardTitle>
                       <CardDescription className="mt-1">
                         <div className="flex flex-wrap gap-4 text-sm">
                           <span>📞 {retailer.phone}</span>
                           <span>📍 {areas.find(a => a.id === retailer.areaId)?.name || 'Unassigned'}</span>
                           <span>🏷️ {retailer.zipcodes.join(', ')}</span>
-                          <span>👤 {assignedLineWorker?.displayName || 'Unassigned'}</span>
+                          <span className="flex items-center gap-1">
+                            👤 
+                            <span className={retailer.assignedLineWorkerId ? "font-medium text-green-700" : ""}>
+                              {assignedLineWorker?.displayName || 'Unassigned'}
+                            </span>
+                          </span>
                         </div>
                       </CardDescription>
                     </div>
@@ -1854,6 +2504,21 @@ const generateActivityLogs = (payments: Payment[], invoices: Invoice[], retailer
                         {formatCurrency(retailer.currentOutstanding)}
                       </div>
                       <div className="text-sm text-gray-500">Outstanding</div>
+                      <div className="mt-2">
+                        <Button
+                          variant={retailer.assignedLineWorkerId ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => {
+                            setAssigningRetailer(retailer);
+                            setSelectedLineWorkerForAssignment(retailer.assignedLineWorkerId || '');
+                            setShowRetailerAssignment(true);
+                          }}
+                          className="text-xs"
+                        >
+                          <UserIcon className="h-3 w-3 mr-1" />
+                          {retailer.assignedLineWorkerId ? 'Reassign' : 'Assign'}
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 </CardHeader>
@@ -1934,15 +2599,20 @@ const generateActivityLogs = (payments: Payment[], invoices: Invoice[], retailer
                             <TableBody className="divide-y divide-gray-200">
                               {retailerInvoices.map(invoice => (
                                 <TableRow key={invoice.id} className="hover:bg-gray-50">
-                                  <TableCell className="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-900">{invoice.invoiceNumber}</TableCell>
+                                  <TableCell className="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-900">
+                                    {invoice.invoiceNumber}
+                                    {invoice.userInvoiceNumber && (
+                                      <div className="text-xs text-gray-500">User: {invoice.userInvoiceNumber}</div>
+                                    )}
+                                  </TableCell>
                                   <TableCell className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{formatTimestamp(invoice.issueDate)}</TableCell>
                                   <TableCell className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{formatTimestamp(invoice.dueDate)}</TableCell>
                                   <TableCell className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{formatCurrency(invoice.totalAmount)}</TableCell>
                                   <TableCell className="px-4 py-2 whitespace-nowrap">
                                     <Badge className={
                                       invoice.status === 'PAID' ? 'bg-green-100 text-green-800' :
-                                      invoice.status === 'OVERDUE' ? 'bg-red-100 text-red-800' :
-                                      'bg-yellow-100 text-yellow-800'
+                                      invoice.status === 'PARTIAL' ? 'bg-yellow-100 text-yellow-800' :
+                                      'bg-red-100 text-red-800'
                                     }>
                                       {invoice.status}
                                     </Badge>
@@ -1978,7 +2648,7 @@ const generateActivityLogs = (payments: Payment[], invoices: Invoice[], retailer
                             <TableBody className="divide-y divide-gray-200">
                               {retailerPayments.map(payment => (
                                 <TableRow key={payment.id} className="hover:bg-gray-50">
-                                  <TableCell className="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-900">{payment.id.slice(0, 8)}...</TableCell>
+                                  <TableCell className="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-900">{payment.id.substring(0, 8)}</TableCell>
                                   <TableCell className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{formatTimestampWithTime(payment.createdAt)}</TableCell>
                                   <TableCell className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{formatCurrency(payment.totalPaid)}</TableCell>
                                   <TableCell className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{payment.method}</TableCell>
@@ -1986,8 +2656,7 @@ const generateActivityLogs = (payments: Payment[], invoices: Invoice[], retailer
                                     <Badge className={
                                       payment.state === 'COMPLETED' ? 'bg-green-100 text-green-800' :
                                       payment.state === 'INITIATED' ? 'bg-yellow-100 text-yellow-800' :
-                                      payment.state === 'FAILED' ? 'bg-red-100 text-red-800' :
-                                      'bg-blue-100 text-blue-800'
+                                      'bg-red-100 text-red-800'
                                     }>
                                       {payment.state}
                                     </Badge>
@@ -2014,7 +2683,7 @@ const generateActivityLogs = (payments: Payment[], invoices: Invoice[], retailer
         </>
       )}
       
-      {!loading && !error && getFilteredRetailers().length === 0 && (
+      {!error && getFilteredRetailers().length === 0 && (
         <div className="text-center py-12">
           <Store className="h-16 w-16 mx-auto mb-4 text-gray-400" />
           <h3 className="text-lg font-medium text-gray-900 mb-2">No retailers found</h3>
@@ -2051,16 +2720,40 @@ const generateActivityLogs = (payments: Payment[], invoices: Invoice[], retailer
         onLogout={logout}
       />
 
+      {/* Tenant Selector for Super Admin */}
+      {isSuperAdmin && (
+        <div className="bg-white border-b border-gray-200 px-4 lg:px-6 py-3">
+          <div className="max-w-7xl mx-auto flex items-center space-x-4">
+            <label className="text-sm font-medium text-gray-700">Working with Tenant:</label>
+            <Select value={selectedTenant} onValueChange={setSelectedTenant}>
+              <SelectTrigger className="w-64">
+                <SelectValue placeholder="Select a tenant" />
+              </SelectTrigger>
+              <SelectContent>
+                {tenants.map((tenant) => (
+                  <SelectItem key={tenant.id} value={tenant.id}>
+                    {tenant.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {!selectedTenant && (
+              <p className="text-sm text-red-600">Please select a tenant to continue</p>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Main Content */}
       <main className="flex-1 p-4 lg:p-6 overflow-y-auto">
         {error && (
-          <Alert variant="destructive" className="mb-6">
-            <AlertDescription>{error}</AlertDescription>
+          <Alert className="border-red-200 bg-red-50 mb-6">
+            <AlertCircle className="h-4 w-4 text-red-600" />
+            <AlertDescription className="text-red-800">{error}</AlertDescription>
           </Alert>
         )}
 
-        {/* Content based on active navigation */}
-        <div className="space-y-6">
+        <div className="max-w-7xl mx-auto">
           {activeNav === 'overview' && <Overview />}
           {activeNav === 'areas' && <Areas />}
           {activeNav === 'retailers' && <Retailers />}
@@ -2083,78 +2776,39 @@ const generateActivityLogs = (payments: Payment[], invoices: Invoice[], retailer
             {editingArea && (
               <CreateAreaForm 
                 onSubmit={async (data) => {
-                  if (!user?.tenantId) return;
+                  const currentTenantId = getCurrentTenantId();
+                  if (!currentTenantId) return;
                   
                   try {
                     await areaService.update(editingArea.id, {
                       name: data.name,
                       zipcodes: data.zipcodes
-                    }, user.tenantId);
+                    }, currentTenantId);
                     await fetchDashboardData();
                     setEditingArea(null);
                   } catch (err: any) {
                     setError(err.message || 'Failed to update area');
                   }
                 }}
-                initialData={{
-                  name: editingArea.name,
-                  zipcodes: editingArea.zipcodes
-                }}
+                onCancel={() => setEditingArea(null)}
+                initialData={editingArea}
               />
             )}
           </DialogContent>
         </Dialog>
 
-        {/* Edit Retailer Dialog */}
-        <Dialog open={!!editingRetailer} onOpenChange={(open) => !open && setEditingRetailer(null)}>
-          <DialogContent className="max-w-md">
-            <DialogHeader>
-              <DialogTitle>Edit Retailer</DialogTitle>
-              <DialogDescription>
-                Update retailer information
-              </DialogDescription>
-            </DialogHeader>
-            {editingRetailer && (
-              <CreateRetailerForm 
-                onSubmit={async (data) => {
-                  if (!user?.tenantId) return;
-                  
-                  try {
-                    await retailerService.update(editingRetailer.id, {
-                      name: data.name,
-                      phone: data.phone,
-                      address: data.address,
-                      areaId: data.areaId,
-                      zipcodes: data.zipcodes
-                    }, user.tenantId);
-                    await fetchDashboardData();
-                    setEditingRetailer(null);
-                  } catch (err: any) {
-                    setError(err.message || 'Failed to update retailer');
-                  }
-                }}
-                areas={areas}
-                initialData={{
-                  name: editingRetailer.name,
-                  phone: editingRetailer.phone,
-                  address: editingRetailer.address || '',
-                  areaId: editingRetailer.areaId || "none",
-                  zipcodes: editingRetailer.zipcodes || []
-                }}
-              />
-            )}
-          </DialogContent>
-        </Dialog>
-
-        {/* View Invoice Dialog */}
+        {/* Dialog Components */}
         {ViewInvoiceDialog()}
-        
-        {/* View Payment Dialog */}
         {ViewPaymentDialog()}
         
         {/* Edit Line Worker Dialog */}
         {EditLineWorkerDialog()}
+        
+        {/* Retailer Assignment Dialog */}
+        {RetailerAssignmentDialog()}
       </main>
     </div>
   );
-}
+};
+
+export default WholesalerAdminDashboard;

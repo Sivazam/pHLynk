@@ -17,11 +17,11 @@ import {
   deleteProduct 
 } from '@/services/firestore';
 import { Loader2, Plus, Edit, Trash2, LogOut, Package } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
 
 export function Dashboard() {
   const { user, logout } = useAuth();
   const [products, setProducts] = useState<ProductData[]>([]);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [editingProduct, setEditingProduct] = useState<ProductData | null>(null);
@@ -38,7 +38,6 @@ export function Dashboard() {
   }, []);
 
   const fetchProducts = async () => {
-    setLoading(true);
     setError(null);
     
     try {
@@ -46,8 +45,6 @@ export function Dashboard() {
       setProducts(productsData);
     } catch (err: any) {
       setError(err.message || 'Failed to fetch products');
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -123,14 +120,6 @@ export function Dashboard() {
   const handleLogout = async () => {
     await logout();
   };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin" />
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50">

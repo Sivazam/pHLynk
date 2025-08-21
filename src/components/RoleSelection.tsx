@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { RetailerAuth } from '@/components/RetailerAuth';
 import { AuthComponent } from '@/components/auth/AuthComponent';
-import { Store, Users, User, ArrowLeft, Smartphone } from 'lucide-react';
+import { Store, Users, User as UserIcon, ArrowLeft, Smartphone } from 'lucide-react';
 
 interface RoleSelectionProps {
   onRoleSelect: (role: string) => void;
@@ -27,7 +27,7 @@ export function RoleSelection({ onRoleSelect, onBack }: RoleSelectionProps) {
       id: 'LINE_WORKER',
       title: 'Line Worker',
       description: 'Collect payments and manage retailer relationships',
-      icon: User,
+      icon: UserIcon,
       color: 'bg-green-500 hover:bg-green-600'
     },
     {

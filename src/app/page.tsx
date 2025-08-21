@@ -7,7 +7,8 @@ import { SuperAdminDashboard } from '@/components/SuperAdminDashboard';
 import { WholesalerAdminDashboard } from '@/components/WholesalerAdminDashboard';
 import { LineWorkerDashboard } from '@/components/LineWorkerDashboard';
 import { RetailerDashboard } from '@/components/RetailerDashboard';
-import { Loader2 } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { useState, useEffect } from 'react';
 
 export default function Home() {
@@ -25,8 +26,11 @@ export default function Home() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin" />
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading application...</p>
+        </div>
       </div>
     );
   }

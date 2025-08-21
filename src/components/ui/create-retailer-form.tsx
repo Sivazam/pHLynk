@@ -14,10 +14,11 @@ import { Area } from '@/types';
 interface CreateRetailerFormProps {
   onSubmit: (data: { name: string; phone: string; address?: string; areaId?: string; zipcodes: string[] }) => void;
   areas: Area[];
+  onCancel?: () => void;
   initialData?: { name: string; phone: string; address?: string; areaId?: string; zipcodes: string[] };
 }
 
-export function CreateRetailerForm({ onSubmit, areas, initialData }: CreateRetailerFormProps) {
+export function CreateRetailerForm({ onSubmit, areas, onCancel, initialData }: CreateRetailerFormProps) {
   const [name, setName] = useState(initialData?.name || '');
   const [phone, setPhone] = useState(initialData?.phone || '');
   const [address, setAddress] = useState(initialData?.address || '');
@@ -157,6 +158,11 @@ export function CreateRetailerForm({ onSubmit, areas, initialData }: CreateRetai
       </div>
 
       <div className="flex justify-end space-x-2">
+        {onCancel && (
+          <Button type="button" variant="outline" onClick={onCancel}>
+            Cancel
+          </Button>
+        )}
         <Button type="submit">
           {initialData ? 'Update Retailer' : 'Create Retailer'}
         </Button>

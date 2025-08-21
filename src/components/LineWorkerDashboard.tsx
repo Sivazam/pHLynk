@@ -12,6 +12,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { DashboardNavigation, NavItem, NotificationItem } from '@/components/DashboardNavigation';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth, useLineWorker } from '@/contexts/AuthContext';
 import { 
   retailerService, 
@@ -21,9 +22,10 @@ import {
   PaymentInvoiceAllocation,
   Timestamp
 } from '@/services/firestore';
+import { realtimeNotificationService } from '@/services/realtime-notifications';
+import { notificationService } from '@/services/notification-service';
 import { Retailer, Invoice, Payment, Area } from '@/types';
 import { formatTimestamp, formatTimestampWithTime, formatCurrency } from '@/lib/timestamp-utils';
-import { notificationService } from '@/services/notification-service';
 import { 
   Store, 
   DollarSign, 
@@ -46,7 +48,8 @@ import {
   LayoutDashboard,
   CreditCard,
   TrendingUp,
-  Bell
+  Bell,
+  RefreshCw
 } from 'lucide-react';
 
 export function LineWorkerDashboard() {
@@ -56,7 +59,6 @@ export function LineWorkerDashboard() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [areas, setAreas] = useState<Area[]>([]);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showPaymentDialog, setShowPaymentDialog] = useState(false);
   const [selectedRetailer, setSelectedRetailer] = useState<Retailer | null>(null);
@@ -83,6 +85,7 @@ export function LineWorkerDashboard() {
     zips: string[];
     retailers: string[];
   } | null>(null);
+  const [refreshLoading, setRefreshLoading] = useState(false);
 
   // Navigation items
   const navItems: NavItem[] = [
@@ -95,16 +98,39 @@ export function LineWorkerDashboard() {
 
   const [activeNav, setActiveNav] = useState('overview');
 
+  // Helper function to get the current tenant ID
+  const getCurrentTenantId = (): string | null => {
+    return user?.tenantId && user.tenantId !== 'system' ? user.tenantId : null;
+  };
+
   useEffect(() => {
-    if (isLineWorker && user?.tenantId) {
+    const currentTenantId = getCurrentTenantId();
+    if (isLineWorker && user?.uid && currentTenantId) {
       // Check if user has the required assigned data
       if (!user.assignedAreas || user.assignedAreas.length === 0) {
         setError('No areas assigned to your account. Please contact your administrator.');
-        setLoading(false);
         return;
       }
       fetchLineWorkerData();
+      
+      // Start real-time notifications
+      realtimeNotificationService.startListening(
+        user.uid,
+        'LINE_WORKER',
+        currentTenantId,
+        (newNotifications) => {
+          setNotifications(newNotifications);
+          setNotificationCount(newNotifications.filter(n => !n.read).length);
+        }
+      );
     }
+
+    // Cleanup on unmount
+    return () => {
+      if (user?.uid) {
+        realtimeNotificationService.stopListening(user.uid);
+      }
+    };
   }, [isLineWorker, user]);
 
   // Resend OTP timer effect
@@ -212,9 +238,9 @@ export function LineWorkerDashboard() {
   };
 
   const fetchLineWorkerData = async () => {
-    if (!user?.tenantId) return;
+    const currentTenantId = getCurrentTenantId();
+    if (!currentTenantId) return;
     
-    setLoading(true);
     setError(null);
     
     try {
@@ -224,33 +250,50 @@ export function LineWorkerDashboard() {
       
       // Clean up any stuck payments first
       try {
-        await paymentService.cleanupStuckPayments(user.tenantId);
+        await paymentService.cleanupStuckPayments(currentTenantId);
         console.log('✅ Cleaned up stuck payments');
       } catch (cleanupError) {
         console.warn('Warning: Could not clean up stuck payments:', cleanupError);
       }
       
       // Get all retailers first
-      const allRetailers = await retailerService.getAll(user.tenantId);
-      const allInvoices = await invoiceService.getAll(user.tenantId);
-      const allAreas = await areaService.getAll(user.tenantId);
-      const paymentsData = await paymentService.getPaymentsByLineWorker(user.tenantId, user.uid);
+      const allRetailers = await retailerService.getAll(currentTenantId);
+      const allInvoices = await invoiceService.getAll(currentTenantId);
+      const allAreas = await areaService.getAll(currentTenantId);
+      const paymentsData = await paymentService.getPaymentsByLineWorker(currentTenantId, user.uid);
 
       console.log('Total retailers found:', allRetailers.length);
       console.log('Total invoices found:', allInvoices.length);
       console.log('Payments found:', paymentsData.length);
+      
+      // Log each retailer's assignment details for debugging
+      allRetailers.forEach(retailer => {
+        console.log(`Retailer "${retailer.name}" - assignedLineWorkerId: ${retailer.assignedLineWorkerId}, areaId: ${retailer.areaId}`);
+      });
 
-      // Filter retailers by assigned areas
+      // Filter retailers by assigned areas OR direct assignments
       const assignedRetailers = allRetailers.filter(retailer => {
-        // If no areas assigned, can't see any retailers
+        // First check if retailer is directly assigned to this line worker
+        if (retailer.assignedLineWorkerId === user?.uid) {
+          console.log(`✅ Retailer "${retailer.name}" matched by direct assignment to line worker ${user.uid}`);
+          return true;
+        }
+        
+        // If retailer is directly assigned to someone else, exclude it from area-based assignments
+        if (retailer.assignedLineWorkerId && retailer.assignedLineWorkerId !== user?.uid) {
+          console.log(`❌ Retailer "${retailer.name}" excluded - directly assigned to another line worker: ${retailer.assignedLineWorkerId}`);
+          return false;
+        }
+        
+        // If no areas assigned, can't see any area-based retailers
         if (!user?.assignedAreas || user.assignedAreas.length === 0) {
-          console.log('No assigned areas for user');
+          console.log(`❌ Retailer "${retailer.name}" excluded - no assigned areas for user and no direct assignment`);
           return false;
         }
         
         // Check if retailer is in assigned areas (by areaId)
         if (retailer.areaId && user.assignedAreas.includes(retailer.areaId)) {
-          console.log(`Retailer ${retailer.name} matched by areaId: ${retailer.areaId}`);
+          console.log(`✅ Retailer "${retailer.name}" matched by areaId: ${retailer.areaId}`);
           return true;
         }
         
@@ -258,12 +301,12 @@ export function LineWorkerDashboard() {
         if (retailer.zipcodes && retailer.zipcodes.length > 0 && user.assignedZips && user.assignedZips.length > 0) {
           const matchingZips = retailer.zipcodes.filter(zip => user.assignedZips!.includes(zip));
           if (matchingZips.length > 0) {
-            console.log(`Retailer ${retailer.name} matched by zips: ${matchingZips.join(', ')}`);
+            console.log(`✅ Retailer "${retailer.name}" matched by zips: ${matchingZips.join(', ')}`);
             return true;
           }
         }
         
-        console.log(`Retailer ${retailer.name} not matched - areaId: ${retailer.areaId}, zips: ${retailer.zipcodes?.join(', ') || 'none'}`);
+        console.log(`❌ Retailer "${retailer.name}" not matched - areaId: ${retailer.areaId}, zips: ${retailer.zipcodes?.join(', ') || 'none'}, directAssignment: ${retailer.assignedLineWorkerId}`);
         return false;
       });
 
@@ -288,12 +331,26 @@ export function LineWorkerDashboard() {
       try {
         console.log('🔄 Recomputing retailer data for accuracy...');
         for (const retailer of assignedRetailers) {
-          await retailerService.recomputeRetailerData(retailer.id, user.tenantId);
+          await retailerService.recomputeRetailerData(retailer.id, currentTenantId);
         }
         // Refresh retailers after recomputation
-        const updatedRetailers = await retailerService.getAll(user.tenantId);
+        const updatedRetailers = await retailerService.getAll(currentTenantId);
         const updatedAssignedRetailers = updatedRetailers.filter(retailer => {
-          if (!user?.assignedAreas || user.assignedAreas.length === 0) return false;
+          // First check if retailer is directly assigned to this line worker
+          if (retailer.assignedLineWorkerId === user?.uid) {
+            return true;
+          }
+          
+          // If retailer is directly assigned to someone else, exclude it from area-based assignments
+          if (retailer.assignedLineWorkerId && retailer.assignedLineWorkerId !== user?.uid) {
+            return false;
+          }
+          
+          // If no areas assigned, can't see any area-based retailers
+          if (!user?.assignedAreas || user.assignedAreas.length === 0) {
+            return false;
+          }
+          
           if (retailer.areaId && user.assignedAreas.includes(retailer.areaId)) return true;
           if (retailer.zipcodes && retailer.zipcodes.length > 0 && user.assignedZips && user.assignedZips.length > 0) {
             const matchingZips = retailer.zipcodes.filter(zip => user.assignedZips!.includes(zip));
@@ -316,8 +373,20 @@ export function LineWorkerDashboard() {
     } catch (err: any) {
       console.error('Error fetching line worker data:', err);
       setError(err.message || 'Failed to fetch line worker data');
+    }
+  };
+
+  const handleManualRefresh = async () => {
+    const currentTenantId = getCurrentTenantId();
+    if (!currentTenantId) return;
+    
+    setRefreshLoading(true);
+    try {
+      await fetchLineWorkerData();
+    } catch (error) {
+      console.error('Error during manual refresh:', error);
     } finally {
-      setLoading(false);
+      setRefreshLoading(false);
     }
   };
 
@@ -388,12 +457,13 @@ export function LineWorkerDashboard() {
   };
 
   const handleSendOtp = async () => {
-    if (!user?.tenantId || !selectedRetailer) return;
+    const currentTenantId = getCurrentTenantId();
+    if (!currentTenantId || !selectedRetailer) return;
     
     setOtpSending(true);
     try {
       // Create payment first
-      const paymentId = await paymentService.initiatePayment(user.tenantId, {
+      const paymentId = await paymentService.initiatePayment(currentTenantId, {
         retailerId: selectedRetailer.id,
         lineWorkerId: user.uid,
         totalPaid: paymentForm.totalPaid,
@@ -473,7 +543,8 @@ export function LineWorkerDashboard() {
   };
 
   const handleResendOtp = async () => {
-    if (!currentPayment || !user?.tenantId) return;
+    const currentTenantId = getCurrentTenantId();
+    if (!currentPayment || !currentTenantId) return;
     
     setOtpSending(true);
     try {
@@ -695,6 +766,27 @@ export function LineWorkerDashboard() {
 
     return (
       <div className="space-y-6">
+        {/* Header with refresh button */}
+        <div className="flex justify-between items-center">
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900">Overview</h2>
+            <p className="text-gray-600">Your collection summary and performance</p>
+          </div>
+          <Button 
+            onClick={handleManualRefresh} 
+            disabled={refreshLoading}
+            variant="outline"
+            className="flex items-center space-x-2"
+          >
+            {refreshLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4" />
+            )}
+            <span>Refresh</span>
+          </Button>
+        </div>
+
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <Card className="hover:shadow-lg transition-shadow duration-300 border-l-4 border-l-blue-500">
@@ -791,9 +883,24 @@ export function LineWorkerDashboard() {
   // Retailers Component
   const RetailersComponent = () => (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold text-gray-900">Your Retailers</h2>
-        <p className="text-gray-600">Retailers assigned to your areas</p>
+      <div className="flex justify-between items-center">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">Your Retailers</h2>
+          <p className="text-gray-600">Retailers assigned to your areas</p>
+        </div>
+        <Button 
+          onClick={handleManualRefresh} 
+          disabled={refreshLoading}
+          variant="outline"
+          className="flex items-center space-x-2"
+        >
+          {refreshLoading ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <RefreshCw className="h-4 w-4" />
+          )}
+          <span>Refresh</span>
+        </Button>
       </div>
 
       <Card>
@@ -845,9 +952,24 @@ export function LineWorkerDashboard() {
   // Payments Component
   const PaymentsComponent = () => (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold text-gray-900">Payment History</h2>
-        <p className="text-gray-600">All your payment collections</p>
+      <div className="flex justify-between items-center">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">Payment History</h2>
+          <p className="text-gray-600">All your payment collections</p>
+        </div>
+        <Button 
+          onClick={handleManualRefresh} 
+          disabled={refreshLoading}
+          variant="outline"
+          className="flex items-center space-x-2"
+        >
+          {refreshLoading ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <RefreshCw className="h-4 w-4" />
+          )}
+          <span>Refresh</span>
+        </Button>
       </div>
 
       <Card>
@@ -911,9 +1033,24 @@ export function LineWorkerDashboard() {
   // History Component
   const HistoryComponent = () => (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold text-gray-900">Activity History</h2>
-        <p className="text-gray-600">Your recent activities and achievements</p>
+      <div className="flex justify-between items-center">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">Activity History</h2>
+          <p className="text-gray-600">Your recent activities and achievements</p>
+        </div>
+        <Button 
+          onClick={handleManualRefresh} 
+          disabled={refreshLoading}
+          variant="outline"
+          className="flex items-center space-x-2"
+        >
+          {refreshLoading ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <RefreshCw className="h-4 w-4" />
+          )}
+          <span>Refresh</span>
+        </Button>
       </div>
 
       <Card>
@@ -959,9 +1096,24 @@ export function LineWorkerDashboard() {
   // Retailer Details Component - Complete detailed logs of assigned retailers
   const RetailerDetails = () => (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold text-gray-900">Retailer Details & Logs</h2>
-        <p className="text-gray-600">Complete detailed logs of your assigned retailers including invoices and payments</p>
+      <div className="flex justify-between items-center">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">Retailer Details & Logs</h2>
+          <p className="text-gray-600">Complete detailed logs of your assigned retailers including invoices and payments</p>
+        </div>
+        <Button 
+          onClick={handleManualRefresh} 
+          disabled={refreshLoading}
+          variant="outline"
+          className="flex items-center space-x-2"
+        >
+          {refreshLoading ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <RefreshCw className="h-4 w-4" />
+          )}
+          <span>Refresh</span>
+        </Button>
       </div>
 
       {/* Summary Cards */}
@@ -1256,16 +1408,7 @@ export function LineWorkerDashboard() {
     );
   }
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
-          <p className="text-gray-600">Loading your dashboard...</p>
-        </div>
-      </div>
-    );
-  }
+  // Main component return - no global loading state
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">

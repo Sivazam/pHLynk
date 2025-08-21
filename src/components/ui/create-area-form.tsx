@@ -11,10 +11,11 @@ import { X, Plus } from 'lucide-react';
 
 interface CreateAreaFormProps {
   onSubmit: (data: { name: string; zipcodes: string[] }) => void;
+  onCancel?: () => void;
   initialData?: { name: string; zipcodes: string[] };
 }
 
-export function CreateAreaForm({ onSubmit, initialData }: CreateAreaFormProps) {
+export function CreateAreaForm({ onSubmit, onCancel, initialData }: CreateAreaFormProps) {
   const [name, setName] = useState(initialData?.name || '');
   const [zipcodes, setZipcodes] = useState<string[]>(initialData?.zipcodes || []);
   const [newZipcode, setNewZipcode] = useState('');
@@ -93,6 +94,11 @@ export function CreateAreaForm({ onSubmit, initialData }: CreateAreaFormProps) {
       </div>
 
       <div className="flex justify-end space-x-2">
+        {onCancel && (
+          <Button type="button" variant="outline" onClick={onCancel}>
+            Cancel
+          </Button>
+        )}
         <Button type="submit">
           {initialData ? 'Update Area' : 'Create Area'}
         </Button>

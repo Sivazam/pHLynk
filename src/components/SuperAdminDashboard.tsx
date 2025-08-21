@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DashboardNavigation, NavItem, NotificationItem } from '@/components/DashboardNavigation';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth, useSuperAdmin } from '@/contexts/AuthContext';
 import { 
   tenantService, 
@@ -23,6 +24,8 @@ import {
   paymentService,
   Timestamp
 } from '@/services/firestore';
+import { realtimeNotificationService } from '@/services/realtime-notifications';
+import { notificationService } from '@/services/notification-service';
 import { Tenant, CreateTenantForm, User, Area, Retailer, Invoice, Payment } from '@/types';
 import { formatTimestamp, formatTimestampWithTime, formatCurrency } from '@/lib/timestamp-utils';
 import { 
@@ -112,7 +115,6 @@ export function SuperAdminDashboard() {
   const { user, logout } = useAuth();
   const isSuperAdmin = useSuperAdmin();
   const [tenants, setTenants] = useState<Tenant[]>([]);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showCreateTenant, setShowCreateTenant] = useState(false);
   const [selectedTenant, setSelectedTenant] = useState<Tenant | null>(null);
@@ -344,21 +346,46 @@ export function SuperAdminDashboard() {
   const [activeNav, setActiveNav] = useState('overview');
 
   useEffect(() => {
-    if (isSuperAdmin) {
+    if (isSuperAdmin && user) {
       fetchTenants();
       fetchAnalytics();
       fetchRecentActivities();
-      // Set up real-time updates every 60 seconds
-      const interval = setInterval(() => {
-        refreshData();
-      }, 60000);
       
-      return () => clearInterval(interval);
+      // Start real-time notifications - only once per session
+      const notificationKey = `notifications_${user.uid}`;
+      if (!sessionStorage.getItem(notificationKey)) {
+        realtimeNotificationService.startListening(
+          user.uid,
+          'SUPER_ADMIN',
+          'system', // Super admin listens to all tenants
+          (newNotifications) => {
+            setNotifications(newNotifications);
+            setNotificationCount(newNotifications.filter(n => !n.read).length);
+          }
+        );
+        sessionStorage.setItem(notificationKey, 'true');
+      }
     }
-  }, [isSuperAdmin, activeNav]);
+
+    // Cleanup on unmount
+    return () => {
+      if (user) {
+        realtimeNotificationService.stopListening(user.uid);
+        sessionStorage.removeItem(`notifications_${user.uid}`);
+      }
+    };
+  }, [isSuperAdmin, user]); // Only restart when user changes or role changes
+
+  // Separate effect for data fetching when activeNav changes
+  useEffect(() => {
+    if (isSuperAdmin && user) {
+      fetchTenants();
+      fetchAnalytics();
+      fetchRecentActivities();
+    }
+  }, [activeNav]); // Only fetch data, don't restart notifications
 
   const fetchTenants = async () => {
-    setLoading(true);
     setError(null);
     
     try {
@@ -367,13 +394,10 @@ export function SuperAdminDashboard() {
       setLastUpdate(new Date());
     } catch (err: any) {
       setError(err.message || 'Failed to fetch tenants');
-    } finally {
-      setLoading(false);
     }
   };
 
   const fetchAnalytics = async () => {
-    setLoading(true);
     try {
       const tenantsData = await tenantService.getAllTenants();
       let totalRevenue = 0;
@@ -455,8 +479,6 @@ export function SuperAdminDashboard() {
     } catch (error) {
       console.error('Failed to fetch analytics:', error);
       setError('Failed to fetch analytics data');
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -1680,13 +1702,7 @@ export function SuperAdminDashboard() {
     </div>
   );
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin" />
-      </div>
-    );
-  }
+  // Main component return - no global loading state
 
   if (!isSuperAdmin) {
     return (
@@ -1747,17 +1763,8 @@ export function SuperAdminDashboard() {
           </Alert>
         )}
 
-        {/* Loading state */}
-        {loading && (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="h-8 w-8 animate-spin mr-3" />
-            <span>Loading dashboard data...</span>
-          </div>
-        )}
-
         {/* Content based on active navigation */}
-        {!loading && (
-          <div className="space-y-6">
+        <div className="space-y-6">
             {activeNav === 'overview' && <Overview />}
             {activeNav === 'tenants' && <TenantsManagement />}
             {activeNav === 'users' && <UsersOverview />}
@@ -1766,7 +1773,6 @@ export function SuperAdminDashboard() {
             {activeNav === 'activity' && <Activity />}
             {activeNav === 'settings' && <Settings />}
           </div>
-        )}
       </main>
     </div>
   );

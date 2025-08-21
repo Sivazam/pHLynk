@@ -45,6 +45,9 @@ export interface Retailer extends BaseDocument {
   zipcodes: string[];
   currentOutstanding: number;
   
+  // Direct line worker assignment (optional, overrides area-based assignment)
+  assignedLineWorkerId?: string;
+  
   // Computed fields for performance
   totalInvoiceAmount?: number;
   totalPaidAmount?: number;
@@ -100,6 +103,7 @@ export interface InvoiceAttachment {
 export interface Invoice extends BaseDocument {
   retailerId: string;
   invoiceNumber: string;
+  userInvoiceNumber?: string;
   issueDate: Timestamp;
   dueDate?: Timestamp;
   subtotal: number;
@@ -269,6 +273,8 @@ export interface CreateRetailerForm {
 
 export interface CreateInvoiceForm {
   retailerId: string;
+  invoiceNumber?: string;
+  userInvoiceNumber?: string;
   issueDate: Date;
   dueDate?: Date;
   lineItems: Omit<InvoiceLineItem, 'id'>[];

@@ -80,15 +80,9 @@ export function RealTimeNotifications({ payments, lineWorkers, retailers }: Real
     updateUnreadCount(allNotifications);
   }, [payments, lineWorkers, retailers]);
 
-  // Simulate real-time notifications for new payments
+  // Update unread count when notifications change
   useEffect(() => {
-    const interval = setInterval(() => {
-      // This would normally come from a real-time subscription
-      // For now, we'll just update unread count based on existing notifications
-      updateUnreadCount(notifications);
-    }, 30000); // Every 30 seconds
-
-    return () => clearInterval(interval);
+    updateUnreadCount(notifications);
   }, [notifications]);
 
   const updateUnreadCount = (notifs: Notification[]) => {

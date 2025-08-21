@@ -132,7 +132,9 @@ export function DashboardNavigation({
                 <DropdownMenuLabel>Notifications</DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 {notifications.length > 0 ? (
-                  notifications.map((notification) => (
+                  [...notifications]
+                    .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
+                    .map((notification) => (
                     <DropdownMenuItem key={notification.id} className="flex-col items-start p-4 cursor-default">
                       <div className="flex items-start space-x-3 w-full">
                         <div className="flex-shrink-0 mt-0.5">
