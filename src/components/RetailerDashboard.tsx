@@ -16,6 +16,8 @@ import { RetailerAuthService } from '@/services/retailer-auth';
 import { Retailer, Payment, Invoice } from '@/types';
 import { formatTimestamp, formatTimestampWithTime, formatCurrency } from '@/lib/timestamp-utils';
 import { getActiveOTPsForRetailer, getCompletedPaymentsForRetailer, removeCompletedPayment } from '@/lib/otp-store';
+import { db } from '@/lib/firebase';
+import { doc, getDoc } from 'firebase/firestore';
 import { Skeleton } from '@/components/ui/skeleton';
 import { 
   Store, 
@@ -135,7 +137,6 @@ export function RetailerDashboard() {
       // Try to get retailer details from retailers collection first
       let retailerData;
       try {
-        const { doc, getDoc, db } = await import('@/lib/firebase');
         const retailerRef = doc(db, 'retailers', retailerId);
         const retailerDoc = await getDoc(retailerRef);
         
@@ -444,7 +445,7 @@ export function RetailerDashboard() {
       return 'PAID';
     } else if (totalPaid > 0) {
       return 'PARTIALLY_PAID';
-    } else if (new Date() > new Date(invoice.dueDate.toDate())) {
+    } else if (invoice.dueDate && new Date() > new Date(invoice.dueDate.toDate())) {
       return 'OVERDUE';
     } else {
       return 'PENDING';

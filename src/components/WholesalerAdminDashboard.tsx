@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { DatePicker } from '@/components/ui/date-picker';
+import { EnhancedDatePicker } from '@/components/ui/enhanced-date-picker';
 import { Skeleton } from '@/components/ui/skeleton';
 import { DashboardNavigation, NavItem, NotificationItem } from '@/components/DashboardNavigation';
 import { useAuth, useWholesalerAdmin, useSuperAdmin } from '@/contexts/AuthContext';
@@ -442,7 +443,7 @@ export function WholesalerAdminDashboard() {
     });
 
     // 3. Failed payments - Warning notifications
-    const failedPayments = payments.filter(payment => payment.state === 'FAILED');
+    const failedPayments = payments.filter(payment => payment.state === 'CANCELLED' || payment.state === 'EXPIRED');
 
     console.log('Failed payments:', failedPayments.length);
 
@@ -479,7 +480,7 @@ export function WholesalerAdminDashboard() {
         workerPerformance.set(worker.id, {
           count: current.count + 1,
           amount: current.amount + payment.totalPaid,
-          name: current.name
+          name: current.name || worker.displayName || 'Unknown Worker'
         });
       }
     });
@@ -661,11 +662,10 @@ export function WholesalerAdminDashboard() {
     }
     
     try {
-      await areaService.create({
+      await areaService.createArea(currentTenantId, {
         name: data.name,
-        zipcodes: data.zipcodes,
-        active: true
-      }, currentTenantId);
+        zipcodes: data.zipcodes
+      });
       
       await fetchDashboardData();
       setShowCreateArea(false);
@@ -674,7 +674,7 @@ export function WholesalerAdminDashboard() {
     }
   };
 
-  const handleCreateRetailer = async (data: { name: string; phone: string; address: string; areaId: string; zipcodes: string[] }) => {
+  const handleCreateRetailer = async (data: { name: string; phone: string; address?: string; areaId?: string; zipcodes: string[] }) => {
     const currentTenantId = getCurrentTenantId();
     if (!currentTenantId) {
       setError('No tenant selected. Please select a tenant to continue.');
@@ -682,17 +682,13 @@ export function WholesalerAdminDashboard() {
     }
     
     try {
-      await retailerService.create({
+      await retailerService.createRetailer(currentTenantId, {
         name: data.name,
         phone: data.phone,
-        address: data.address,
-        areaId: data.areaId,
-        zipcodes: data.zipcodes,
-        active: true,
-        currentOutstanding: 0,
-        totalCollected: 0,
-        totalBilled: 0
-      }, currentTenantId);
+        address: data.address || '',
+        areaId: data.areaId || '',
+        zipcodes: data.zipcodes
+      });
       
       await fetchDashboardData();
       setShowCreateRetailer(false);
@@ -899,6 +895,10 @@ export function WholesalerAdminDashboard() {
       };
       
       // Create invoice
+      if (!user?.tenantId) {
+        setError('User tenant ID not found. Please log in again.');
+        return;
+      }
       const invoiceId = await invoiceService.createInvoice(user.tenantId, invoiceData);
       
       // Refresh data
@@ -1978,10 +1978,6 @@ export function WholesalerAdminDashboard() {
                 <Label>Line Worker</Label>
                 <div className="font-medium">{getLineWorkerName(viewingPayment.lineWorkerId)}</div>
               </div>
-              <div>
-                <Label>Notes</Label>
-                <div className="font-medium">{viewingPayment.notes || 'No notes'}</div>
-              </div>
             </div>
           </div>
         )}
@@ -2373,12 +2369,11 @@ export function WholesalerAdminDashboard() {
                 </div>
               </div>
               <div>
-                <Label htmlFor="dateRange">Date Range</Label>
-                <DatePicker
-                  selected={dateRange?.from}
-                  onChange={(range) => setDateRange(range)}
-                  selectsRange
-                  placeholderText="Select date range"
+                <Label htmlFor="dateRange">Filter Date</Label>
+                <EnhancedDatePicker
+                  date={dateRange?.from}
+                  onSelect={(date) => setDateRange(date ? { from: date, to: date } : undefined)}
+                  placeholder="Select date"
                   className="w-full"
                 />
               </div>

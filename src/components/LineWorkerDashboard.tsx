@@ -19,12 +19,11 @@ import {
   invoiceService, 
   paymentService,
   areaService,
-  PaymentInvoiceAllocation,
   Timestamp
 } from '@/services/firestore';
 import { realtimeNotificationService } from '@/services/realtime-notifications';
 import { notificationService } from '@/services/notification-service';
-import { Retailer, Invoice, Payment, Area } from '@/types';
+import { Retailer, Invoice, Payment, Area, PaymentInvoiceAllocation } from '@/types';
 import { formatTimestamp, formatTimestampWithTime, formatCurrency } from '@/lib/timestamp-utils';
 import { 
   Store, 
@@ -244,9 +243,9 @@ export function LineWorkerDashboard() {
     setError(null);
     
     try {
-      console.log('Fetching line worker data for user:', user.uid);
-      console.log('User assigned areas:', user.assignedAreas);
-      console.log('User assigned zips:', user.assignedZips);
+      console.log('Fetching line worker data for user:', user?.uid);
+      console.log('User assigned areas:', user?.assignedAreas);
+      console.log('User assigned zips:', user?.assignedZips);
       
       // Clean up any stuck payments first
       try {
@@ -260,7 +259,7 @@ export function LineWorkerDashboard() {
       const allRetailers = await retailerService.getAll(currentTenantId);
       const allInvoices = await invoiceService.getAll(currentTenantId);
       const allAreas = await areaService.getAll(currentTenantId);
-      const paymentsData = await paymentService.getPaymentsByLineWorker(currentTenantId, user.uid);
+      const paymentsData = await paymentService.getPaymentsByLineWorker(currentTenantId, user!.uid);
 
       console.log('Total retailers found:', allRetailers.length);
       console.log('Total invoices found:', allInvoices.length);
@@ -275,7 +274,7 @@ export function LineWorkerDashboard() {
       const assignedRetailers = allRetailers.filter(retailer => {
         // First check if retailer is directly assigned to this line worker
         if (retailer.assignedLineWorkerId === user?.uid) {
-          console.log(`✅ Retailer "${retailer.name}" matched by direct assignment to line worker ${user.uid}`);
+          console.log(`✅ Retailer "${retailer.name}" matched by direct assignment to line worker ${user!.uid}`);
           return true;
         }
         
@@ -292,14 +291,14 @@ export function LineWorkerDashboard() {
         }
         
         // Check if retailer is in assigned areas (by areaId)
-        if (retailer.areaId && user.assignedAreas.includes(retailer.areaId)) {
+        if (retailer.areaId && user!.assignedAreas.includes(retailer.areaId)) {
           console.log(`✅ Retailer "${retailer.name}" matched by areaId: ${retailer.areaId}`);
           return true;
         }
         
         // Check if retailer has zipcodes that match assigned zips
-        if (retailer.zipcodes && retailer.zipcodes.length > 0 && user.assignedZips && user.assignedZips.length > 0) {
-          const matchingZips = retailer.zipcodes.filter(zip => user.assignedZips!.includes(zip));
+        if (retailer.zipcodes && retailer.zipcodes.length > 0 && user!.assignedZips && user!.assignedZips.length > 0) {
+          const matchingZips = retailer.zipcodes.filter(zip => user!.assignedZips!.includes(zip));
           if (matchingZips.length > 0) {
             console.log(`✅ Retailer "${retailer.name}" matched by zips: ${matchingZips.join(', ')}`);
             return true;
@@ -324,7 +323,7 @@ export function LineWorkerDashboard() {
       
       // Calculate notification count
       const overdueRetailers = assignedRetailers.filter(r => r.currentOutstanding > 0).length;
-      const pendingPayments = paymentsData.filter(p => p.state === 'PENDING' || p.state === 'OTP_SENT').length;
+      const pendingPayments = paymentsData.filter(p => p.state === 'INITIATED' || p.state === 'OTP_SENT').length;
       setNotificationCount(overdueRetailers + pendingPayments);
       
       // Recompute retailer data for accuracy (can be removed once all data is consistent)
@@ -351,9 +350,9 @@ export function LineWorkerDashboard() {
             return false;
           }
           
-          if (retailer.areaId && user.assignedAreas.includes(retailer.areaId)) return true;
-          if (retailer.zipcodes && retailer.zipcodes.length > 0 && user.assignedZips && user.assignedZips.length > 0) {
-            const matchingZips = retailer.zipcodes.filter(zip => user.assignedZips!.includes(zip));
+          if (retailer.areaId && user!.assignedAreas.includes(retailer.areaId)) return true;
+          if (retailer.zipcodes && retailer.zipcodes.length > 0 && user!.assignedZips && user!.assignedZips.length > 0) {
+            const matchingZips = retailer.zipcodes.filter(zip => user!.assignedZips!.includes(zip));
             return matchingZips.length > 0;
           }
           return false;
@@ -393,8 +392,8 @@ export function LineWorkerDashboard() {
   const checkForNewAssignments = (currentRetailers: Retailer[], currentAreas: Area[]) => {
     if (!user) return;
     
-    const currentAreaIds = user.assignedAreas || [];
-    const currentZipIds = user.assignedZips || [];
+    const currentAreaIds = user!.assignedAreas || [];
+    const currentZipIds = user!.assignedZips || [];
     const currentRetailerIds = currentRetailers.map(r => r.id);
     
     if (previousAssignments) {
@@ -465,7 +464,7 @@ export function LineWorkerDashboard() {
       // Create payment first
       const paymentId = await paymentService.initiatePayment(currentTenantId, {
         retailerId: selectedRetailer.id,
-        lineWorkerId: user.uid,
+        lineWorkerId: user!.uid,
         totalPaid: paymentForm.totalPaid,
         method: paymentForm.method,
         invoiceAllocations: [] // No invoice allocations needed
@@ -481,7 +480,7 @@ export function LineWorkerDashboard() {
           retailerId: selectedRetailer.id,
           paymentId: paymentId,
           amount: paymentForm.totalPaid,
-          lineWorkerName: user.displayName || 'Line Worker' // Add line worker name
+          lineWorkerName: user!.displayName || 'Line Worker' // Add line worker name
         })
       });
 
@@ -492,12 +491,28 @@ export function LineWorkerDashboard() {
       }
 
       // Update payment state to OTP_SENT in database
-      await paymentService.updatePaymentState(paymentId, user.tenantId, 'OTP_SENT', {
-        timeline: {
-          ...currentPayment?.timeline,
+      if (user!.tenantId) {
+        const timeline: any = {
           otpSentAt: Timestamp.now()
+        };
+        
+        // Safely copy existing timeline properties
+        if (currentPayment?.timeline?.initiatedAt) {
+          timeline.initiatedAt = currentPayment.timeline.initiatedAt;
         }
-      });
+        if (currentPayment?.timeline?.verifiedAt) {
+          timeline.verifiedAt = currentPayment.timeline.verifiedAt;
+        }
+        if (currentPayment?.timeline?.completedAt) {
+          timeline.completedAt = currentPayment.timeline.completedAt;
+        }
+        
+        await paymentService.updatePaymentState(paymentId, user!.tenantId, 'OTP_SENT', {
+          timeline
+        });
+      } else {
+        console.error('User tenantId is undefined, cannot update payment state');
+      }
 
       setOtpSent(true);
       setShowOtpSection(true);
@@ -515,9 +530,9 @@ export function LineWorkerDashboard() {
       // Set the current payment with updated state
       const updatedPayment: Payment = {
         id: paymentId,
-        tenantId: user.tenantId!,
+        tenantId: user!.tenantId!,
         retailerId: selectedRetailer.id,
-        lineWorkerId: user.uid,
+        lineWorkerId: user!.uid,
         invoiceAllocations: [],
         totalPaid: paymentForm.totalPaid,
         method: paymentForm.method,
@@ -558,7 +573,7 @@ export function LineWorkerDashboard() {
           retailerId: currentPayment.retailerId,
           paymentId: currentPayment.id,
           amount: currentPayment.totalPaid,
-          lineWorkerName: user.displayName || 'Line Worker' // Add line worker name
+          lineWorkerName: user!.displayName || 'Line Worker' // Add line worker name
         })
       });
 
@@ -1319,7 +1334,8 @@ export function LineWorkerDashboard() {
                                 <TableCell>
                                   <Badge className={
                                     invoice.status === 'PAID' ? 'bg-green-100 text-green-800' :
-                                    invoice.status === 'OVERDUE' ? 'bg-red-100 text-red-800' :
+                                    invoice.status === 'CANCELLED' ? 'bg-red-100 text-red-800' :
+                                    invoice.status === 'PARTIAL' ? 'bg-blue-100 text-blue-800' :
                                     'bg-yellow-100 text-yellow-800'
                                   }>
                                     {invoice.status}
@@ -1361,8 +1377,9 @@ export function LineWorkerDashboard() {
                                   <Badge className={
                                     payment.state === 'COMPLETED' ? 'bg-green-100 text-green-800' :
                                     payment.state === 'OTP_SENT' ? 'bg-yellow-100 text-yellow-800' :
-                                    payment.state === 'FAILED' ? 'bg-red-100 text-red-800' :
-                                    'bg-blue-100 text-blue-800'
+                                    payment.state === 'CANCELLED' || payment.state === 'EXPIRED' ? 'bg-red-100 text-red-800' :
+                                    payment.state === 'OTP_VERIFIED' ? 'bg-blue-100 text-blue-800' :
+                                    'bg-gray-100 text-gray-800'
                                   }>
                                     {payment.state}
                                   </Badge>
@@ -1421,7 +1438,7 @@ export function LineWorkerDashboard() {
         subtitle="Line Worker Dashboard"
         notificationCount={notificationCount}
         notifications={notifications}
-        user={user}
+        user={user ? { displayName: user.displayName, email: user.email } : undefined}
         onLogout={logout}
       />
 
@@ -1548,7 +1565,7 @@ export function LineWorkerDashboard() {
               </div>
 
               <div className="flex flex-col space-y-2">
-                <Button onClick={handleVerifyOtp} disabled={otpCode.length !== 6}>
+                <Button onClick={() => handleVerifyOtp()} disabled={otpCode.length !== 6}>
                   Verify OTP
                 </Button>
                 

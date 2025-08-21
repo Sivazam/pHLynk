@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { otpStore, cleanupExpiredOTPs, removeActiveOTP, addCompletedPayment } from '@/lib/otp-store';
-import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { RetailerAuthService } from '@/services/retailer-auth';
 import { otpService } from '@/services/firestore';
+import { Retailer } from '@/types';
 
 interface OTPVerifyRequest {
   paymentId: string;
@@ -144,8 +145,34 @@ export async function POST(request: NextRequest) {
               const lineWorkerData = lineWorkerDoc.data();
               console.log('👷 Line worker data found:', lineWorkerData);
               
-              // Calculate remaining outstanding amount
-              const remainingOutstanding = Math.max(0, (retailerUser.currentOutstanding || 0) - paymentData.totalPaid);
+              // Get retailer details from retailers collection for outstanding amount
+              let remainingOutstanding = 0;
+              try {
+                const retailerRef = doc(db, 'retailers', paymentData.retailerId);
+                const retailerDoc = await getDoc(retailerRef);
+                
+                if (retailerDoc.exists()) {
+                  const retailerData = retailerDoc.data() as Retailer;
+                  console.log('🏪 Retailer data found:', retailerData);
+                  
+                  // Calculate remaining outstanding amount
+                  const currentOutstanding = retailerData.currentOutstanding || 0;
+                  remainingOutstanding = Math.max(0, currentOutstanding - paymentData.totalPaid);
+                  
+                  // Update the retailer's outstanding amount in Firestore
+                  await updateDoc(retailerRef, {
+                    currentOutstanding: remainingOutstanding,
+                    updatedAt: new Date()
+                  });
+                  console.log('✅ Updated retailer outstanding amount to:', remainingOutstanding);
+                } else {
+                  console.log('⚠️ Retailer document not found, using default outstanding amount');
+                  remainingOutstanding = 0;
+                }
+              } catch (retailerError) {
+                console.error('❌ Error getting/retailer retailer data:', retailerError);
+                remainingOutstanding = 0;
+              }
               
               // Remove the active OTP from retailer dashboard
               removeActiveOTP(paymentId);

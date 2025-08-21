@@ -213,7 +213,17 @@ export function SuperAdminDashboard() {
   const fetchRecentActivities = async () => {
     try {
       const tenantsData = await tenantService.getAllTenants();
-      const activities = [];
+      const activities: Array<{
+      id: string;
+      type: string;
+      title: string;
+      message: string;
+      timestamp: Date;
+      tenant: string;
+      count?: number;
+      amount?: number;
+      icon?: React.ComponentType<{ className?: string }>;
+    }> = [];
 
       for (const tenant of tenantsData) {
         try {
@@ -226,7 +236,7 @@ export function SuperAdminDashboard() {
 
           // Get recent users (last 7 days)
           const recentUsers = users.filter(u => {
-            const userDate = new Date(u.createdAt || Date.now());
+            const userDate = u.createdAt ? u.createdAt.toDate() : new Date();
             const weekAgo = new Date();
             weekAgo.setDate(weekAgo.getDate() - 7);
             return userDate > weekAgo;
@@ -234,7 +244,7 @@ export function SuperAdminDashboard() {
 
           // Get recent retailers (last 7 days)
           const recentRetailers = retailers.filter(r => {
-            const retailerDate = new Date(r.createdAt || Date.now());
+            const retailerDate = r.createdAt ? r.createdAt.toDate() : new Date();
             const weekAgo = new Date();
             weekAgo.setDate(weekAgo.getDate() - 7);
             return retailerDate > weekAgo;
@@ -242,7 +252,7 @@ export function SuperAdminDashboard() {
 
           // Get recent payments (last 7 days)
           const recentPayments = payments.filter(p => {
-            const paymentDate = new Date(p.createdAt || Date.now());
+            const paymentDate = p.createdAt ? p.createdAt.toDate() : new Date();
             const weekAgo = new Date();
             weekAgo.setDate(weekAgo.getDate() - 7);
             return paymentDate > weekAgo && p.state === 'COMPLETED';
@@ -250,7 +260,7 @@ export function SuperAdminDashboard() {
 
           // Get recent invoices (last 7 days)
           const recentInvoices = invoices.filter(i => {
-            const invoiceDate = new Date(i.createdAt || Date.now());
+            const invoiceDate = i.createdAt ? i.createdAt.toDate() : new Date();
             const weekAgo = new Date();
             weekAgo.setDate(weekAgo.getDate() - 7);
             return invoiceDate > weekAgo;
@@ -407,7 +417,20 @@ export function SuperAdminDashboard() {
       let totalPayments = 0;
       let totalInvoices = 0;
       
-      const tenantAnalytics = [];
+      const tenantAnalytics: Array<{
+        tenantId: string;
+        tenantName: string;
+        revenue: number;
+        outstanding: number;
+        users: number;
+        retailers: number;
+        payments: number;
+        invoices: number;
+        activeUsers: number;
+        activeRetailers: number;
+        avgRevenuePerUser: number;
+        collectionRate: number;
+      }> = [];
 
       for (const tenant of tenantsData) {
         try {
@@ -442,7 +465,7 @@ export function SuperAdminDashboard() {
             payments: payments.filter(p => p.state === 'COMPLETED').length,
             invoices: invoices.length,
             activeUsers: users.filter(u => u.active).length,
-            activeRetailers: retailers.filter(r => r.active).length,
+            activeRetailers: retailers.length, // All retailers are considered active
             avgRevenuePerUser: users.length > 0 ? tenantRevenue / users.length : 0,
             collectionRate: tenantRevenue + tenantOutstanding > 0 ? 
               (tenantRevenue / (tenantRevenue + tenantOutstanding)) * 100 : 0
@@ -529,7 +552,11 @@ export function SuperAdminDashboard() {
     try {
       const tenantId = await tenantService.createTenant({
         name: data.name,
-        plan: data.plan
+        plan: data.plan,
+        adminEmail: data.adminEmail,
+        adminPassword: data.adminPassword,
+        adminPhone: data.adminPhone,
+        adminName: data.adminName
       });
       
       await userService.createUserWithAuth(tenantId, {
@@ -1727,7 +1754,7 @@ export function SuperAdminDashboard() {
         subtitle="System Administration Dashboard"
         notificationCount={notificationCount}
         notifications={notifications}
-        user={user}
+        user={user ? { displayName: user.displayName, email: user.email } : undefined}
         onLogout={logout}
       />
 
