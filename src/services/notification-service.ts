@@ -33,24 +33,14 @@ export class NotificationService {
       // 1. Same title and message
       // 2. Same type
       // 3. Within 10 seconds of each other (increased from 5 to catch more duplicates)
-      // 4. Same unique identifier if present
-      // 5. Same amount and retailer/worker combination for payment notifications
-      const hasSameUniqueId = (
-        notification._id && 
-        existingNotification._id && 
-        notification._id === existingNotification._id
-      );
-      
+      // 4. Same amount and worker combination for payment notifications
       const hasSamePaymentDetails = (
         notification.amount && 
         existingNotification.amount && 
         notification.amount === existingNotification.amount &&
-        (
-          (notification.retailerName && existingNotification.retailerName && 
-           notification.retailerName === existingNotification.retailerName) ||
-          (notification.workerName && existingNotification.workerName && 
-           notification.workerName === existingNotification.workerName)
-        )
+        notification.workerName && 
+        existingNotification.workerName && 
+        notification.workerName === existingNotification.workerName
       );
       
       return (
@@ -58,7 +48,6 @@ export class NotificationService {
         existingNotification.message === notification.message &&
         existingNotification.type === notification.type &&
         timeDiff < 10000) || // 10 seconds
-        hasSameUniqueId ||
         hasSamePaymentDetails
       );
     });

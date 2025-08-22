@@ -90,7 +90,7 @@ export function CompactDatePicker({
     const firstDayOfWeek = monthStart.getDay();
     
     // Add empty cells for days before the first day of the month
-    const calendarDays = [];
+    const calendarDays: (Date | null)[] = [];
     for (let i = 0; i < firstDayOfWeek; i++) {
       calendarDays.push(null);
     }

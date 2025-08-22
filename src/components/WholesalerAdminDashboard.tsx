@@ -2372,7 +2372,7 @@ export function WholesalerAdminDashboard() {
                 <Label htmlFor="dateRange">Filter Date</Label>
                 <EnhancedDatePicker
                   date={dateRange?.from}
-                  onSelect={(date) => setDateRange(date ? { from: date, to: date } : undefined)}
+                  onSelect={(date) => setDateRange(date ? { from: date, to: date } : null)}
                   placeholder="Select date"
                   className="w-full"
                 />
@@ -2564,7 +2564,7 @@ export function WholesalerAdminDashboard() {
                     </div>
                     <div className="text-center p-1 bg-red-50 rounded">
                       <div className="font-medium text-red-700">
-                        {retailerPayments.filter(p => p.state === 'FAILED').length}
+                        {retailerPayments.filter(p => p.state === 'CANCELLED').length}
                       </div>
                       <div className="text-red-600">Failed</div>
                     </div>
@@ -2711,7 +2711,7 @@ export function WholesalerAdminDashboard() {
         subtitle="Wholesaler Admin Dashboard"
         notificationCount={notificationCount}
         notifications={notifications}
-        user={user}
+        user={user ? { displayName: user.displayName, email: user.email } : undefined}
         onLogout={logout}
       />
 

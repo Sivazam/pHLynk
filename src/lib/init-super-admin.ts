@@ -27,12 +27,14 @@ export async function initializeSuperAdmin() {
     const firebaseUser = userCredential.user;
 
     // Create Firestore user document with super admin role
-    await userService.create('system', {
+    await userService.createUser('system', {
       email: superAdminData.email,
       displayName: superAdminData.displayName,
       phone: superAdminData.phone,
       roles: [ROLES.SUPER_ADMIN],
-      active: true
+      active: true,
+      assignedAreas: [],
+      assignedZips: []
     });
 
     console.log('Super admin created successfully!');

@@ -17,7 +17,7 @@ interface MuiDatePickerProps {
   maxDate?: Date;
 }
 
-export function MuiDatePicker({
+export function MuiDatePickerComponent({
   value,
   onChange,
   label = "Select date",

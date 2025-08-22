@@ -44,7 +44,8 @@ import {
   InitiatePaymentForm,
   DashboardStats,
   LineWorkerPerformance,
-  AreaPerformance
+  AreaPerformance,
+  ProductData
 } from '@/types';
 
 // Generic CRUD operations
@@ -171,12 +172,28 @@ export class TenantService extends FirestoreService<Tenant> {
   }
 
   async createTenant(data: CreateTenantForm): Promise<string> {
-    return this.create({
-      name: data.name,
-      status: 'ACTIVE',
-      subscriptionStatus: 'ACTIVE',
-      plan: data.plan
-    }, 'system'); // System-level tenant
+    try {
+      // For tenants, we need to create the document first to get the ID, then set tenantId to match
+      const docRef = await addDoc(collection(db, this.collectionName), {
+        name: data.name,
+        status: 'ACTIVE',
+        subscriptionStatus: 'ACTIVE',
+        plan: data.plan,
+        tenantId: 'temp', // Will be updated after getting the ID
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.now()
+      });
+      
+      // Update the document with the correct tenantId (same as document ID)
+      await updateDoc(docRef, {
+        tenantId: docRef.id
+      });
+      
+      return docRef.id;
+    } catch (error) {
+      console.error(`Error creating tenant:`, error);
+      throw error;
+    }
   }
 
   async getAllTenants(): Promise<Tenant[]> {
@@ -256,7 +273,7 @@ export class UserService extends FirestoreService<User> {
   }
 
   async createUser(tenantId: string, data: Omit<User, 'id' | 'createdAt' | 'updatedAt' | 'tenantId'>): Promise<string> {
-    return this.create(data, tenantId);
+    return this.create(data as Omit<User, 'id' | 'createdAt' | 'updatedAt'>, tenantId);
   }
 
   async createUserWithId(userId: string, tenantId: string, data: Omit<User, 'id' | 'createdAt' | 'updatedAt' | 'tenantId'>): Promise<void> {
@@ -324,7 +341,7 @@ export class AreaService extends FirestoreService<Area> {
       name: data.name,
       zipcodes: data.zipcodes,
       active: true
-    }, tenantId);
+    } as Omit<Area, 'id' | 'createdAt' | 'updatedAt'>, tenantId);
   }
 
   async getActiveAreas(tenantId: string): Promise<Area[]> {
@@ -357,7 +374,7 @@ export class RetailerService extends FirestoreService<Retailer> {
       areaId: data.areaId,
       zipcodes: data.zipcodes,
       currentOutstanding: 0
-    }, tenantId);
+    } as Omit<Retailer, 'id' | 'createdAt' | 'updatedAt'>, tenantId);
 
     // Create retailer user account for login
     try {
@@ -540,8 +557,8 @@ export class RetailerService extends FirestoreService<Retailer> {
         totalPaidAmount,
         totalInvoicesCount: invoices.length,
         totalPaymentsCount: payments.length,
-        lastInvoiceDate,
-        lastPaymentDate,
+        lastInvoiceDate: lastInvoiceDate || undefined,
+        lastPaymentDate: lastPaymentDate || undefined,
         recentInvoices,
         recentPayments,
         computedAt: Timestamp.now()
@@ -616,7 +633,7 @@ export class InvoiceService extends FirestoreService<Invoice> {
       lineItems: data.lineItems,
       version: 1,
       attachments: []
-    }, tenantId);
+    } as unknown as Omit<Invoice, 'id' | 'createdAt' | 'updatedAt'>, tenantId);
 
     // Update retailer computed fields
     try {
@@ -709,7 +726,7 @@ export class PaymentService extends FirestoreService<Payment> {
       timeline: {
         initiatedAt: Timestamp.now()
       }
-    }, tenantId);
+    } as unknown as Omit<Payment, 'id' | 'createdAt' | 'updatedAt'>, tenantId);
   }
 
   async getPaymentsByRetailer(tenantId: string, retailerId: string): Promise<Payment[]> {
@@ -742,7 +759,7 @@ export class PaymentService extends FirestoreService<Payment> {
     );
   }
 
-  async updatePaymentState(paymentId: string, tenantId: string, state: string, updates: Partial<Payment> = {}): Promise<void> {
+  async updatePaymentState(paymentId: string, tenantId: string, state: "INITIATED" | "OTP_SENT" | "OTP_VERIFIED" | "COMPLETED" | "CANCELLED" | "EXPIRED", updates: Partial<Payment> = {}): Promise<void> {
     const payment = await this.getById(paymentId, tenantId);
     if (!payment) return;
 
@@ -826,7 +843,7 @@ export class PaymentEventService extends FirestoreService<PaymentEvent> {
     return this.create({
       ...data,
       at: Timestamp.now()
-    }, tenantId);
+    } as unknown as Omit<PaymentEvent, 'id' | 'createdAt' | 'updatedAt'>, tenantId);
   }
 
   async getPaymentEvents(tenantId: string, paymentId: string): Promise<PaymentEvent[]> {
@@ -993,9 +1010,8 @@ export class OTPService extends FirestoreService<OTP> {
       amount: data.amount,
       lineWorkerName: data.lineWorkerName,
       expiresAt: data.expiresAt,
-      isUsed: false,
-      createdAt: Timestamp.now()
-    }, 'system'); // Use system tenantId for OTPs
+      isUsed: false
+    } as unknown as Omit<OTP, 'id' | 'createdAt' | 'updatedAt'>, 'system'); // Use system tenantId for OTPs
   }
 
   async getActiveOTPsForRetailer(retailerId: string): Promise<OTP[]> {
@@ -1081,6 +1097,65 @@ export class OTPService extends FirestoreService<OTP> {
   }
 }
 
+// Product Service
+export class ProductService extends FirestoreService<ProductData> {
+  constructor() {
+    super('products');
+  }
+
+  async getActiveProducts(tenantId: string): Promise<ProductData[]> {
+    return this.query(tenantId, [where('active', '==', true)]);
+  }
+
+  async getProductsByCategory(tenantId: string, category: string): Promise<ProductData[]> {
+    return this.query(tenantId, [
+      where('category', '==', category),
+      where('active', '==', true)
+    ]);
+  }
+
+  async updateStock(productId: string, tenantId: string, quantity: number): Promise<void> {
+    const product = await this.getById(productId, tenantId);
+    if (product) {
+      const newStock = Math.max(0, product.stock + quantity);
+      await this.update(productId, { stock: newStock }, tenantId);
+    }
+  }
+}
+
+// Standalone product functions for backward compatibility
+export async function getProducts(tenantId: string): Promise<ProductData[]> {
+  try {
+    const productService = new ProductService();
+    return await productService.getAll(tenantId);
+  } catch (error) {
+    console.error('Error getting products:', error);
+    throw error;
+  }
+}
+
+export async function createProduct(tenantId: string, data: Omit<ProductData, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> {
+  try {
+    const productService = new ProductService();
+    // Remove tenantId from data if it exists, since it will be added by the service
+    const { tenantId: _, ...productData } = data as any;
+    return await productService.create(productData, tenantId);
+  } catch (error) {
+    console.error('Error creating product:', error);
+    throw error;
+  }
+}
+
+export async function updateProduct(productId: string, tenantId: string, data: Partial<ProductData>): Promise<void> {
+  try {
+    const productService = new ProductService();
+    await productService.update(productId, data, tenantId);
+  } catch (error) {
+    console.error('Error updating product:', error);
+    throw error;
+  }
+}
+
 // Export service instances and Firebase utilities
 export const tenantService = new TenantService();
 export const userService = new UserService();
@@ -1091,4 +1166,5 @@ export const paymentService = new PaymentService();
 export const paymentEventService = new PaymentEventService();
 export const subscriptionService = new SubscriptionService();
 export const otpService = new OTPService();
+export const productService = new ProductService();
 export { Timestamp };

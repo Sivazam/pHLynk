@@ -147,7 +147,7 @@ export function getUserFriendlyMessage(error: Error): string {
   
   // Handle Firebase specific errors
   if (error.name === 'FirebaseError') {
-    switch (error.code) {
+    switch ((error as any).code) {
       case 'auth/user-not-found':
         return 'User not found';
       case 'auth/wrong-password':

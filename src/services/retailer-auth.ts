@@ -242,6 +242,10 @@ export class RetailerAuthService {
         const updatedDoc = await getDoc(userRef);
         const userData = updatedDoc.data();
         
+        if (!userData) {
+          throw new Error('User data not found after update');
+        }
+        
         const verifiedUser: RetailerUser = {
           id: updatedDoc.id,
           uid: userData.uid,

@@ -35,6 +35,15 @@ export type NotificationItem = {
   timestamp: Date;
   read: boolean;
   workerName?: string; // Added to show line worker name
+  retailerName?: string; // Added to show retailer name
+  paymentId?: string; // Added to show payment ID
+  areaName?: string; // Added to show area name
+  retailerCount?: number; // Added to show retailer count
+  zipCount?: number; // Added to show zip count
+  totalCollections?: number; // Added to show total collections
+  paymentCount?: number; // Added to show payment count
+  milestoneType?: string; // Added to show milestone type
+  milestoneValue?: number; // Added to show milestone value
   amount?: number; // Added to show payment amount
   collectionTime?: string; // Added to show collection time
   initiatedAt?: string; // Added to show payment initiation time

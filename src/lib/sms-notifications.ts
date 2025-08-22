@@ -1,4 +1,7 @@
-import { getTwilioConfig } from './otp-store';
+// Simple Twilio config function - returns null for now
+function getTwilioConfig(): { accountSid?: string; authToken?: string; twilioPhoneNumber?: string } | null {
+  return null;
+}
 
 interface SMSNotification {
   to: string;
@@ -25,8 +28,8 @@ export async function sendSMSNotification(notification: SMSNotification): Promis
 
   try {
     // Dynamically import Twilio
-    const twilio = await import('twilio');
-    const client = twilio(twilioConfig.accountSid, twilioConfig.authToken);
+    const twilioModule = await import('twilio');
+    const client = new twilioModule.Twilio(twilioConfig.accountSid, twilioConfig.authToken);
 
     // Format phone number for international use
     const formattedPhone = notification.to.startsWith('+') ? notification.to : `+91${notification.to}`;

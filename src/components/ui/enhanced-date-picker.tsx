@@ -44,7 +44,7 @@ export function EnhancedDatePicker({
 
   const handleDateSelect = (newDate: Date | undefined) => {
     setSelectedDate(newDate)
-    if (newDate && onSelect) {
+    if (onSelect) {
       onSelect(newDate)
     }
     setOpen(false)

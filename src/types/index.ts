@@ -40,6 +40,7 @@ export interface Area extends BaseDocument {
 export interface Retailer extends BaseDocument {
   name: string;
   phone: string;
+  email?: string;
   address?: string;
   areaId?: string;
   zipcodes: string[];
@@ -162,6 +163,8 @@ export interface PaymentTimeline {
   otpSentAt?: Timestamp;
   verifiedAt?: Timestamp;
   completedAt?: Timestamp;
+  cancelledAt?: Timestamp;
+  expiredAt?: Timestamp;
 }
 
 // Payment
@@ -333,4 +336,14 @@ export interface AuthContextType {
   resetPassword: (email: string) => Promise<void>;
   hasRole: (role: keyof typeof ROLES) => boolean;
   hasAnyRole: (roles: (keyof typeof ROLES)[]) => boolean;
+}
+
+// Product Types
+export interface ProductData extends BaseDocument {
+  name: string;
+  description?: string;
+  price: number;
+  category: string;
+  stock: number;
+  active: boolean;
 }

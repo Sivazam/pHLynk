@@ -25,6 +25,12 @@ import {
 import { formatCurrency } from '@/lib/timestamp-utils';
 import { Retailer, Payment, User, Invoice } from '@/types';
 
+interface EnhancedWorker extends User {
+  totalCollected: number;
+  paymentCount: number;
+  successRate: number;
+}
+
 interface WholesalerAnalyticsProps {
   retailers: Retailer[];
   payments: Payment[];
@@ -40,7 +46,7 @@ interface AnalyticsData {
   totalOutstanding: number;
   collectionRate: number;
   avgCollectionPerWorker: number;
-  topPerformers: User[];
+  topPerformers: EnhancedWorker[];
   areasPerformance: any[];
   monthlyTrends: any[];
   retailerInsights: any[];
@@ -67,7 +73,7 @@ export function WholesalerAnalytics({
     const avgCollectionPerWorker = lineWorkers.length > 0 ? totalRevenue / lineWorkers.length : 0;
 
     // Top performers (line workers)
-    const workerPerformance = lineWorkers.map(worker => {
+    const workerPerformance: EnhancedWorker[] = lineWorkers.map(worker => {
       const workerPayments = completedPayments.filter(p => p.lineWorkerId === worker.id);
       const workerRevenue = workerPayments.reduce((sum, p) => sum + p.totalPaid, 0);
       const successRate = workerPayments.length > 0 ? 100 : 0;
