@@ -20,8 +20,6 @@ export class RealTimeNotificationService {
   private static instance: RealTimeNotificationService;
   private unsubscribeFunctions: Map<string, () => void> = new Map();
   private notificationCallbacks: Map<string, (notifications: NotificationItem[]) => void> = new Map();
-  private updateTimeouts: Map<string, NodeJS.Timeout> = new Map();
-  private readonly UPDATE_DELAY = 3000; // 3 second delay between updates (increased from 1 second)
 
   private constructor() {}
 
@@ -51,19 +49,14 @@ export class RealTimeNotificationService {
     const currentNotifications = notificationService.getNotifications();
     console.log('🔔 Providing current notifications to callback:', currentNotifications.length, 'notifications');
     
-    // Only call callback if there are notifications to prevent unnecessary initial render
-    if (currentNotifications.length > 0) {
-      // Ensure callback is called asynchronously to prevent timing issues
-      setTimeout(() => {
-        try {
-          callback(currentNotifications);
-        } catch (error) {
-          console.error('Error in initial notification callback:', error);
-        }
-      }, 0);
-    } else {
-      console.log('🔔 Skipping initial callback - no notifications to show');
-    }
+    // Ensure callback is called asynchronously to prevent timing issues
+    setTimeout(() => {
+      try {
+        callback(currentNotifications);
+      } catch (error) {
+        console.error('Error in initial notification callback:', error);
+      }
+    }, 0);
 
     // Start role-specific listeners
     switch (role) {
@@ -89,47 +82,7 @@ export class RealTimeNotificationService {
       unsubscribe();
       this.unsubscribeFunctions.delete(userId);
     }
-    
-    // Clear any pending update timeouts
-    const timeout = this.updateTimeouts.get(userId);
-    if (timeout) {
-      clearTimeout(timeout);
-      this.updateTimeouts.delete(userId);
-    }
-    
     this.notificationCallbacks.delete(userId);
-  }
-
-  // Trigger callback with delay to prevent rapid updates
-  private triggerCallback(userId: string): void {
-    // Clear any existing timeout
-    const existingTimeout = this.updateTimeouts.get(userId);
-    if (existingTimeout) {
-      clearTimeout(existingTimeout);
-    }
-
-    // Set a new timeout
-    const timeout = setTimeout(() => {
-      const callback = this.notificationCallbacks.get(userId);
-      if (callback) {
-        try {
-          const notifications = notificationService.getNotifications();
-          
-          // Only trigger callback if there are actual notifications to prevent unnecessary re-renders
-          if (notifications.length > 0) {
-            console.log('🔔 Triggering callback for user', userId, 'with', notifications.length, 'notifications');
-            callback(notifications);
-          } else {
-            console.log('🔔 Skipping callback for user', userId, '- no notifications to show');
-          }
-        } catch (error) {
-          console.error(`Error in notification callback for user ${userId}:`, error);
-        }
-      }
-      this.updateTimeouts.delete(userId);
-    }, this.UPDATE_DELAY);
-
-    this.updateTimeouts.set(userId, timeout);
   }
 
   // Super Admin listeners - gets updates about all activities
@@ -441,7 +394,7 @@ export class RealTimeNotificationService {
         snapshot.docChanges().forEach((change) => {
           if (change.type === 'added') {
             const otp = change.doc.data();
-            console.log('🔔 Retailer OTP change detected:', otp.id, otp.status);
+            console.log('🔔 Retailer OTP change detected:', otp.id, otp.phoneNumber);
             this.handleRetailerOtpChange(otp, change.doc.id, userId);
           }
         });
@@ -755,16 +708,18 @@ export class RealTimeNotificationService {
       const notificationId = notificationService.addNotification(uniqueNotification);
       console.log('🔔 Notification added with ID:', notificationId);
       
-      // Only trigger callbacks if a notification was actually added (not a duplicate)
-      if (notificationId && notificationId !== '') {
-        console.log('🔔 Notification was successfully added, triggering callbacks');
-        // Trigger all callbacks with delay to prevent rapid re-renders
+      // Trigger all callbacks asynchronously to prevent blocking
+      setTimeout(() => {
         this.notificationCallbacks.forEach((callback, userId) => {
-          this.triggerCallback(userId);
+          try {
+            const notifications = notificationService.getNotifications();
+            console.log('🔔 Triggering callback for user', userId, 'with', notifications.length, 'notifications');
+            callback(notifications);
+          } catch (error) {
+            console.error(`Error in notification callback for user ${userId}:`, error);
+          }
         });
-      } else {
-        console.log('🔔 Notification was a duplicate, skipping callbacks');
-      }
+      }, 0);
       
     } catch (error) {
       console.error('Error adding notification to service:', error);
@@ -788,13 +743,6 @@ export class RealTimeNotificationService {
       unsubscribe();
     });
     this.unsubscribeFunctions.clear();
-    
-    // Clear all update timeouts
-    this.updateTimeouts.forEach((timeout, userId) => {
-      clearTimeout(timeout);
-    });
-    this.updateTimeouts.clear();
-    
     this.notificationCallbacks.clear();
   }
 }

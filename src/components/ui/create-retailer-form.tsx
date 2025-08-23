@@ -8,11 +8,12 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { X, Plus, Phone, MapPin } from 'lucide-react';
+import { Confetti } from '@/components/ui/Confetti';
+import { X, Plus, Phone, MapPin, Loader2, CheckCircle } from 'lucide-react';
 import { Area } from '@/types';
 
 interface CreateRetailerFormProps {
-  onSubmit: (data: { name: string; phone: string; address?: string; areaId?: string; zipcodes: string[] }) => void;
+  onSubmit: (data: { name: string; phone: string; address?: string; areaId?: string; zipcodes: string[] }) => Promise<void>;
   areas: Area[];
   onCancel?: () => void;
   initialData?: { name: string; phone: string; address?: string; areaId?: string; zipcodes: string[] };
@@ -25,18 +26,47 @@ export function CreateRetailerForm({ onSubmit, areas, onCancel, initialData }: C
   const [areaId, setAreaId] = useState(initialData?.areaId || '');
   const [zipcodes, setZipcodes] = useState<string[]>(initialData?.zipcodes || []);
   const [newZipcode, setNewZipcode] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
+  const [triggerConfetti, setTriggerConfetti] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (name.trim() && phone.trim() && zipcodes.length > 0) {
-      onSubmit({
-        name: name.trim(),
-        phone: phone.trim(),
-        address: address.trim() || undefined,
-        areaId: areaId || undefined,
-        zipcodes: zipcodes.filter(z => z.trim())
-      });
+      setIsSubmitting(true);
+      try {
+        await onSubmit({
+          name: name.trim(),
+          phone: phone.trim(),
+          address: address.trim() || undefined,
+          areaId: areaId || undefined,
+          zipcodes: zipcodes.filter(z => z.trim())
+        });
+        // Show success state and trigger confetti
+        setShowSuccess(true);
+        setTriggerConfetti(true);
+        
+        // Reset form after success
+        setTimeout(() => {
+          setName('');
+          setPhone('');
+          setAddress('');
+          setAreaId('');
+          setZipcodes([]);
+          setNewZipcode('');
+          setShowSuccess(false);
+          if (onCancel) onCancel();
+        }, 2000);
+      } catch (error) {
+        console.error('Error submitting form:', error);
+      } finally {
+        setIsSubmitting(false);
+      }
     }
+  };
+
+  const handleConfettiComplete = () => {
+    setTriggerConfetti(false);
   };
 
   const addZipcode = () => {
@@ -59,43 +89,61 @@ export function CreateRetailerForm({ onSubmit, areas, onCancel, initialData }: C
 
   // Auto-populate zipcodes when area is selected
   const handleAreaChange = (selectedAreaId: string) => {
-    setAreaId(selectedAreaId);
-    if (selectedAreaId) {
-      const selectedArea = areas.find(a => a.id === selectedAreaId);
-      if (selectedArea) {
-        setZipcodes(selectedArea.zipcodes);
+    if (!isSubmitting) {
+      setAreaId(selectedAreaId);
+      if (selectedAreaId) {
+        const selectedArea = areas.find(a => a.id === selectedAreaId);
+        if (selectedArea) {
+          setZipcodes(selectedArea.zipcodes);
+        }
+      } else {
+        setZipcodes([]);
       }
-    } else {
-      setZipcodes([]);
     }
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div>
-          <Label htmlFor="retailerName">Retailer Name</Label>
-          <Input
-            id="retailerName"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Enter retailer name"
-            required
-          />
-        </div>
+    <>
+      <Confetti trigger={triggerConfetti} onComplete={handleConfettiComplete} />
+      <form onSubmit={handleSubmit} className="space-y-4">
+        {showSuccess ? (
+          <div className="text-center py-8">
+            <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
+            <h3 className="text-lg font-semibold text-green-700 mb-2">
+              {initialData ? 'Retailer Updated Successfully!' : 'Retailer Created Successfully!'}
+            </h3>
+            <p className="text-gray-600">
+              {initialData ? 'The retailer has been updated.' : 'The new retailer has been created and is ready to use.'}
+            </p>
+          </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="retailerName">Retailer Name</Label>
+                <Input
+                  id="retailerName"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Enter retailer name"
+                  required
+                  disabled={isSubmitting}
+                />
+              </div>
 
-        <div>
-          <Label htmlFor="phone">Phone Number</Label>
-          <Input
-            id="phone"
-            type="tel"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            placeholder="Enter phone number"
-            required
-          />
-        </div>
-      </div>
+              <div>
+                <Label htmlFor="phone">Phone Number</Label>
+                <Input
+                  id="phone"
+                  type="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder="Enter phone number"
+                  required
+                  disabled={isSubmitting}
+                />
+              </div>
+            </div>
 
       <div>
         <Label htmlFor="address">Address</Label>
@@ -105,12 +153,13 @@ export function CreateRetailerForm({ onSubmit, areas, onCancel, initialData }: C
           onChange={(e) => setAddress(e.target.value)}
           placeholder="Enter retailer address (optional)"
           rows={3}
+          disabled={isSubmitting}
         />
       </div>
 
       <div>
         <Label htmlFor="area">Service Area</Label>
-        <Select value={areaId} onValueChange={handleAreaChange}>
+        <Select value={areaId} onValueChange={handleAreaChange} disabled={isSubmitting}>
           <SelectTrigger>
             <SelectValue placeholder="Select service area" />
           </SelectTrigger>
@@ -135,8 +184,9 @@ export function CreateRetailerForm({ onSubmit, areas, onCancel, initialData }: C
               onChange={(e) => setNewZipcode(e.target.value)}
               onKeyPress={handleKeyPress}
               placeholder="Enter zipcode"
+              disabled={isSubmitting}
             />
-            <Button type="button" onClick={addZipcode} variant="outline">
+            <Button type="button" onClick={addZipcode} variant="outline" disabled={isSubmitting}>
               <Plus className="h-4 w-4" />
             </Button>
           </div>
@@ -157,16 +207,26 @@ export function CreateRetailerForm({ onSubmit, areas, onCancel, initialData }: C
         </div>
       </div>
 
-      <div className="flex justify-end space-x-2">
-        {onCancel && (
-          <Button type="button" variant="outline" onClick={onCancel}>
-            Cancel
-          </Button>
+            <div className="flex justify-end space-x-2">
+              {onCancel && (
+                <Button type="button" variant="outline" onClick={onCancel} disabled={isSubmitting}>
+                  Cancel
+                </Button>
+              )}
+              <Button type="submit" disabled={isSubmitting || !name.trim() || !phone.trim() || zipcodes.length === 0}>
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    {initialData ? 'Updating...' : 'Creating...'}
+                  </>
+                ) : (
+                  initialData ? 'Update Retailer' : 'Create Retailer'
+                )}
+              </Button>
+            </div>
+          </>
         )}
-        <Button type="submit">
-          {initialData ? 'Update Retailer' : 'Create Retailer'}
-        </Button>
-      </div>
-    </form>
+      </form>
+    </>
   );
 }

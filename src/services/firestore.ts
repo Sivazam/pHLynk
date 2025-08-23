@@ -45,7 +45,9 @@ import {
   DashboardStats,
   LineWorkerPerformance,
   AreaPerformance,
-  ProductData
+  ProductData,
+  MonthlyTargets,
+  MonthlyTarget
 } from '@/types';
 
 // Generic CRUD operations
@@ -73,11 +75,27 @@ export class FirestoreService<T extends BaseDocument> {
 
   async getById(id: string, tenantId: string): Promise<T | null> {
     try {
+      console.log('🔍 getById called for collection:', this.collectionName);
+      console.log('  Document ID:', id);
+      console.log('  Tenant ID:', tenantId);
+      
       const docRef = doc(db, this.collectionName, id);
       const docSnap = await getDoc(docRef);
       
-      if (docSnap.exists() && docSnap.data().tenantId === tenantId) {
-        return { id: docSnap.id, ...docSnap.data() } as T;
+      console.log('🔍 Document exists:', docSnap.exists());
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        console.log('🔍 Document tenantId:', data.tenantId);
+        console.log('🔍 Tenant ID match:', data.tenantId === tenantId);
+        
+        if (data.tenantId === tenantId) {
+          console.log('✅ Document found and tenant ID matches');
+          return { id: docSnap.id, ...data } as T;
+        } else {
+          console.log('❌ Tenant ID mismatch - document belongs to different tenant');
+        }
+      } else {
+        console.log('❌ Document does not exist');
       }
       return null;
     } catch (error) {
@@ -109,6 +127,11 @@ export class FirestoreService<T extends BaseDocument> {
 
   async update(id: string, data: Partial<T>, tenantId: string): Promise<void> {
     try {
+      console.log('🔍 update called for collection:', this.collectionName);
+      console.log('  Document ID:', id);
+      console.log('  Tenant ID:', tenantId);
+      console.log('  Data to update:', Object.keys(data));
+      
       const docRef = doc(db, this.collectionName, id);
       
       // Process the data to handle field deletions
@@ -123,10 +146,14 @@ export class FirestoreService<T extends BaseDocument> {
         }
       });
       
+      console.log('🔍 Processed data keys:', Object.keys(processedData));
+      
       await updateDoc(docRef, {
         ...processedData,
         updatedAt: Timestamp.now()
       });
+      
+      console.log('✅ Document updated successfully');
     } catch (error) {
       console.error(`Error updating document ${id} in ${this.collectionName}:`, error);
       throw error;
@@ -599,6 +626,204 @@ export class RetailerService extends FirestoreService<Retailer> {
       where('assignedLineWorkerId', '==', null)
     ]);
   }
+
+  // OTP Management Methods
+  async addOTPToRetailer(retailerId: string, tenantId: string, otpData: {
+    paymentId: string;
+    code: string;
+    amount: number;
+    lineWorkerName: string;
+    expiresAt: Timestamp;
+    createdAt: Timestamp;
+    isUsed?: boolean;
+    usedAt?: Timestamp;
+  }): Promise<void> {
+    try {
+      console.log('🔍 addOTPToRetailer called with:');
+      console.log('  Retailer ID:', retailerId);
+      console.log('  Tenant ID:', tenantId);
+      console.log('  OTP Payment ID:', otpData.paymentId);
+      
+      const retailer = await this.getById(retailerId, tenantId);
+      console.log('🔍 Retailer found:', retailer ? 'YES' : 'NO');
+      
+      if (!retailer) {
+        throw new Error('Retailer not found');
+      }
+
+      // Initialize activeOTPs array if it doesn't exist
+      const activeOTPs = retailer.activeOTPs || [];
+      console.log('🔍 Current activeOTPs count:', activeOTPs.length);
+      
+      // Add new OTP to the array
+      activeOTPs.push(otpData);
+      console.log('🔍 New activeOTPs count:', activeOTPs.length);
+
+      // Update retailer document with new OTP
+      console.log('🔍 Updating retailer document with new OTP array...');
+      await this.update(retailerId, {
+        activeOTPs
+      }, tenantId);
+
+      console.log(`✅ OTP added to retailer ${retailerId} for payment ${otpData.paymentId}`);
+    } catch (error) {
+      console.error('Error adding OTP to retailer:', error);
+      throw error;
+    }
+  }
+
+  async getActiveOTPsFromRetailer(retailerId: string, tenantId: string): Promise<Array<{
+    paymentId: string;
+    code: string;
+    amount: number;
+    lineWorkerName: string;
+    expiresAt: Timestamp;
+    createdAt: Timestamp;
+    isUsed?: boolean;
+    usedAt?: Timestamp;
+  }>> {
+    try {
+      console.log('🔍 getActiveOTPsFromRetailer called:', {
+        retailerId,
+        tenantId
+      });
+      
+      const retailer = await this.getById(retailerId, tenantId);
+      console.log('🔍 Retailer found:', retailer ? 'YES' : 'NO');
+      
+      if (!retailer) {
+        console.log('❌ Retailer not found');
+        return [];
+      }
+      
+      console.log('🔍 Retailer activeOTPs array:', retailer.activeOTPs ? 'EXISTS' : 'MISSING');
+      if (!retailer.activeOTPs) {
+        console.log('❌ Retailer has no activeOTPs array');
+        return [];
+      }
+
+      console.log('🔍 Total OTPs in retailer document:', retailer.activeOTPs.length);
+      console.log('🔍 All OTPs in retailer document:', retailer.activeOTPs.map(otp => ({
+        paymentId: otp.paymentId,
+        code: otp.code,
+        amount: otp.amount,
+        isUsed: otp.isUsed,
+        expiresAt: otp.expiresAt.toDate(),
+        createdAt: otp.createdAt.toDate()
+      })));
+
+      const now = new Date();
+      console.log('🔍 Current time for expiration check:', now);
+      
+      // Filter out used and expired OTPs
+      const activeOTPs = retailer.activeOTPs.filter(otp => {
+        // Skip used OTPs
+        if (otp.isUsed) {
+          console.log(`🔍 Skipping used OTP: ${otp.paymentId}`);
+          return false;
+        }
+        
+        // Skip expired OTPs
+        const expiresAt = otp.expiresAt.toDate();
+        const isExpired = expiresAt <= now;
+        console.log(`🔍 OTP ${otp.paymentId} expiration check:`, {
+          expiresAt: expiresAt,
+          now: now,
+          isExpired: isExpired
+        });
+        
+        if (isExpired) {
+          console.log(`🔍 Skipping expired OTP: ${otp.paymentId}`);
+          return false;
+        }
+        
+        console.log(`🔍 Keeping active OTP: ${otp.paymentId}`);
+        return true;
+      });
+
+      console.log('🔍 Active OTPs after filtering:', activeOTPs.length);
+      console.log('🔍 Active OTPs details:', activeOTPs.map(otp => ({
+        paymentId: otp.paymentId,
+        code: otp.code,
+        amount: otp.amount,
+        expiresAt: otp.expiresAt.toDate()
+      })));
+
+      // Sort by creation time (newest first)
+      const sortedOTPs = activeOTPs.sort((a, b) => 
+        b.createdAt.toMillis() - a.createdAt.toMillis()
+      );
+      
+      console.log('✅ Returning sorted active OTPs:', sortedOTPs.length);
+      return sortedOTPs;
+    } catch (error) {
+      console.error('Error getting active OTPs from retailer:', error);
+      return [];
+    }
+  }
+
+  async markOTPAsUsedInRetailer(retailerId: string, tenantId: string, paymentId: string): Promise<void> {
+    try {
+      const retailer = await this.getById(retailerId, tenantId);
+      if (!retailer || !retailer.activeOTPs) {
+        return;
+      }
+
+      // Find and mark the OTP as used
+      const updatedOTPs = retailer.activeOTPs.map(otp => {
+        if (otp.paymentId === paymentId && !otp.isUsed) {
+          return {
+            ...otp,
+            isUsed: true,
+            usedAt: Timestamp.now()
+          };
+        }
+        return otp;
+      });
+
+      // Update retailer document
+      await this.update(retailerId, {
+        activeOTPs: updatedOTPs
+      }, tenantId);
+
+      console.log(`✅ OTP marked as used for retailer ${retailerId}, payment ${paymentId}`);
+    } catch (error) {
+      console.error('Error marking OTP as used in retailer:', error);
+      throw error;
+    }
+  }
+
+  async cleanupExpiredOTPsInRetailer(retailerId: string, tenantId: string): Promise<void> {
+    try {
+      const retailer = await this.getById(retailerId, tenantId);
+      if (!retailer || !retailer.activeOTPs) {
+        return;
+      }
+
+      const now = new Date();
+      
+      // Remove expired OTPs older than 1 hour
+      const cutoffTime = new Date(now.getTime() - 60 * 60 * 1000); // 1 hour ago
+      
+      const cleanedOTPs = retailer.activeOTPs.filter(otp => {
+        // Keep non-expired OTPs and recently expired ones (for audit trail)
+        const expiresAt = otp.expiresAt.toDate();
+        return expiresAt > cutoffTime;
+      });
+
+      // Update retailer document if OTPs were removed
+      if (cleanedOTPs.length !== retailer.activeOTPs.length) {
+        await this.update(retailerId, {
+          activeOTPs: cleanedOTPs
+        }, tenantId);
+        
+        console.log(`🧹 Cleaned up ${retailer.activeOTPs.length - cleanedOTPs.length} expired OTPs for retailer ${retailerId}`);
+      }
+    } catch (error) {
+      console.error('Error cleaning up expired OTPs in retailer:', error);
+      // Don't throw error for cleanup operations
+    }
+  }
 }
 
 export class InvoiceService extends FirestoreService<Invoice> {
@@ -717,6 +942,7 @@ export class PaymentService extends FirestoreService<Payment> {
   async initiatePayment(tenantId: string, data: InitiatePaymentForm & { lineWorkerId: string }): Promise<string> {
     return this.create({
       retailerId: data.retailerId,
+      retailerName: data.retailerName,
       lineWorkerId: data.lineWorkerId,
       invoiceAllocations: data.invoiceAllocations,
       totalPaid: data.totalPaid,
@@ -987,6 +1213,98 @@ export class DashboardService {
   static async getAreaPerformance(tenantId: string, startDate: Date, endDate: Date): Promise<AreaPerformance[]> {
     // Implementation for area performance report
     return [];
+  }
+
+  // Monthly Targets Management
+  static async getMonthlyTargets(tenantId: string, year: number): Promise<MonthlyTargets | null> {
+    try {
+      const targetsRef = collection(db, COLLECTIONS.MONTHLY_TARGETS);
+      const q = query(
+        targetsRef,
+        where('tenantId', '==', tenantId),
+        where('year', '==', year)
+      );
+      const querySnapshot = await getDocs(q);
+      
+      if (!querySnapshot.empty) {
+        const doc = querySnapshot.docs[0];
+        return { id: doc.id, ...doc.data() } as MonthlyTargets;
+      }
+      return null;
+    } catch (error) {
+      console.error('Error getting monthly targets:', error);
+      return null;
+    }
+  }
+
+  static async saveMonthlyTargets(tenantId: string, targets: MonthlyTarget[], year: number): Promise<void> {
+    try {
+      const existingTargets = await this.getMonthlyTargets(tenantId, year);
+      
+      const targetsData: Omit<MonthlyTargets, 'id'> = {
+        tenantId,
+        targets,
+        year,
+        createdAt: existingTargets?.createdAt || Timestamp.now(),
+        updatedAt: Timestamp.now()
+      };
+
+      if (existingTargets) {
+        // Update existing document
+        const targetsRef = doc(db, COLLECTIONS.MONTHLY_TARGETS, existingTargets.id);
+        await updateDoc(targetsRef, {
+          ...targetsData,
+          updatedAt: Timestamp.now()
+        });
+        console.log('✅ Monthly targets updated successfully');
+      } else {
+        // Create new document
+        await addDoc(collection(db, COLLECTIONS.MONTHLY_TARGETS), targetsData);
+        console.log('✅ Monthly targets created successfully');
+      }
+    } catch (error) {
+      console.error('Error saving monthly targets:', error);
+      throw error;
+    }
+  }
+
+  static async getMonthlyRevenue(tenantId: string, year: number): Promise<{ month: string; revenue: number }[]> {
+    try {
+      // Get all completed payments for the year
+      const payments = await new PaymentService().query(tenantId, [
+        where('state', '==', 'COMPLETED')
+      ]);
+
+      // Filter payments for the specified year and group by month
+      const monthlyRevenue: { [key: string]: number } = {};
+      
+      // Initialize all months with 0 revenue
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      months.forEach(month => {
+        monthlyRevenue[month] = 0;
+      });
+
+      // Sum payments by month
+      payments.forEach(payment => {
+        if (payment.timeline.completedAt) {
+          const completedDate = toDate(payment.timeline.completedAt);
+          if (completedDate.getFullYear() === year) {
+            const monthIndex = completedDate.getMonth();
+            const monthName = months[monthIndex];
+            monthlyRevenue[monthName] += payment.totalPaid;
+          }
+        }
+      });
+
+      // Convert to array format
+      return months.map(month => ({
+        month,
+        revenue: monthlyRevenue[month]
+      }));
+    } catch (error) {
+      console.error('Error getting monthly revenue:', error);
+      return [];
+    }
   }
 }
 

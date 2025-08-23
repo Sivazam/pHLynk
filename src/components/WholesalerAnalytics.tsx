@@ -6,6 +6,9 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { 
   TrendingUp, 
@@ -59,9 +62,89 @@ export function WholesalerAnalytics({
   invoices, 
   areas,
   onRefresh,
-  refreshLoading = false
-}: WholesalerAnalyticsProps) {
+  refreshLoading = false,
+  tenantId
+}: WholesalerAnalyticsProps & { tenantId?: string }) {
   const [timeRange, setTimeRange] = useState<'7d' | '30d' | '90d' | '1y'>('30d');
+  const [showTargetDialog, setShowTargetDialog] = useState(false);
+  const [monthlyTargets, setMonthlyTargets] = useState([
+    { month: 'Jan', target: 100000 },
+    { month: 'Feb', target: 110000 },
+    { month: 'Mar', target: 120000 },
+    { month: 'Apr', target: 130000 },
+    { month: 'May', target: 140000 },
+    { month: 'Jun', target: 150000 },
+    { month: 'Jul', target: 160000 },
+    { month: 'Aug', target: 170000 },
+    { month: 'Sep', target: 180000 },
+    { month: 'Oct', target: 190000 },
+    { month: 'Nov', target: 200000 },
+    { month: 'Dec', target: 210000 },
+  ]);
+  const [loadingTargets, setLoadingTargets] = useState(false);
+
+  // Load monthly targets from database
+  useEffect(() => {
+    const loadTargets = async () => {
+      if (!tenantId) return;
+      
+      setLoadingTargets(true);
+      try {
+        const currentYear = new Date().getFullYear();
+        const savedTargets = await DashboardService.getMonthlyTargets(tenantId, currentYear);
+        
+        if (savedTargets && savedTargets.targets.length > 0) {
+          setMonthlyTargets(savedTargets.targets);
+          console.log('✅ Loaded monthly targets from database:', savedTargets.targets);
+        } else {
+          console.log('ℹ️ No saved targets found, using defaults');
+        }
+      } catch (error) {
+        console.error('❌ Error loading monthly targets:', error);
+      } finally {
+        setLoadingTargets(false);
+      }
+    };
+
+    loadTargets();
+  }, [tenantId]);
+
+  const handleTargetChange = (month: string, value: string) => {
+    const numericValue = parseFloat(value) || 0;
+    setMonthlyTargets(prev => 
+      prev.map(target => 
+        target.month === month 
+          ? { ...target, target: numericValue }
+          : target
+      )
+    );
+  };
+
+  const handleSaveTargets = async () => {
+    if (!tenantId) {
+      console.error('❌ No tenantId provided');
+      return;
+    }
+
+    try {
+      setLoadingTargets(true);
+      const currentYear = new Date().getFullYear();
+      await DashboardService.saveMonthlyTargets(tenantId, monthlyTargets, currentYear);
+      
+      console.log('✅ Monthly targets saved successfully:', monthlyTargets);
+      setShowTargetDialog(false);
+      
+      // Trigger a refresh to update the analytics with new targets
+      if (onRefresh) {
+        onRefresh();
+      }
+    } catch (error) {
+      console.error('❌ Error saving monthly targets:', error);
+      // You might want to show an error message to the user here
+    } finally {
+      setLoadingTargets(false);
+    }
+  };
 
   const analytics: AnalyticsData = useMemo(() => {
     // Calculate basic metrics
@@ -102,15 +185,34 @@ export function WholesalerAnalytics({
       };
     }).sort((a, b) => b.totalCollected - a.totalCollected);
 
-    // Monthly trends (simplified)
-    const monthlyTrends = [
-      { month: 'Jan', revenue: 125000, target: 100000 },
-      { month: 'Feb', revenue: 145000, target: 110000 },
-      { month: 'Mar', revenue: 165000, target: 120000 },
-      { month: 'Apr', revenue: 155000, target: 130000 },
-      { month: 'May', revenue: 175000, target: 140000 },
-      { month: 'Jun', revenue: 185000, target: 150000 },
-    ];
+    // Monthly trends - using real revenue data from payments
+    const currentYear = new Date().getFullYear();
+    const monthlyRevenueData: { [key: string]: number } = {};
+    
+    // Initialize all months with 0 revenue
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    months.forEach(month => {
+      monthlyRevenueData[month] = 0;
+    });
+
+    // Calculate real revenue from completed payments
+    completedPayments.forEach(payment => {
+      if (payment.timeline.completedAt) {
+        const completedDate = payment.timeline.completedAt.toDate();
+        if (completedDate.getFullYear() === currentYear) {
+          const monthIndex = completedDate.getMonth();
+          const monthName = months[monthIndex];
+          monthlyRevenueData[monthName] += payment.totalPaid;
+        }
+      }
+    });
+
+    // Create monthly trends using real revenue data and saved targets
+    const monthlyTrends = months.slice(0, 6).map(month => ({
+      month,
+      revenue: monthlyRevenueData[month],
+      target: monthlyTargets.find(t => t.month === month)?.target || 100000
+    }));
 
     // Retailer insights
     const retailerInsights = retailers
@@ -134,7 +236,7 @@ export function WholesalerAnalytics({
       monthlyTrends,
       retailerInsights
     };
-  }, [retailers, payments, lineWorkers, invoices, areas]);
+  }, [retailers, payments, lineWorkers, invoices, areas, monthlyTargets]);
 
   // Skeleton components
   const KeyMetricsSkeleton = () => (
@@ -278,43 +380,6 @@ export function WholesalerAnalytics({
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">Analytics Dashboard</h2>
-          <p className="text-gray-600">Comprehensive insights into your collection performance</p>
-        </div>
-        <div className="flex items-center space-x-2">
-          <Button
-            variant="outline"
-            onClick={() => onRefresh && onRefresh()}
-            disabled={refreshLoading}
-          >
-            {refreshLoading ? (
-              <Loader2 className="h-4 w-4 animate-spin mr-2" />
-            ) : (
-              <RefreshCw className="h-4 w-4 mr-2" />
-            )}
-            Refresh
-          </Button>
-          <Select value={timeRange} onValueChange={(value: any) => setTimeRange(value)}>
-            <SelectTrigger className="w-32">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="7d">Last 7 days</SelectItem>
-              <SelectItem value="30d">Last 30 days</SelectItem>
-              <SelectItem value="90d">Last 90 days</SelectItem>
-              <SelectItem value="1y">Last year</SelectItem>
-            </SelectContent>
-          </Select>
-          <Button variant="outline">
-            <Download className="h-4 w-4 mr-2" />
-            Export
-          </Button>
-        </div>
-      </div>
-
       {/* Key Metrics */}
       {refreshLoading ? (
         <KeyMetricsSkeleton />
@@ -532,47 +597,185 @@ export function WholesalerAnalytics({
       ) : (
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center">
-              <TrendingUp className="h-5 w-5 mr-2" />
-              Monthly Collection Trends
-            </CardTitle>
-            <CardDescription>
-              Revenue trends vs targets over time
-            </CardDescription>
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
+              <div>
+                <CardTitle className="flex items-center">
+                  <TrendingUp className="h-5 w-5 mr-2" />
+                  Monthly Collection Trends
+                </CardTitle>
+                <CardDescription>
+                  Revenue trends vs targets over time
+                </CardDescription>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => setShowTargetDialog(true)}>
+                <Target className="h-4 w-4 mr-2" />
+                Set Targets
+              </Button>
+            </div>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {analytics.monthlyTrends.map((trend) => (
-                <div key={trend.month} className="flex items-center justify-between p-4 border rounded-lg">
-                  <div className="flex items-center space-x-4">
-                    <div className="w-16 text-sm font-medium text-gray-600">{trend.month}</div>
-                    <div className="flex-1">
-                      <div className="flex justify-between text-sm mb-1">
-                        <span>Revenue: {formatCurrency(trend.revenue)}</span>
-                        <span>Target: {formatCurrency(trend.target)}</span>
+              {/* Mobile: Single column, Tablet: 2 columns, Desktop: 3 columns */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {analytics.monthlyTrends.map((trend) => (
+                  <div key={trend.month} className="p-4 border rounded-lg hover:shadow-md transition-shadow">
+                    <div className="space-y-3">
+                      {/* Month Header */}
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-lg font-semibold text-gray-900">{trend.month}</h3>
+                        <Badge variant={trend.revenue >= trend.target ? 'default' : 'secondary'}>
+                          {trend.revenue >= trend.target ? 'Target Met' : 'Below Target'}
+                        </Badge>
                       </div>
-                      <div className="w-full bg-gray-200 rounded-full h-2">
-                        <div 
-                          className="bg-blue-600 h-2 rounded-full" 
-                          style={{ width: `${Math.min((trend.revenue / trend.target) * 100, 100)}%` }}
-                        />
+                      
+                      {/* Revenue vs Target */}
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-sm">
+                          <span className="text-gray-600">Revenue:</span>
+                          <span className="font-medium">{formatCurrency(trend.revenue)}</span>
+                        </div>
+                        <div className="flex justify-between text-sm">
+                          <span className="text-gray-600">Target:</span>
+                          <span className="font-medium">{formatCurrency(trend.target)}</span>
+                        </div>
+                      </div>
+                      
+                      {/* Progress Bar */}
+                      <div className="space-y-2">
+                        <div className="w-full bg-gray-200 rounded-full h-3">
+                          <div 
+                            className={`h-3 rounded-full transition-all duration-300 ${
+                              trend.revenue >= trend.target 
+                                ? 'bg-green-500' 
+                                : trend.revenue >= trend.target * 0.8 
+                                  ? 'bg-yellow-500' 
+                                  : 'bg-red-500'
+                            }`}
+                            style={{ width: `${Math.min((trend.revenue / trend.target) * 100, 100)}%` }}
+                          />
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-xs text-gray-500">
+                            {((trend.revenue / trend.target) * 100).toFixed(1)}% of target
+                          </span>
+                          <span className={`text-xs font-medium ${
+                            trend.revenue >= trend.target 
+                              ? 'text-green-600' 
+                              : trend.revenue >= trend.target * 0.8 
+                                ? 'text-yellow-600' 
+                                : 'text-red-600'
+                          }`}>
+                            {trend.revenue >= trend.target ? '+' : ''}
+                            {formatCurrency(trend.revenue - trend.target)}
+                          </span>
+                        </div>
                       </div>
                     </div>
                   </div>
-                  <div className="flex items-center space-x-2">
-                    <Badge variant={trend.revenue >= trend.target ? 'default' : 'secondary'}>
-                      {trend.revenue >= trend.target ? 'Target Met' : 'Below Target'}
-                    </Badge>
-                    <span className="text-sm text-gray-600">
-                      {((trend.revenue / trend.target) * 100).toFixed(1)}%
-                    </span>
-                  </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           </CardContent>
         </Card>
       )}
+      
+      {/* Target Management Dialog */}
+      <Dialog open={showTargetDialog} onOpenChange={setShowTargetDialog}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center">
+              <Target className="h-5 w-5 mr-2" />
+              Monthly Collection Targets
+            </DialogTitle>
+            <DialogDescription>
+              Set revenue targets for each month to track performance against goals
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {monthlyTargets.map((target) => (
+                <div key={target.month} className="space-y-2">
+                  <Label htmlFor={`target-${target.month}`} className="text-sm font-medium">
+                    {target.month} Target
+                  </Label>
+                  <Input
+                    id={`target-${target.month}`}
+                    type="number"
+                    value={target.target}
+                    onChange={(e) => handleTargetChange(target.month, e.target.value)}
+                    placeholder="Enter target amount"
+                    className="w-full"
+                  />
+                  <div className="text-xs text-gray-500">
+                    Current: {formatCurrency(target.target)}
+                  </div>
+                </div>
+              ))}
+            </div>
+            
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <h4 className="font-medium text-gray-900 mb-2">Quick Actions</h4>
+              <div className="flex flex-wrap gap-2">
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => {
+                    const baseAmount = 100000;
+                    setMonthlyTargets(monthlyTargets.map((target, index) => ({
+                      ...target,
+                      target: baseAmount + (index * 10000)
+                    })));
+                  }}
+                >
+                  Set Progressive (+10k/month)
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => {
+                    const baseAmount = 150000;
+                    setMonthlyTargets(monthlyTargets.map((target, index) => ({
+                      ...target,
+                      target: baseAmount + (index * 5000)
+                    })));
+                  }}
+                >
+                  Set Aggressive (+5k/month)
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => {
+                    setMonthlyTargets(monthlyTargets.map(target => ({
+                      ...target,
+                      target: 100000
+                    })));
+                  }}
+                >
+                  Reset to 100k
+                </Button>
+              </div>
+            </div>
+          </div>
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowTargetDialog(false)} disabled={loadingTargets}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveTargets} disabled={loadingTargets}>
+              {loadingTargets ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                'Save Targets'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -7,9 +7,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { DashboardNavigation, NavItem } from '@/components/DashboardNavigation';
-import { retailerService, paymentService, otpService, invoiceService } from '@/services/firestore';
+import { retailerService, paymentService, invoiceService } from '@/services/firestore';
 import { realtimeNotificationService } from '@/services/realtime-notifications';
 import { notificationService } from '@/services/notification-service';
 import { RetailerAuthService } from '@/services/retailer-auth';
@@ -18,6 +19,7 @@ import { formatTimestamp, formatTimestampWithTime, formatCurrency } from '@/lib/
 import { getActiveOTPsForRetailer, getCompletedPaymentsForRetailer, removeCompletedPayment } from '@/lib/otp-store';
 import { db } from '@/lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
+import { DateRangeFilter, DateRangeOption } from '@/components/ui/DateRangeFilter';
 import { Skeleton } from '@/components/ui/skeleton';
 import { 
   Store, 
@@ -47,6 +49,7 @@ import {
 export function RetailerDashboard() {
   const [retailer, setRetailer] = useState<Retailer | null>(null);
   const [retailerUser, setRetailerUser] = useState<any>(null);
+  const [tenantId, setTenantId] = useState<string | null>(null);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -79,6 +82,44 @@ export function RetailerDashboard() {
   const [notificationCount, setNotificationCount] = useState(0);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [refreshLoading, setRefreshLoading] = useState(false);
+  const [paymentTab, setPaymentTab] = useState('completed');
+  const [selectedDateRangeOption, setSelectedDateRangeOption] = useState('today');
+  const [dateRange, setDateRange] = useState<{ startDate: Date; endDate: Date }>(() => {
+    const today = new Date();
+    const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
+    return { startDate: startOfDay, endDate: endOfDay };
+  });
+
+  // Helper functions to filter data by date range
+  const filterPaymentsByDateRange = (paymentsData: Payment[]) => {
+    return paymentsData.filter(payment => {
+      const paymentDate = payment.createdAt.toDate();
+      return paymentDate >= dateRange.startDate && paymentDate <= dateRange.endDate;
+    });
+  };
+
+  const filterInvoicesByDateRange = (invoicesData: Invoice[]) => {
+    return invoicesData.filter(invoice => {
+      const invoiceDate = invoice.issueDate.toDate();
+      return invoiceDate >= dateRange.startDate && invoiceDate <= dateRange.endDate;
+    });
+  };
+
+  const calculateOutstandingForDateRange = (invoicesData: Invoice[], paymentsData: Payment[]) => {
+    const filteredInvoices = filterInvoicesByDateRange(invoicesData);
+    const filteredPayments = filterPaymentsByDateRange(paymentsData).filter(p => p.state === 'COMPLETED');
+    
+    const totalInvoiceAmount = filteredInvoices.reduce((sum, invoice) => sum + invoice.totalAmount, 0);
+    const totalPaid = filteredPayments.reduce((sum, payment) => sum + payment.totalPaid, 0);
+    
+    return Math.max(0, totalInvoiceAmount - totalPaid);
+  };
+
+  const handleDateRangeChange = (value: string, newDateRange: { startDate: Date; endDate: Date }) => {
+    setSelectedDateRangeOption(value);
+    setDateRange(newDateRange);
+  };
 
   // Navigation items
   const navItems: NavItem[] = [
@@ -243,6 +284,7 @@ export function RetailerDashboard() {
       setPayments(paymentsData);
       setInvoices(invoicesData);
       setRetailerUser(retailerUserData);
+      setTenantId(retailerUserData.tenantId);
       
       console.log('Final retailer data:', retailerData);
       console.log('Payments loaded:', paymentsData.length);
@@ -258,16 +300,16 @@ export function RetailerDashboard() {
     const storedRetailerId = localStorage.getItem('retailerId');
     if (!storedRetailerId) return;
     
-    // Get OTPs from in-memory store
+    // Get OTPs from in-memory store (for real-time updates)
     const activeOTPsForRetailer = getActiveOTPsForRetailer(storedRetailerId);
     const completedPaymentsForRetailer = getCompletedPaymentsForRetailer(storedRetailerId);
     
-    // If no OTPs found in memory, try to fetch from Firestore
-    let firestoreOTPs: any[] = [];
-    if (activeOTPsForRetailer.length === 0) {
+    // Get OTPs from retailer document (primary source)
+    let retailerOTPs: any[] = [];
+    if (tenantId) {
       try {
-        const firestoreOTPData = await otpService.getActiveOTPsForRetailer(storedRetailerId);
-        firestoreOTPs = firestoreOTPData.map(otp => ({
+        const retailerOTPData = await retailerService.getActiveOTPsFromRetailer(storedRetailerId, tenantId);
+        retailerOTPs = retailerOTPData.map(otp => ({
           code: otp.code,
           amount: otp.amount,
           paymentId: otp.paymentId,
@@ -275,14 +317,16 @@ export function RetailerDashboard() {
           expiresAt: otp.expiresAt.toDate(),
           createdAt: otp.createdAt.toDate()
         }));
-        console.log('📱 Fetched OTPs from Firestore:', firestoreOTPs.length);
+        console.log('📱 Fetched OTPs from retailer document:', retailerOTPs.length);
       } catch (error) {
-        console.error('❌ Error fetching OTPs from Firestore:', error);
+        console.error('❌ Error fetching OTPs from retailer document:', error);
       }
+    } else {
+      console.warn('⚠️ Tenant ID not available, cannot fetch OTPs from retailer document');
     }
     
-    // Combine in-memory and Firestore OTPs, removing duplicates
-    const allOTPs = [...activeOTPsForRetailer, ...firestoreOTPs];
+    // Combine in-memory and retailer document OTPs, removing duplicates
+    const allOTPs = [...activeOTPsForRetailer, ...retailerOTPs];
     const uniqueOTPs = allOTPs.filter((otp, index, self) => 
       index === self.findIndex(o => o.paymentId === otp.paymentId)
     );
@@ -512,168 +556,191 @@ export function RetailerDashboard() {
   };
 
   // Overview Component
-  const Overview = () => (
-    <div className="space-y-6">
-      {/* Header with refresh button */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">Overview</h2>
-          <p className="text-gray-600">Your business summary and outstanding amounts</p>
-        </div>
-        <Button 
-          onClick={handleManualRefresh} 
-          disabled={refreshLoading}
-          variant="outline"
-          className="flex items-center space-x-2"
-        >
-          {refreshLoading ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <RefreshCw className="h-4 w-4" />
-          )}
-          <span>Refresh</span>
-        </Button>
-      </div>
+  const Overview = () => {
+    // Calculate filtered data for the selected date range
+    const filteredPayments = filterPaymentsByDateRange(payments);
+    const filteredInvoices = filterInvoicesByDateRange(invoices);
+    const filteredCompletedPayments = filteredPayments.filter(p => p.state === 'COMPLETED');
+    const filteredOutstandingAmount = calculateOutstandingForDateRange(invoices, payments);
 
-      {/* Retailer Info Card */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center space-x-2">
-            <Store className="h-5 w-5" />
-            <span>Your Information</span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <Label className="text-sm font-medium text-gray-500">Business Name</Label>
-              <div className="text-lg font-semibold">{retailer?.name}</div>
-            </div>
-            <div>
-              <Label className="text-sm font-medium text-gray-500">Phone Number</Label>
-              <div className="text-lg font-semibold">{retailer?.phone}</div>
-            </div>
-            <div className="md:col-span-2">
-              <Label className="text-sm font-medium text-gray-500">Address</Label>
-              <div className="text-lg font-semibold">{retailer?.address}</div>
-            </div>
+    return (
+      <div className="space-y-4 sm:space-y-6">
+        {/* Header with date filter and refresh button */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div className="flex-1 min-w-0">
+            <h2 className="text-xl sm:text-2xl font-bold text-gray-900 truncate">Overview</h2>
+            <p className="text-sm sm:text-base text-gray-600 mt-1">
+              Your business summary and outstanding amounts
+            </p>
           </div>
-        </CardContent>
-      </Card>
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-4">
+            <DateRangeFilter 
+              value={selectedDateRangeOption} 
+              onValueChange={handleDateRangeChange} 
+              className="w-full sm:w-auto"
+            />
+            <Button 
+              onClick={handleManualRefresh} 
+              disabled={refreshLoading}
+              variant="outline"
+              className="flex items-center justify-center space-x-2 w-full sm:w-auto"
+              size="sm"
+            >
+              {refreshLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4" />
+              )}
+              <span>Refresh</span>
+            </Button>
+          </div>
+        </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <Card className="hover:shadow-lg transition-shadow duration-300 border-l-4 border-l-red-500">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">Outstanding Amount</CardTitle>
-            <div className="bg-red-100 p-2 rounded-full">
-              <DollarSign className="h-4 w-4 text-red-600" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-gray-900">
-              {formatCurrency(retailer?.currentOutstanding || 0)}
-            </div>
-            <p className="text-xs text-gray-500">Total unpaid amount</p>
-          </CardContent>
-        </Card>
-
-        <Card className="hover:shadow-lg transition-shadow duration-300 border-l-4 border-l-blue-500">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">Total Invoices</CardTitle>
-            <div className="bg-blue-100 p-2 rounded-full">
-              <FileText className="h-4 w-4 text-blue-600" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-gray-900">{invoices.length}</div>
-            <p className="text-xs text-gray-500">Invoice documents</p>
-          </CardContent>
-        </Card>
-
-        <Card className="hover:shadow-lg transition-shadow duration-300 border-l-4 border-l-green-500">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">Total Payments</CardTitle>
-            <div className="bg-green-100 p-2 rounded-full">
-              <CheckCircle className="h-4 w-4 text-green-600" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-gray-900">
-              {payments.filter(p => p.state === 'COMPLETED').length}
-            </div>
-            <p className="text-xs text-gray-500">Completed payments</p>
-          </CardContent>
-        </Card>
-
-        <Card className="hover:shadow-lg transition-shadow duration-300 border-l-4 border-l-purple-500">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">Active OTPs</CardTitle>
-            <div className="bg-purple-100 p-2 rounded-full">
-              <Smartphone className="h-4 w-4 text-purple-600" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-gray-900">{activeOTPs.length}</div>
-            <p className="text-xs text-gray-500">Pending verifications</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Active OTPs */}
-      {activeOTPs.length > 0 && (
+        {/* Retailer Info Card */}
         <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
-              <Smartphone className="h-5 w-5" />
-              <span>Active OTP Requests</span>
+          <CardHeader className="pb-4">
+            <CardTitle className="flex items-center space-x-2 text-base sm:text-lg">
+              <Store className="h-5 w-5" />
+              <span>Your Information</span>
             </CardTitle>
-            <CardDescription>Payment verification requests waiting for your confirmation</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              {activeOTPs.map((otp) => (
-                <div key={otp.paymentId} className="flex items-center justify-between p-4 border rounded-lg bg-yellow-50">
-                  <div className="flex items-center space-x-4">
-                    <div className="w-10 h-10 bg-yellow-100 rounded-full flex items-center justify-center">
-                      <Volume2 className="h-5 w-5 text-yellow-600" />
-                    </div>
-                    <div>
-                      <div className="font-medium">Payment Request</div>
-                      <div className="text-sm text-gray-500">
-                        From: {otp.lineWorkerName} • Amount: {formatCurrency(otp.amount)}
-                      </div>
-                      <div className="text-sm text-gray-500">
-                        Expires in: {formatTimeRemainingFromCreation(otp.createdAt)}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-sm font-medium text-yellow-600">OTP: {otp.code}</div>
-                    <div className="text-xs text-gray-500">Share with line worker</div>
-                  </div>
-                </div>
-              ))}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <Label className="text-sm font-medium text-gray-500">Business Name</Label>
+                <div className="text-base sm:text-lg font-semibold truncate">{retailer?.name}</div>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-sm font-medium text-gray-500">Phone Number</Label>
+                <div className="text-base sm:text-lg font-semibold">{retailer?.phone}</div>
+              </div>
+              <div className="sm:col-span-2 space-y-1">
+                <Label className="text-sm font-medium text-gray-500">Address</Label>
+                <div className="text-base sm:text-lg font-semibold break-words">{retailer?.address}</div>
+              </div>
             </div>
           </CardContent>
         </Card>
-      )}
-    </div>
-  );
+
+        {/* Stats Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <Card className="hover:shadow-lg transition-shadow duration-300 border-l-4 border-l-red-500">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-gray-600">Outstanding Amount</CardTitle>
+              <div className="bg-red-100 p-2 rounded-full">
+                <DollarSign className="h-4 w-4 text-red-600" />
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="text-xl sm:text-2xl font-bold text-gray-900 break-words">
+                {formatCurrency(filteredOutstandingAmount)}
+              </div>
+              <p className="text-xs text-gray-500">Total unpaid amount (filtered)</p>
+            </CardContent>
+          </Card>
+
+          <Card className="hover:shadow-lg transition-shadow duration-300 border-l-4 border-l-blue-500">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-gray-600">Total Invoices</CardTitle>
+              <div className="bg-blue-100 p-2 rounded-full">
+                <FileText className="h-4 w-4 text-blue-600" />
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="text-xl sm:text-2xl font-bold text-gray-900">{filteredInvoices.length}</div>
+              <p className="text-xs text-gray-500">Invoice documents (filtered)</p>
+            </CardContent>
+          </Card>
+
+          <Card className="hover:shadow-lg transition-shadow duration-300 border-l-4 border-l-green-500">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-gray-600">Total Payments</CardTitle>
+              <div className="bg-green-100 p-2 rounded-full">
+                <CheckCircle className="h-4 w-4 text-green-600" />
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="text-xl sm:text-2xl font-bold text-gray-900">
+                {filteredCompletedPayments.length}
+              </div>
+              <p className="text-xs text-gray-500">Completed payments (filtered)</p>
+            </CardContent>
+          </Card>
+
+          <Card className="hover:shadow-lg transition-shadow duration-300 border-l-4 border-l-purple-500">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-gray-600">Active OTPs</CardTitle>
+              <div className="bg-purple-100 p-2 rounded-full">
+                <Smartphone className="h-4 w-4 text-purple-600" />
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="text-xl sm:text-2xl font-bold text-gray-900">{activeOTPs.length}</div>
+              <p className="text-xs text-gray-500">Pending verifications</p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Active OTPs */}
+        {activeOTPs.length > 0 && (
+          <Card>
+            <CardHeader className="pb-4">
+              <CardTitle className="flex items-center space-x-2 text-base sm:text-lg">
+                <Smartphone className="h-5 w-5" />
+                <span>Active OTP Requests</span>
+              </CardTitle>
+              <CardDescription className="text-sm">
+                Payment verification requests waiting for your confirmation
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {activeOTPs.map((otp) => (
+                  <div key={otp.paymentId} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-4 border rounded-lg bg-yellow-50">
+                    <div className="flex items-center space-x-4 min-w-0 flex-1">
+                      <div className="w-10 h-10 bg-yellow-100 rounded-full flex items-center justify-center flex-shrink-0">
+                        <Volume2 className="h-5 w-5 text-yellow-600" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="font-medium text-sm sm:text-base truncate">Payment Request</div>
+                        <div className="text-sm text-gray-500 truncate">
+                          From: {otp.lineWorkerName} • Amount: {formatCurrency(otp.amount)}
+                        </div>
+                        <div className="text-sm text-gray-500">
+                          Expires in: {formatTimeRemainingFromCreation(otp.createdAt)}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <div className="text-sm font-medium text-yellow-600">OTP: {otp.code}</div>
+                      <div className="text-xs text-gray-500">Share with line worker</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    );
+  };
 
   // Invoices Component
   const InvoicesComponent = () => (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">Invoice Management</h2>
-          <p className="text-gray-600">View and manage your invoices</p>
+    <div className="space-y-4 sm:space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="flex-1 min-w-0">
+          <h2 className="text-xl sm:text-2xl font-bold text-gray-900 truncate">Invoice Management</h2>
+          <p className="text-sm sm:text-base text-gray-600 mt-1">
+            View and manage your invoices
+          </p>
         </div>
         <Button 
           onClick={handleManualRefresh} 
           disabled={refreshLoading}
           variant="outline"
-          className="flex items-center space-x-2"
+          className="flex items-center justify-center space-x-2 w-full sm:w-auto"
+          size="sm"
         >
           {refreshLoading ? (
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -685,15 +752,15 @@ export function RetailerDashboard() {
       </div>
 
       {/* Invoice Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
           <CardContent className="p-4">
-            <div className="flex items-center space-x-2">
-              <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+            <div className="flex items-center space-x-3">
+              <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
                 <FileText className="h-4 w-4 text-blue-600" />
               </div>
-              <div>
-                <div className="text-2xl font-bold">{invoices.length}</div>
+              <div className="min-w-0 flex-1">
+                <div className="text-xl sm:text-2xl font-bold truncate">{invoices.length}</div>
                 <div className="text-sm text-gray-500">Total Invoices</div>
               </div>
             </div>
@@ -702,12 +769,12 @@ export function RetailerDashboard() {
 
         <Card>
           <CardContent className="p-4">
-            <div className="flex items-center space-x-2">
-              <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
+            <div className="flex items-center space-x-3">
+              <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0">
                 <CheckCircle className="h-4 w-4 text-green-600" />
               </div>
-              <div>
-                <div className="text-2xl font-bold">
+              <div className="min-w-0 flex-1">
+                <div className="text-xl sm:text-2xl font-bold truncate">
                   {invoices.filter(inv => calculateInvoiceStatus(inv, payments) === 'PAID').length}
                 </div>
                 <div className="text-sm text-gray-500">Paid Invoices</div>
@@ -718,12 +785,12 @@ export function RetailerDashboard() {
 
         <Card>
           <CardContent className="p-4">
-            <div className="flex items-center space-x-2">
-              <div className="w-8 h-8 bg-yellow-100 rounded-full flex items-center justify-center">
+            <div className="flex items-center space-x-3">
+              <div className="w-8 h-8 bg-yellow-100 rounded-full flex items-center justify-center flex-shrink-0">
                 <Clock className="h-4 w-4 text-yellow-600" />
               </div>
-              <div>
-                <div className="text-2xl font-bold">
+              <div className="min-w-0 flex-1">
+                <div className="text-xl sm:text-2xl font-bold truncate">
                   {invoices.filter(inv => calculateInvoiceStatus(inv, payments) === 'PARTIALLY_PAID').length}
                 </div>
                 <div className="text-sm text-gray-500">Partial Payments</div>
@@ -734,12 +801,12 @@ export function RetailerDashboard() {
 
         <Card>
           <CardContent className="p-4">
-            <div className="flex items-center space-x-2">
-              <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center">
+            <div className="flex items-center space-x-3">
+              <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center flex-shrink-0">
                 <XCircle className="h-4 w-4 text-red-600" />
               </div>
-              <div>
-                <div className="text-2xl font-bold">
+              <div className="min-w-0 flex-1">
+                <div className="text-xl sm:text-2xl font-bold truncate">
                   {invoices.filter(inv => calculateInvoiceStatus(inv, payments) === 'OVERDUE').length}
                 </div>
                 <div className="text-sm text-gray-500">Overdue Invoices</div>
@@ -751,22 +818,24 @@ export function RetailerDashboard() {
 
       {/* Invoices Table */}
       <Card>
-        <CardHeader>
-          <CardTitle>All Invoices</CardTitle>
-          <CardDescription>Your complete invoice history with payment status</CardDescription>
+        <CardHeader className="pb-4">
+          <CardTitle className="text-base sm:text-lg">All Invoices</CardTitle>
+          <CardDescription className="text-sm">
+            Your complete invoice history with payment status
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Invoice #</TableHead>
-                  <TableHead>Issue Date</TableHead>
-                  <TableHead>Due Date</TableHead>
-                  <TableHead>Total Amount</TableHead>
-                  <TableHead>Paid Amount</TableHead>
-                  <TableHead>Balance</TableHead>
-                  <TableHead>Status</TableHead>
+                  <TableHead className="text-xs sm:text-sm">Invoice #</TableHead>
+                  <TableHead className="text-xs sm:text-sm">Issue Date</TableHead>
+                  <TableHead className="text-xs sm:text-sm">Due Date</TableHead>
+                  <TableHead className="text-xs sm:text-sm text-right">Total Amount</TableHead>
+                  <TableHead className="text-xs sm:text-sm text-right">Paid Amount</TableHead>
+                  <TableHead className="text-xs sm:text-sm text-right">Balance</TableHead>
+                  <TableHead className="text-xs sm:text-sm">Status</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -779,12 +848,12 @@ export function RetailerDashboard() {
                   
                   return (
                     <TableRow key={invoice.id}>
-                      <TableCell className="font-medium">{invoice.invoiceNumber}</TableCell>
-                      <TableCell>{formatTimestamp(invoice.issueDate)}</TableCell>
-                      <TableCell>{formatTimestamp(invoice.dueDate)}</TableCell>
-                      <TableCell className="text-right">{formatCurrency(invoice.totalAmount)}</TableCell>
-                      <TableCell className="text-right">{formatCurrency(paidAmount)}</TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className="font-medium text-xs sm:text-sm">{invoice.invoiceNumber}</TableCell>
+                      <TableCell className="text-xs sm:text-sm">{formatTimestamp(invoice.issueDate)}</TableCell>
+                      <TableCell className="text-xs sm:text-sm">{formatTimestamp(invoice.dueDate)}</TableCell>
+                      <TableCell className="text-right text-xs sm:text-sm">{formatCurrency(invoice.totalAmount)}</TableCell>
+                      <TableCell className="text-right text-xs sm:text-sm">{formatCurrency(paidAmount)}</TableCell>
+                      <TableCell className="text-right text-xs sm:text-sm">
                         <span className={balance > 0 ? 'text-red-600 font-medium' : 'text-green-600'}>
                           {formatCurrency(balance)}
                         </span>
@@ -793,7 +862,7 @@ export function RetailerDashboard() {
                         <Badge className={getInvoiceStatusColor(status)}>
                           <div className="flex items-center space-x-1">
                             {getInvoiceStatusIcon(status)}
-                            <span>{status}</span>
+                            <span className="text-xs">{status}</span>
                           </div>
                         </Badge>
                       </TableCell>
@@ -809,75 +878,159 @@ export function RetailerDashboard() {
   );
 
   // Payments Component
-  const PaymentsComponent = () => (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">Payment History</h2>
-          <p className="text-gray-600">All your payment transactions</p>
-        </div>
-        <Button 
-          onClick={handleManualRefresh} 
-          disabled={refreshLoading}
-          variant="outline"
-          className="flex items-center space-x-2"
-        >
-          {refreshLoading ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <RefreshCw className="h-4 w-4" />
-          )}
-          <span>Refresh</span>
-        </Button>
-      </div>
+  const PaymentsComponent = () => {
+    // Filter payments based on status and sort by most recent first
+    const completedPayments = payments
+      .filter(payment => payment.state === 'COMPLETED')
+      .sort((a, b) => b.createdAt.toDate().getTime() - a.createdAt.toDate().getTime());
+    
+    const pendingCancelledPayments = payments
+      .filter(payment => 
+        ['INITIATED', 'OTP_SENT', 'OTP_VERIFIED', 'CANCELLED', 'EXPIRED'].includes(payment.state)
+      )
+      .sort((a, b) => b.createdAt.toDate().getTime() - a.createdAt.toDate().getTime());
 
-      <Card>
-        <CardHeader>
-          <CardTitle>All Payments</CardTitle>
-          <CardDescription>Your complete payment history</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Line Worker</TableHead>
-                  <TableHead>Amount</TableHead>
-                  <TableHead>Method</TableHead>
-                  <TableHead>Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {payments.map((payment) => (
-                  <TableRow key={payment.id}>
-                    <TableCell>{formatTimestampWithTime(payment.createdAt)}</TableCell>
-                    <TableCell>{retailerUser?.name || 'Unknown'}</TableCell>
-                    <TableCell>
-                      <div className="text-right">
-                        <div className="font-medium">{formatCurrency(payment.totalPaid)}</div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{payment.method}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge className={getPaymentStatusColor(payment.state)}>
-                        <div className="flex items-center space-x-1">
-                          {getPaymentStatusIcon(payment.state)}
-                          <span>{payment.state}</span>
-                        </div>
-                      </Badge>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+    return (
+      <div className="space-y-6">
+        <div className="flex justify-between items-center">
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900">Payment History</h2>
+            <p className="text-gray-600">All your payment transactions</p>
           </div>
-        </CardContent>
-      </Card>
-    </div>
-  );
+          <Button 
+            onClick={handleManualRefresh} 
+            disabled={refreshLoading}
+            variant="outline"
+            className="flex items-center space-x-2"
+          >
+            {refreshLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4" />
+            )}
+            <span>Refresh</span>
+          </Button>
+        </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>All Payments</CardTitle>
+            <CardDescription>Your complete payment history</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Tabs value={paymentTab} onValueChange={setPaymentTab} className="w-full">
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="completed" className="flex items-center space-x-2">
+                  <CheckCircle className="h-4 w-4" />
+                  <span>Completed ({completedPayments.length})</span>
+                </TabsTrigger>
+                <TabsTrigger value="pending" className="flex items-center space-x-2">
+                  <Clock className="h-4 w-4" />
+                  <span>Pending/Cancelled ({pendingCancelledPayments.length})</span>
+                </TabsTrigger>
+              </TabsList>
+              
+              <TabsContent value="completed" className="space-y-4">
+                {completedPayments.length > 0 ? (
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Date</TableHead>
+                          <TableHead>Line Worker</TableHead>
+                          <TableHead>Amount</TableHead>
+                          <TableHead>Method</TableHead>
+                          <TableHead>Status</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {completedPayments.map((payment) => (
+                          <TableRow key={payment.id}>
+                            <TableCell>{formatTimestampWithTime(payment.createdAt)}</TableCell>
+                            <TableCell>{retailerUser?.name || 'Unknown'}</TableCell>
+                            <TableCell>
+                              <div className="text-right">
+                                <div className="font-medium">{formatCurrency(payment.totalPaid)}</div>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="outline">{payment.method}</Badge>
+                            </TableCell>
+                            <TableCell>
+                              <Badge className={getPaymentStatusColor(payment.state)}>
+                                <div className="flex items-center space-x-1">
+                                  {getPaymentStatusIcon(payment.state)}
+                                  <span>{payment.state}</span>
+                                </div>
+                              </Badge>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <CheckCircle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                    <h3 className="text-lg font-medium text-gray-900 mb-2">No completed payments</h3>
+                    <p className="text-gray-500">You don't have any completed payments yet.</p>
+                  </div>
+                )}
+              </TabsContent>
+              
+              <TabsContent value="pending" className="space-y-4">
+                {pendingCancelledPayments.length > 0 ? (
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Date</TableHead>
+                          <TableHead>Line Worker</TableHead>
+                          <TableHead>Amount</TableHead>
+                          <TableHead>Method</TableHead>
+                          <TableHead>Status</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {pendingCancelledPayments.map((payment) => (
+                          <TableRow key={payment.id}>
+                            <TableCell>{formatTimestampWithTime(payment.createdAt)}</TableCell>
+                            <TableCell>{retailerUser?.name || 'Unknown'}</TableCell>
+                            <TableCell>
+                              <div className="text-right">
+                                <div className="font-medium">{formatCurrency(payment.totalPaid)}</div>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="outline">{payment.method}</Badge>
+                            </TableCell>
+                            <TableCell>
+                              <Badge className={getPaymentStatusColor(payment.state)}>
+                                <div className="flex items-center space-x-1">
+                                  {getPaymentStatusIcon(payment.state)}
+                                  <span>{payment.state}</span>
+                                </div>
+                              </Badge>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <Clock className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                    <h3 className="text-lg font-medium text-gray-900 mb-2">No pending or cancelled payments</h3>
+                    <p className="text-gray-500">You don't have any pending or cancelled payments.</p>
+                  </div>
+                )}
+              </TabsContent>
+            </Tabs>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  };
 
   // History Component
   const HistoryComponent = () => {
@@ -1045,15 +1198,15 @@ export function RetailerDashboard() {
       />
 
       {/* Main Content */}
-      <main className="flex-1 p-4 lg:p-6 overflow-y-auto">
+      <main className="flex-1 p-3 sm:p-4 lg:p-6 overflow-y-auto pb-20 lg:pb-6">
         {error && (
-          <Alert variant="destructive" className="mb-6">
-            <AlertDescription>{error}</AlertDescription>
+          <Alert variant="destructive" className="mb-4 sm:mb-6">
+            <AlertDescription className="text-sm">{error}</AlertDescription>
           </Alert>
         )}
 
         {/* Content based on active navigation */}
-        <div className="space-y-6">
+        <div className="space-y-4 sm:space-y-6">
           {activeNav === 'overview' && <Overview />}
           {activeNav === 'invoices' && <InvoicesComponent />}
           {activeNav === 'payments' && <PaymentsComponent />}
@@ -1064,13 +1217,13 @@ export function RetailerDashboard() {
       {/* OTP Popup */}
       {showOTPPopup && newPayment && (
         <Dialog open={showOTPPopup} onOpenChange={setShowOTPPopup}>
-          <DialogContent className="max-w-md">
+          <DialogContent className="max-w-md mx-4">
             <DialogHeader>
-              <DialogTitle className="flex items-center space-x-2">
+              <DialogTitle className="flex items-center space-x-2 text-base sm:text-lg">
                 <Volume2 className="h-5 w-5" />
                 <span>New Payment Request</span>
               </DialogTitle>
-              <DialogDescription>
+              <DialogDescription className="text-sm">
                 A line worker has initiated a payment that requires your verification
               </DialogDescription>
             </DialogHeader>

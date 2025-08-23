@@ -64,6 +64,18 @@ export interface Retailer extends BaseDocument {
   creditLimit?: number;
   gstNumber?: string;
   paymentTerms?: string;
+  
+  // Active OTPs for this retailer
+  activeOTPs?: Array<{
+    paymentId: string;
+    code: string;
+    amount: number;
+    lineWorkerName: string;
+    expiresAt: Timestamp;
+    createdAt: Timestamp;
+    isUsed?: boolean;
+    usedAt?: Timestamp;
+  }>;
 }
 
 // Summary interfaces for recent activity
@@ -170,6 +182,7 @@ export interface PaymentTimeline {
 // Payment
 export interface Payment extends BaseDocument {
   retailerId: string;
+  retailerName: string; // Added to preserve historical retailer name
   lineWorkerId: string;
   invoiceAllocations: PaymentInvoiceAllocation[];
   totalPaid: number;
@@ -285,6 +298,7 @@ export interface CreateInvoiceForm {
 
 export interface InitiatePaymentForm {
   retailerId: string;
+  retailerName: string; // Added to preserve historical retailer name
   totalPaid: number;
   method: keyof typeof PAYMENT_METHODS;
   invoiceAllocations: PaymentInvoiceAllocation[];
@@ -346,4 +360,18 @@ export interface ProductData extends BaseDocument {
   category: string;
   stock: number;
   active: boolean;
+}
+
+// Monthly Targets Types
+export interface MonthlyTarget {
+  month: string;
+  target: number;
+  year?: number;
+}
+
+export interface MonthlyTargets extends BaseDocument {
+  targets: MonthlyTarget[];
+  year: number;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
 }

@@ -3,12 +3,54 @@ import { otpStore, cleanupExpiredOTPs, removeActiveOTP, addCompletedPayment } fr
 import { doc, getDoc, updateDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { RetailerAuthService } from '@/services/retailer-auth';
-import { otpService } from '@/services/firestore';
+import { retailerService, paymentService } from '@/services/firestore';
 import { Retailer } from '@/types';
 
 interface OTPVerifyRequest {
   paymentId: string;
   otp: string;
+}
+
+// Helper function to get payment with correct tenantId
+async function getPaymentWithCorrectTenant(paymentId: string) {
+  console.log('🔍 getPaymentWithCorrectTenant called for paymentId:', paymentId);
+  
+  // First try with 'system' tenant
+  console.log('🔍 Trying with system tenant...');
+  let payment = await paymentService.getById(paymentId, 'system');
+  
+  if (!payment) {
+    // If not found with 'system', try to get the payment document directly without tenantId checking
+    console.log('🔍 Not found with system tenant, trying direct document access...');
+    try {
+      const paymentRef = doc(db, 'payments', paymentId);
+      const paymentDoc = await getDoc(paymentRef);
+      
+      if (paymentDoc.exists()) {
+        const paymentData = paymentDoc.data();
+        console.log('🔍 Found payment document directly:', {
+          id: paymentDoc.id,
+          tenantId: paymentData.tenantId,
+          retailerId: paymentData.retailerId
+        });
+        
+        // Create a payment object with the correct structure
+        payment = {
+          id: paymentDoc.id,
+          ...paymentData
+        } as any;
+        
+        console.log('🔍 Payment found via direct access');
+      } else {
+        console.log('🔍 Payment document not found via direct access');
+      }
+    } catch (error) {
+      console.error('Error accessing payment document directly:', error);
+    }
+  }
+  
+  console.log('🔍 Final payment result:', payment ? 'FOUND' : 'NOT FOUND');
+  return payment;
 }
 
 export async function POST(request: NextRequest) {
@@ -39,27 +81,83 @@ export async function POST(request: NextRequest) {
     let otpData = otpStore.get(paymentId);
     console.log('🔍 OTP found in in-memory store:', otpData ? 'YES' : 'NO');
     
-    // If not found in memory, try to get from Firestore
+    // If not found in memory, try to get from retailer document
     if (!otpData) {
-      console.log('🔍 OTP not in memory, checking Firestore...');
+      console.log('🔍 OTP not in memory, checking retailer document...');
       try {
-        const firestoreOTP = await otpService.getOTPByPaymentId(paymentId);
-        console.log('🔍 Firestore OTP result:', firestoreOTP ? 'FOUND' : 'NOT FOUND');
-        if (firestoreOTP) {
-          // Convert Firestore OTP to in-memory format
-          otpData = {
-            code: firestoreOTP.code,
-            expiresAt: firestoreOTP.expiresAt.toDate(),
-            attempts: 0 // Firestore OTPs don't have attempt tracking
-          };
-          console.log('🔍 Found OTP in Firestore, converted to memory format:', {
-            code: otpData.code,
-            expiresAt: otpData.expiresAt.toISOString(),
-            attempts: otpData.attempts
+        // First, get the payment to find the retailerId and tenantId
+        const payment = await getPaymentWithCorrectTenant(paymentId);
+        
+        console.log('🔍 Payment retrieval result:', payment ? 'FOUND' : 'NOT FOUND');
+        if (payment) {
+          console.log('🔍 Payment details:', {
+            id: payment.id,
+            retailerId: payment.retailerId,
+            lineWorkerId: payment.lineWorkerId,
+            totalPaid: payment.totalPaid,
+            state: payment.state
           });
         }
+        
+        if (payment && payment.retailerId) {
+          // Get retailer user to get tenantId
+          const retailerUser = await RetailerAuthService.getRetailerUserByRetailerId(payment.retailerId);
+          console.log('🔍 Retailer user retrieval result:', retailerUser ? 'FOUND' : 'NOT FOUND');
+          if (retailerUser) {
+            console.log('🔍 Retailer user details:', {
+              id: retailerUser.id,
+              retailerId: retailerUser.retailerId,
+              tenantId: retailerUser.tenantId,
+              phone: retailerUser.phone
+            });
+          }
+          
+          if (retailerUser && retailerUser.tenantId) {
+            console.log('🔍 Attempting to get OTPs from retailer document...');
+            const retailerOTPs = await retailerService.getActiveOTPsFromRetailer(payment.retailerId, retailerUser.tenantId);
+            console.log('🔍 Retailer OTPs retrieved:', retailerOTPs.length, 'OTPs found');
+            console.log('🔍 Retailer OTPs details:', retailerOTPs.map(otp => ({
+              paymentId: otp.paymentId,
+              code: otp.code,
+              amount: otp.amount,
+              expiresAt: otp.expiresAt.toDate(),
+              isUsed: otp.isUsed
+            })));
+            
+            const retailerOTP = retailerOTPs.find(otp => otp.paymentId === paymentId);
+            console.log('🔍 Looking for OTP with paymentId:', paymentId);
+            console.log('🔍 Retailer OTP result:', retailerOTP ? 'FOUND' : 'NOT FOUND');
+            if (retailerOTP) {
+              console.log('🔍 Found OTP details:', {
+                paymentId: retailerOTP.paymentId,
+                code: retailerOTP.code,
+                amount: retailerOTP.amount,
+                expiresAt: retailerOTP.expiresAt.toDate(),
+                isUsed: retailerOTP.isUsed
+              });
+              // Convert retailer OTP to in-memory format
+              otpData = {
+                code: retailerOTP.code,
+                expiresAt: retailerOTP.expiresAt.toDate(),
+                attempts: 0 // Retailer OTPs don't have attempt tracking
+              };
+              console.log('🔍 Found OTP in retailer document, converted to memory format:', {
+                code: otpData.code,
+                expiresAt: otpData.expiresAt.toISOString(),
+                attempts: otpData.attempts
+              });
+            } else {
+              console.log('❌ OTP not found in retailer OTPs array');
+              console.log('🔍 Available OTP paymentIds:', retailerOTPs.map(otp => otp.paymentId));
+            }
+          } else {
+            console.log('⚠️ Retailer user not found or missing tenantId');
+          }
+        } else {
+          console.log('⚠️ Payment or retailerId not found');
+        }
       } catch (error) {
-        console.error('❌ Error getting OTP from Firestore:', error);
+        console.error('❌ Error getting OTP from retailer document:', error);
       }
     }
     
@@ -71,10 +169,16 @@ export async function POST(request: NextRequest) {
         attempts: otpData.attempts,
         isExpired: otpData.expiresAt < new Date()
       });
+    } else {
+      console.log('❌ OTP NOT FOUND - This is the issue!');
+      console.log('🔍 Debugging info:');
+      console.log('  - PaymentId:', paymentId);
+      console.log('  - OTP Code provided:', otp);
+      console.log('  - In-memory store had OTP:', otpStore.get(paymentId) ? 'YES' : 'NO');
     }
     
     if (!otpData) {
-      console.log('❌ OTP not found or expired');
+      console.log('❌ OTP not found or expired - returning error');
       return NextResponse.json(
         { error: 'OTP not found or expired' },
         { status: 400 }
@@ -108,18 +212,26 @@ export async function POST(request: NextRequest) {
     if (otpData.code === otp) {
       console.log('✅ OTP verification successful!');
       
-      // Mark OTP as used in Firestore
+      // Mark OTP as used in retailer document
       try {
-        const firestoreOTP = await otpService.getOTPByPaymentId(paymentId);
-        if (firestoreOTP) {
-          await otpService.markOTPAsUsed(firestoreOTP.id);
-          console.log('✅ OTP marked as used in Firestore');
+        // First, get the payment to find the retailerId and tenantId
+        const payment = await getPaymentWithCorrectTenant(paymentId);
+        
+        if (payment && payment.retailerId) {
+          // Get retailer user to get tenantId
+          const retailerUser = await RetailerAuthService.getRetailerUserByRetailerId(payment.retailerId);
+          if (retailerUser && retailerUser.tenantId) {
+            await retailerService.markOTPAsUsedInRetailer(payment.retailerId, retailerUser.tenantId, paymentId);
+            console.log('✅ OTP marked as used in retailer document');
+          } else {
+            console.log('⚠️ Retailer user not found or missing tenantId, cannot mark OTP as used');
+          }
         } else {
-          console.log('⚠️ OTP not found in Firestore (might be an older OTP)');
+          console.log('⚠️ Payment or retailerId not found, cannot mark OTP as used');
         }
       } catch (firestoreError) {
-        console.error('❌ Error marking OTP as used in Firestore:', firestoreError);
-        // Don't fail the verification if Firestore update fails
+        console.error('❌ Error marking OTP as used in retailer document:', firestoreError);
+        // Don't fail the verification if retailer document update fails
       }
       
       // Get payment details from Firestore

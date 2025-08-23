@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -15,8 +15,11 @@ import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { DatePicker } from '@/components/ui/date-picker';
 import { EnhancedDatePicker } from '@/components/ui/enhanced-date-picker';
+import { DateRangeFilter, DateRangeOption } from '@/components/ui/DateRangeFilter';
 import { Skeleton } from '@/components/ui/skeleton';
+
 import { DashboardNavigation, NavItem, NotificationItem } from '@/components/DashboardNavigation';
+
 import { useAuth, useWholesalerAdmin, useSuperAdmin } from '@/contexts/AuthContext';
 import { 
   areaService, 
@@ -36,6 +39,9 @@ import { CreateAreaForm } from '@/components/ui/create-area-form';
 import { CreateRetailerForm } from '@/components/ui/create-retailer-form';
 import { CreateInvoiceForm } from '@/components/CreateInvoiceForm';
 import { WholesalerAnalytics } from '@/components/WholesalerAnalytics';
+import { SuccessFeedback } from '@/components/SuccessFeedback';
+import { Confetti } from '@/components/ui/Confetti';
+import { useSuccessFeedback } from '@/hooks/useSuccessFeedback';
 import { 
   // Navigation
   LayoutDashboard,
@@ -97,6 +103,7 @@ export function WholesalerAdminDashboard() {
   const { user, logout } = useAuth();
   const isWholesalerAdmin = useWholesalerAdmin();
   const isSuperAdminUser = useSuperAdmin();
+  const { showSuccess, hideSuccess, feedback } = useSuccessFeedback();
   const [areas, setAreas] = useState<Area[]>([]);
   const [retailers, setRetailers] = useState<Retailer[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -124,12 +131,49 @@ export function WholesalerAdminDashboard() {
   // Invoice creation state
   const [creatingInvoice, setCreatingInvoice] = useState(false);
   
+  // Line worker creation state
+  const [creatingLineWorker, setCreatingLineWorker] = useState(false);
+  const [showLineWorkerSuccess, setShowLineWorkerSuccess] = useState(false);
+  const [triggerLineWorkerConfetti, setTriggerLineWorkerConfetti] = useState(false);
+
+  // Simplified dialog state management
+  const handleAreaDialogChange = useCallback((open: boolean) => {
+    if (open) {
+      setShowCreateArea(true);
+    } else {
+      setShowCreateArea(false);
+    }
+  }, []);
+
+  const handleRetailerDialogChange = useCallback((open: boolean) => {
+    if (open) {
+      setShowCreateRetailer(true);
+    } else {
+      setShowCreateRetailer(false);
+    }
+  }, []);
+
+  const handleInvoiceDialogChange = useCallback((open: boolean) => {
+    if (open) {
+      setShowCreateInvoice(true);
+    } else {
+      setShowCreateInvoice(false);
+    }
+  }, []);
+
+  const handleLineWorkerDialogChange = useCallback((open: boolean) => {
+    if (open) {
+      setShowCreateLineWorker(true);
+    } else {
+      setShowCreateLineWorker(false);
+    }
+  }, []);
+  
   // Filter States
-  const [dateRange, setDateRange] = useState<{ from: Date; to: Date } | null>(null);
   const [selectedLineWorker, setSelectedLineWorker] = useState<string>("all");
   const [selectedRetailer, setSelectedRetailer] = useState<string>("all");
   const [selectedArea, setSelectedArea] = useState<string>("all");
-  const [searchTerm, setSearchTerm] = useState('');
+  
   const [showInactiveWorkers, setShowInactiveWorkers] = useState<boolean>(false);
   
   // Real-time updates
@@ -137,6 +181,64 @@ export function WholesalerAdminDashboard() {
   const [notificationCount, setNotificationCount] = useState(0);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [refreshLoading, setRefreshLoading] = useState(false);
+  const [paymentTab, setPaymentTab] = useState('completed');
+  const [selectedDateRangeOption, setSelectedDateRangeOption] = useState('today');
+  const [dateRange, setDateRange] = useState<{ startDate: Date; endDate: Date }>(() => {
+    const today = new Date();
+    const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
+    return { startDate: startOfDay, endDate: endOfDay };
+  });
+  
+  // Separate state for the filter date picker
+  const [filterDate, setFilterDate] = useState<{ from: Date | null; to: Date | null } | null>(null);
+  
+  // Filter functions for retailer details - memoized to prevent unnecessary re-computations
+  const getFilteredRetailers = useMemo(() => {
+    return retailers.filter(retailer => {
+      // Area filter
+      if (selectedArea !== "all" && retailer.areaId !== selectedArea) {
+        return false;
+      }
+      
+      // Retailer filter
+      if (selectedRetailer !== "all" && retailer.id !== selectedRetailer) {
+        return false;
+      }
+      
+      return true;
+    });
+  }, [retailers, selectedArea, selectedRetailer]);
+  
+  // Helper functions to filter data by date range
+  const filterPaymentsByDateRange = (paymentsData: any[]) => {
+    return paymentsData.filter(payment => {
+      const paymentDate = payment.createdAt.toDate();
+      return paymentDate >= dateRange.startDate && paymentDate <= dateRange.endDate;
+    });
+  };
+
+  const filterInvoicesByDateRange = (invoicesData: any[]) => {
+    return invoicesData.filter(invoice => {
+      const invoiceDate = invoice.issueDate.toDate();
+      return invoiceDate >= dateRange.startDate && invoiceDate <= dateRange.endDate;
+    });
+  };
+
+  const calculateOutstandingForDateRange = (invoicesData: any[], paymentsData: any[]) => {
+    const filteredInvoices = filterInvoicesByDateRange(invoicesData);
+    const filteredPayments = filterPaymentsByDateRange(paymentsData).filter(p => p.state === 'COMPLETED');
+    
+    const totalInvoiceAmount = filteredInvoices.reduce((sum, invoice) => sum + invoice.totalAmount, 0);
+    const totalPaid = filteredPayments.reduce((sum, payment) => sum + payment.totalPaid, 0);
+    
+    return Math.max(0, totalInvoiceAmount - totalPaid);
+  };
+
+  const handleDateRangeChange = (value: string, newDateRange: { startDate: Date; endDate: Date }) => {
+    setSelectedDateRangeOption(value);
+    setDateRange(newDateRange);
+  };
   
   // Tenant management for super admin
   const [tenants, setTenants] = useState<any[]>([]);
@@ -148,14 +250,14 @@ export function WholesalerAdminDashboard() {
   const [assigningRetailer, setAssigningRetailer] = useState<Retailer | null>(null);
   const [selectedLineWorkerForAssignment, setSelectedLineWorkerForAssignment] = useState<string>('');
 
-  // Debug logging for notifications
-  useEffect(() => {
-    console.log('🔔 Notification state updated:', {
-      count: notificationCount,
-      notifications: notifications.length,
-      notificationList: notifications.map(n => ({ id: n.id, title: n.title, read: n.read }))
-    });
-  }, [notificationCount, notifications]);
+  // Debug logging for notifications - DISABLED to prevent focus issues
+  // useEffect(() => {
+  //   console.log('🔔 Notification state updated:', {
+  //     count: notificationCount,
+  //     notifications: notifications.length,
+  //     notificationList: notifications.map(n => ({ id: n.id, title: n.title, read: n.read }))
+  //   });
+  // }, [notificationCount, notifications]);
 
   // Initialize super admin state and fetch tenants
   useEffect(() => {
@@ -185,6 +287,40 @@ export function WholesalerAdminDashboard() {
     return user?.tenantId && user.tenantId !== 'system' ? user.tenantId : null;
   };
 
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      // Close all dialogs when component unmounts
+      setShowCreateArea(false);
+      setShowCreateRetailer(false);
+      setShowCreateInvoice(false);
+      setShowCreateLineWorker(false);
+      setEditingArea(null);
+      setEditingRetailer(null);
+      setEditingLineWorker(null);
+      setViewingInvoice(null);
+      setViewingPayment(null);
+      setShowEditLineWorkerDialog(false);
+      setShowRetailerAssignment(false);
+    };
+  }, []);
+
+  // Prevent multiple dialog openings
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      // Close all dialogs before page unload
+      setShowCreateArea(false);
+      setShowCreateRetailer(false);
+      setShowCreateInvoice(false);
+      setShowCreateLineWorker(false);
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, []);
+
   // Navigation items
   const navItems: NavItem[] = [
     { id: 'overview', label: 'Overview', icon: LayoutDashboard },
@@ -197,6 +333,29 @@ export function WholesalerAdminDashboard() {
     { id: 'analytics', label: 'Analytics', icon: BarChart3 },
   ];
 
+  // Memoized notification callback to prevent unnecessary re-renders
+  const handleNotificationUpdate = useCallback((newNotifications: NotificationItem[]) => {
+    console.log('🔔 Received real-time notifications callback:', newNotifications.length, 'notifications');
+    console.log('🔔 Real-time notification details:', newNotifications.map(n => ({ id: n.id, title: n.title, read: n.read })));
+    
+    // Use functional updates to avoid dependency on notifications state
+    setNotifications(prevNotifications => {
+      // Only update if notifications have actually changed
+      if (prevNotifications.length === newNotifications.length && 
+          JSON.stringify(prevNotifications) === JSON.stringify(newNotifications)) {
+        console.log('🔔 Notifications unchanged, skipping state update');
+        return prevNotifications;
+      }
+      return newNotifications;
+    });
+    
+    // Update notification count using functional update
+    setNotificationCount(prevCount => {
+      const newCount = newNotifications.filter(n => !n.read).length;
+      return newCount !== prevCount ? newCount : prevCount;
+    });
+  }, []); // Empty dependency array to prevent recreation
+
   useEffect(() => {
     const currentTenantId = getCurrentTenantId();
     if (isWholesalerAdmin && user?.uid && currentTenantId) {
@@ -208,12 +367,7 @@ export function WholesalerAdminDashboard() {
         user.uid,
         'WHOLESALER_ADMIN',
         currentTenantId,
-        (newNotifications) => {
-          console.log('🔔 Received real-time notifications callback:', newNotifications.length, 'notifications');
-          console.log('🔔 Real-time notification details:', newNotifications.map(n => ({ id: n.id, title: n.title, read: n.read })));
-          setNotifications(newNotifications);
-          setNotificationCount(newNotifications.filter(n => !n.read).length);
-        }
+        handleNotificationUpdate
       );
     }
 
@@ -226,42 +380,54 @@ export function WholesalerAdminDashboard() {
     };
   }, [isWholesalerAdmin, user, selectedTenant]); // Restart when selected tenant changes
 
-  // Separate effect for data fetching when filters change
+  // Separate effect for data fetching when filters change - only affect Overview tab
   useEffect(() => {
     const currentTenantId = getCurrentTenantId();
     if (isWholesalerAdmin && user?.uid && currentTenantId) {
       fetchDashboardData();
     }
-  }, [activeNav, dateRange, selectedLineWorker, selectedRetailer, selectedTenant]); // Also fetch when tenant changes
+  }, [activeNav === 'overview' ? dateRange : null, selectedLineWorker, selectedRetailer, selectedTenant]); // Only fetch when dateRange changes AND we're on overview tab
 
-  // Effect to sync notifications with notification service
+  // Effect to reset date range to "Today" when switching to Overview tab
   useEffect(() => {
-    if (isWholesalerAdmin && user?.uid) {
-      console.log('🔔 Setting up notification service sync for user:', user.uid);
-      
-      // Add a listener to the notification service to ensure we stay in sync
-      const notificationListener = (newNotifications: NotificationItem[]) => {
-        console.log('🔔 Notification service update received:', newNotifications.length, 'notifications');
-        console.log('🔔 Notification details:', newNotifications.map(n => ({ id: n.id, title: n.title, read: n.read })));
-        setNotifications(newNotifications);
-        setNotificationCount(newNotifications.filter(n => !n.read).length);
-      };
-
-      notificationService.addListener(notificationListener);
-
-      // Initial sync
-      const currentNotifications = notificationService.getNotifications();
-      console.log('🔔 Initial notification sync:', currentNotifications.length, 'notifications');
-      console.log('🔔 Initial notification details:', currentNotifications.map(n => ({ id: n.id, title: n.title, read: n.read })));
-      setNotifications(currentNotifications);
-      setNotificationCount(currentNotifications.filter(n => !n.read).length);
-
-      return () => {
-        console.log('🔔 Cleaning up notification service listener for user:', user.uid);
-        notificationService.removeListener(notificationListener);
-      };
+    if (activeNav === 'overview') {
+      setSelectedDateRangeOption('today');
+      const today = new Date();
+      const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+      const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
+      setDateRange({ startDate: startOfDay, endDate: endOfDay });
     }
-  }, [isWholesalerAdmin, user]);
+  }, [activeNav]);
+
+  // Effect to sync notifications with notification service - DISABLED to prevent focus issues
+  // The real-time notification service already handles notification updates
+  // useEffect(() => {
+  //   if (isWholesalerAdmin && user?.uid) {
+  //     console.log('🔔 Setting up notification service sync for user:', user.uid);
+      
+  //     // Add a listener to the notification service to ensure we stay in sync
+  //     const notificationListener = (newNotifications: NotificationItem[]) => {
+  //       console.log('🔔 Notification service update received:', newNotifications.length, 'notifications');
+  //       console.log('🔔 Notification details:', newNotifications.map(n => ({ id: n.id, title: n.title, read: n.read })));
+  //       setNotifications(newNotifications);
+  //       setNotificationCount(newNotifications.filter(n => !n.read).length);
+  //     };
+
+  //     notificationService.addListener(notificationListener);
+
+  //     // Initial sync
+  //     const currentNotifications = notificationService.getNotifications();
+  //     console.log('🔔 Initial notification sync:', currentNotifications.length, 'notifications');
+  //     console.log('🔔 Initial notification details:', currentNotifications.map(n => ({ id: n.id, title: n.title, read: n.read })));
+  //     setNotifications(currentNotifications);
+  //     setNotificationCount(currentNotifications.filter(n => !n.read).length);
+
+  //     return () => {
+  //       console.log('🔔 Cleaning up notification service listener for user:', user.uid);
+  //       notificationService.removeListener(notificationListener);
+  //     };
+  //   }
+  // }, [isWholesalerAdmin, user]);
 
   const fetchDashboardData = async () => {
     const currentTenantId = getCurrentTenantId();
@@ -282,7 +448,7 @@ export function WholesalerAdminDashboard() {
         DashboardService.getWholesalerDashboardStats(currentTenantId)
       ]);
 
-      // Fetch payments with filters
+      // Fetch payments with filters - only apply date range filter for Overview tab
       let paymentsData = await paymentService.getAll(currentTenantId);
       let paymentsQuery = paymentsData;
       if (selectedLineWorker && selectedLineWorker !== "all") {
@@ -291,10 +457,11 @@ export function WholesalerAdminDashboard() {
       if (selectedRetailer && selectedRetailer !== "all") {
         paymentsQuery = paymentsQuery.filter(p => p.retailerId === selectedRetailer);
       }
-      if (dateRange) {
+      // Only apply date range filter when on Overview tab
+      if (activeNav === 'overview' && dateRange) {
         paymentsQuery = paymentsQuery.filter(p => {
           const paymentDate = p.createdAt.toDate();
-          return paymentDate >= dateRange.from && paymentDate <= dateRange.to;
+          return paymentDate >= dateRange.startDate && paymentDate <= dateRange.endDate;
         });
       }
 
@@ -325,8 +492,30 @@ export function WholesalerAdminDashboard() {
         console.warn('Warning: Could not recompute retailer data:', error);
       }
       
-      // Generate activity logs
-      const logs = generateActivityLogs(paymentsQuery, invoicesData, retailersData, lineWorkersData);
+      // Generate activity logs - use filtered data only for Overview tab
+      let activityLogsData = paymentsQuery;
+      let activityInvoicesData = invoicesData;
+      
+      // If on Overview tab, use the filtered data for activity logs
+      // If on other tabs, use all data for activity logs
+      if (activeNav === 'overview') {
+        activityLogsData = paymentsQuery; // Already filtered for Overview
+        activityInvoicesData = invoicesData; // Will be filtered in generateActivityLogs
+      } else {
+        // For other tabs, use all payments data (unfiltered by date range)
+        activityLogsData = paymentsData.filter(p => {
+          if (selectedLineWorker && selectedLineWorker !== "all") {
+            return p.lineWorkerId === selectedLineWorker;
+          }
+          if (selectedRetailer && selectedRetailer !== "all") {
+            return p.retailerId === selectedRetailer;
+          }
+          return true;
+        });
+        activityInvoicesData = invoicesData; // All invoices
+      }
+      
+      const logs = generateActivityLogs(activityLogsData, activityInvoicesData, retailersData, lineWorkersData);
       setActivityLogs(logs);
       
       // Note: Notifications are now handled by real-time service only
@@ -347,32 +536,25 @@ export function WholesalerAdminDashboard() {
     try {
       await fetchDashboardData();
       
-      // Also refresh notifications manually
+      // Also refresh notifications manually - only if they've changed
       const currentNotifications = notificationService.getNotifications();
       console.log('🔔 Manual notification refresh:', currentNotifications.length, 'notifications');
       console.log('🔔 Manual refresh notification details:', currentNotifications.map(n => ({ id: n.id, title: n.title, read: n.read })));
-      setNotifications(currentNotifications);
-      setNotificationCount(currentNotifications.filter(n => !n.read).length);
+      
+      // Only update if notifications have actually changed
+      if (currentNotifications.length !== notifications.length || 
+          JSON.stringify(currentNotifications) !== JSON.stringify(notifications)) {
+        setNotifications(currentNotifications);
+        setNotificationCount(currentNotifications.filter(n => !n.read).length);
+      } else {
+        console.log('🔔 Manual refresh: Notifications unchanged, skipping state update');
+      }
       
     } catch (error) {
       console.error('Error during manual refresh:', error);
     } finally {
       setRefreshLoading(false);
     }
-  };
-
-  // Test function to add a notification
-  const addTestNotification = () => {
-    console.log('🔔 Adding test notification');
-    const testNotification = {
-      type: 'success' as const,
-      title: 'Test Notification',
-      message: 'This is a test notification to verify the system is working',
-      timestamp: new Date(),
-      read: false
-    };
-    const notificationId = notificationService.addNotification(testNotification);
-    console.log('🔔 Test notification added with ID:', notificationId);
   };
 
   const generateNotifications = (payments: Payment[], invoices: Invoice[], retailers: Retailer[], workers: User[]): NotificationItem[] => {
@@ -555,11 +737,15 @@ export function WholesalerAdminDashboard() {
 
   const generateActivityLogs = (payments: Payment[], invoices: Invoice[], retailers: Retailer[], workers: User[]): ActivityLog[] => {
     const logs: ActivityLog[] = [];
-    const now = new Date();
-    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
-    // Payment activities
-    const recentPayments = payments.filter(p => toDate(p.createdAt) >= sevenDaysAgo);
+    // Payment activities - filter by date range only for Overview tab
+    const recentPayments = payments.filter(p => {
+      if (activeNav === 'overview') {
+        const paymentDate = toDate(p.createdAt);
+        return paymentDate >= dateRange.startDate && paymentDate <= dateRange.endDate;
+      }
+      return true; // For other tabs, show all payments
+    });
     
     recentPayments.forEach(payment => {
       const worker = workers.find(w => w.id === payment.lineWorkerId);
@@ -579,8 +765,14 @@ export function WholesalerAdminDashboard() {
       });
     });
 
-    // Invoice activities
-    const recentInvoices = invoices.filter(i => toDate(i.issueDate) >= sevenDaysAgo);
+    // Invoice activities - filter by date range only for Overview tab
+    const recentInvoices = invoices.filter(i => {
+      if (activeNav === 'overview') {
+        const invoiceDate = toDate(i.issueDate);
+        return invoiceDate >= dateRange.startDate && invoiceDate <= dateRange.endDate;
+      }
+      return true; // For other tabs, show all invoices
+    });
     
     recentInvoices.forEach(invoice => {
       const retailer = retailers.find(r => r.id === invoice.retailerId);
@@ -669,8 +861,10 @@ export function WholesalerAdminDashboard() {
       
       await fetchDashboardData();
       setShowCreateArea(false);
+      showSuccess(`Area "${data.name}" created successfully with ${data.zipcodes.length} zipcodes!`);
     } catch (err: any) {
       setError(err.message || 'Failed to create area');
+      throw err;
     }
   };
 
@@ -692,14 +886,18 @@ export function WholesalerAdminDashboard() {
       
       await fetchDashboardData();
       setShowCreateRetailer(false);
+      showSuccess(`Retailer "${data.name}" created successfully!`);
     } catch (err: any) {
       setError(err.message || 'Failed to create retailer');
+      throw err;
     }
   };
 
   const handleCreateLineWorker = async (data: { email: string; password: string; displayName?: string; phone?: string; assignedAreas?: string[] }) => {
     const currentTenantId = getCurrentTenantId();
     if (!currentTenantId) return;
+    
+    setCreatingLineWorker(true);
     
     try {
       const userData: any = {
@@ -718,10 +916,27 @@ export function WholesalerAdminDashboard() {
       await userService.createUserWithAuth(currentTenantId, userData);
       
       await fetchDashboardData();
-      setShowCreateLineWorker(false);
+      
+      // Show success state and trigger confetti
+      setShowLineWorkerSuccess(true);
+      setTriggerLineWorkerConfetti(true);
+      
+      // Close dialog and reset after success
+      setTimeout(() => {
+        setShowCreateLineWorker(false);
+        setShowLineWorkerSuccess(false);
+        showSuccess(`Line worker "${data.displayName || data.email}" created successfully!`);
+      }, 2000);
     } catch (err: any) {
       setError(err.message || 'Failed to create line worker');
+      throw err;
+    } finally {
+      setCreatingLineWorker(false);
     }
+  };
+
+  const handleLineWorkerConfettiComplete = () => {
+    setTriggerLineWorkerConfetti(false);
   };
 
   const handleToggleArea = (areaId: string) => {
@@ -907,8 +1122,8 @@ export function WholesalerAdminDashboard() {
       // Close dialog
       setShowCreateInvoice(false);
       
-      // Show success message
-      alert(`Invoice created successfully! System ID: ${systemInvoiceId}`);
+      // Show success message with confetti
+      showSuccess(`Invoice "${formData.invoiceNumber}" created successfully! Amount: ${formatCurrency(totalAmount)}`);
       
     } catch (error: any) {
       console.error('Error creating invoice:', error);
@@ -919,94 +1134,114 @@ export function WholesalerAdminDashboard() {
   };
 
   // Stats Cards Component
-  const StatsCards = () => (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-      <Card className="hover:shadow-lg transition-shadow duration-300 border-l-4 border-l-blue-500">
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-sm font-medium text-gray-600">Total Revenue</CardTitle>
-          <div className="bg-blue-100 p-2 rounded-full">
-            <DollarSign className="h-4 w-4 text-blue-600" />
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="text-2xl font-bold text-gray-900">
-            {formatCurrency(dashboardStats?.totalRevenue || 0)}
-          </div>
-          <p className="text-xs text-gray-500">
-            +12.5% from last month
-          </p>
-        </CardContent>
-      </Card>
+  const StatsCards = () => {
+    // Calculate filtered data for the selected date range
+    const filteredPayments = filterPaymentsByDateRange(payments);
+    const filteredInvoices = filterInvoicesByDateRange(invoices);
+    const filteredCompletedPayments = filteredPayments.filter(p => p.state === 'COMPLETED');
+    const filteredOutstandingAmount = calculateOutstandingForDateRange(invoices, payments);
+    const filteredRevenue = filteredCompletedPayments.reduce((sum, p) => sum + p.totalPaid, 0);
 
-      <Card className="hover:shadow-lg transition-shadow duration-300 border-l-4 border-l-green-500">
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-sm font-medium text-gray-600">Outstanding</CardTitle>
-          <div className="bg-green-100 p-2 rounded-full">
-            <AlertCircle className="h-4 w-4 text-green-600" />
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="text-2xl font-bold text-gray-900">
-            {formatCurrency(dashboardStats?.totalOutstanding || 0)}
-          </div>
-          <p className="text-xs text-gray-500">
-            {retailers.filter(r => r.currentOutstanding > 0).length} retailers with dues
-          </p>
-        </CardContent>
-      </Card>
+    return (
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+        <Card className="hover:shadow-lg transition-shadow duration-300 border-l-4 border-l-blue-500">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-gray-600">Total Revenue</CardTitle>
+            <div className="bg-blue-100 p-2 rounded-full">
+              <DollarSign className="h-4 w-4 text-blue-600" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-gray-900">
+              {formatCurrency(filteredRevenue)}
+            </div>
+            <p className="text-xs text-gray-500">
+              Revenue (filtered)
+            </p>
+          </CardContent>
+        </Card>
 
-      <Card className="hover:shadow-lg transition-shadow duration-300 border-l-4 border-l-purple-500">
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-sm font-medium text-gray-600">Active Retailers</CardTitle>
-          <div className="bg-purple-100 p-2 rounded-full">
-            <Store className="h-4 w-4 text-purple-600" />
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="text-2xl font-bold text-gray-900">{retailers.length}</div>
-          <p className="text-xs text-gray-500">
-            Across {areas.length} areas
-          </p>
-        </CardContent>
-      </Card>
+        <Card className="hover:shadow-lg transition-shadow duration-300 border-l-4 border-l-green-500">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-gray-600">Outstanding</CardTitle>
+            <div className="bg-green-100 p-2 rounded-full">
+              <AlertCircle className="h-4 w-4 text-green-600" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-gray-900">
+              {formatCurrency(filteredOutstandingAmount)}
+            </div>
+            <p className="text-xs text-gray-500">
+              Outstanding amount (filtered)
+            </p>
+          </CardContent>
+        </Card>
 
-      <Card className="hover:shadow-lg transition-shadow duration-300 border-l-4 border-l-orange-500">
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-sm font-medium text-gray-600">Line Workers</CardTitle>
-          <div className="bg-orange-100 p-2 rounded-full">
-            <Users className="h-4 w-4 text-orange-600" />
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="text-2xl font-bold text-gray-900">
-            {lineWorkers.filter(w => w.active).length}
-          </div>
-          <p className="text-xs text-gray-500">
-            of {lineWorkers.length} total
-          </p>
-        </CardContent>
-      </Card>
-    </div>
-  );
+        <Card className="hover:shadow-lg transition-shadow duration-300 border-l-4 border-l-purple-500">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-gray-600">Completed Payments</CardTitle>
+            <div className="bg-purple-100 p-2 rounded-full">
+              <CheckCircle className="h-4 w-4 text-purple-600" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-gray-900">
+              {filteredCompletedPayments.length}
+            </div>
+            <p className="text-xs text-gray-500">
+              Payments completed (filtered)
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="hover:shadow-lg transition-shadow duration-300 border-l-4 border-l-orange-500">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-gray-600">Total Invoices</CardTitle>
+            <div className="bg-orange-100 p-2 rounded-full">
+              <FileText className="h-4 w-4 text-orange-600" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-gray-900">
+              {filteredInvoices.length}
+            </div>
+            <p className="text-xs text-gray-500">
+              Invoices created (filtered)
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="hover:shadow-lg transition-shadow duration-300 border-l-4 border-l-teal-500">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-gray-600">Today's Collections</CardTitle>
+            <div className="bg-teal-100 p-2 rounded-full">
+              <TrendingUp className="h-4 w-4 text-teal-600" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-gray-900">
+              {formatCurrency(dashboardStats?.todayCollections || 0)}
+            </div>
+            <p className="text-xs text-gray-500">
+              Collections today
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  };
 
   // Overview Component
   const Overview = () => (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
         <div>
           <h2 className="text-2xl font-bold text-gray-900">Dashboard Overview</h2>
           <p className="text-gray-600">Welcome back! Here's what's happening with your business.</p>
         </div>
         <div className="flex space-x-2">
-          {/* Test Notification Button - Temporary for debugging */}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={addTestNotification}
-            className="text-xs"
-          >
-            Test Notification
-          </Button>
+          <DateRangeFilter value={selectedDateRangeOption} onValueChange={handleDateRangeChange} />
           <Button
             variant="outline"
             onClick={handleManualRefresh}
@@ -1027,7 +1262,12 @@ export function WholesalerAdminDashboard() {
       <Card>
         <CardHeader>
           <CardTitle>Recent Activity</CardTitle>
-          <CardDescription>Latest activities in your system</CardDescription>
+          <CardDescription>
+            {activeNav === 'overview' 
+              ? 'Latest activities in your system (filtered by selected date range)' 
+              : 'Latest activities in your system (all time)'
+            }
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
@@ -1082,7 +1322,7 @@ export function WholesalerAdminDashboard() {
   // Areas Component
   const Areas = () => (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
         <div>
           <h2 className="text-2xl font-bold text-gray-900">Areas Management</h2>
           <p className="text-gray-600">Manage your service areas and zip codes</p>
@@ -1100,7 +1340,7 @@ export function WholesalerAdminDashboard() {
             )}
             <span className="sr-only">Refresh</span>
           </Button>
-          <Dialog open={showCreateArea} onOpenChange={setShowCreateArea}>
+          <Dialog key="area-dialog" open={showCreateArea} onOpenChange={handleAreaDialogChange}>
             <DialogTrigger asChild>
               <Button>
                 <Plus className="h-4 w-4 mr-2" />
@@ -1115,6 +1355,7 @@ export function WholesalerAdminDashboard() {
                 </DialogDescription>
               </DialogHeader>
               <CreateAreaForm 
+                key="area-form"
                 onSubmit={handleCreateArea}
                 onCancel={() => setShowCreateArea(false)}
               />
@@ -1162,7 +1403,7 @@ export function WholesalerAdminDashboard() {
                       </div>
                     </div>
                   </div>
-                  <div className="flex items-center space-x-2">
+                  <div className="flex items-center space-x-2 flex-wrap gap-y-2">
                     <Button
                       variant="outline"
                       size="sm"
@@ -1227,7 +1468,7 @@ export function WholesalerAdminDashboard() {
   // Retailers Component
   const Retailers = () => (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
         <div>
           <h2 className="text-2xl font-bold text-gray-900">Retailers Management</h2>
           <p className="text-gray-600">Manage your retailer network</p>
@@ -1244,7 +1485,7 @@ export function WholesalerAdminDashboard() {
             )}
             Refresh
           </Button>
-          <Dialog open={showCreateRetailer} onOpenChange={setShowCreateRetailer}>
+          <Dialog key="retailer-dialog" open={showCreateRetailer} onOpenChange={handleRetailerDialogChange}>
             <DialogTrigger asChild>
               <Button>
                 <Plus className="h-4 w-4 mr-2" />
@@ -1259,6 +1500,7 @@ export function WholesalerAdminDashboard() {
                 </DialogDescription>
               </DialogHeader>
               <CreateRetailerForm 
+                key="retailer-form"
                 onSubmit={handleCreateRetailer}
                 areas={areas}
                 onCancel={() => setShowCreateRetailer(false)}
@@ -1393,7 +1635,7 @@ export function WholesalerAdminDashboard() {
   // Invoices Component
   const Invoices = () => (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
         <div>
           <h2 className="text-2xl font-bold text-gray-900">Invoices Management</h2>
           <p className="text-gray-600">Manage all invoices in your system</p>
@@ -1411,7 +1653,7 @@ export function WholesalerAdminDashboard() {
             )}
             <span className="sr-only">Refresh</span>
           </Button>
-          <Dialog open={showCreateInvoice} onOpenChange={setShowCreateInvoice}>
+          <Dialog key="invoice-dialog" open={showCreateInvoice} onOpenChange={handleInvoiceDialogChange}>
             <DialogTrigger asChild>
               <Button>
                 <Plus className="h-4 w-4 mr-2" />
@@ -1517,7 +1759,7 @@ export function WholesalerAdminDashboard() {
   // Line Workers Component
   const LineWorkers = () => (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
         <div>
           <h2 className="text-2xl font-bold text-gray-900">Line Workers Management</h2>
           <p className="text-gray-600">Manage your line workers and their assignments</p>
@@ -1535,7 +1777,7 @@ export function WholesalerAdminDashboard() {
             )}
             <span className="sr-only">Refresh</span>
           </Button>
-          <Dialog open={showCreateLineWorker} onOpenChange={setShowCreateLineWorker}>
+          <Dialog key="line-worker-dialog" open={showCreateLineWorker} onOpenChange={handleLineWorkerDialogChange}>
             <DialogTrigger asChild>
               <Button>
                 <Plus className="h-4 w-4 mr-2" />
@@ -1543,6 +1785,7 @@ export function WholesalerAdminDashboard() {
               </Button>
             </DialogTrigger>
             <DialogContent className="max-w-md">
+              <Confetti trigger={triggerLineWorkerConfetti} onComplete={handleLineWorkerConfettiComplete} />
               <DialogHeader>
                 <DialogTitle>Create New Line Worker</DialogTitle>
                 <DialogDescription>
@@ -1550,93 +1793,126 @@ export function WholesalerAdminDashboard() {
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="workerEmail">Email</Label>
-                  <Input
-                    id="workerEmail"
-                    type="email"
-                    placeholder="Enter email address"
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="workerPassword">Password</Label>
-                  <Input
-                    id="workerPassword"
-                    type="password"
-                    placeholder="Enter password"
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="workerDisplayName">Display Name</Label>
-                  <Input
-                    id="workerDisplayName"
-                    placeholder="Enter display name"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="workerPhone">Phone</Label>
-                  <Input
-                    id="workerPhone"
-                    type="tel"
-                    placeholder="Enter phone number"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Assigned Areas</Label>
-                  <p className="text-xs text-gray-500">Optional: Leave all unchecked to create worker without area assignments.</p>
-                  <div className="space-y-2 max-h-32 overflow-y-auto">
-                    {areas.map((area) => (
-                      <div key={area.id} className="flex items-center space-x-2">
-                        <input
-                          type="checkbox"
-                          id={`area-${area.id}`}
-                          value={area.id}
-                          className="rounded"
-                        />
-                        <label htmlFor={`area-${area.id}`} className="text-sm">{area.name}</label>
-                      </div>
-                    ))}
+                {showLineWorkerSuccess ? (
+                  <div className="text-center py-8">
+                    <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
+                    <h3 className="text-lg font-semibold text-green-700 mb-2">Line Worker Created Successfully!</h3>
+                    <p className="text-gray-600">The new line worker has been created and is ready to use.</p>
                   </div>
-                </div>
-                <div className="flex space-x-2">
-                  <Button onClick={() => {
-                    const email = (document.getElementById('workerEmail') as HTMLInputElement)?.value;
-                    const password = (document.getElementById('workerPassword') as HTMLInputElement)?.value;
-                    const displayName = (document.getElementById('workerDisplayName') as HTMLInputElement)?.value;
-                    const phone = (document.getElementById('workerPhone') as HTMLInputElement)?.value;
-                    const assignedAreas: string[] = [];
-                    
-                    areas.forEach(area => {
-                      const checkbox = document.getElementById(`area-${area.id}`) as HTMLInputElement;
-                      if (checkbox?.checked) {
-                        assignedAreas.push(area.id);
-                      }
-                    });
+                ) : (
+                  <>
+                    <div className="space-y-2">
+                      <Label htmlFor="workerEmail">Email</Label>
+                      <Input
+                        id="workerEmail"
+                        type="email"
+                        placeholder="Enter email address"
+                        required
+                        disabled={creatingLineWorker}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="workerPassword">Password</Label>
+                      <Input
+                        id="workerPassword"
+                        type="password"
+                        placeholder="Enter password"
+                        required
+                        disabled={creatingLineWorker}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="workerDisplayName">Display Name</Label>
+                      <Input
+                        id="workerDisplayName"
+                        placeholder="Enter display name"
+                        disabled={creatingLineWorker}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="workerPhone">Phone</Label>
+                      <Input
+                        id="workerPhone"
+                        type="tel"
+                        placeholder="Enter phone number"
+                        disabled={creatingLineWorker}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Assigned Areas</Label>
+                      <p className="text-xs text-gray-500">Optional: Leave all unchecked to create worker without area assignments.</p>
+                      <div className="space-y-2 max-h-32 overflow-y-auto">
+                        {areas.map((area) => (
+                          <div key={area.id} className="flex items-center space-x-2">
+                            <input
+                              type="checkbox"
+                              id={`area-${area.id}`}
+                              value={area.id}
+                              className="rounded"
+                              disabled={creatingLineWorker}
+                            />
+                            <label htmlFor={`area-${area.id}`} className="text-sm">{area.name}</label>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="flex space-x-2">
+                      <Button 
+                        onClick={async () => {
+                          const email = (document.getElementById('workerEmail') as HTMLInputElement)?.value;
+                          const password = (document.getElementById('workerPassword') as HTMLInputElement)?.value;
+                          const displayName = (document.getElementById('workerDisplayName') as HTMLInputElement)?.value;
+                          const phone = (document.getElementById('workerPhone') as HTMLInputElement)?.value;
+                          const assignedAreas: string[] = [];
+                          
+                          areas.forEach(area => {
+                            const checkbox = document.getElementById(`area-${area.id}`) as HTMLInputElement;
+                            if (checkbox?.checked) {
+                              assignedAreas.push(area.id);
+                            }
+                          });
 
-                    if (email && password) {
-                      const createData: any = {
-                        email,
-                        password,
-                        displayName: displayName || undefined,
-                        phone: phone || undefined
-                      };
-                      
-                      // Only include assignedAreas if it has values
-                      if (assignedAreas.length > 0) {
-                        createData.assignedAreas = assignedAreas;
-                      }
-                      
-                      handleCreateLineWorker(createData);
-                    }
-                  }}>
-                    Create Line Worker
-                  </Button>
-                  <Button variant="outline" onClick={() => setShowCreateLineWorker(false)}>
-                    Cancel
-                  </Button>
-                </div>
+                          if (email && password) {
+                            const createData: any = {
+                              email,
+                              password,
+                              displayName: displayName || undefined,
+                              phone: phone || undefined
+                            };
+                            
+                            // Only include assignedAreas if it has values
+                            if (assignedAreas.length > 0) {
+                              createData.assignedAreas = assignedAreas;
+                            }
+                            
+                            try {
+                              await handleCreateLineWorker(createData);
+                            } catch (error) {
+                              // Error is already handled by the handler
+                            }
+                          }
+                        }}
+                        disabled={creatingLineWorker}
+                      >
+                        {creatingLineWorker ? (
+                          <>
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            Creating...
+                          </>
+                        ) : (
+                          'Create Line Worker'
+                        )}
+                      </Button>
+                      <Button 
+                        variant="outline" 
+                        onClick={() => setShowCreateLineWorker(false)}
+                        disabled={creatingLineWorker}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </>
+                )}
               </div>
             </DialogContent>
           </Dialog>
@@ -1685,7 +1961,7 @@ export function WholesalerAdminDashboard() {
                         <div className="text-sm text-gray-500">{worker.phone}</div>
                       </div>
                     </div>
-                    <div className="flex items-center space-x-4">
+                    <div className="flex items-center space-x-2 flex-wrap gap-y-2">
                       <Badge className={worker.active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}>
                         {worker.active ? 'Active' : 'Inactive'}
                       </Badge>
@@ -1739,134 +2015,279 @@ export function WholesalerAdminDashboard() {
   );
 
   // Transactions Component
-  const Transactions = () => (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">Transactions</h2>
-          <p className="text-gray-600">View and manage all payment transactions</p>
-        </div>
-        <div className="flex items-center space-x-4">
-          <Select value={selectedLineWorker} onValueChange={setSelectedLineWorker}>
-            <SelectTrigger className="w-48">
-              <SelectValue placeholder="Filter by worker" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Workers</SelectItem>
-              {lineWorkers.filter(worker => worker.active).map((worker) => (
-                <SelectItem key={worker.id} value={worker.id}>
-                  {worker.displayName}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={selectedRetailer} onValueChange={setSelectedRetailer}>
-            <SelectTrigger className="w-48">
-              <SelectValue placeholder="Filter by retailer" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Retailers</SelectItem>
-              {retailers.map(retailer => (
-                <SelectItem key={retailer.id} value={retailer.id}>{retailer.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button
-            onClick={handleManualRefresh}
-            disabled={refreshLoading}
-          >
-            {refreshLoading ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <RefreshCw className="h-4 w-4 mr-2" />
-            )}
-            Refresh
-          </Button>
-        </div>
-      </div>
+  const Transactions = () => {
+    // Filter payments based on status and sort by most recent first
+    const completedPayments = payments
+      .filter(payment => payment.state === 'COMPLETED')
+      .sort((a, b) => b.createdAt.toDate().getTime() - a.createdAt.toDate().getTime());
+    
+    const pendingCancelledPayments = payments
+      .filter(payment => 
+        ['INITIATED', 'OTP_SENT', 'OTP_VERIFIED', 'CANCELLED', 'EXPIRED'].includes(payment.state)
+      )
+      .sort((a, b) => b.createdAt.toDate().getTime() - a.createdAt.toDate().getTime());
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Payment Transactions</CardTitle>
-          <CardDescription>All payment records in your system</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto">
-            {refreshLoading ? (
-              <div className="space-y-4">
-                {[...Array(5)].map((_, index) => (
-                  <div key={index} className="flex items-center space-x-4">
-                    <Skeleton className="h-4 w-24 animate-pulse" />
-                    <Skeleton className="h-4 w-32 animate-pulse" />
-                    <Skeleton className="h-4 w-28 animate-pulse" />
-                    <Skeleton className="h-4 w-16 animate-pulse" />
-                    <Skeleton className="h-4 w-20 animate-pulse" />
-                    <Skeleton className="h-6 w-16 animate-pulse" />
-                    <Skeleton className="h-8 w-16 animate-pulse" />
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Retailer</TableHead>
-                    <TableHead>Line Worker</TableHead>
-                    <TableHead>Amount</TableHead>
-                    <TableHead>Method</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {payments.map((payment) => (
-                    <TableRow key={payment.id}>
-                      <TableCell>{formatTimestampWithTime(payment.createdAt)}</TableCell>
-                      <TableCell>{getRetailerName(payment.retailerId)}</TableCell>
-                      <TableCell>{getLineWorkerName(payment.lineWorkerId)}</TableCell>
-                      <TableCell>
-                        <div className="text-right">
-                          <div className="font-medium">{formatCurrency(payment.totalPaid)}</div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline">{payment.method}</Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge className={
-                          payment.state === 'COMPLETED' ? 'bg-green-100 text-green-800' :
-                          payment.state === 'INITIATED' ? 'bg-yellow-100 text-yellow-800' :
-                          'bg-red-100 text-red-800'
-                        }>
-                          {payment.state}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Button variant="outline" size="sm" onClick={() => setViewingPayment(payment)}>
-                          <Eye className="h-4 w-4 mr-1" />
-                          View
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900">Transactions</h2>
+            <p className="text-gray-600">View and manage all payment transactions</p>
           </div>
-        </CardContent>
-      </Card>
-    </div>
-  );
+          <div className="flex flex-col sm:flex-row sm:items-start gap-2">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full sm:w-auto">
+              <Select value={selectedLineWorker} onValueChange={setSelectedLineWorker}>
+                <SelectTrigger className="w-full sm:w-48">
+                  <SelectValue placeholder="Filter by worker" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Workers</SelectItem>
+                  {lineWorkers.filter(worker => worker.active).map((worker) => (
+                    <SelectItem key={worker.id} value={worker.id}>
+                      {worker.displayName}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={selectedRetailer} onValueChange={setSelectedRetailer}>
+                <SelectTrigger className="w-full sm:w-48">
+                  <SelectValue placeholder="Filter by retailer" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Retailers</SelectItem>
+                  {retailers.map(retailer => (
+                    <SelectItem key={retailer.id} value={retailer.id}>{retailer.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <Button
+              onClick={handleManualRefresh}
+              disabled={refreshLoading}
+              className="w-full sm:w-auto"
+            >
+              {refreshLoading ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4 mr-2" />
+              )}
+              Refresh
+            </Button>
+          </div>
+        </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Payment Transactions</CardTitle>
+            <CardDescription>All payment records in your system</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Tabs value={paymentTab} onChange={setPaymentTab} className="w-full">
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="completed" className="flex items-center space-x-2">
+                  <CheckCircle className="h-4 w-4" />
+                  <span>Completed ({completedPayments.length})</span>
+                </TabsTrigger>
+                <TabsTrigger value="pending" className="flex items-center space-x-2">
+                  <Clock className="h-4 w-4" />
+                  <span>Pending/Cancelled ({pendingCancelledPayments.length})</span>
+                </TabsTrigger>
+              </TabsList>
+              
+              <TabsContent value="completed" className="space-y-4">
+                <div className="overflow-x-auto">
+                  {refreshLoading ? (
+                    <div className="space-y-4">
+                      {[...Array(5)].map((_, index) => (
+                        <div key={index} className="flex items-center space-x-4">
+                          <Skeleton className="h-4 w-24 animate-pulse" />
+                          <Skeleton className="h-4 w-32 animate-pulse" />
+                          <Skeleton className="h-4 w-28 animate-pulse" />
+                          <Skeleton className="h-4 w-16 animate-pulse" />
+                          <Skeleton className="h-4 w-20 animate-pulse" />
+                          <Skeleton className="h-6 w-16 animate-pulse" />
+                          <Skeleton className="h-8 w-16 animate-pulse" />
+                        </div>
+                      ))}
+                    </div>
+                  ) : completedPayments.length > 0 ? (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Date</TableHead>
+                          <TableHead>Retailer</TableHead>
+                          <TableHead>Line Worker</TableHead>
+                          <TableHead>Amount</TableHead>
+                          <TableHead>Method</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead>Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {completedPayments.map((payment) => (
+                          <TableRow key={payment.id}>
+                            <TableCell>{formatTimestampWithTime(payment.createdAt)}</TableCell>
+                            <TableCell>{getRetailerName(payment.retailerId)}</TableCell>
+                            <TableCell>{getLineWorkerName(payment.lineWorkerId)}</TableCell>
+                            <TableCell>
+                              <div className="text-right">
+                                <div className="font-medium">{formatCurrency(payment.totalPaid)}</div>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="outline">{payment.method}</Badge>
+                            </TableCell>
+                            <TableCell>
+                              <Badge className="bg-green-100 text-green-800">
+                                {payment.state}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <Button variant="outline" size="sm" onClick={() => setViewingPayment(payment)}>
+                                <Eye className="h-4 w-4 mr-1" />
+                                View
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  ) : (
+                    <div className="text-center py-8">
+                      <CheckCircle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                      <h3 className="text-lg font-medium text-gray-900 mb-2">No completed payments</h3>
+                      <p className="text-gray-500">There are no completed payments in the system.</p>
+                    </div>
+                  )}
+                </div>
+              </TabsContent>
+              
+              <TabsContent value="pending" className="space-y-4">
+                <div className="overflow-x-auto">
+                  {refreshLoading ? (
+                    <div className="space-y-4">
+                      {[...Array(5)].map((_, index) => (
+                        <div key={index} className="flex items-center space-x-4">
+                          <Skeleton className="h-4 w-24 animate-pulse" />
+                          <Skeleton className="h-4 w-32 animate-pulse" />
+                          <Skeleton className="h-4 w-28 animate-pulse" />
+                          <Skeleton className="h-4 w-16 animate-pulse" />
+                          <Skeleton className="h-4 w-20 animate-pulse" />
+                          <Skeleton className="h-6 w-16 animate-pulse" />
+                          <Skeleton className="h-8 w-16 animate-pulse" />
+                        </div>
+                      ))}
+                    </div>
+                  ) : pendingCancelledPayments.length > 0 ? (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Date</TableHead>
+                          <TableHead>Retailer</TableHead>
+                          <TableHead>Line Worker</TableHead>
+                          <TableHead>Amount</TableHead>
+                          <TableHead>Method</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead>Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {pendingCancelledPayments.map((payment) => (
+                          <TableRow key={payment.id}>
+                            <TableCell>{formatTimestampWithTime(payment.createdAt)}</TableCell>
+                            <TableCell>{getRetailerName(payment.retailerId)}</TableCell>
+                            <TableCell>{getLineWorkerName(payment.lineWorkerId)}</TableCell>
+                            <TableCell>
+                              <div className="text-right">
+                                <div className="font-medium">{formatCurrency(payment.totalPaid)}</div>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="outline">{payment.method}</Badge>
+                            </TableCell>
+                            <TableCell>
+                              <Badge className={
+                                payment.state === 'INITIATED' ? 'bg-yellow-100 text-yellow-800' :
+                                payment.state === 'OTP_SENT' || payment.state === 'OTP_VERIFIED' ? 'bg-blue-100 text-blue-800' :
+                                'bg-red-100 text-red-800'
+                              }>
+                                {payment.state}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <Button variant="outline" size="sm" onClick={() => setViewingPayment(payment)}>
+                                <Eye className="h-4 w-4 mr-1" />
+                                View
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  ) : (
+                    <div className="text-center py-8">
+                      <Clock className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                      <h3 className="text-lg font-medium text-gray-900 mb-2">No pending or cancelled payments</h3>
+                      <p className="text-gray-500">There are no pending or cancelled payments in the system.</p>
+                    </div>
+                  )}
+                </div>
+              </TabsContent>
+            </Tabs>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  };
 
   // Analytics Component
   const AnalyticsComponent = () => (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      {/* Row 1: Heading and Description */}
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
         <div>
           <h2 className="text-2xl font-bold text-gray-900">Analytics</h2>
           <p className="text-gray-600">Comprehensive analytics and insights</p>
         </div>
+      </div>
+
+      {/* Row 2: Refresh Button */}
+      <div className="flex justify-start">
+        <Button
+          variant="outline"
+          onClick={handleManualRefresh}
+          disabled={refreshLoading}
+        >
+          {refreshLoading ? (
+            <Loader2 className="h-4 w-4 animate-spin mr-2" />
+          ) : (
+            <RefreshCw className="h-4 w-4 mr-2" />
+          )}
+          Refresh
+        </Button>
+      </div>
+
+      {/* Row 3: Dropdown and Export */}
+      <div className="flex flex-col sm:flex-row sm:justify-start sm:items-center gap-4">
+        <Select value={selectedDateRangeOption} onValueChange={handleDateRangeChange}>
+          <SelectTrigger className="w-full sm:w-48">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="today">Today</SelectItem>
+            <SelectItem value="yesterday">Yesterday</SelectItem>
+            <SelectItem value="thisWeek">This Week</SelectItem>
+            <SelectItem value="lastWeek">Last Week</SelectItem>
+            <SelectItem value="thisMonth">This Month</SelectItem>
+            <SelectItem value="lastMonth">Last Month</SelectItem>
+            <SelectItem value="custom">Custom Range</SelectItem>
+          </SelectContent>
+        </Select>
+        
+        <Button variant="outline" className="w-full sm:w-auto">
+          <Download className="h-4 w-4 mr-2" />
+          Export
+        </Button>
       </div>
 
       <WholesalerAnalytics 
@@ -1877,6 +2298,7 @@ export function WholesalerAdminDashboard() {
         areas={areas}
         onRefresh={handleManualRefresh}
         refreshLoading={refreshLoading}
+        tenantId={getCurrentTenantId()}
       />
     </div>
   );
@@ -2193,48 +2615,18 @@ export function WholesalerAdminDashboard() {
     );
   }
 
-  // Filter functions for retailer details
-  const getFilteredRetailers = () => {
-    return retailers.filter(retailer => {
-      // Area filter
-      if (selectedArea !== "all" && retailer.areaId !== selectedArea) {
-        return false;
-      }
-      
-      // Retailer filter
-      if (selectedRetailer !== "all" && retailer.id !== selectedRetailer) {
-        return false;
-      }
-      
-      // Search filter
-      if (searchTerm) {
-        const searchLower = searchTerm.toLowerCase();
-        const matchesName = retailer.name.toLowerCase().includes(searchLower);
-        const matchesPhone = retailer.phone.toLowerCase().includes(searchLower);
-        const matchesAddress = retailer.address?.toLowerCase().includes(searchLower);
-        const matchesZipcodes = retailer.zipcodes.some(zip => zip.toLowerCase().includes(searchLower));
-        
-        if (!matchesName && !matchesPhone && !matchesAddress && !matchesZipcodes) {
-          return false;
-        }
-      }
-      
-      return true;
-    });
-  };
-
   const getFilteredInvoices = () => {
-    const filteredRetailerIds = getFilteredRetailers().map(r => r.id);
+    const filteredRetailerIds = getFilteredRetailers.map(r => r.id);
     return invoices.filter(invoice => {
       // Only include invoices from filtered retailers
       if (!filteredRetailerIds.includes(invoice.retailerId)) {
         return false;
       }
       
-      // Date range filter
-      if (dateRange) {
+      // Date range filter - only apply for Overview tab
+      if (activeNav === 'overview' && dateRange) {
         const invoiceDate = toDate(invoice.issueDate);
-        if (invoiceDate < dateRange.from || invoiceDate > dateRange.to) {
+        if (invoiceDate < dateRange.startDate || invoiceDate > dateRange.endDate) {
           return false;
         }
       }
@@ -2244,17 +2636,17 @@ export function WholesalerAdminDashboard() {
   };
 
   const getFilteredPayments = () => {
-    const filteredRetailerIds = getFilteredRetailers().map(r => r.id);
+    const filteredRetailerIds = getFilteredRetailers.map(r => r.id);
     return payments.filter(payment => {
       // Only include payments from filtered retailers
       if (!filteredRetailerIds.includes(payment.retailerId)) {
         return false;
       }
       
-      // Date range filter
-      if (dateRange) {
+      // Date range filter - only apply for Overview tab
+      if (activeNav === 'overview' && dateRange) {
         const paymentDate = toDate(payment.createdAt);
-        if (paymentDate < dateRange.from || paymentDate > dateRange.to) {
+        if (paymentDate < dateRange.startDate || paymentDate > dateRange.endDate) {
           return false;
         }
       }
@@ -2266,7 +2658,7 @@ export function WholesalerAdminDashboard() {
   // Retailer Details Component - Complete detailed logs of retailers
   const RetailerDetails = () => (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
         <div>
           <h2 className="text-2xl font-bold text-gray-900">Retailer Details & Logs</h2>
           <p className="text-gray-600">Complete detailed logs of all retailers including invoices and payments</p>
@@ -2356,23 +2748,10 @@ export function WholesalerAdminDashboard() {
                 </Select>
               </div>
               <div>
-                <Label htmlFor="searchRetailer">Search Retailers</Label>
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-                  <Input
-                    id="searchRetailer"
-                    placeholder="Search by name or phone..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-10"
-                  />
-                </div>
-              </div>
-              <div>
                 <Label htmlFor="dateRange">Filter Date</Label>
                 <EnhancedDatePicker
-                  date={dateRange?.from}
-                  onSelect={(date) => setDateRange(date ? { from: date, to: date } : null)}
+                  date={filterDate?.from}
+                  onSelect={(date) => setFilterDate(date ? { from: date, to: date } : null)}
                   placeholder="Select date"
                   className="w-full"
                 />
@@ -2389,9 +2768,9 @@ export function WholesalerAdminDashboard() {
               <Store className="h-4 w-4 text-blue-600" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-gray-900">{getFilteredRetailers().length}</div>
+              <div className="text-2xl font-bold text-gray-900">{getFilteredRetailers.length}</div>
               <p className="text-xs text-gray-500">
-                {getFilteredRetailers().filter(r => r.currentOutstanding > 0).length} with outstanding balance
+                {getFilteredRetailers.filter(r => r.currentOutstanding > 0).length} with outstanding balance
               </p>
             </CardContent>
           </Card>
@@ -2444,7 +2823,7 @@ export function WholesalerAdminDashboard() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-gray-900">
-                {formatCurrency(getFilteredRetailers().reduce((sum, r) => sum + r.currentOutstanding, 0))}
+                {formatCurrency(getFilteredRetailers.reduce((sum, r) => sum + r.currentOutstanding, 0))}
               </div>
               <p className="text-xs text-gray-500">
                 Across filtered retailers
@@ -2455,7 +2834,7 @@ export function WholesalerAdminDashboard() {
 
         {/* Retailers with Detailed Logs */}
         <div className="space-y-6">
-          {getFilteredRetailers().map(retailer => {
+          {getFilteredRetailers.map(retailer => {
             const retailerInvoices = getFilteredInvoices().filter(inv => inv.retailerId === retailer.id);
             const retailerPayments = getFilteredPayments().filter(pay => pay.retailerId === retailer.id);
             // Check for direct assignment first, then fall back to area-based assignment
@@ -2678,7 +3057,7 @@ export function WholesalerAdminDashboard() {
         </>
       )}
       
-      {!error && getFilteredRetailers().length === 0 && (
+      {!error && getFilteredRetailers.length === 0 && (
         <div className="text-center py-12">
           <Store className="h-16 w-16 mx-auto mb-4 text-gray-400" />
           <h3 className="text-lg font-medium text-gray-900 mb-2">No retailers found</h3>
@@ -2740,15 +3119,15 @@ export function WholesalerAdminDashboard() {
       )}
 
       {/* Main Content */}
-      <main className="flex-1 p-4 lg:p-6 overflow-y-auto">
+      <main className="flex-1 p-3 sm:p-4 lg:p-6 overflow-y-auto pb-20 lg:pb-6">
         {error && (
-          <Alert className="border-red-200 bg-red-50 mb-6">
+          <Alert className="border-red-200 bg-red-50 mb-4 sm:mb-6">
             <AlertCircle className="h-4 w-4 text-red-600" />
-            <AlertDescription className="text-red-800">{error}</AlertDescription>
+            <AlertDescription className="text-red-800 text-sm">{error}</AlertDescription>
           </Alert>
         )}
 
-        <div className="max-w-7xl mx-auto">
+        <div className="max-w-7xl mx-auto space-y-4 sm:space-y-6">
           {activeNav === 'overview' && <Overview />}
           {activeNav === 'areas' && <Areas />}
           {activeNav === 'retailers' && <Retailers />}
@@ -2759,39 +3138,6 @@ export function WholesalerAdminDashboard() {
           {activeNav === 'analytics' && <AnalyticsComponent />}
         </div>
 
-        {/* Edit Area Dialog */}
-        <Dialog open={!!editingArea} onOpenChange={(open) => !open && setEditingArea(null)}>
-          <DialogContent className="max-w-md">
-            <DialogHeader>
-              <DialogTitle>Edit Area</DialogTitle>
-              <DialogDescription>
-                Update area information and zipcodes
-              </DialogDescription>
-            </DialogHeader>
-            {editingArea && (
-              <CreateAreaForm 
-                onSubmit={async (data) => {
-                  const currentTenantId = getCurrentTenantId();
-                  if (!currentTenantId) return;
-                  
-                  try {
-                    await areaService.update(editingArea.id, {
-                      name: data.name,
-                      zipcodes: data.zipcodes
-                    }, currentTenantId);
-                    await fetchDashboardData();
-                    setEditingArea(null);
-                  } catch (err: any) {
-                    setError(err.message || 'Failed to update area');
-                  }
-                }}
-                onCancel={() => setEditingArea(null)}
-                initialData={editingArea}
-              />
-            )}
-          </DialogContent>
-        </Dialog>
-
         {/* Dialog Components */}
         {ViewInvoiceDialog()}
         {ViewPaymentDialog()}
@@ -2801,6 +3147,13 @@ export function WholesalerAdminDashboard() {
         
         {/* Retailer Assignment Dialog */}
         {RetailerAssignmentDialog()}
+        
+        {/* Success Feedback */}
+        <SuccessFeedback 
+          show={feedback.show}
+          message={feedback.message}
+          onClose={hideSuccess}
+        />
       </main>
     </div>
   );

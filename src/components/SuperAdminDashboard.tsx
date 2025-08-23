@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -13,6 +13,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DashboardNavigation, NavItem, NotificationItem } from '@/components/DashboardNavigation';
+import { DateRangeFilter } from '@/components/ui/DateRangeFilter';
+import { SuccessFeedback } from '@/components/SuccessFeedback';
+import { useSuccessFeedback } from '@/hooks/useSuccessFeedback';
+
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth, useSuperAdmin } from '@/contexts/AuthContext';
 import { 
@@ -114,13 +118,13 @@ interface AnalyticsData {
 export function SuperAdminDashboard() {
   const { user, logout } = useAuth();
   const isSuperAdmin = useSuperAdmin();
+  const { showSuccess, hideSuccess, feedback } = useSuccessFeedback();
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [showCreateTenant, setShowCreateTenant] = useState(false);
   const [selectedTenant, setSelectedTenant] = useState<Tenant | null>(null);
   const [tenantDetails, setTenantDetails] = useState<TenantDetails | null>(null);
   const [loadingTenantDetails, setLoadingTenantDetails] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
   const [notificationCount, setNotificationCount] = useState(0);
@@ -129,6 +133,43 @@ export function SuperAdminDashboard() {
   const [selectedTenantForAnalytics, setSelectedTenantForAnalytics] = useState<string>('ALL');
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [selectedDateRangeOption, setSelectedDateRangeOption] = useState('today');
+  const [dateRange, setDateRange] = useState<{ startDate: Date; endDate: Date }>(() => {
+    const today = new Date();
+    const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
+    return { startDate: startOfDay, endDate: endOfDay };
+  });
+
+  // Helper functions to filter data by date range
+  const filterPaymentsByDateRange = (paymentsData: Payment[]) => {
+    return paymentsData.filter(payment => {
+      const paymentDate = payment.createdAt.toDate();
+      return paymentDate >= dateRange.startDate && paymentDate <= dateRange.endDate;
+    });
+  };
+
+  const filterInvoicesByDateRange = (invoicesData: Invoice[]) => {
+    return invoicesData.filter(invoice => {
+      const invoiceDate = invoice.issueDate.toDate();
+      return invoiceDate >= dateRange.startDate && invoiceDate <= dateRange.endDate;
+    });
+  };
+
+  const calculateOutstandingForDateRange = (invoicesData: Invoice[], paymentsData: Payment[]) => {
+    const filteredInvoices = filterInvoicesByDateRange(invoicesData);
+    const filteredPayments = filterPaymentsByDateRange(paymentsData).filter(p => p.state === 'COMPLETED');
+    
+    const totalInvoiceAmount = filteredInvoices.reduce((sum, invoice) => sum + invoice.totalAmount, 0);
+    const totalPaid = filteredPayments.reduce((sum, payment) => sum + payment.totalPaid, 0);
+    
+    return Math.max(0, totalInvoiceAmount - totalPaid);
+  };
+
+  const handleDateRangeChange = (value: string, newDateRange: { startDate: Date; endDate: Date }) => {
+    setSelectedDateRangeOption(value);
+    setDateRange(newDateRange);
+  };
 
   const refreshData = async () => {
     setIsRefreshing(true);
@@ -355,6 +396,12 @@ export function SuperAdminDashboard() {
 
   const [activeNav, setActiveNav] = useState('overview');
 
+  // Memoized notification callback to prevent unnecessary re-renders
+  const handleNotificationUpdate = useCallback((newNotifications: NotificationItem[]) => {
+    setNotifications(newNotifications);
+    setNotificationCount(newNotifications.filter(n => !n.read).length);
+  }, []);
+
   useEffect(() => {
     if (isSuperAdmin && user) {
       fetchTenants();
@@ -368,10 +415,7 @@ export function SuperAdminDashboard() {
           user.uid,
           'SUPER_ADMIN',
           'system', // Super admin listens to all tenants
-          (newNotifications) => {
-            setNotifications(newNotifications);
-            setNotificationCount(newNotifications.filter(n => !n.read).length);
-          }
+          handleNotificationUpdate
         );
         sessionStorage.setItem(notificationKey, 'true');
       }
@@ -570,6 +614,7 @@ export function SuperAdminDashboard() {
       await fetchTenants();
       await fetchAnalytics();
       setShowCreateTenant(false);
+      showSuccess(`Tenant "${data.name}" created successfully with admin user ${data.adminName}!`);
     } catch (err: any) {
       setError(err.message || 'Failed to create tenant and admin user');
     }
@@ -641,11 +686,13 @@ export function SuperAdminDashboard() {
     }
   };
 
-  const filteredTenants = tenants.filter(tenant => {
-    const matchesSearch = tenant.name.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = statusFilter === 'ALL' || tenant.status === statusFilter;
-    return matchesSearch && matchesStatus;
-  });
+  // Memoized filtered tenants to prevent unnecessary re-computations
+  const filteredTenants = useMemo(() => {
+    return tenants.filter(tenant => {
+      const matchesStatus = statusFilter === 'ALL' || tenant.status === statusFilter;
+      return matchesStatus;
+    });
+  }, [tenants, statusFilter]);
 
   // Overview Component
   const Overview = () => (
@@ -901,15 +948,7 @@ export function SuperAdminDashboard() {
         <CardContent className="pt-6">
           <div className="flex flex-col sm:flex-row gap-4">
             <div className="flex-1">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-                <Input
-                  placeholder="Search tenants..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10"
-                />
-              </div>
+              {/* Search removed to prevent focus issues */}
             </div>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
               <SelectTrigger className="w-full sm:w-48">
@@ -1759,14 +1798,14 @@ export function SuperAdminDashboard() {
       />
 
       {/* Main Content */}
-      <main className="flex-1 p-4 lg:p-6 overflow-y-auto">
+      <main className="flex-1 p-3 sm:p-4 lg:p-6 overflow-y-auto pb-20 lg:pb-6">
         {/* Header with refresh */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4 sm:mb-6">
+          <div className="flex-1 min-w-0">
+            <h1 className="text-xl sm:text-2xl font-bold text-gray-900 truncate">
               {navItems.find(item => item.id === activeNav)?.label || 'Dashboard'}
             </h1>
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-gray-500 mt-1">
               Last updated: {formatTimestampWithTime(lastUpdate)}
             </p>
           </div>
@@ -1801,6 +1840,13 @@ export function SuperAdminDashboard() {
             {activeNav === 'settings' && <Settings />}
           </div>
       </main>
+      
+      {/* Success Feedback */}
+      <SuccessFeedback 
+        show={feedback.show}
+        message={feedback.message}
+        onClose={hideSuccess}
+      />
     </div>
   );
 }

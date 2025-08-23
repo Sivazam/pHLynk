@@ -166,12 +166,21 @@ const Dashboard: React.FC<DashboardProps> = ({ tenantId }) => {
   }
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold">Product Dashboard</h1>
+    <div className="container mx-auto p-4 sm:p-6 lg:p-8 space-y-4 sm:space-y-6">
+      {/* Header Section */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="flex-1 min-w-0">
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 truncate">
+            Product Dashboard
+          </h1>
+          <p className="text-sm sm:text-base text-gray-600 mt-1">
+            Manage your products and inventory
+          </p>
+        </div>
         <Button 
           onClick={() => setIsCreating(true)}
-          className="flex items-center gap-2"
+          className="w-full sm:w-auto flex items-center justify-center gap-2"
+          size="sm"
         >
           <Plus className="h-4 w-4" />
           Add Product
@@ -179,50 +188,65 @@ const Dashboard: React.FC<DashboardProps> = ({ tenantId }) => {
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
           {error}
         </div>
       )}
 
+      {/* Tabs Section */}
       <Tabs defaultValue="products" className="w-full">
-        <TabsList>
-          <TabsTrigger value="products">Products</TabsTrigger>
-          <TabsTrigger value="analytics">Analytics</TabsTrigger>
-        </TabsList>
+        <div className="overflow-x-auto">
+          <TabsList className="inline-flex w-full min-w-max">
+            <TabsTrigger value="products" className="flex-1 min-w-[100px]">
+              Products
+            </TabsTrigger>
+            <TabsTrigger value="analytics" className="flex-1 min-w-[100px]">
+              Analytics
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
         <TabsContent value="products" className="space-y-4">
           {(isCreating || editingProduct) && (
             <Card>
-              <CardHeader>
-                <CardTitle>
+              <CardHeader className="pb-4">
+                <CardTitle className="text-lg sm:text-xl">
                   {editingProduct ? 'Edit Product' : 'Create New Product'}
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <form onSubmit={handleSubmit} className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <Label htmlFor="name">Product Name</Label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="name" className="text-sm font-medium">
+                        Product Name
+                      </Label>
                       <Input
                         id="name"
                         name="name"
                         value={formData.name}
                         onChange={handleInputChange}
                         required
+                        className="w-full"
                       />
                     </div>
-                    <div>
-                      <Label htmlFor="category">Category</Label>
+                    <div className="space-y-2">
+                      <Label htmlFor="category" className="text-sm font-medium">
+                        Category
+                      </Label>
                       <Input
                         id="category"
                         name="category"
                         value={formData.category}
                         onChange={handleInputChange}
                         required
+                        className="w-full"
                       />
                     </div>
-                    <div>
-                      <Label htmlFor="price">Price</Label>
+                    <div className="space-y-2">
+                      <Label htmlFor="price" className="text-sm font-medium">
+                        Price
+                      </Label>
                       <Input
                         id="price"
                         name="price"
@@ -231,10 +255,13 @@ const Dashboard: React.FC<DashboardProps> = ({ tenantId }) => {
                         value={formData.price}
                         onChange={handleInputChange}
                         required
+                        className="w-full"
                       />
                     </div>
-                    <div>
-                      <Label htmlFor="stock">Stock</Label>
+                    <div className="space-y-2">
+                      <Label htmlFor="stock" className="text-sm font-medium">
+                        Stock
+                      </Label>
                       <Input
                         id="stock"
                         name="stock"
@@ -242,23 +269,27 @@ const Dashboard: React.FC<DashboardProps> = ({ tenantId }) => {
                         value={formData.stock}
                         onChange={handleInputChange}
                         required
+                        className="w-full"
                       />
                     </div>
                   </div>
-                  <div>
-                    <Label htmlFor="description">Description</Label>
+                  <div className="space-y-2">
+                    <Label htmlFor="description" className="text-sm font-medium">
+                      Description
+                    </Label>
                     <Input
                       id="description"
                       name="description"
                       value={formData.description}
                       onChange={handleInputChange}
+                      className="w-full"
                     />
                   </div>
-                  <div className="flex gap-2">
-                    <Button type="submit">
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <Button type="submit" className="flex-1 sm:flex-none">
                       {editingProduct ? 'Update Product' : 'Create Product'}
                     </Button>
-                    <Button type="button" variant="outline" onClick={cancelEdit}>
+                    <Button type="button" variant="outline" onClick={cancelEdit} className="flex-1 sm:flex-none">
                       Cancel
                     </Button>
                   </div>
@@ -267,18 +298,19 @@ const Dashboard: React.FC<DashboardProps> = ({ tenantId }) => {
             </Card>
           )}
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {/* Products Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {products.length === 0 ? (
               <Card className="col-span-full">
-                <CardContent className="flex flex-col items-center justify-center py-12">
+                <CardContent className="flex flex-col items-center justify-center py-8 sm:py-12">
                   <Package className="h-12 w-12 text-gray-400 mb-4" />
-                  <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2 text-center">
                     No products yet
                   </h3>
-                  <p className="text-gray-500 text-center mb-4">
+                  <p className="text-gray-500 text-center mb-4 px-4">
                     Get started by creating your first product
                   </p>
-                  <Button onClick={() => setIsCreating(true)}>
+                  <Button onClick={() => setIsCreating(true)} className="w-full sm:w-auto">
                     <Plus className="h-4 w-4 mr-2" />
                     Add Product
                   </Button>
@@ -286,24 +318,30 @@ const Dashboard: React.FC<DashboardProps> = ({ tenantId }) => {
               </Card>
             ) : (
               products.map((product) => (
-                <Card key={product.id}>
+                <Card key={product.id} className="h-full flex flex-col">
                   <CardHeader className="pb-3">
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="text-lg">{product.name}</CardTitle>
-                      <Badge variant={product.active ? "default" : "secondary"}>
+                    <div className="flex items-start justify-between gap-2">
+                      <CardTitle className="text-base sm:text-lg flex-1 min-w-0 pr-2">
+                        {product.name}
+                      </CardTitle>
+                      <Badge variant={product.active ? "default" : "secondary"} className="flex-shrink-0">
                         {product.active ? "Active" : "Inactive"}
                       </Badge>
                     </div>
                   </CardHeader>
-                  <CardContent>
-                    <div className="space-y-2">
+                  <CardContent className="flex-1 flex flex-col">
+                    <div className="space-y-2 flex-1">
                       <div className="flex justify-between">
                         <span className="text-sm text-gray-500">Category:</span>
-                        <span className="text-sm font-medium">{product.category}</span>
+                        <span className="text-sm font-medium truncate max-w-[120px]">
+                          {product.category}
+                        </span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-sm text-gray-500">Price:</span>
-                        <span className="text-sm font-medium">₹{product.price.toFixed(2)}</span>
+                        <span className="text-sm font-medium">
+                          ₹{product.price.toFixed(2)}
+                        </span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-sm text-gray-500">Stock:</span>
@@ -311,7 +349,9 @@ const Dashboard: React.FC<DashboardProps> = ({ tenantId }) => {
                       </div>
                       {product.description && (
                         <div className="pt-2">
-                          <p className="text-sm text-gray-600">{product.description}</p>
+                          <p className="text-sm text-gray-600 line-clamp-2">
+                            {product.description}
+                          </p>
                         </div>
                       )}
                     </div>
@@ -320,6 +360,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tenantId }) => {
                         size="sm"
                         variant="outline"
                         onClick={() => handleEdit(product)}
+                        className="flex-1"
                       >
                         <Edit className="h-4 w-4" />
                       </Button>
@@ -327,6 +368,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tenantId }) => {
                         size="sm"
                         variant="outline"
                         onClick={() => handleDelete(product.id)}
+                        className="flex-1"
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
@@ -341,7 +383,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tenantId }) => {
         <TabsContent value="analytics" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Product Analytics</CardTitle>
+              <CardTitle className="text-lg sm:text-xl">Product Analytics</CardTitle>
             </CardHeader>
             <CardContent>
               <p className="text-gray-500">Analytics features coming soon...</p>

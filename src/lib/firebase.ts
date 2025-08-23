@@ -35,7 +35,8 @@ export const COLLECTIONS = {
   PAYMENT_EVENTS: 'paymentEvents',
   SUBSCRIPTIONS: 'subscriptions',
   CONFIG: 'config',
-  OTPS: 'otps'
+  OTPS: 'otps',
+  MONTHLY_TARGETS: 'monthlyTargets'
 } as const;
 
 // User roles

@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { doc, getDoc, collection, query, where, getDocs, updateDoc, arrayUnion, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { otpStore, generateOTP, sendOTPToRetailer, cleanupExpiredOTPs, addActiveOTP } from '@/lib/otp-store';
 import { RetailerAuthService } from '@/services/retailer-auth';
-import { otpService } from '@/services/firestore';
-import { Timestamp } from 'firebase/firestore';
+import { retailerService } from '@/services/firestore';
+import { Timestamp as FirebaseTimestamp } from 'firebase/firestore';
 
 interface OTPRequest {
   retailerId: string;
@@ -63,20 +63,29 @@ export async function POST(request: NextRequest) {
 
     console.log('📝 OTP stored in otpStore with paymentId:', paymentId);
 
-    // Save OTP to Firestore for persistence
+    // Save OTP directly to retailer document for persistence
     try {
-      const firestoreExpiresAt = Timestamp.fromDate(expiresAt);
-      await otpService.createOTP({
+      const firestoreExpiresAt = FirebaseTimestamp.fromDate(expiresAt);
+      const otpData = {
         paymentId,
-        retailerId,
         code: otp,
         amount,
         lineWorkerName: lineWorkerName || 'Line Worker',
-        expiresAt: firestoreExpiresAt
-      });
-      console.log('✅ OTP saved to Firestore successfully');
+        expiresAt: firestoreExpiresAt,
+        createdAt: FirebaseTimestamp.now(),
+        isUsed: false
+      };
+
+      console.log('🔍 Attempting to save OTP to retailer document:');
+      console.log('  Retailer ID:', retailerId);
+      console.log('  Tenant ID:', retailerUser.tenantId);
+      console.log('  OTP Data:', otpData);
+
+      // Add OTP to retailer's activeOTPs array with correct tenantId
+      await retailerService.addOTPToRetailer(retailerId, retailerUser.tenantId, otpData);
+      console.log('✅ OTP saved to retailer document successfully');
     } catch (firestoreError) {
-      console.error('❌ Error saving OTP to Firestore:', firestoreError);
+      console.error('❌ Error saving OTP to retailer document:', firestoreError);
       // Don't fail the request if Firestore save fails, still continue with in-memory storage
     }
 
