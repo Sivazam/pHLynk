@@ -239,6 +239,64 @@ export function WholesalerAdminDashboard() {
     setSelectedDateRangeOption(value);
     setDateRange(newDateRange);
   };
+
+  // Wrapper function for Select component that only takes the value parameter
+  const handleSelectDateRangeChange = (value: string) => {
+    // Find the corresponding date range option and call the main handler
+    const dateRangeOptions = [
+      { value: 'today', getDateRange: () => {
+        const today = new Date();
+        const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+        const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
+        return { startDate: startOfDay, endDate: endOfDay };
+      }},
+      { value: 'yesterday', getDateRange: () => {
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        const startOfDay = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate());
+        const endOfDay = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate(), 23, 59, 59, 999);
+        return { startDate: startOfDay, endDate: endOfDay };
+      }},
+      { value: 'thisWeek', getDateRange: () => {
+        const today = new Date();
+        const dayOfWeek = today.getDay();
+        const startOfWeek = new Date(today.getFullYear(), today.getMonth(), today.getDate() - dayOfWeek);
+        const endOfWeek = new Date(today.getFullYear(), today.getMonth(), today.getDate() + (6 - dayOfWeek), 23, 59, 59, 999);
+        return { startDate: startOfWeek, endDate: endOfWeek };
+      }},
+      { value: 'lastWeek', getDateRange: () => {
+        const today = new Date();
+        const dayOfWeek = today.getDay();
+        const startOfLastWeek = new Date(today.getFullYear(), today.getMonth(), today.getDate() - dayOfWeek - 7);
+        const endOfLastWeek = new Date(today.getFullYear(), today.getMonth(), today.getDate() - dayOfWeek - 1, 23, 59, 59, 999);
+        return { startDate: startOfLastWeek, endDate: endOfLastWeek };
+      }},
+      { value: 'thisMonth', getDateRange: () => {
+        const today = new Date();
+        const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+        const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59, 999);
+        return { startDate: startOfMonth, endDate: endOfMonth };
+      }},
+      { value: 'lastMonth', getDateRange: () => {
+        const today = new Date();
+        const startOfLastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+        const endOfLastMonth = new Date(today.getFullYear(), today.getMonth(), 0, 23, 59, 59, 999);
+        return { startDate: startOfLastMonth, endDate: endOfLastMonth };
+      }},
+      { value: 'custom', getDateRange: () => {
+        const today = new Date();
+        const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+        const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
+        return { startDate: startOfDay, endDate: endOfDay };
+      }}
+    ];
+    
+    const selectedOption = dateRangeOptions.find(option => option.value === value);
+    if (selectedOption) {
+      const dateRange = selectedOption.getDateRange();
+      handleDateRangeChange(value, dateRange);
+    }
+  };
   
   // Tenant management for super admin
   const [tenants, setTenants] = useState<any[]>([]);
@@ -2082,7 +2140,7 @@ export function WholesalerAdminDashboard() {
             <CardDescription>All payment records in your system</CardDescription>
           </CardHeader>
           <CardContent>
-            <Tabs value={paymentTab} onChange={setPaymentTab} className="w-full">
+            <Tabs value={paymentTab} onValueChange={setPaymentTab} className="w-full">
               <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="completed" className="flex items-center space-x-2">
                   <CheckCircle className="h-4 w-4" />
@@ -2269,7 +2327,7 @@ export function WholesalerAdminDashboard() {
 
       {/* Row 3: Dropdown and Export */}
       <div className="flex flex-col sm:flex-row sm:justify-start sm:items-center gap-4">
-        <Select value={selectedDateRangeOption} onValueChange={handleDateRangeChange}>
+        <Select value={selectedDateRangeOption} onValueChange={handleSelectDateRangeChange}>
           <SelectTrigger className="w-full sm:w-48">
             <SelectValue />
           </SelectTrigger>
@@ -2298,7 +2356,7 @@ export function WholesalerAdminDashboard() {
         areas={areas}
         onRefresh={handleManualRefresh}
         refreshLoading={refreshLoading}
-        tenantId={getCurrentTenantId()}
+        tenantId={getCurrentTenantId() || undefined}
       />
     </div>
   );
@@ -2750,7 +2808,7 @@ export function WholesalerAdminDashboard() {
               <div>
                 <Label htmlFor="dateRange">Filter Date</Label>
                 <EnhancedDatePicker
-                  date={filterDate?.from}
+                  date={filterDate?.from || undefined}
                   onSelect={(date) => setFilterDate(date ? { from: date, to: date } : null)}
                   placeholder="Select date"
                   className="w-full"
@@ -3067,8 +3125,11 @@ export function WholesalerAdminDashboard() {
             onClick={() => {
               setSelectedArea("all");
               setSelectedRetailer("all");
-              setSearchTerm('');
-              setDateRange(null);
+              const today = new Date();
+              const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+              const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
+              setDateRange({ startDate: startOfDay, endDate: endOfDay });
+              setSelectedDateRangeOption('today');
             }}
           >
             <RefreshCw className="h-4 w-4 mr-2" />

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import { formatCurrency } from '@/lib/timestamp-utils';
 import { Retailer, Payment, User, Invoice } from '@/types';
+import { DashboardService } from '@/services/firestore';
 
 interface EnhancedWorker extends User {
   totalCollected: number;

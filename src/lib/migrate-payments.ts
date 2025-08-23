@@ -81,7 +81,7 @@ export async function migratePaymentsWithRetailerName() {
     console.error('❌ Migration failed:', error);
     return {
       success: false,
-      error: error.message
+      error: error instanceof Error ? error.message : 'Unknown error occurred'
     };
   }
 }
@@ -139,7 +139,7 @@ export async function updatePaymentWithRetailerName(paymentId: string) {
     console.error(`❌ Error updating payment ${paymentId}:`, error);
     return {
       success: false,
-      error: error.message
+      error: error instanceof Error ? error.message : 'Unknown error occurred'
     };
   }
 }

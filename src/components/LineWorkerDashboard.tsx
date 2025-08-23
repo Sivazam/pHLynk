@@ -581,6 +581,7 @@ export function LineWorkerDashboard() {
         id: paymentId,
         tenantId: user!.tenantId!,
         retailerId: selectedRetailer.id,
+        retailerName: selectedRetailer.name,
         lineWorkerId: user!.uid,
         invoiceAllocations: [],
         totalPaid: paymentForm.totalPaid,

@@ -380,6 +380,7 @@ export function RetailerDashboard() {
         id: latestOTP.paymentId,
         tenantId: retailerUser?.tenantId || '', // Use retailerUser tenantId if available
         retailerId: storedRetailerId,
+        retailerName: retailer?.name || '',
         lineWorkerId: '',
         invoiceAllocations: [],
         totalPaid: latestOTP.amount,
