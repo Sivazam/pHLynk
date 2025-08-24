@@ -1,11 +1,11 @@
 {
-  "name": "PharmaLynk",
-  "short_name": "PharmaLynk",
+  "name": "PharmaLync",
+  "short_name": "PharmaLync",
   "description": "Pharmaceutical Supply Chain Management System",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
-  "theme_color": "#059669",
+  "theme_color": "#ffffff",
   "orientation": "portrait-primary",
   "icons": [
     {
