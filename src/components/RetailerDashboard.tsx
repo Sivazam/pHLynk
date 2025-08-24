@@ -836,7 +836,6 @@ export function RetailerDashboard() {
                   <TableHead className="text-xs sm:text-sm text-right">Total Amount</TableHead>
                   <TableHead className="text-xs sm:text-sm text-right">Paid Amount</TableHead>
                   <TableHead className="text-xs sm:text-sm text-right">Balance</TableHead>
-                  <TableHead className="text-xs sm:text-sm">Status</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -858,14 +857,6 @@ export function RetailerDashboard() {
                         <span className={balance > 0 ? 'text-red-600 font-medium' : 'text-green-600'}>
                           {formatCurrency(balance)}
                         </span>
-                      </TableCell>
-                      <TableCell>
-                        <Badge className={getInvoiceStatusColor(status)}>
-                          <div className="flex items-center space-x-1">
-                            {getInvoiceStatusIcon(status)}
-                            <span className="text-xs">{status}</span>
-                          </div>
-                        </Badge>
                       </TableCell>
                     </TableRow>
                   );
@@ -1191,7 +1182,7 @@ export function RetailerDashboard() {
         activeNav={activeNav}
         setActiveNav={setActiveNav}
         navItems={navItems}
-        title="PharmaLynk Collections"
+        title="PharmaLync"
         subtitle="Retailer Dashboard"
         notificationCount={notificationCount}
         user={retailerUser ? { displayName: retailerUser.name, email: retailerUser.email } : undefined}

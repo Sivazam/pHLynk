@@ -1,6 +1,24 @@
-// Simple Twilio config function - returns null for now
+// Twilio configuration function
 function getTwilioConfig(): { accountSid?: string; authToken?: string; twilioPhoneNumber?: string } | null {
-  return null;
+  const accountSid = process.env.TWILIO_ACCOUNT_SID;
+  const authToken = process.env.TWILIO_AUTH_TOKEN;
+  const twilioPhoneNumber = process.env.TWILIO_PHONE_NUMBER;
+  
+  // Return null if not configured
+  if (!accountSid || !authToken || !twilioPhoneNumber) {
+    console.log('⚠️ Twilio not configured. Missing:', {
+      accountSid: !accountSid ? 'TWILIO_ACCOUNT_SID' : undefined,
+      authToken: !authToken ? 'TWILIO_AUTH_TOKEN' : undefined,
+      twilioPhoneNumber: !twilioPhoneNumber ? 'TWILIO_PHONE_NUMBER' : undefined
+    });
+    return null;
+  }
+  
+  return {
+    accountSid,
+    authToken,
+    twilioPhoneNumber
+  };
 }
 
 interface SMSNotification {
@@ -27,7 +45,7 @@ export async function sendSMSNotification(notification: SMSNotification): Promis
   }
 
   try {
-    // Dynamically import Twilio
+    // Dynamically import Twilio only when needed
     const twilioModule = await import('twilio');
     const client = new twilioModule.Twilio(twilioConfig.accountSid, twilioConfig.authToken);
 

@@ -932,6 +932,60 @@ export class InvoiceService extends FirestoreService<Invoice> {
       }, tenantId);
     }
   }
+
+  async updateInvoice(tenantId: string, invoiceId: string, data: Partial<Invoice>): Promise<void> {
+    const invoice = await this.getById(invoiceId, tenantId);
+    if (!invoice) {
+      throw new Error('Invoice not found');
+    }
+
+    // Calculate new outstanding amount if total amount changed
+    let newOutstanding = invoice.outstandingAmount;
+    if (data.totalAmount !== undefined && data.totalAmount !== invoice.totalAmount) {
+      const amountDiff = data.totalAmount - invoice.totalAmount;
+      newOutstanding = Math.max(0, invoice.outstandingAmount + amountDiff);
+    }
+
+    // Prepare update data
+    const updateData: any = {
+      ...data,
+      outstandingAmount: newOutstanding,
+      version: invoice.version + 1
+    };
+
+    // Update the invoice
+    await this.update(invoiceId, updateData, tenantId);
+
+    // Update retailer computed fields if relevant fields changed
+    if (data.totalAmount !== undefined || data.issueDate !== undefined || data.status !== undefined) {
+      try {
+        const retailerService = new RetailerService();
+        await retailerService.recomputeRetailerData(invoice.retailerId, tenantId);
+      } catch (error) {
+        console.error('Error updating retailer computed fields:', error);
+        // Don't throw here - the invoice was updated successfully
+      }
+    }
+  }
+
+  async deleteInvoice(tenantId: string, invoiceId: string): Promise<void> {
+    const invoice = await this.getById(invoiceId, tenantId);
+    if (!invoice) {
+      throw new Error('Invoice not found');
+    }
+
+    // Delete the invoice
+    await this.delete(invoiceId, tenantId);
+
+    // Update retailer computed fields
+    try {
+      const retailerService = new RetailerService();
+      await retailerService.recomputeRetailerData(invoice.retailerId, tenantId);
+    } catch (error) {
+      console.error('Error updating retailer computed fields:', error);
+      // Don't throw here - the invoice was deleted successfully
+    }
+  }
 }
 
 export class PaymentService extends FirestoreService<Payment> {

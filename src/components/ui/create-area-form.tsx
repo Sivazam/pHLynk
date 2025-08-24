@@ -64,10 +64,6 @@ export function CreateAreaForm({ onSubmit, onCancel, initialData }: CreateAreaFo
     }
   };
 
-  const removeZipcode = (zipcode: string) => {
-    setZipcodes(zipcodes.filter(z => z !== zipcode));
-  };
-
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
       e.preventDefault();
@@ -123,12 +119,24 @@ export function CreateAreaForm({ onSubmit, onCancel, initialData }: CreateAreaFo
                 {zipcodes.length > 0 && (
                   <div className="flex flex-wrap gap-2">
                     {zipcodes.map((zipcode) => (
-                      <Badge key={zipcode} variant="secondary" className="flex items-center gap-1">
-                        {zipcode}
-                        <X
-                          className="h-3 w-3 cursor-pointer"
-                          onClick={() => removeZipcode(zipcode)}
-                        />
+                      <Badge key={zipcode} variant="secondary" className="flex items-center gap-1 px-2 py-1">
+                        <span className="text-sm">{zipcode}</span>
+                        <button
+                          type="button"
+                          className="ml-1 text-gray-500 hover:text-red-500 focus:outline-none focus:ring-2 focus:ring-red-500 rounded-full p-0.5 transition-colors"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            console.log('🗑️ Removing zipcode:', zipcode);
+                            console.log('📋 Current zipcodes before removal:', zipcodes);
+                            const updatedZipcodes = zipcodes.filter(z => z !== zipcode);
+                            console.log('✅ Updated zipcodes after removal:', updatedZipcodes);
+                            setZipcodes(updatedZipcodes);
+                          }}
+                          aria-label={`Remove zipcode ${zipcode}`}
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
                       </Badge>
                     ))}
                   </div>

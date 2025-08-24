@@ -19,6 +19,7 @@ import {
   DropdownMenuSeparator
 } from '@/components/ui/dropdown-menu';
 import { Bell, Menu, X, AlertCircle, CheckCircle, Info, MoreHorizontal, LogOut } from 'lucide-react';
+import Image from 'next/image';
 
 export type NavItem = {
   id: string;
@@ -92,14 +93,25 @@ export function DashboardNavigation({
       <header className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-40">
         <div className="flex items-center justify-between px-4 sm:px-6 lg:px-8 h-16">
           {/* Left Section */}
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-3 sm:space-x-4">
+            {/* Logo */}
+            <div className="flex-shrink-0">
+              <Image 
+                src="/logo.png" 
+                alt="PharmaLync Logo" 
+                width={40} 
+                height={40}
+                className="h-8 w-8 sm:h-10 sm:w-10 rounded-lg"
+              />
+            </div>
+            
             {/* Title */}
             <div className="min-w-0">
               <h1 className="text-lg sm:text-xl font-bold text-gray-900 truncate">
-                {title}
+                PharmaLync
               </h1>
               {subtitle && (
-                <p className="text-xs sm:text-sm text-gray-500 hidden sm:block">
+                <p className="text-xs sm:text-sm text-gray-500">
                   {subtitle}
                 </p>
               )}

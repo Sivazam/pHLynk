@@ -52,6 +52,43 @@ import {
   RefreshCw
 } from 'lucide-react';
 
+// Utility functions for days outstanding calculation
+const getDaysOutstanding = (invoice: Invoice): number => {
+  const now = new Date();
+  const dueDate = invoice.dueDate.toDate();
+  const diffTime = now.getTime() - dueDate.getTime();
+  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+  return diffDays;
+};
+
+const getDaysOutstandingDisplay = (invoice: Invoice): { text: string; color: string } => {
+  const daysOutstanding = getDaysOutstanding(invoice);
+  
+  if (daysOutstanding > 30) {
+    return { text: `${daysOutstanding} days`, color: 'text-red-600 font-medium' };
+  } else if (daysOutstanding > 7) {
+    return { text: `${daysOutstanding} days`, color: 'text-orange-600 font-medium' };
+  } else if (daysOutstanding > 0) {
+    return { text: `${daysOutstanding} days`, color: 'text-yellow-600 font-medium' };
+  } else if (daysOutstanding === 0) {
+    return { text: 'Due today', color: 'text-green-600 font-medium' };
+  } else {
+    const daysUntilDue = Math.abs(daysOutstanding);
+    return { text: `${daysUntilDue} days`, color: 'text-green-600' };
+  }
+};
+
+// Days Outstanding Display Component
+const DaysOutstandingDisplay = ({ invoice }: { invoice: Invoice }) => {
+  const display = getDaysOutstandingDisplay(invoice);
+  
+  return (
+    <span className={display.color}>
+      {display.text}
+    </span>
+  );
+};
+
 export function LineWorkerDashboard() {
   const { user, logout } = useAuth();
   const isLineWorker = useLineWorker();
@@ -883,28 +920,28 @@ export function LineWorkerDashboard() {
 
     return (
       <div className="space-y-6">
-        {/* Header with date filter and refresh button */}
-        <div className="flex justify-between items-center">
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900">Overview</h2>
-            <p className="text-gray-600">Your collection summary and performance</p>
-          </div>
-          <div className="flex items-center space-x-4">
-            <DateRangeFilter value={selectedDateRangeOption} onValueChange={handleDateRangeChange} />
-            <Button 
-              onClick={handleManualRefresh} 
-              disabled={refreshLoading}
-              variant="outline"
-              className="flex items-center space-x-2"
-            >
-              {refreshLoading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <RefreshCw className="h-4 w-4" />
-              )}
-              <span>Refresh</span>
-            </Button>
-          </div>
+        {/* Header with title and description */}
+        <div className="text-center sm:text-left">
+          <h2 className="text-2xl font-bold text-gray-900">Overview</h2>
+          <p className="text-gray-600">Your collection summary and performance</p>
+        </div>
+
+        {/* Date filter and refresh button row */}
+        <div className="flex justify-center sm:justify-between items-center space-x-4">
+          <DateRangeFilter value={selectedDateRangeOption} onValueChange={handleDateRangeChange} />
+          <Button 
+            onClick={handleManualRefresh} 
+            disabled={refreshLoading}
+            variant="outline"
+            className="flex items-center space-x-2"
+          >
+            {refreshLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4" />
+            )}
+            <span>Refresh</span>
+          </Button>
         </div>
 
         {/* Stats Cards */}
@@ -1002,8 +1039,9 @@ export function LineWorkerDashboard() {
   // Retailers Component
   const RetailersComponent = () => (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
+      {/* Header with title, description and refresh button */}
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+        <div className="text-center sm:text-left">
           <h2 className="text-2xl font-bold text-gray-900">Your Retailers</h2>
           <p className="text-gray-600">Retailers assigned to your areas</p>
         </div>
@@ -1011,7 +1049,7 @@ export function LineWorkerDashboard() {
           onClick={handleManualRefresh} 
           disabled={refreshLoading}
           variant="outline"
-          className="flex items-center space-x-2"
+          className="flex items-center justify-center space-x-2 w-full sm:w-auto"
         >
           {refreshLoading ? (
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -1030,35 +1068,75 @@ export function LineWorkerDashboard() {
         <CardContent>
           <div className="space-y-4">
             {retailers.map((retailer) => (
-              <div key={retailer.id} className="flex items-center justify-between p-4 border rounded-lg">
-                <div className="flex items-center space-x-4">
-                  <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-                    <Store className="h-5 w-5 text-blue-600" />
+              <div key={retailer.id} className="border rounded-lg p-4">
+                {/* Mobile Layout */}
+                <div className="sm:hidden space-y-4">
+                  {/* Retailer Info */}
+                  <div className="flex items-start space-x-3">
+                    <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
+                      <Store className="h-5 w-5 text-blue-600" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium text-gray-900 truncate">{retailer.name}</div>
+                      <div className="text-sm text-gray-500 mt-1">
+                        <Phone className="h-3 w-3 inline mr-1" />
+                        {retailer.phone}
+                      </div>
+                      <div className="text-sm text-gray-500 mt-1">
+                        <MapPin className="h-3 w-3 inline mr-1" />
+                        <span className="truncate block">{retailer.address}</span>
+                      </div>
+                    </div>
                   </div>
-                  <div>
-                    <div className="font-medium">{retailer.name}</div>
-                    <div className="text-sm text-gray-500">
-                      <Phone className="h-3 w-3 inline mr-1" />
-                      {retailer.phone}
+
+                  {/* Payment Info and Action */}
+                  <div className="flex items-center justify-between pt-3 border-t">
+                    <div>
+                      <div className="font-medium text-gray-900">{formatCurrency(retailer.currentOutstanding)}</div>
+                      <div className="text-sm text-gray-500">Outstanding</div>
                     </div>
-                    <div className="text-sm text-gray-500">
-                      <MapPin className="h-3 w-3 inline mr-1" />
-                      {retailer.address}
-                    </div>
+                    <Button
+                      onClick={() => initiatePayment(retailer)}
+                      disabled={retailer.currentOutstanding <= 0}
+                      size="sm"
+                    >
+                      <IndianRupee className="h-4 w-4 mr-2" />
+                      Collect
+                    </Button>
                   </div>
                 </div>
-                <div className="flex items-center space-x-4">
-                  <div className="text-right">
-                    <div className="font-medium">{formatCurrency(retailer.currentOutstanding)}</div>
-                    <div className="text-sm text-gray-500">Outstanding</div>
+
+                {/* Desktop Layout - Original */}
+                <div className="hidden sm:flex items-center justify-between">
+                  <div className="flex items-center space-x-4">
+                    <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                      <Store className="h-5 w-5 text-blue-600" />
+                    </div>
+                    <div>
+                      <div className="font-medium">{retailer.name}</div>
+                      <div className="text-sm text-gray-500">
+                        <Phone className="h-3 w-3 inline mr-1" />
+                        {retailer.phone}
+                      </div>
+                      <div className="text-sm text-gray-500">
+                        <MapPin className="h-3 w-3 inline mr-1" />
+                        {retailer.address}
+                      </div>
+                    </div>
                   </div>
-                  <Button
-                    onClick={() => initiatePayment(retailer)}
-                    disabled={retailer.currentOutstanding <= 0}
-                  >
-                    <IndianRupee className="h-4 w-4 mr-2" />
-                    Collect Payment
-                  </Button>
+                  <div className="flex items-center space-x-4">
+                    <div className="text-right">
+                      <div className="font-medium">{formatCurrency(retailer.currentOutstanding)}</div>
+                      <div className="text-sm text-gray-500">Outstanding</div>
+                    </div>
+                    <Button
+                      onClick={() => initiatePayment(retailer)}
+                      disabled={retailer.currentOutstanding <= 0}
+                    >
+                      <IndianRupee className="h-4 w-4 mr-2" />
+                      Collect Payment
+                    </Button>
+                  </div>
                 </div>
               </div>
             ))}
@@ -1309,8 +1387,8 @@ export function LineWorkerDashboard() {
   // Retailer Details Component - Complete detailed logs of assigned retailers
   const RetailerDetails = () => (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+        <div className="text-center sm:text-left">
           <h2 className="text-2xl font-bold text-gray-900">Retailer Details & Logs</h2>
           <p className="text-gray-600">Complete detailed logs of your assigned retailers including invoices and payments</p>
         </div>
@@ -1318,7 +1396,7 @@ export function LineWorkerDashboard() {
           onClick={handleManualRefresh} 
           disabled={refreshLoading}
           variant="outline"
-          className="flex items-center space-x-2"
+          className="flex items-center justify-center space-x-2 w-full sm:w-auto"
         >
           {refreshLoading ? (
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -1518,8 +1596,7 @@ export function LineWorkerDashboard() {
                               <TableHead>Date</TableHead>
                               <TableHead>Due Date</TableHead>
                               <TableHead>Amount</TableHead>
-                              <TableHead>Status</TableHead>
-                              <TableHead>Outstanding</TableHead>
+                              <TableHead>Days Outstanding</TableHead>
                             </TableRow>
                           </TableHeader>
                           <TableBody>
@@ -1530,16 +1607,8 @@ export function LineWorkerDashboard() {
                                 <TableCell>{formatTimestamp(invoice.dueDate)}</TableCell>
                                 <TableCell>{formatCurrency(invoice.totalAmount)}</TableCell>
                                 <TableCell>
-                                  <Badge className={
-                                    invoice.status === 'PAID' ? 'bg-green-100 text-green-800' :
-                                    invoice.status === 'CANCELLED' ? 'bg-red-100 text-red-800' :
-                                    invoice.status === 'PARTIAL' ? 'bg-blue-100 text-blue-800' :
-                                    'bg-yellow-100 text-yellow-800'
-                                  }>
-                                    {invoice.status}
-                                  </Badge>
+                                  <DaysOutstandingDisplay invoice={invoice} />
                                 </TableCell>
-                                <TableCell>{formatCurrency(invoice.outstandingAmount)}</TableCell>
                               </TableRow>
                             ))}
                           </TableBody>
@@ -1632,7 +1701,7 @@ export function LineWorkerDashboard() {
         activeNav={activeNav}
         setActiveNav={setActiveNav}
         navItems={navItems}
-        title="PharmaLynk Collections"
+        title="PharmaLync"
         subtitle="Line Worker Dashboard"
         notificationCount={notificationCount}
         notifications={notifications}

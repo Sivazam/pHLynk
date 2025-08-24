@@ -1789,8 +1789,8 @@ export function SuperAdminDashboard() {
         activeNav={activeNav}
         setActiveNav={setActiveNav}
         navItems={navItems}
-        title="PharmaLynk Super Admin"
-        subtitle="System Administration Dashboard"
+        title="PharmaLync"
+        subtitle="Super Admin Dashboard"
         notificationCount={notificationCount}
         notifications={notifications}
         user={user ? { displayName: user.displayName, email: user.email } : undefined}

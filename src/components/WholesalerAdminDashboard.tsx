@@ -35,6 +35,7 @@ import { notificationService } from '@/services/notification-service';
 import { Area, Retailer, Invoice, User, Payment, DashboardStats } from '@/types';
 import { Timestamp } from 'firebase/firestore';
 import { formatTimestamp, formatTimestampWithTime, formatCurrency, toDate } from '@/lib/timestamp-utils';
+import { CompactDatePicker } from '@/components/ui/compact-date-picker';
 import { CreateAreaForm } from '@/components/ui/create-area-form';
 import { CreateRetailerForm } from '@/components/ui/create-retailer-form';
 import { CreateInvoiceForm } from '@/components/CreateInvoiceForm';
@@ -81,7 +82,10 @@ import {
   Target,
   Zap,
   Shield,
-  Loader2
+  Loader2,
+  Wrench,
+  Calculator,
+  Package
 } from 'lucide-react';
 
 // Activity Log Type
@@ -98,6 +102,51 @@ interface ActivityLog {
   timestamp: Timestamp;
   metadata?: Record<string, any>;
 }
+
+// Line Item Interface for Edit Invoice
+interface LineItem {
+  name: string;
+  qty: number;
+  unitPrice: number;
+  gstPercent: number;
+}
+
+// Utility functions for days outstanding calculation
+const getDaysOutstanding = (invoice: Invoice): number => {
+  const now = new Date();
+  const dueDate = toDate(invoice.dueDate);
+  const diffTime = now.getTime() - dueDate.getTime();
+  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+  return diffDays;
+};
+
+const getDaysOutstandingDisplay = (invoice: Invoice): { text: string; color: string } => {
+  const daysOutstanding = getDaysOutstanding(invoice);
+  
+  if (daysOutstanding > 30) {
+    return { text: `${daysOutstanding} days`, color: 'text-red-600 font-medium' };
+  } else if (daysOutstanding > 7) {
+    return { text: `${daysOutstanding} days`, color: 'text-orange-600 font-medium' };
+  } else if (daysOutstanding > 0) {
+    return { text: `${daysOutstanding} days`, color: 'text-yellow-600 font-medium' };
+  } else if (daysOutstanding === 0) {
+    return { text: 'Due today', color: 'text-green-600 font-medium' };
+  } else {
+    const daysUntilDue = Math.abs(daysOutstanding);
+    return { text: `${daysUntilDue} days`, color: 'text-green-600' };
+  }
+};
+
+// Days Outstanding Display Component
+const DaysOutstandingDisplay = ({ invoice }: { invoice: Invoice }) => {
+  const display = getDaysOutstandingDisplay(invoice);
+  
+  return (
+    <span className={display.color}>
+      {display.text}
+    </span>
+  );
+};
 
 export function WholesalerAdminDashboard() {
   const { user, logout } = useAuth();
@@ -127,6 +176,15 @@ export function WholesalerAdminDashboard() {
   const [editingActiveStatus, setEditingActiveStatus] = useState<boolean>(true);
   const [viewingInvoice, setViewingInvoice] = useState<Invoice | null>(null);
   const [viewingPayment, setViewingPayment] = useState<Payment | null>(null);
+  const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
+  const [deletingInvoice, setDeletingInvoice] = useState<Invoice | null>(null);
+  const [editingInvoiceLineItems, setEditingInvoiceLineItems] = useState<LineItem[]>([]);
+  const [editingInvoiceForm, setEditingInvoiceForm] = useState({
+    invoiceNumber: '',
+    userInvoiceNumber: '',
+    issueDate: new Date(),
+    dueDate: new Date()
+  });
   
   // Invoice creation state
   const [creatingInvoice, setCreatingInvoice] = useState(false);
@@ -378,6 +436,40 @@ export function WholesalerAdminDashboard() {
       window.removeEventListener('beforeunload', handleBeforeUnload);
     };
   }, []);
+
+  // Effect to populate edit form when invoice is selected
+  useEffect(() => {
+    if (editingInvoice) {
+      setEditingInvoiceForm({
+        invoiceNumber: editingInvoice.invoiceNumber,
+        userInvoiceNumber: editingInvoice.userInvoiceNumber || '',
+        issueDate: toDate(editingInvoice.issueDate),
+        dueDate: toDate(editingInvoice.dueDate)
+      });
+      
+      // Initialize line items - if invoice doesn't have line items, create a default one
+      if (editingInvoice.lineItems && editingInvoice.lineItems.length > 0) {
+        setEditingInvoiceLineItems(editingInvoice.lineItems);
+      } else {
+        // Create a default line item from the total amount
+        setEditingInvoiceLineItems([{
+          name: 'Invoice Item',
+          qty: 1,
+          unitPrice: editingInvoice.totalAmount,
+          gstPercent: 0
+        }]);
+      }
+    } else {
+      // Reset form when no invoice is being edited
+      setEditingInvoiceLineItems([]);
+      setEditingInvoiceForm({
+        invoiceNumber: '',
+        userInvoiceNumber: '',
+        issueDate: new Date(),
+        dueDate: new Date()
+      });
+    }
+  }, [editingInvoice]);
 
   // Navigation items
   const navItems: NavItem[] = [
@@ -1191,6 +1283,117 @@ export function WholesalerAdminDashboard() {
     }
   };
 
+  // Helper functions for editing invoice line items
+  const updateEditLineItem = useCallback((index: number, field: keyof LineItem, value: any) => {
+    setEditingInvoiceLineItems(prev => 
+      prev.map((item, i) => i === index ? { ...item, [field]: value } : item)
+    );
+  }, []);
+
+  const addEditLineItem = useCallback(() => {
+    setEditingInvoiceLineItems(prev => [...prev, { name: '', qty: 1, unitPrice: 0, gstPercent: 0 }]);
+  }, []);
+
+  const removeEditLineItem = useCallback((index: number) => {
+    setEditingInvoiceLineItems(prev => prev.filter((_, i) => i !== index));
+  }, []);
+
+  const updateEditFormField = useCallback((field: keyof typeof editingInvoiceForm, value: any) => {
+    setEditingInvoiceForm(prev => ({ ...prev, [field]: value }));
+  }, []);
+
+  // Calculate totals for editing invoice
+  const editInvoiceTotals = useMemo(() => {
+    const subtotal = editingInvoiceLineItems.reduce((sum, item) => sum + (item.qty * item.unitPrice), 0);
+    const gstAmount = editingInvoiceLineItems.reduce((sum, item) => {
+      const gstPercent = item.gstPercent || 0;
+      return sum + (item.qty * item.unitPrice * gstPercent / 100);
+    }, 0);
+    const totalAmount = subtotal + gstAmount;
+    
+    return { subtotal, gstAmount, totalAmount };
+  }, [editingInvoiceLineItems]);
+
+  const editLineItemTotals = useMemo(() => {
+    return editingInvoiceLineItems.map(item => 
+      formatCurrency((item.qty || 0) * (item.unitPrice || 0) * (1 + (item.gstPercent || 0) / 100))
+    );
+  }, [editingInvoiceLineItems]);
+
+  // Handle Edit Invoice
+  const handleEditInvoice = async () => {
+    if (!editingInvoice) return;
+    
+    const currentTenantId = getCurrentTenantId();
+    if (!currentTenantId) return;
+    
+    try {
+      // Validate required fields
+      if (!editingInvoiceForm.invoiceNumber.trim()) {
+        alert('Please enter an invoice number');
+        return;
+      }
+      
+      if (!editingInvoiceLineItems.some(item => item.name.trim() && item.unitPrice > 0)) {
+        alert('Please add at least one valid line item');
+        return;
+      }
+      
+      // Update invoice data with line items
+      const updateData: any = {
+        invoiceNumber: editingInvoiceForm.invoiceNumber,
+        userInvoiceNumber: editingInvoiceForm.userInvoiceNumber || null,
+        issueDate: Timestamp.fromDate(editingInvoiceForm.issueDate),
+        dueDate: Timestamp.fromDate(editingInvoiceForm.dueDate),
+        totalAmount: editInvoiceTotals.totalAmount,
+        lineItems: editingInvoiceLineItems,
+        notes: editingInvoice.notes || null
+      };
+      
+      // Update the invoice
+      await invoiceService.updateInvoice(currentTenantId, editingInvoice.id, updateData);
+      
+      // Refresh data
+      await fetchDashboardData();
+      
+      // Close dialog
+      setEditingInvoice(null);
+      
+      // Show success message
+      showSuccess(`Invoice "${editingInvoiceForm.invoiceNumber}" updated successfully!`);
+      
+    } catch (error: any) {
+      console.error('Error updating invoice:', error);
+      alert(`Failed to update invoice: ${error.message}`);
+    }
+  };
+
+  // Handle Delete Invoice
+  const handleDeleteInvoice = async () => {
+    if (!deletingInvoice) return;
+    
+    const currentTenantId = getCurrentTenantId();
+    if (!currentTenantId) return;
+    
+    try {
+      // Delete the invoice
+      await invoiceService.deleteInvoice(currentTenantId, deletingInvoice.id);
+      
+      // Refresh data
+      await fetchDashboardData();
+      
+      // Close dialog
+      setDeletingInvoice(null);
+      
+      // Show success message
+      showSuccess(`Invoice "${deletingInvoice.invoiceNumber}" deleted successfully!`);
+      
+    } catch (error: any) {
+      console.error('Error deleting invoice:', error);
+      alert(`Failed to delete invoice: ${error.message}`);
+    }
+  };
+
   // Stats Cards Component
   const StatsCards = () => {
     // Calculate filtered data for the selected date range
@@ -1767,7 +1970,7 @@ export function WholesalerAdminDashboard() {
                     <TableHead>Issue Date</TableHead>
                     <TableHead>Due Date</TableHead>
                     <TableHead>Amount</TableHead>
-                    <TableHead>Status</TableHead>
+                    <TableHead>Days Outstanding</TableHead>
                     <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -1789,19 +1992,28 @@ export function WholesalerAdminDashboard() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Badge className={
-                          invoice.status === 'PAID' ? 'bg-green-100 text-green-800' :
-                          invoice.status === 'PARTIAL' ? 'bg-yellow-100 text-yellow-800' :
-                          'bg-red-100 text-red-800'
-                        }>
-                          {invoice.status}
-                        </Badge>
+                        <DaysOutstandingDisplay invoice={invoice} />
                       </TableCell>
                       <TableCell>
-                        <Button variant="outline" size="sm" onClick={() => setViewingInvoice(invoice)}>
-                          <Eye className="h-4 w-4 mr-1" />
-                          View
-                        </Button>
+                        <div className="flex space-x-2">
+                          <Button variant="outline" size="sm" onClick={() => setViewingInvoice(invoice)}>
+                            <Eye className="h-4 w-4 mr-1" />
+                            View
+                          </Button>
+                          <Button variant="outline" size="sm" onClick={() => setEditingInvoice(invoice)}>
+                            <Edit className="h-4 w-4 mr-1" />
+                            Edit
+                          </Button>
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            onClick={() => setDeletingInvoice(invoice)}
+                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                          >
+                            <Trash2 className="h-4 w-4 mr-1" />
+                            Delete
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -2404,6 +2616,273 @@ export function WholesalerAdminDashboard() {
                 <Label>Retailer</Label>
                 <div className="font-medium">{getRetailerName(viewingInvoice.retailerId)}</div>
               </div>
+            </div>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+
+  // Edit Invoice Dialog Component
+  const EditInvoiceDialog = () => (
+    <Dialog open={!!editingInvoice} onOpenChange={(open) => !open && setEditingInvoice(null)}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Edit Invoice</DialogTitle>
+          <DialogDescription>
+            Edit invoice information. Note: Retailer cannot be changed.
+          </DialogDescription>
+        </DialogHeader>
+        {editingInvoice && (
+          <div className="space-y-4 max-h-[80vh] overflow-y-auto pr-2">
+            <Alert>
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                Editing an invoice will automatically update all related calculations including outstanding amounts.
+              </AlertDescription>
+            </Alert>
+
+            {/* Basic Information */}
+            <div className="space-y-4">
+              <h3 className="text-sm font-medium text-gray-900 border-b pb-1">Basic Information</h3>
+              
+              {/* Invoice Number */}
+              <div className="space-y-1">
+                <Label className="text-sm font-medium text-gray-700">Invoice Number *</Label>
+                <Input
+                  value={editingInvoiceForm.invoiceNumber}
+                  onChange={(e) => updateEditFormField('invoiceNumber', e.target.value)}
+                  placeholder="Enter invoice number"
+                  className="h-9"
+                />
+              </div>
+
+              {/* User Invoice Number */}
+              <div className="space-y-1">
+                <Label className="text-sm font-medium text-gray-700">User Invoice Number</Label>
+                <Input
+                  value={editingInvoiceForm.userInvoiceNumber}
+                  onChange={(e) => updateEditFormField('userInvoiceNumber', e.target.value)}
+                  placeholder="Enter user invoice number (optional)"
+                  className="h-9"
+                />
+              </div>
+
+              {/* Dates */}
+              <div className="grid grid-cols-2 gap-4">
+                <CompactDatePicker
+                  value={editingInvoiceForm.issueDate}
+                  onChange={(date) => date && updateEditFormField('issueDate', date)}
+                  label="Issue Date"
+                />
+                <CompactDatePicker
+                  value={editingInvoiceForm.dueDate}
+                  onChange={(date) => date && updateEditFormField('dueDate', date)}
+                  label="Due Date"
+                />
+              </div>
+
+              {/* Retailer Display (Read-only) */}
+              <div className="space-y-1">
+                <Label className="text-sm font-medium text-gray-700">Retailer</Label>
+                <div className="h-9 px-3 py-2 bg-gray-100 border border-gray-300 rounded-md text-sm">
+                  {getRetailerName(editingInvoice.retailerId)}
+                </div>
+                <p className="text-xs text-gray-500">Retailer cannot be changed</p>
+              </div>
+            </div>
+
+            {/* Line Items */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-medium text-gray-900 border-b pb-1">Line Items *</h3>
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={addEditLineItem}
+                  className="h-7 text-xs"
+                >
+                  <Plus className="h-3 w-3 mr-1" />
+                  Add Item
+                </Button>
+              </div>
+
+              {/* Line Items Header */}
+              <div className="grid grid-cols-12 gap-2 px-3 py-2 bg-gray-100 rounded text-xs font-medium text-gray-600">
+                <div className="col-span-5">Item Name</div>
+                <div className="col-span-2 text-center">Qty</div>
+                <div className="col-span-2 text-center">Unit Price</div>
+                <div className="col-span-2 text-center">GST %</div>
+                <div className="col-span-1 text-center">Total</div>
+              </div>
+
+              {/* Line Items List */}
+              <div className="space-y-2 max-h-40 overflow-y-auto">
+                {editingInvoiceLineItems.map((item, index) => (
+                  <div key={index} className="grid grid-cols-12 gap-2 items-center p-3 bg-gray-50 rounded-lg border">
+                    <div className="col-span-5">
+                      <div className="flex items-center space-x-1">
+                        <Package className="h-3 w-3 text-gray-400" />
+                        <Input
+                          placeholder="Item name"
+                          value={item.name}
+                          onChange={(e) => updateEditLineItem(index, 'name', e.target.value)}
+                          className="h-8 text-sm"
+                        />
+                      </div>
+                    </div>
+                    <div className="col-span-2">
+                      <Input
+                        type="number"
+                        min="1"
+                        value={item.qty}
+                        onChange={(e) => updateEditLineItem(index, 'qty', parseInt(e.target.value) || 1)}
+                        className="h-8 text-sm"
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={item.unitPrice}
+                        onChange={(e) => updateEditLineItem(index, 'unitPrice', parseFloat(e.target.value) || 0)}
+                        className="h-8 text-sm"
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <Input
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="0.1"
+                        value={item.gstPercent}
+                        onChange={(e) => updateEditLineItem(index, 'gstPercent', parseFloat(e.target.value) || 0)}
+                        className="h-8 text-sm"
+                        placeholder="0.0"
+                      />
+                    </div>
+                    <div className="col-span-1">
+                      <div className="text-xs font-medium text-gray-900 bg-white px-2 py-1 rounded border text-center">
+                        {editLineItemTotals[index]}
+                      </div>
+                    </div>
+                    <div className="col-span-1">
+                      {editingInvoiceLineItems.length > 1 && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => removeEditLineItem(index)}
+                          className="h-6 w-6 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Totals Summary */}
+            <div className="space-y-3 p-4 bg-gray-50 rounded-lg border">
+              <div className="flex items-center space-x-2 mb-2">
+                <Calculator className="h-4 w-4 text-gray-600" />
+                <h3 className="text-sm font-medium text-gray-900">Invoice Summary</h3>
+              </div>
+              
+              <div className="space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">Subtotal:</span>
+                  <span className="font-medium">{formatCurrency(editInvoiceTotals.subtotal)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">GST Amount:</span>
+                  <span className="font-medium">{formatCurrency(editInvoiceTotals.gstAmount)}</span>
+                </div>
+                <div className="flex justify-between text-sm font-bold border-t pt-2">
+                  <span className="text-gray-900">Total Amount:</span>
+                  <span className="text-gray-900">{formatCurrency(editInvoiceTotals.totalAmount)}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Notes */}
+            <div className="space-y-1">
+              <Label className="text-sm font-medium text-gray-700">Notes</Label>
+              <Textarea
+                value={editingInvoice.notes || ''}
+                onChange={(e) => {
+                  // Update the editingInvoice notes directly
+                  if (editingInvoice) {
+                    setEditingInvoice({
+                      ...editingInvoice,
+                      notes: e.target.value
+                    });
+                  }
+                }}
+                placeholder="Enter notes (optional)"
+                rows={3}
+              />
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex justify-end space-x-2 pt-4 border-t">
+              <Button variant="outline" onClick={() => setEditingInvoice(null)}>
+                Cancel
+              </Button>
+              <Button onClick={handleEditInvoice}>
+                Save Changes
+              </Button>
+            </div>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+
+  // Delete Invoice Dialog Component
+  const DeleteInvoiceDialog = () => (
+    <Dialog open={!!deletingInvoice} onOpenChange={(open) => !open && setDeletingInvoice(null)}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Delete Invoice</DialogTitle>
+          <DialogDescription>
+            This action cannot be undone. This will permanently delete the invoice.
+          </DialogDescription>
+        </DialogHeader>
+        {deletingInvoice && (
+          <div className="space-y-4">
+            <Alert className="border-red-200 bg-red-50">
+              <AlertCircle className="h-4 w-4 text-red-600" />
+              <AlertDescription className="text-red-800">
+                <strong>Warning:</strong> Deleting this invoice will permanently remove it from the system and affect all financial calculations. This action cannot be undone.
+              </AlertDescription>
+            </Alert>
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                <div className="font-medium">Invoice Number:</div>
+                <div>{deletingInvoice.invoiceNumber}</div>
+                <div className="font-medium">Retailer:</div>
+                <div>{getRetailerName(deletingInvoice.retailerId)}</div>
+                <div className="font-medium">Amount:</div>
+                <div>{formatCurrency(deletingInvoice.totalAmount)}</div>
+                <div className="font-medium">Due Date:</div>
+                <div>{formatTimestamp(deletingInvoice.dueDate)}</div>
+              </div>
+            </div>
+            <div className="flex justify-end space-x-2 pt-4">
+              <Button variant="outline" onClick={() => setDeletingInvoice(null)}>
+                Cancel
+              </Button>
+              <Button 
+                variant="destructive" 
+                onClick={handleDeleteInvoice}
+              >
+                Delete Invoice
+              </Button>
             </div>
           </div>
         )}
@@ -3024,8 +3503,7 @@ export function WholesalerAdminDashboard() {
                                 <TableHead className="text-xs font-medium text-gray-700 uppercase tracking-wider">Date</TableHead>
                                 <TableHead className="text-xs font-medium text-gray-700 uppercase tracking-wider">Due Date</TableHead>
                                 <TableHead className="text-xs font-medium text-gray-700 uppercase tracking-wider">Amount</TableHead>
-                                <TableHead className="text-xs font-medium text-gray-700 uppercase tracking-wider">Status</TableHead>
-                                <TableHead className="text-xs font-medium text-gray-700 uppercase tracking-wider">Outstanding</TableHead>
+                                <TableHead className="text-xs font-medium text-gray-700 uppercase tracking-wider">Days Outstanding</TableHead>
                               </TableRow>
                             </TableHeader>
                             <TableBody className="divide-y divide-gray-200">
@@ -3041,15 +3519,8 @@ export function WholesalerAdminDashboard() {
                                   <TableCell className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{formatTimestamp(invoice.dueDate)}</TableCell>
                                   <TableCell className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{formatCurrency(invoice.totalAmount)}</TableCell>
                                   <TableCell className="px-4 py-2 whitespace-nowrap">
-                                    <Badge className={
-                                      invoice.status === 'PAID' ? 'bg-green-100 text-green-800' :
-                                      invoice.status === 'PARTIAL' ? 'bg-yellow-100 text-yellow-800' :
-                                      'bg-red-100 text-red-800'
-                                    }>
-                                      {invoice.status}
-                                    </Badge>
+                                    <DaysOutstandingDisplay invoice={invoice} />
                                   </TableCell>
-                                  <TableCell className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{formatCurrency(invoice.outstandingAmount)}</TableCell>
                                 </TableRow>
                               ))}
                             </TableBody>
@@ -3147,8 +3618,8 @@ export function WholesalerAdminDashboard() {
         activeNav={activeNav}
         setActiveNav={setActiveNav}
         navItems={navItems}
-        title="PharmaLynk Collections"
-        subtitle="Wholesaler Admin Dashboard"
+        title="PharmaLync"
+        subtitle="Wholesaler Dashboard"
         notificationCount={notificationCount}
         notifications={notifications}
         user={user ? { displayName: user.displayName, email: user.email } : undefined}
@@ -3202,6 +3673,8 @@ export function WholesalerAdminDashboard() {
         {/* Dialog Components */}
         {ViewInvoiceDialog()}
         {ViewPaymentDialog()}
+        {EditInvoiceDialog()}
+        {DeleteInvoiceDialog()}
         
         {/* Edit Line Worker Dialog */}
         {EditLineWorkerDialog()}

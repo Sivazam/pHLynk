@@ -31,6 +31,13 @@ export const metadata: Metadata = {
     title: "PharmaLynk - Pharmaceutical Management System",
     description: "Comprehensive pharmacy management system with modern web technologies",
   },
+  manifest: "/manifest.json",
+  other: {
+    "apple-mobile-web-app-capable": "yes",
+    "apple-mobile-web-app-status-bar-style": "default",
+    "apple-mobile-web-app-title": "PharmaLynk",
+    "format-detection": "telephone=no",
+  },
 };
 
 export default function RootLayout({
@@ -47,6 +54,23 @@ export default function RootLayout({
           {children}
         </AuthProvider>
         <Toaster />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              if ('serviceWorker' in navigator) {
+                window.addEventListener('load', function() {
+                  navigator.serviceWorker.register('/sw.js')
+                    .then(function(registration) {
+                      console.log('ServiceWorker registration successful with scope: ', registration.scope);
+                    })
+                    .catch(function(err) {
+                      console.log('ServiceWorker registration failed: ', err);
+                    });
+                });
+              }
+            `,
+          }}
+        />
       </body>
     </html>
   );
