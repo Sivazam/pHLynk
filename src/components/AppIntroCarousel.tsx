@@ -425,7 +425,6 @@
 // }
 
 
-
 "use client";
 
 import { useState, useRef } from "react";
@@ -565,8 +564,12 @@ export function AppIntroCarousel({ onComplete, onSkip }: AppIntroCarouselProps) 
 
   const handleTouchEnd = () => {
     const diff = touchStartX.current - touchEndX.current;
-    if (diff > 50) nextSlide();
-    if (diff < -50) prevSlide();
+    if (diff > 50) {
+      nextSlide();
+    }
+    if (diff < -50) {
+      prevSlide();
+    }
   };
 
   return (
