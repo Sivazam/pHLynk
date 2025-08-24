@@ -1658,7 +1658,7 @@ export function WholesalerAdminDashboard() {
               </>
             ) : (
               areas.map((area) => (
-                <div key={area.id} className="flex items-center justify-between p-4 border rounded-lg">
+                <div key={area.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 border rounded-lg gap-4">
                   <div className="flex items-center space-x-4">
                     <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
                       <MapPin className="h-5 w-5 text-blue-600" />
@@ -1670,11 +1670,12 @@ export function WholesalerAdminDashboard() {
                       </div>
                     </div>
                   </div>
-                  <div className="flex items-center space-x-2 flex-wrap gap-y-2">
+                  <div className="flex sm:items-center space-x-2 flex-wrap gap-y-2 sm:flex-nowrap">
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={() => handleToggleArea(area.id)}
+                      className="flex-1 sm:flex-none"
                     >
                       <Edit className="h-4 w-4 mr-1" />
                       Edit
@@ -1683,6 +1684,7 @@ export function WholesalerAdminDashboard() {
                       variant="outline"
                       size="sm"
                       onClick={() => handleDeleteArea(area.id)}
+                      className="flex-1 sm:flex-none"
                     >
                       <Trash2 className="h-4 w-4 mr-1" />
                       Delete
@@ -2226,7 +2228,14 @@ export function WholesalerAdminDashboard() {
             ) : (
               lineWorkers
                 .map((worker) => (
-                  <div key={worker.id} className="flex items-center justify-between p-4 border rounded-lg">
+                  <div key={worker.id} className="flex flex-col p-4 border rounded-lg gap-4">
+                    {/* Badge positioned at top-right corner */}
+                    <div className="self-end sm:self-auto">
+                      <Badge className={worker.active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}>
+                        {worker.active ? 'Active' : 'Inactive'}
+                      </Badge>
+                    </div>
+                    
                     <div className="flex items-center space-x-4">
                       <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
                         <Users className="h-5 w-5 text-blue-600" />
@@ -2237,15 +2246,13 @@ export function WholesalerAdminDashboard() {
                         <div className="text-sm text-gray-500">{worker.phone}</div>
                       </div>
                     </div>
-                    <div className="flex items-center space-x-2 flex-wrap gap-y-2">
-                      <Badge className={worker.active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}>
-                        {worker.active ? 'Active' : 'Inactive'}
-                      </Badge>
+                    
+                    <div className="flex space-x-2 flex-wrap gap-y-2 sm:flex-nowrap sm:items-center">
                       <Button
                         variant={worker.active ? "outline" : "default"}
                         size="sm"
                         onClick={() => handleToggleLineWorkerStatus(worker.id, worker.active)}
-                        className={worker.active ? "hover:bg-red-50 hover:text-red-600 hover:border-red-200" : "hover:bg-green-50 hover:text-green-600 hover:border-green-200"}
+                        className={worker.active ? "hover:bg-red-50 hover:text-red-600 hover:border-red-200 flex-1 sm:flex-none" : "hover:bg-green-50 hover:text-green-600 hover:border-green-200 flex-1 sm:flex-none"}
                       >
                         {worker.active ? (
                           <>
@@ -2268,6 +2275,7 @@ export function WholesalerAdminDashboard() {
                           setEditingActiveStatus(worker.active);
                           setShowEditLineWorkerDialog(true);
                         }}
+                        className="flex-1 sm:flex-none"
                       >
                         <Edit className="h-4 w-4 mr-1" />
                         Edit
@@ -2276,6 +2284,7 @@ export function WholesalerAdminDashboard() {
                         variant="outline"
                         size="sm"
                         onClick={() => handleDeleteLineWorker(worker.id)}
+                        className="flex-1 sm:flex-none"
                       >
                         <Trash2 className="h-4 w-4 mr-1" />
                         Delete
