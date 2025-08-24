@@ -23,7 +23,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Set a timeout to prevent infinite loading state
+    const timeoutId = setTimeout(() => {
+      if (loading) {
+        console.warn('Auth loading timeout - forcing loading state to false');
+        setLoading(false);
+      }
+    }, 10000); // 10 second timeout
+
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: FirebaseUser | null) => {
+      clearTimeout(timeoutId); // Clear timeout once auth state changes
+      
       if (firebaseUser) {
         try {
           // Fetch user data from Firestore
@@ -57,7 +67,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLoading(false);
     });
 
-    return unsubscribe;
+    return () => {
+      clearTimeout(timeoutId);
+      unsubscribe();
+    };
   }, []);
 
   const login = async (email: string, password: string) => {

@@ -55,6 +55,10 @@ import {
 // Utility functions for days outstanding calculation
 const getDaysOutstanding = (invoice: Invoice): number => {
   const now = new Date();
+  if (!invoice.dueDate) {
+    // If no due date is set, assume it's due immediately (overdue)
+    return 1;
+  }
   const dueDate = invoice.dueDate.toDate();
   const diffTime = now.getTime() - dueDate.getTime();
   const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));

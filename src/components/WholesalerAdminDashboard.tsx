@@ -449,7 +449,14 @@ export function WholesalerAdminDashboard() {
       
       // Initialize line items - if invoice doesn't have line items, create a default one
       if (editingInvoice.lineItems && editingInvoice.lineItems.length > 0) {
-        setEditingInvoiceLineItems(editingInvoice.lineItems);
+        // Map InvoiceLineItem to LineItem, providing default values for optional fields
+        const mappedLineItems = editingInvoice.lineItems.map(item => ({
+          name: item.name,
+          qty: item.qty,
+          unitPrice: item.unitPrice,
+          gstPercent: item.gstPercent || 0
+        }));
+        setEditingInvoiceLineItems(mappedLineItems);
       } else {
         // Create a default line item from the total amount
         setEditingInvoiceLineItems([{
@@ -1346,8 +1353,7 @@ export function WholesalerAdminDashboard() {
         issueDate: Timestamp.fromDate(editingInvoiceForm.issueDate),
         dueDate: Timestamp.fromDate(editingInvoiceForm.dueDate),
         totalAmount: editInvoiceTotals.totalAmount,
-        lineItems: editingInvoiceLineItems,
-        notes: editingInvoice.notes || null
+        lineItems: editingInvoiceLineItems
       };
       
       // Update the invoice
@@ -2807,25 +2813,6 @@ export function WholesalerAdminDashboard() {
                   <span className="text-gray-900">{formatCurrency(editInvoiceTotals.totalAmount)}</span>
                 </div>
               </div>
-            </div>
-
-            {/* Notes */}
-            <div className="space-y-1">
-              <Label className="text-sm font-medium text-gray-700">Notes</Label>
-              <Textarea
-                value={editingInvoice.notes || ''}
-                onChange={(e) => {
-                  // Update the editingInvoice notes directly
-                  if (editingInvoice) {
-                    setEditingInvoice({
-                      ...editingInvoice,
-                      notes: e.target.value
-                    });
-                  }
-                }}
-                placeholder="Enter notes (optional)"
-                rows={3}
-              />
             </div>
 
             {/* Action Buttons */}

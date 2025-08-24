@@ -65,6 +65,9 @@ export class FirebasePhoneAuthService {
       console.log('Sending OTP via Firebase to:', formattedPhone);
 
       // Send OTP using Firebase Authentication
+      if (!this.recaptchaVerifier) {
+        throw new Error('reCAPTCHA verifier not initialized');
+      }
       this.confirmationResult = await signInWithPhoneNumber(auth, formattedPhone, this.recaptchaVerifier);
       
       console.log('OTP sent successfully via Firebase');
