@@ -531,7 +531,6 @@ export function AppIntroCarousel({ onComplete, onSkip }: AppIntroCarouselProps) 
   };
 
   const handleSkip = () => {
-    // Store intro completion status safely
     try {
       if (typeof window !== 'undefined' && window.localStorage) {
         localStorage.setItem("pharmalync-intro-seen", "true");
@@ -539,11 +538,15 @@ export function AppIntroCarousel({ onComplete, onSkip }: AppIntroCarouselProps) 
     } catch (error) {
       console.warn("Could not save intro status to localStorage:", error);
     }
-    onSkip ? onSkip() : onComplete();
+    
+    if (onSkip) {
+      onSkip();
+    } else {
+      onComplete();
+    }
   };
 
   const handleComplete = () => {
-    // Store intro completion status safely
     try {
       if (typeof window !== 'undefined' && window.localStorage) {
         localStorage.setItem("pharmalync-intro-seen", "true");
@@ -570,6 +573,10 @@ export function AppIntroCarousel({ onComplete, onSkip }: AppIntroCarouselProps) 
     if (diff < -50) {
       prevSlide();
     }
+  };
+
+  const goToSlide = (index: number) => {
+    setCurrentSlide(index);
   };
 
   return (
@@ -642,12 +649,13 @@ export function AppIntroCarousel({ onComplete, onSkip }: AppIntroCarouselProps) 
             {slides.map((_, idx) => (
               <button
                 key={idx}
-                onClick={() => setCurrentSlide(idx)}
+                onClick={() => goToSlide(idx)}
                 className={`w-2 h-2 rounded-full transition-colors ${
                   idx === currentSlide
                     ? `bg-gradient-to-r ${slides[currentSlide].accent}`
                     : "bg-gray-300"
                 }`}
+                aria-label={`Go to slide ${idx + 1}`}
               />
             ))}
           </div>
