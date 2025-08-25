@@ -97,7 +97,7 @@ export function DashboardNavigation({
             {/* Logo */}
             <div className="flex-shrink-0">
               <Image 
-                src="/logo.png" 
+                src="/logoMain.png" 
                 alt="PharmaLync Logo" 
                 width={40} 
                 height={40}
