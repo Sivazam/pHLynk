@@ -66,66 +66,72 @@ export function LoginForm({ onToggleMode, onResetPassword, onShowRoleSelection }
   };
 
   return (
-    <Card className="w-full max-w-md mx-auto">
-      <CardHeader>
-        <CardTitle className="text-2xl font-bold text-center">Login</CardTitle>
-        <CardDescription className="text-center">
-          Enter your credentials to access your account
+    <Card className="w-full max-w-md mx-auto border-0 shadow-xl bg-white/80 backdrop-blur-sm">
+      <CardHeader className="space-y-1">
+        <CardTitle className="text-2xl font-bold text-center text-gray-900">
+          Welcome Back
+        </CardTitle>
+        <CardDescription className="text-center text-gray-600">
+          Sign in to access your PharmaLynk account
         </CardDescription>
-        <div className="bg-green-50 border border-green-200 rounded-lg p-3 mt-4">
-          <div className="flex items-center">
-            <Smartphone className="h-5 w-5 text-green-600 mr-2" />
+        
+        {/* Retailer Login Notice */}
+        <div className="bg-gradient-to-r from-green-50 to-blue-50 border border-green-200 rounded-lg p-3 mt-4">
+          <div className="flex items-start space-x-2">
+            <div className="bg-green-100 p-1 rounded-full">
+              <Smartphone className="h-4 w-4 text-green-600" />
+            </div>
             <div className="text-sm text-green-800">
-              <strong>Retailers:</strong> Use the "Retailer Login" button below to login with your mobile number
+              <strong className="font-semibold">Retailers:</strong> Use the "Retailer Login" button below to login with your mobile number via OTP
             </div>
           </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
         {error && (
-          <Alert variant="destructive">
-            <AlertDescription>{error}</AlertDescription>
+          <Alert variant="destructive" className="border-red-200 bg-red-50">
+            <AlertDescription className="text-red-800">{error}</AlertDescription>
           </Alert>
         )}
         
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
+            <Label htmlFor="email" className="text-sm font-medium text-gray-700">Email Address</Label>
             <div className="relative">
               <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
               <Input
                 id="email"
                 type="email"
-                placeholder="Enter your email"
-                className="pl-10"
+                placeholder="Enter your email address"
+                className="pl-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
                 {...register('email')}
               />
             </div>
             {errors.email && (
-              <p className="text-sm text-red-500">{errors.email.message}</p>
+              <p className="text-sm text-red-600">{errors.email.message}</p>
             )}
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="password">Password</Label>
+            <Label htmlFor="password" className="text-sm font-medium text-gray-700">Password</Label>
             <div className="relative">
               <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
               <Input
                 id="password"
                 type="password"
                 placeholder="Enter your password"
-                className="pl-10"
+                className="pl-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
                 {...register('password')}
               />
             </div>
             {errors.password && (
-              <p className="text-sm text-red-500">{errors.password.message}</p>
+              <p className="text-sm text-red-600">{errors.password.message}</p>
             )}
           </div>
 
           <Button 
             type="submit" 
-            className="w-full" 
+            className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-medium py-2.5"
             disabled={loading}
           >
             {loading ? (
@@ -141,16 +147,16 @@ export function LoginForm({ onToggleMode, onResetPassword, onShowRoleSelection }
 
         <div className="relative">
           <div className="absolute inset-0 flex items-center">
-            <span className="w-full border-t" />
+            <span className="w-full border-t border-gray-300" />
           </div>
           <div className="relative flex justify-center text-xs uppercase">
-            <span className="bg-background px-2 text-muted-foreground">Or continue with</span>
+            <span className="bg-white px-2 text-gray-500">Or continue with</span>
           </div>
         </div>
 
         <Button 
           variant="outline" 
-          className="w-full" 
+          className="w-full border-gray-300 hover:bg-gray-50 font-medium"
           onClick={handleGoogleLogin}
           disabled={loading}
         >
@@ -158,51 +164,56 @@ export function LoginForm({ onToggleMode, onResetPassword, onShowRoleSelection }
           Sign in with Google
         </Button>
 
-        <div className="text-center space-y-2">
+        <div className="text-center space-y-3">
           <button
             type="button"
             onClick={onResetPassword}
-            className="text-sm text-blue-600 hover:underline"
+            className="text-sm text-blue-600 hover:text-blue-700 font-medium transition-colors"
           >
             Forgot your password?
           </button>
-          <div className="text-sm">
+          
+          <div className="text-sm text-gray-600">
             Don't have an account?{' '}
             <button
               type="button"
               onClick={onToggleMode}
-              className="text-blue-600 hover:underline"
+              className="text-blue-600 hover:text-blue-700 font-medium transition-colors"
             >
-              Sign up
+              Create account
             </button>
           </div>
-          <div className="pt-4 border-t space-y-2">
-              {/* Direct Retailer Login Link */}
-              <Link href="/retailer-login" className="block">
-                <Button
-                  variant="default"
-                  className="w-full bg-green-600 hover:bg-green-700 text-white"
-                >
-                  <Smartphone className="mr-2 h-4 w-4" />
-                  Retailer Login (Mobile Number)
-                </Button>
-              </Link>
-              {/* Prominent Retailer Login Button */}
-              {onShowRoleSelection && (
-                <Button
-                  variant="outline"
-                  className="w-full"
-                  onClick={onShowRoleSelection}
-                >
-                  <Store className="mr-2 h-4 w-4" />
-                  Other Roles (Line Worker, Admin)
-                </Button>
-              )}
-              <Link href="/init" className="inline-flex items-center text-sm text-blue-600 hover:underline">
-                <Shield className="h-4 w-4 mr-1" />
-                Super Admin Registration
-              </Link>
-            </div>
+          
+          <div className="pt-4 border-t border-gray-200 space-y-2">
+            {/* Retailer Login Button */}
+            <Link href="/retailer-login" className="block">
+              <Button
+                variant="default"
+                className="w-full bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-medium py-2.5"
+              >
+                <Smartphone className="mr-2 h-4 w-4" />
+                Retailer Login (Mobile OTP)
+              </Button>
+            </Link>
+            
+            {/* Other Roles Button */}
+            {onShowRoleSelection && (
+              <Button
+                variant="outline"
+                className="w-full border-gray-300 hover:bg-gray-50 font-medium"
+                onClick={onShowRoleSelection}
+              >
+                <Store className="mr-2 h-4 w-4" />
+                Other Roles (Line Worker, Admin)
+              </Button>
+            )}
+            
+            {/* Super Admin Registration */}
+            <Link href="/init" className="inline-flex items-center text-sm text-blue-600 hover:text-blue-700 font-medium transition-colors">
+              <Shield className="h-4 w-4 mr-1" />
+              Super Admin Registration
+            </Link>
+          </div>
         </div>
       </CardContent>
     </Card>

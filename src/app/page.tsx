@@ -11,6 +11,7 @@ import { AppIntroCarousel } from '@/components/AppIntroCarousel';
 import { Skeleton } from '@/components/ui/skeleton';
 import { AppLoadingScreen } from '@/components/AppLoadingScreen';
 import { useState, useEffect } from 'react';
+import { logger } from '@/lib/logger';
 
 export default function Home() {
   const { user, loading, loadingProgress, loadingStage, hasRole } = useAuth();
@@ -42,7 +43,7 @@ export default function Home() {
       if (e.ctrlKey && e.shiftKey && e.key === 'I') {
         localStorage.removeItem('pharmalync-intro-seen');
         setShowIntro(true);
-        console.log('🎠 Intro carousel reset for testing');
+        logger.info('Intro carousel reset for testing', { context: 'Debug' });
       }
     };
     

@@ -68,92 +68,94 @@ export function SignupForm({ onToggleMode }: SignupFormProps) {
   };
 
   return (
-    <Card className="w-full max-w-md mx-auto">
-      <CardHeader>
-        <CardTitle className="text-2xl font-bold text-center">Sign Up</CardTitle>
-        <CardDescription className="text-center">
-          Create a new account to get started
+    <Card className="w-full max-w-md mx-auto border-0 shadow-xl bg-white/80 backdrop-blur-sm">
+      <CardHeader className="space-y-1">
+        <CardTitle className="text-2xl font-bold text-center text-gray-900">
+          Create Account
+        </CardTitle>
+        <CardDescription className="text-center text-gray-600">
+          Join PharmaLynk to streamline your pharmaceutical supply chain
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         {error && (
-          <Alert variant="destructive">
-            <AlertDescription>{error}</AlertDescription>
+          <Alert variant="destructive" className="border-red-200 bg-red-50">
+            <AlertDescription className="text-red-800">{error}</AlertDescription>
           </Alert>
         )}
         
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="displayName">Full Name</Label>
+            <Label htmlFor="displayName" className="text-sm font-medium text-gray-700">Full Name</Label>
             <div className="relative">
               <UserIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
               <Input
                 id="displayName"
                 type="text"
                 placeholder="Enter your full name"
-                className="pl-10"
+                className="pl-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
                 {...register('displayName')}
               />
             </div>
             {errors.displayName && (
-              <p className="text-sm text-red-500">{errors.displayName.message}</p>
+              <p className="text-sm text-red-600">{errors.displayName.message}</p>
             )}
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
+            <Label htmlFor="email" className="text-sm font-medium text-gray-700">Email Address</Label>
             <div className="relative">
               <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
               <Input
                 id="email"
                 type="email"
-                placeholder="Enter your email"
-                className="pl-10"
+                placeholder="Enter your email address"
+                className="pl-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
                 {...register('email')}
               />
             </div>
             {errors.email && (
-              <p className="text-sm text-red-500">{errors.email.message}</p>
+              <p className="text-sm text-red-600">{errors.email.message}</p>
             )}
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="password">Password</Label>
+            <Label htmlFor="password" className="text-sm font-medium text-gray-700">Password</Label>
             <div className="relative">
               <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
               <Input
                 id="password"
                 type="password"
-                placeholder="Enter your password"
-                className="pl-10"
+                placeholder="Create a strong password"
+                className="pl-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
                 {...register('password')}
               />
             </div>
             {errors.password && (
-              <p className="text-sm text-red-500">{errors.password.message}</p>
+              <p className="text-sm text-red-600">{errors.password.message}</p>
             )}
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="confirmPassword">Confirm Password</Label>
+            <Label htmlFor="confirmPassword" className="text-sm font-medium text-gray-700">Confirm Password</Label>
             <div className="relative">
               <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
               <Input
                 id="confirmPassword"
                 type="password"
                 placeholder="Confirm your password"
-                className="pl-10"
+                className="pl-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
                 {...register('confirmPassword')}
               />
             </div>
             {errors.confirmPassword && (
-              <p className="text-sm text-red-500">{errors.confirmPassword.message}</p>
+              <p className="text-sm text-red-600">{errors.confirmPassword.message}</p>
             )}
           </div>
 
           <Button 
             type="submit" 
-            className="w-full" 
+            className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-medium py-2.5"
             disabled={loading}
           >
             {loading ? (
@@ -169,16 +171,16 @@ export function SignupForm({ onToggleMode }: SignupFormProps) {
 
         <div className="relative">
           <div className="absolute inset-0 flex items-center">
-            <span className="w-full border-t" />
+            <span className="w-full border-t border-gray-300" />
           </div>
           <div className="relative flex justify-center text-xs uppercase">
-            <span className="bg-background px-2 text-muted-foreground">Or continue with</span>
+            <span className="bg-white px-2 text-gray-500">Or continue with</span>
           </div>
         </div>
 
         <Button 
           variant="outline" 
-          className="w-full" 
+          className="w-full border-gray-300 hover:bg-gray-50 font-medium"
           onClick={handleGoogleSignup}
           disabled={loading}
         >
@@ -187,12 +189,12 @@ export function SignupForm({ onToggleMode }: SignupFormProps) {
         </Button>
 
         <div className="text-center">
-          <div className="text-sm">
+          <div className="text-sm text-gray-600">
             Already have an account?{' '}
             <button
               type="button"
               onClick={onToggleMode}
-              className="text-blue-600 hover:underline"
+              className="text-blue-600 hover:text-blue-700 font-medium transition-colors"
             >
               Sign in
             </button>

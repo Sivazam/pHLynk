@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { logger } from "@/lib/logger";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -75,10 +76,10 @@ export default function RootLayout({
                   window.addEventListener('load', function() {
                     navigator.serviceWorker.register('/sw.js')
                       .then(function(registration) {
-                        console.log('ServiceWorker registration successful with scope: ', registration.scope);
+                        logger.success('ServiceWorker registration successful', { scope: registration.scope }, { context: 'PWA' });
                       })
                       .catch(function(err) {
-                        console.log('ServiceWorker registration failed: ', err);
+                        logger.error('ServiceWorker registration failed', err, { context: 'PWA' });
                       });
                   });
                 }
