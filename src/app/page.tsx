@@ -9,11 +9,11 @@ import { LineWorkerDashboard } from '@/components/LineWorkerDashboard';
 import { RetailerDashboard } from '@/components/RetailerDashboard';
 import { AppIntroCarousel } from '@/components/AppIntroCarousel';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import { AppLoadingScreen } from '@/components/AppLoadingScreen';
 import { useState, useEffect } from 'react';
 
 export default function Home() {
-  const { user, loading, hasRole } = useAuth();
+  const { user, loading, loadingProgress, loadingStage, hasRole } = useAuth();
   const [showRoleSelection, setShowRoleSelection] = useState(false);
   const [retailerId, setRetailerId] = useState<string | null>(null);
   const [showIntro, setShowIntro] = useState(false);
@@ -62,14 +62,7 @@ export default function Home() {
 
   // Loading state
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading application...</p>
-        </div>
-      </div>
-    );
+    return <AppLoadingScreen progress={loadingProgress} stage={loadingStage} />;
   }
 
   // Show intro carousel for new users before anything else

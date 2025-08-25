@@ -63,7 +63,7 @@ export function RetailerAuth({ onAuthSuccess, onBackToRoleSelection }: RetailerA
       
       if (firebaseResult.success) {
         setShowOTP(true);
-        setSuccess(firebaseResult.message);
+        setSuccess('OTP sent successfully to your mobile number');
       } else {
         // Check if the error message indicates we need to show reCAPTCHA
         if (firebaseResult.message.includes('reCAPTCHA') || firebaseResult.message.includes('domain configuration')) {
@@ -99,8 +99,8 @@ export function RetailerAuth({ onAuthSuccess, onBackToRoleSelection }: RetailerA
       const firebaseResult = await firebasePhoneAuthService.verifyOTP(otp);
       
       if (firebaseResult.success && firebaseResult.user) {
-        console.log('OTP verified successfully via Firebase');
-        console.log('Firebase User:', firebaseResult.user);
+        console.log('OTP verified successfully');
+        console.log('User authenticated:', firebaseResult.user);
         
         setFirebaseUser(firebaseResult.user);
         
@@ -162,7 +162,7 @@ export function RetailerAuth({ onAuthSuccess, onBackToRoleSelection }: RetailerA
       const firebaseResult = await firebasePhoneAuthService.resendOTP(phoneNumber);
       
       if (firebaseResult.success) {
-        setSuccess(firebaseResult.message);
+        setSuccess('OTP resent successfully to your mobile number');
         setOtp(''); // Clear previous OTP input
       } else {
         // Check if the error message indicates we need to show reCAPTCHA
@@ -197,159 +197,179 @@ export function RetailerAuth({ onAuthSuccess, onBackToRoleSelection }: RetailerA
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-50 to-blue-50 p-4">
-      <div className="w-full max-w-md">
-        {/* reCAPTCHA container */}
-        <div id="recaptcha-container" className={showRecaptcha ? "mb-4" : "hidden"}></div>
-        
-        {/* Back Button */}
-        {onBackToRoleSelection && (
-          <Button
-            variant="ghost"
-            className="mb-4"
-            onClick={onBackToRoleSelection}
-          >
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back
-          </Button>
+    <Card className="w-full shadow-lg border-0 bg-white/95 backdrop-blur-sm">
+      {/* reCAPTCHA container */}
+      <div id="recaptcha-container" className={showRecaptcha ? "mb-4" : "hidden"}></div>
+      
+      {/* Back Button */}
+      {onBackToRoleSelection && (
+        <Button
+          variant="ghost"
+          className="mb-4"
+          onClick={onBackToRoleSelection}
+        >
+          <ArrowLeft className="h-4 w-4 mr-2" />
+          Back
+        </Button>
+      )}
+
+      <CardHeader className="text-center space-y-4 pb-6">
+        <div className="flex justify-center">
+          <div className="bg-gradient-to-br from-blue-600 to-blue-700 p-4 rounded-full shadow-lg">
+            <Phone className="h-8 w-8 text-white" />
+          </div>
+        </div>
+        <div>
+          <CardTitle className="text-2xl font-bold text-gray-900">
+            Retailer Login
+          </CardTitle>
+          <CardDescription className="text-gray-600 mt-2">
+            Secure access to your retailer dashboard
+          </CardDescription>
+        </div>
+      </CardHeader>
+      
+      <CardContent className="space-y-6">
+        {/* Success Alert */}
+        {success && (
+          <Alert className="border-green-200 bg-green-50">
+            <CheckCircle className="h-4 w-4 text-green-600" />
+            <AlertDescription className="text-green-800">{success}</AlertDescription>
+          </Alert>
         )}
 
-        <Card className="w-full">
-          <CardHeader className="text-center">
-            <div className="flex justify-center mb-4">
-              <div className="bg-green-600 p-3 rounded-full">
-                <Phone className="h-8 w-8 text-white" />
-              </div>
-            </div>
-            <CardTitle className="text-2xl font-bold">Retailer Login</CardTitle>
-            <CardDescription>
-              Enter your phone number to access your retailer dashboard
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Success Alert */}
-            {success && (
-              <Alert className="border-green-200 bg-green-50">
-                <CheckCircle className="h-4 w-4 text-green-600" />
-                <AlertDescription className="text-green-800">{success}</AlertDescription>
-              </Alert>
-            )}
+        {/* Error Alert */}
+        {error && (
+          <FirebaseErrorHandler
+            error={error}
+            onRetry={handleRetry}
+            onUseVisibleRecaptcha={handleUseVisibleRecaptcha}
+            showRetry={!showRecaptcha}
+            showVisibleRecaptchaOption={!showRecaptcha}
+          />
+        )}
 
-            {/* Error Alert */}
-            {error && (
-              <FirebaseErrorHandler
-                error={error}
-                onRetry={handleRetry}
-                onUseVisibleRecaptcha={handleUseVisibleRecaptcha}
-                showRetry={!showRecaptcha}
-                showVisibleRecaptchaOption={!showRecaptcha}
+        {!showOTP ? (
+          <div className="space-y-6">
+            <div className="space-y-3">
+              <Label htmlFor="phone" className="text-gray-700 font-medium">
+                Mobile Number
+              </Label>
+              <div className="flex">
+                <div className="flex items-center px-4 rounded-l-lg border border-r-0 border-gray-300 bg-gray-50 text-gray-600 font-medium">
+                  +91
+                </div>
+                <Input
+                  id="phone"
+                  type="tel"
+                  placeholder="Enter 10-digit number"
+                  value={phoneNumber}
+                  onChange={(e) => setPhoneNumber(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                  className="rounded-l-none border-l-0 focus:border-l focus:border-gray-300 text-lg"
+                  maxLength={10}
+                />
+              </div>
+              <p className="text-sm text-gray-500">
+                Enter your 10-digit mobile number registered with your wholesale partner
+              </p>
+            </div>
+
+            <Button 
+              onClick={handleSendOTP} 
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 text-base transition-colors" 
+              disabled={loading || phoneNumber.length !== 10}
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+                  Sending OTP...
+                </>
+              ) : (
+                'Send OTP'
+              )}
+            </Button>
+          </div>
+        ) : (
+          <div className="space-y-6">
+            <div className="space-y-3">
+              <Label htmlFor="otp" className="text-gray-700 font-medium">
+                Enter OTP
+              </Label>
+              <Input
+                id="otp"
+                type="text"
+                placeholder="Enter 6-digit OTP"
+                value={otp}
+                onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                maxLength={6}
+                className="text-center text-xl tracking-widest font-mono py-3"
               />
-            )}
-
-            {!showOTP ? (
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="phone">Phone Number</Label>
-                  <div className="flex">
-                    <div className="flex items-center px-3 rounded-l-md border border-r-0 border-gray-300 bg-gray-50 text-gray-500">
-                      +91
-                    </div>
-                    <Input
-                      id="phone"
-                      type="tel"
-                      placeholder="Enter 10-digit number"
-                      value={phoneNumber}
-                      onChange={(e) => setPhoneNumber(e.target.value.replace(/\D/g, '').slice(0, 10))}
-                      className="rounded-l-none"
-                      maxLength={10}
-                    />
-                  </div>
-                  <p className="text-xs text-gray-500">
-                    Enter your 10-digit mobile number without +91
-                  </p>
-                </div>
-
-                <Button 
-                  onClick={handleSendOTP} 
-                  className="w-full" 
-                  disabled={loading || phoneNumber.length !== 10}
-                >
-                  {loading ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Sending OTP...
-                    </>
-                  ) : (
-                    'Send OTP'
-                  )}
-                </Button>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="otp">Enter OTP</Label>
-                  <Input
-                    id="otp"
-                    type="text"
-                    placeholder="Enter 6-digit OTP"
-                    value={otp}
-                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                    maxLength={6}
-                    className="text-center text-lg tracking-widest"
-                  />
-                  <p className="text-xs text-gray-500 text-center">
-                    OTP sent to +91{phoneNumber}
-                  </p>
+              <p className="text-sm text-gray-600 text-center">
+                OTP sent to +91 {phoneNumber}
+              </p>
                   
-                  {/* Firebase Authentication Info */}
-                  <Alert className="border-blue-200 bg-blue-50">
-                    <Info className="h-4 w-4 text-blue-600" />
-                    <AlertDescription className="text-blue-800 text-xs">
-                      Using Firebase Authentication for secure OTP verification
-                    </AlertDescription>
-                  </Alert>
-                </div>
-
-                <Button 
-                  onClick={handleVerifyOTP} 
-                  className="w-full" 
-                  disabled={loading || otp.length !== 6}
-                >
-                  {loading ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Verifying...
-                    </>
-                  ) : (
-                    'Verify OTP'
-                  )}
-                </Button>
-
-                <div className="text-center">
-                  <Button
-                    variant="link"
-                    onClick={handleResendOTP}
-                    disabled={loading}
-                    className="text-sm"
-                  >
-                    Didn't receive OTP? Resend OTP
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            <div className="text-center text-xs text-gray-500">
-              <p>By continuing, you agree to our Terms of Service and Privacy Policy</p>
-              <p className="mt-1">
-                <strong>Note:</strong> OTP will be sent to your mobile number via Firebase Authentication.
-              </p>
-              <p className="mt-1 text-blue-600">
-                This service uses Google's secure authentication system.
-              </p>
+              {/* Security Info */}
+              <Alert className="border-blue-200 bg-blue-50">
+                <Info className="h-4 w-4 text-blue-600" />
+                <AlertDescription className="text-blue-800 text-sm">
+                  For your security, this OTP is valid for 3 minutes only
+                </AlertDescription>
+              </Alert>
             </div>
-          </CardContent>
-        </Card>
-      </div>
-    </div>
+
+            <Button 
+              onClick={handleVerifyOTP} 
+              className="w-full bg-green-600 hover:bg-green-700 text-white font-medium py-3 text-base transition-colors" 
+              disabled={loading || otp.length !== 6}
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+                  Verifying...
+                </>
+              ) : (
+                'Verify OTP'
+              )}
+            </Button>
+
+            <div className="text-center space-y-3">
+              <Button
+                variant="link"
+                onClick={handleResendOTP}
+                disabled={loading}
+                className="text-blue-600 hover:text-blue-700 text-sm font-medium"
+              >
+                Didn't receive OTP? Resend OTP
+              </Button>
+              
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setShowOTP(false);
+                  setOtp('');
+                  setError(null);
+                  setSuccess(null);
+                }}
+                disabled={loading}
+                className="text-gray-600 hover:text-gray-700 text-sm font-medium w-full"
+              >
+                Use different mobile number
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Footer */}
+        <div className="pt-4 border-t border-gray-100">
+          <div className="text-center text-xs text-gray-500 space-y-1">
+            <p>By continuing, you agree to our Terms of Service and Privacy Policy</p>
+            <div className="flex items-center justify-center space-x-1">
+              <Shield className="h-3 w-3 text-green-600" />
+              <span>Secured with enterprise-grade encryption</span>
+            </div>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }

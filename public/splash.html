@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PharmaLynk</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            background-color: #20439f;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        
+        .logo-container {
+            animation: bounce 2s infinite;
+        }
+        
+        .logo {
+            width: 120px;
+            height: 120px;
+            filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.1));
+        }
+        
+        .progress-container {
+            margin-top: 2rem;
+            width: 256px;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background-color: rgba(255, 255, 255, 0.2);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background-color: white;
+            border-radius: 4px;
+            width: 0%;
+            animation: fillProgress 3s ease-in-out forwards;
+        }
+        
+        .progress-text {
+            text-align: center;
+            margin-top: 0.5rem;
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 12px;
+            font-weight: 500;
+        }
+        
+        .loading-dots {
+            margin-top: 1rem;
+            display: flex;
+            gap: 8px;
+        }
+        
+        .dot {
+            width: 12px;
+            height: 12px;
+            background-color: white;
+            border-radius: 50%;
+            animation: pulse 1.5s infinite;
+        }
+        
+        .dot:nth-child(2) {
+            animation-delay: 0.15s;
+        }
+        
+        .dot:nth-child(3) {
+            animation-delay: 0.3s;
+        }
+        
+        .message {
+            margin-top: 1rem;
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 14px;
+            font-weight: 500;
+            animation: pulseText 2s infinite;
+        }
+        
+        @keyframes bounce {
+            0%, 20%, 50%, 80%, 100% {
+                transform: translateY(0);
+            }
+            40% {
+                transform: translateY(-10px);
+            }
+            60% {
+                transform: translateY(-5px);
+            }
+        }
+        
+        @keyframes fillProgress {
+            0% { width: 0%; }
+            50% { width: 70%; }
+            70% { width: 85%; }
+            100% { width: 100%; }
+        }
+        
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.3;
+            }
+        }
+        
+        @keyframes pulseText {
+            0%, 100% {
+                opacity: 0.8;
+            }
+            50% {
+                opacity: 1;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="logo-container">
+        <img src="/logoMain.png" alt="PharmaLynk" class="logo">
+    </div>
+    
+    <div class="progress-container">
+        <div class="progress-bar">
+            <div class="progress-fill"></div>
+        </div>
+        <div class="progress-text">
+            <span id="progress-text">0%</span>
+        </div>
+    </div>
+    
+    <div class="loading-dots">
+        <div class="dot"></div>
+        <div class="dot"></div>
+        <div class="dot"></div>
+    </div>
+    
+    <div class="message" id="loading-message">Loading application...</div>
+    
+    <script>
+        // Simulate loading progress
+        let progress = 0;
+        const progressElement = document.getElementById('progress-text');
+        const messageElement = document.getElementById('loading-message');
+        
+        const messages = [
+            { progress: 10, message: 'Initializing application...' },
+            { progress: 25, message: 'Loading resources...' },
+            { progress: 40, message: 'Checking authentication...' },
+            { progress: 60, message: 'Preparing interface...' },
+            { progress: 80, message: 'Almost ready...' },
+            { progress: 95, message: 'Finalizing setup...' },
+            { progress: 100, message: 'Complete!' }
+        ];
+        
+        let currentMessageIndex = 0;
+        
+        function updateProgress() {
+            if (progress < 100) {
+                progress += Math.random() * 3;
+                if (progress > 100) progress = 100;
+                
+                progressElement.textContent = Math.round(progress) + '%';
+                
+                // Update message based on progress
+                const currentMessage = messages.find(m => m.progress <= progress);
+                if (currentMessage && messages.indexOf(currentMessage) >= currentMessageIndex) {
+                    messageElement.textContent = currentMessage.message;
+                    currentMessageIndex = messages.indexOf(currentMessage);
+                }
+                
+                setTimeout(updateProgress, 100);
+            } else {
+                // Redirect to main app after loading
+                setTimeout(() => {
+                    window.location.href = '/';
+                }, 500);
+            }
+        }
+        
+        // Start loading simulation
+        setTimeout(updateProgress, 500);
+    </script>
+</body>
+</html>

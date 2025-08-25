@@ -343,6 +343,8 @@ export interface AuthUser {
 export interface AuthContextType {
   user: AuthUser | null;
   loading: boolean;
+  loadingProgress?: number;
+  loadingStage?: string;
   login: (email: string, password: string) => Promise<void>;
   signup: (email: string, password: string, displayName?: string, superAdminCode?: string) => Promise<{ user: any; isSuperAdmin: boolean }>;
   logout: () => Promise<void>;

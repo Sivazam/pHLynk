@@ -57,17 +57,32 @@ export default function RootLayout({
         <script
           dangerouslySetInnerHTML={{
             __html: `
-              if ('serviceWorker' in navigator) {
-                window.addEventListener('load', function() {
-                  navigator.serviceWorker.register('/sw.js')
-                    .then(function(registration) {
-                      console.log('ServiceWorker registration successful with scope: ', registration.scope);
-                    })
-                    .catch(function(err) {
-                      console.log('ServiceWorker registration failed: ', err);
-                    });
-                });
-              }
+              // PWA Detection and Loading Screen
+              (function() {
+                // Check if running as PWA (standalone mode)
+                const isPWA = window.matchMedia('(display-mode: standalone)').matches || 
+                             window.navigator.standalone ||
+                             document.referrer.includes('android-app://');
+                
+                // If PWA and first load, redirect to loading screen
+                if (isPWA && !sessionStorage.getItem('pwaLoaded')) {
+                  sessionStorage.setItem('pwaLoaded', 'true');
+                  window.location.href = '/pwa-loading';
+                }
+                
+                // Service Worker Registration
+                if ('serviceWorker' in navigator) {
+                  window.addEventListener('load', function() {
+                    navigator.serviceWorker.register('/sw.js')
+                      .then(function(registration) {
+                        console.log('ServiceWorker registration successful with scope: ', registration.scope);
+                      })
+                      .catch(function(err) {
+                        console.log('ServiceWorker registration failed: ', err);
+                      });
+                  });
+                }
+              })();
             `,
           }}
         />

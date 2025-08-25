@@ -12,8 +12,20 @@ const firebaseConfig = {
   appId: "1:877118992574:web:ca55290c721d1c4b18eeef"
 };
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
+// Initialize Firebase with error handling
+let app;
+try {
+  app = initializeApp(firebaseConfig);
+  console.log('Firebase initialized successfully');
+} catch (error: any) {
+  console.error('Firebase initialization error:', error);
+  // If app already exists, use the existing one
+  if (error?.code === 'app/duplicate-app') {
+    app = initializeApp(firebaseConfig, 'secondary');
+  } else {
+    throw error;
+  }
+}
 
 // Initialize Firebase Authentication and get a reference to the service
 export const auth = getAuth(app);

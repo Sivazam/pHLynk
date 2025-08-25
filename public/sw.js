@@ -1,14 +1,12 @@
-const CACHE_NAME = 'pharmalynk-v1';
+const CACHE_NAME = 'pharmalynk-v2';
 const urlsToCache = [
   '/',
-  '/retailer-login',
-  '/static/js/bundle.js',
-  '/static/js/main.chunk.js',
-  '/static/js/1.chunk.js',
-  '/static/js/2.chunk.js',
-  '/static/css/main.chunk.css',
-  '/favicon.ico',
-  '/logo.svg'
+  '/pwa-loading',
+  '/splash.html',
+  '/logoMain.png',
+  '/icon-192x192.png',
+  '/icon-512x512.png',
+  '/favicon.ico'
 ];
 
 // Install event - cache resources
@@ -31,6 +29,23 @@ self.addEventListener('fetch', event => {
         if (response) {
           return response;
         }
+        
+        // For navigation requests, try to return cached splash screen first
+        if (event.request.mode === 'navigate') {
+          // Check if this is a PWA launch and first load
+          return caches.match('/splash.html').then(splashResponse => {
+            if (splashResponse && shouldShowSplashScreen()) {
+              return splashResponse;
+            }
+            return caches.match('/').then(mainResponse => {
+              if (mainResponse) {
+                return mainResponse;
+              }
+              return fetch(event.request);
+            });
+          });
+        }
+        
         return fetch(event.request).then(
           response => {
             // Check if we received a valid response
@@ -52,6 +67,13 @@ self.addEventListener('fetch', event => {
       })
   );
 });
+
+// Helper function to determine if splash screen should be shown
+function shouldShowSplashScreen() {
+  // This is a simplified check - in a real implementation, 
+  // you might want to check headers or other indicators
+  return true;
+}
 
 // Activate event - clean up old caches
 self.addEventListener('activate', event => {

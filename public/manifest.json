@@ -4,8 +4,8 @@
   "description": "Pharmaceutical Supply Chain Management System",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#ffffff",
+  "background_color": "#20439f",
+  "theme_color": "#20439f",
   "orientation": "portrait-primary",
   "icons": [
     {

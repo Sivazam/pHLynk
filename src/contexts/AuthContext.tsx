@@ -21,6 +21,13 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingProgress, setLoadingProgress] = useState(0);
+  const [loadingStage, setLoadingStage] = useState('Initializing...');
+
+  const updateProgress = (progress: number, stage: string) => {
+    setLoadingProgress(Math.min(progress, 100));
+    setLoadingStage(stage);
+  };
 
   useEffect(() => {
     // Set a timeout to prevent infinite loading state
@@ -28,18 +35,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (loading) {
         console.warn('Auth loading timeout - forcing loading state to false');
         setLoading(false);
+        updateProgress(100, 'Complete');
       }
     }, 10000); // 10 second timeout
 
+    // Initialize progress immediately
+    updateProgress(5, 'Initializing application...');
+    
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: FirebaseUser | null) => {
       clearTimeout(timeoutId); // Clear timeout once auth state changes
       
-      if (firebaseUser) {
-        try {
+      try {
+        updateProgress(15, 'Checking authentication status...');
+        
+        // Small delay for auth state check
+        await new Promise(resolve => setTimeout(resolve, 200));
+        
+        if (firebaseUser) {
+          updateProgress(30, 'Loading user profile...');
+          
+          // Small delay before Firestore call
+          await new Promise(resolve => setTimeout(resolve, 150));
+          
           // Fetch user data from Firestore
           const userDoc = await getDoc(doc(db, COLLECTIONS.USERS, firebaseUser.uid));
           
+          updateProgress(50, 'Validating user permissions...');
+          
+          // Small delay for validation
+          await new Promise(resolve => setTimeout(resolve, 200));
+          
           if (userDoc.exists()) {
+            updateProgress(70, 'Preparing user interface...');
+            
             const userData = userDoc.data() as User;
             const authUser: AuthUser = {
               uid: firebaseUser.uid,
@@ -51,24 +79,57 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               assignedAreas: userData.assignedAreas,
               assignedZips: userData.assignedZips
             };
+            
+            updateProgress(85, 'Setting up dashboard...');
+            
+            // Final delay before completing
+            await new Promise(resolve => setTimeout(resolve, 150));
+            
+            updateProgress(95, 'Almost ready...');
             setUser(authUser);
           } else {
             // User exists in Auth but not in Firestore - this shouldn't happen in our flow
             console.error('User exists in Auth but not in Firestore');
+            updateProgress(90, 'Setting up guest access...');
             setUser(null);
           }
-        } catch (error) {
-          console.error('Error fetching user data:', error);
+        } else {
+          updateProgress(40, 'Preparing guest interface...');
+          
+          // Delay for non-authenticated user setup
+          await new Promise(resolve => setTimeout(resolve, 200));
+          
+          updateProgress(70, 'Loading welcome screen...');
+          await new Promise(resolve => setTimeout(resolve, 150));
+          
+          updateProgress(90, 'Finalizing setup...');
           setUser(null);
         }
-      } else {
+        
+        // Final completion
+        await new Promise(resolve => setTimeout(resolve, 100));
+        updateProgress(100, 'Complete');
+      } catch (error) {
+        console.error('Error fetching user data:', error);
+        updateProgress(90, 'Recovering from error...');
+        await new Promise(resolve => setTimeout(resolve, 200));
         setUser(null);
+        updateProgress(100, 'Complete');
       }
+      
       setLoading(false);
     });
 
+    // Set up a fallback progress mechanism in case Firebase doesn't respond
+    const fallbackProgress = setInterval(() => {
+      if (loading && loadingProgress < 50) {
+        updateProgress(Math.min(loadingProgress + 10, 50), 'Connecting to services...');
+      }
+    }, 2000);
+
     return () => {
       clearTimeout(timeoutId);
+      clearInterval(fallbackProgress);
       unsubscribe();
     };
   }, []);
@@ -117,6 +178,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const value: AuthContextType = {
     user,
     loading,
+    loadingProgress,
+    loadingStage,
     login,
     signup,
     logout,
