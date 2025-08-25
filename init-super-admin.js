@@ -5,7 +5,7 @@ const { initializeSuperAdmin } = require('./src/lib/init-super-admin.ts');
 initializeSuperAdmin()
   .then(() => {
     console.log('✅ Super admin initialized successfully!');
-    console.log('📧 Email: superadmin@pharmalynk.com');
+    console.log('📧 Email: superadmin@PharmaLync.com');
     console.log('🔑 Password: SuperAdmin123!');
     process.exit(0);
   })

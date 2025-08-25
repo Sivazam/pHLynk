@@ -1,4 +1,4 @@
-# PharmaLynk OTP System - Retailer Dashboard Implementation
+# PharmaLync OTP System - Retailer Dashboard Implementation
 
 ## ✅ **IMPLEMENTATION COMPLETE**
 
@@ -116,7 +116,7 @@ setShowSettlementPopup(true) - Shows settlement popup
 1. **Login as Line Worker**
 2. **Select a Retailer** → Click "Collect Payment"
 3. **Enter Amount** → Click "Proceed to OTP"
-4. **Check Console** → Look for 🔥🔥🔥 PHARMALYNK OTP SYSTEM
+4. **Check Console** → Look for 🔥🔥🔥 PharmaLync OTP SYSTEM
 5. **Copy 6-digit OTP** → Enter it in verification field
 6. **Complete Payment** → Should show success message
 
@@ -130,7 +130,7 @@ setShowSettlementPopup(true) - Shows settlement popup
 
 ### **3. Console Output:**
 ```
-🔥🔥🔥 PHARMALYNK OTP SYSTEM 🔥🔥🔥
+🔥🔥🔥 PharmaLync OTP SYSTEM 🔥🔥🔥
 📱 SENDING OTP TO RETAILER:
 🎯🎯🎯 YOUR OTP IS: 🎯🎯🎯
 🔐 123456 🔐

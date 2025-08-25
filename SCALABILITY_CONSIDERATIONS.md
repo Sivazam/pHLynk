@@ -77,7 +77,7 @@
 setInterval(() => checkActiveOTPs(), 5000);
 
 // Improved: WebSocket-based real-time updates
-const socket = io('wss://api.pharmalynk.com');
+const socket = io('wss://api.PharmaLync.com');
 socket.on('otp-update', (data) => {
   updateOTPDashboard(data);
 });

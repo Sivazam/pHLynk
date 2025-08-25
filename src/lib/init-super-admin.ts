@@ -11,7 +11,7 @@ import { createUserWithEmailAndPassword } from 'firebase/auth';
 export async function initializeSuperAdmin() {
   try {
     const superAdminData = {
-      email: 'superadmin@pharmalynk.com',
+      email: 'superadmin@PharmaLync.com',
       password: 'SuperAdmin123!',
       displayName: 'Super Admin',
       phone: '+1234567890'

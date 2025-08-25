@@ -4,14 +4,14 @@ This guide will help you set up Firebase Phone Authentication for sending real O
 
 ## Prerequisites
 
-1. **Firebase Project** - Already created at `pharmalynkk.firebaseapp.com`
+1. **Firebase Project** - Already created at `PharmaLynck.firebaseapp.com`
 2. **Firebase Phone Authentication** - Must be enabled in Firebase Console
 3. **Node.js Environment** - For environment variables
 
 ## Step 1: Enable Phone Authentication in Firebase
 
 1. Go to [Firebase Console](https://console.firebase.google.com/)
-2. Select your project: `pharmalynkk`
+2. Select your project: `PharmaLynck`
 3. Go to **Authentication** → **Sign-in method**
 4. Click on **Phone** under "Sign-in providers"
 5. Enable the phone authentication provider
@@ -40,9 +40,9 @@ The Firebase configuration is already set up in `/src/lib/firebase.ts`:
 ```javascript
 const firebaseConfig = {
   apiKey: "AIzaSyAiuROMuOXyBTQ2tAn_7lCk8qBsKLcKBds",
-  authDomain: "pharmalynkk.firebaseapp.com",
-  projectId: "pharmalynkk",
-  storageBucket: "pharmalynkk.firebasestorage.app",
+  authDomain: "PharmaLynck.firebaseapp.com",
+  projectId: "PharmaLynck",
+  storageBucket: "PharmaLynck.firebasestorage.app",
   messagingSenderId: "877118992574",
   appId: "1:877118992574:web:ca55290c721d1c4b18eeef"
 };
@@ -156,8 +156,8 @@ When deploying to production:
 ## Firebase Console Links
 
 - **Firebase Console**: https://console.firebase.google.com/
-- **Authentication Settings**: https://console.firebase.google.com/project/pharmalynkk/authentication
-- **Phone Authentication**: https://console.firebase.google.com/project/pharmalynkk/authentication/providers
+- **Authentication Settings**: https://console.firebase.google.com/project/PharmaLynck/authentication
+- **Phone Authentication**: https://console.firebase.google.com/project/PharmaLynck/authentication/providers
 
 ## API Reference
 

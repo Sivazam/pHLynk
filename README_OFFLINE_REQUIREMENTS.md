@@ -392,7 +392,7 @@ async function encryptData(data, password) {
   const key = await crypto.subtle.deriveKey(
     {
       name: 'PBKDF2',
-      salt: encoder.encode('pharmalynk-salt'),
+      salt: encoder.encode('PharmaLync-salt'),
       iterations: 100000,
       hash: 'SHA-256'
     },

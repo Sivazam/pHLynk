@@ -74,7 +74,7 @@ export function SignupForm({ onToggleMode }: SignupFormProps) {
           Create Account
         </CardTitle>
         <CardDescription className="text-center text-gray-600">
-          Join PharmaLynk to streamline your pharmaceutical supply chain
+          Join PharmaLync to streamline your pharmaceutical supply chain
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">

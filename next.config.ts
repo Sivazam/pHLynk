@@ -9,8 +9,15 @@ const nextConfig: NextConfig = {
   eslint: {
     ignoreDuringBuilds: false,
   },
+  domains: ['images.unsplash.com', 'localhost'],
+
   images: {
-    domains: ['localhost'],
+     remotePatterns: [
+    {
+      protocol: 'https',
+      hostname: '**', // This wildcard allows all HTTPS hostnames including Unsplash
+    },
+    ],
   },
   // Allow development origins for Firebase reCAPTCHA
   allowedDevOrigins: [

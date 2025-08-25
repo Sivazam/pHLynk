@@ -81,7 +81,7 @@ export default function InitPage() {
           </div>
           <CardTitle>Super Admin Registration</CardTitle>
           <CardDescription>
-            Create the first super admin account for PharmaLynk
+            Create the first super admin account for PharmaLync
           </CardDescription>
         </CardHeader>
         <CardContent>

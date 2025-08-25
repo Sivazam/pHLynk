@@ -8,7 +8,7 @@ export async function GET(request: NextRequest) {
       success: true, 
       message: 'Super admin created successfully',
       credentials: {
-        email: 'superadmin@pharmalynk.com',
+        email: 'superadmin@PharmaLync.com',
         password: 'SuperAdmin123!'
       }
     });

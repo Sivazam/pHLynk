@@ -33,13 +33,13 @@ export function AuthComponent({ onShowRoleSelection }: AuthComponentProps) {
         {/* Brand Header */}
         <div className="text-center mb-8">
           <div className="flex justify-center mb-4">
-            <div className="relative w-20 h-20 bg-gradient-to-br from-blue-600 to-green-600 rounded-2xl flex items-center justify-center shadow-lg">
+            <div className="relative w-20 h-20 rounded-2xl flex items-center justify-center shadow-lg">
               <Image 
                 src="/logo.png" 
                 alt="pHLynk Logo" 
                 width={60}
                 height={60}
-                className="drop-shadow-lg"
+                className="drop-shadow-lg rounded"
               />
             </div>
           </div>
@@ -47,7 +47,7 @@ export function AuthComponent({ onShowRoleSelection }: AuthComponentProps) {
             PharmaLync
           </h1>
           <p className="text-gray-600 mt-2 text-sm">
-            PharmaLynk - Pharmaceutical Supply Chain Solutions
+            PharmaLync - Professional Medical Distribution Platfor
           </p>
         </div>
 

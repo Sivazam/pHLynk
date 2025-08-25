@@ -26,7 +26,7 @@ export class SimpleSMSService {
       const formattedPhone = phoneNumber.startsWith('+') ? phoneNumber : `+91${phoneNumber}`;
       
       // Create OTP message
-      const message = `Your PharmaLynk OTP is: ${otp}. This OTP is valid for 10 minutes. Please do not share this OTP with anyone.`;
+      const message = `Your PharmaLync OTP is: ${otp}. This OTP is valid for 10 minutes. Please do not share this OTP with anyone.`;
 
       // Check if Twilio is configured
       if (!this.config.accountSid || !this.config.authToken || !this.config.twilioPhoneNumber) {

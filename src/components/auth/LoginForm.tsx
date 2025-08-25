@@ -72,7 +72,7 @@ export function LoginForm({ onToggleMode, onResetPassword, onShowRoleSelection }
           Welcome Back
         </CardTitle>
         <CardDescription className="text-center text-gray-600">
-          Sign in to access your PharmaLynk account
+          Sign in to access your PharmaLync account
         </CardDescription>
         
         {/* Retailer Login Notice */}
@@ -150,11 +150,11 @@ export function LoginForm({ onToggleMode, onResetPassword, onShowRoleSelection }
             <span className="w-full border-t border-gray-300" />
           </div>
           <div className="relative flex justify-center text-xs uppercase">
-            <span className="bg-white px-2 text-gray-500">Or continue with</span>
+            <span className="bg-white px-2 text-gray-500">Or Need Help</span>
           </div>
         </div>
 
-        <Button 
+        {/* <Button 
           variant="outline" 
           className="w-full border-gray-300 hover:bg-gray-50 font-medium"
           onClick={handleGoogleLogin}
@@ -162,7 +162,7 @@ export function LoginForm({ onToggleMode, onResetPassword, onShowRoleSelection }
         >
           <Chrome className="mr-2 h-4 w-4" />
           Sign in with Google
-        </Button>
+        </Button> */}
 
         <div className="text-center space-y-3">
           <button
@@ -173,7 +173,7 @@ export function LoginForm({ onToggleMode, onResetPassword, onShowRoleSelection }
             Forgot your password?
           </button>
           
-          <div className="text-sm text-gray-600">
+          {/* <div className="text-sm text-gray-600">
             Don't have an account?{' '}
             <button
               type="button"
@@ -182,7 +182,7 @@ export function LoginForm({ onToggleMode, onResetPassword, onShowRoleSelection }
             >
               Create account
             </button>
-          </div>
+          </div> */}
           
           <div className="pt-4 border-t border-gray-200 space-y-2">
             {/* Retailer Login Button */}
@@ -197,7 +197,7 @@ export function LoginForm({ onToggleMode, onResetPassword, onShowRoleSelection }
             </Link>
             
             {/* Other Roles Button */}
-            {onShowRoleSelection && (
+            {/* {onShowRoleSelection && (
               <Button
                 variant="outline"
                 className="w-full border-gray-300 hover:bg-gray-50 font-medium"
@@ -206,7 +206,7 @@ export function LoginForm({ onToggleMode, onResetPassword, onShowRoleSelection }
                 <Store className="mr-2 h-4 w-4" />
                 Other Roles (Line Worker, Admin)
               </Button>
-            )}
+            )} */}
             
             {/* Super Admin Registration */}
             <Link href="/init" className="inline-flex items-center text-sm text-blue-600 hover:text-blue-700 font-medium transition-colors">

@@ -1,4 +1,4 @@
-# PharmaLynk OTP System Fix & SMS Notifications Implementation
+# PharmaLync OTP System Fix & SMS Notifications Implementation
 
 ## ✅ Issues Fixed
 
@@ -44,7 +44,7 @@ TWILIO_PHONE_NUMBER=+1234567890
 3. **Set up OTP Verification (Recommended)**
    - Go to Twilio Verify in the console
    - Create a new Verification Service
-   - Choose a friendly name (e.g., "PharmaLynk OTP")
+   - Choose a friendly name (e.g., "PharmaLync OTP")
    - Copy the Service SID (starts with VA...)
    - Set this as `TWILIO_VERIFICATION_SERVICE_SID`
 
@@ -68,13 +68,13 @@ TWILIO_PHONE_NUMBER=+1234567890
 #### 1. Wholesale User Notification
 When a payment is completed, the wholesale user receives:
 ```
-PharmaLynk Payment Alert: ₹5,000 paid by Medical Store ABC to John Doe. Pending amount: ₹15,000. Payment ID: pay_123456
+PharmaLync Payment Alert: ₹5,000 paid by Medical Store ABC to John Doe. Pending amount: ₹15,000. Payment ID: pay_123456
 ```
 
 #### 2. Retailer Notification
 When a payment is completed, the retailer receives:
 ```
-PharmaLynk Payment Confirmation: You have successfully paid ₹5,000. Your pending amount is now ₹15,000. Payment ID: pay_123456
+PharmaLync Payment Confirmation: You have successfully paid ₹5,000. Your pending amount is now ₹15,000. Payment ID: pay_123456
 ```
 
 #### 3. Automatic Data Retrieval
@@ -88,7 +88,7 @@ PharmaLynk Payment Confirmation: You have successfully paid ₹5,000. Your pendi
 
 ### 1. OTP Testing (Current Demo Mode)
 1. Initiate a payment from the Line Worker Dashboard
-2. Check the console for OTP output (look for 🔥🔥🔥 PHARMALYNK OTP SYSTEM)
+2. Check the console for OTP output (look for 🔥🔥🔥 PharmaLync OTP SYSTEM)
 3. Use the displayed 6-digit OTP to complete verification
 4. Check console logs for detailed debugging information
 

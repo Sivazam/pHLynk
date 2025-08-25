@@ -16,27 +16,27 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "PharmaLynk - Pharmaceutical Management System",
+  title: "PharmaLync - Pharmaceutical Management System",
   description: "Modern pharmaceutical management system built with Firebase authentication and Firestore database. Manage products, inventory, and user accounts securely.",
-  keywords: ["PharmaLynk", "Pharmacy", "Medical", "Inventory", "Firebase", "Next.js", "TypeScript"],
-  authors: [{ name: "PharmaLynk Team" }],
+  keywords: ["PharmaLync", "Pharmacy", "Medical", "Inventory", "Firebase", "Next.js", "TypeScript"],
+  authors: [{ name: "PharmaLync Team" }],
   openGraph: {
-    title: "PharmaLynk - Pharmaceutical Management",
+    title: "PharmaLync - Pharmaceutical Management",
     description: "Comprehensive pharmacy management system with modern web technologies",
-    url: "https://pharmalynkk.firebaseapp.com",
-    siteName: "PharmaLynk",
+    url: "https://PharmaLynck.firebaseapp.com",
+    siteName: "PharmaLync",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "PharmaLynk - Pharmaceutical Management System",
+    title: "PharmaLync - Pharmaceutical Management System",
     description: "Comprehensive pharmacy management system with modern web technologies",
   },
   manifest: "/manifest.json",
   other: {
     "apple-mobile-web-app-capable": "yes",
     "apple-mobile-web-app-status-bar-style": "default",
-    "apple-mobile-web-app-title": "PharmaLynk",
+    "apple-mobile-web-app-title": "PharmaLync",
     "format-detection": "telephone=no",
   },
 };
@@ -61,7 +61,7 @@ export default function RootLayout({
               // PWA Detection and Loading Screen with Cache Busting
               (function() {
                 // Version identifier for cache busting
-                const APP_VERSION = 'pharmalynk-v3-' + Date.now();
+                const APP_VERSION = 'PharmaLync-v3-' + Date.now();
                 
                 // Check if running as PWA (standalone mode)
                 const isPWA = window.matchMedia('(display-mode: standalone)').matches || 
@@ -78,14 +78,14 @@ export default function RootLayout({
                 if ('serviceWorker' in navigator) {
                   window.addEventListener('load', function() {
                     // Check for version mismatch and force update if needed
-                    const storedVersion = localStorage.getItem('pharmalynk-version');
+                    const storedVersion = localStorage.getItem('PharmaLync-version');
                     if (storedVersion && storedVersion !== APP_VERSION) {
                       // Force clear old caches and update service worker
                       if ('caches' in window) {
                         caches.keys().then(cacheNames => {
                           return Promise.all(
                             cacheNames.map(cacheName => {
-                              if (cacheName.startsWith('pharmalynk-')) {
+                              if (cacheName.startsWith('PharmaLync-')) {
                                 return caches.delete(cacheName);
                               }
                             })
@@ -107,7 +107,7 @@ export default function RootLayout({
                     }
                     
                     // Store current version
-                    localStorage.setItem('pharmalynk-version', APP_VERSION);
+                    localStorage.setItem('PharmaLync-version', APP_VERSION);
                   });
                 }
                 
@@ -160,7 +160,7 @@ export default function RootLayout({
                 // Debug function to force update (remove in production)
                 window.addEventListener('keydown', function(e) {
                   if (e.ctrlKey && e.shiftKey && e.key === 'U') {
-                    localStorage.removeItem('pharmalynk-version');
+                    localStorage.removeItem('PharmaLync-version');
                     window.forceCacheBust();
                     logger.info('Manual cache bust triggered', {}, { context: 'Debug' });
                   }

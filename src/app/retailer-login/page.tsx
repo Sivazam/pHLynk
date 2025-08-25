@@ -156,7 +156,7 @@ export default function RetailerLoginPage() {
 
               {/* Benefits Section */}
               <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-6 border border-blue-100">
-                <h3 className="text-lg font-semibold text-gray-900 mb-3">Why Choose PharmaLynk?</h3>
+                <h3 className="text-lg font-semibold text-gray-900 mb-3">Why Choose PharmaLync?</h3>
                 <div className="space-y-3">
                   <div className="flex items-center space-x-3">
                     <div className="flex-shrink-0">

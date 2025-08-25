@@ -71,7 +71,7 @@ export async function sendSMSNotification(notification: SMSNotification): Promis
 }
 
 export function generateWholesaleUserNotification(paymentDetails: PaymentDetails): SMSNotification {
-  const message = `PharmaLynk Payment Alert: ₹${paymentDetails.amount.toLocaleString()} paid by ${paymentDetails.retailerName} to ${paymentDetails.lineWorkerName}. Pending amount: ₹${paymentDetails.pendingAmount.toLocaleString()}. Payment ID: ${paymentDetails.paymentId}`;
+  const message = `PharmaLync Payment Alert: ₹${paymentDetails.amount.toLocaleString()} paid by ${paymentDetails.retailerName} to ${paymentDetails.lineWorkerName}. Pending amount: ₹${paymentDetails.pendingAmount.toLocaleString()}. Payment ID: ${paymentDetails.paymentId}`;
   
   return {
     to: '', // This will be set when we have the wholesale user's phone
@@ -80,7 +80,7 @@ export function generateWholesaleUserNotification(paymentDetails: PaymentDetails
 }
 
 export function generateRetailerNotification(paymentDetails: PaymentDetails): SMSNotification {
-  const message = `PharmaLynk Payment Confirmation: You have successfully paid ₹${paymentDetails.amount.toLocaleString()}. Your pending amount is now ₹${paymentDetails.pendingAmount.toLocaleString()}. Payment ID: ${paymentDetails.paymentId}`;
+  const message = `PharmaLync Payment Confirmation: You have successfully paid ₹${paymentDetails.amount.toLocaleString()}. Your pending amount is now ₹${paymentDetails.pendingAmount.toLocaleString()}. Payment ID: ${paymentDetails.paymentId}`;
   
   return {
     to: '', // This will be set when we have the retailer's phone
