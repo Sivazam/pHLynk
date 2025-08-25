@@ -2,8 +2,6 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
-import { AuthProvider } from "@/contexts/AuthContext";
-import { logger } from "@/lib/logger";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -16,28 +14,21 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "PharmaLynk - Pharmaceutical Management System",
-  description: "Modern pharmaceutical management system built with Firebase authentication and Firestore database. Manage products, inventory, and user accounts securely.",
-  keywords: ["PharmaLynk", "Pharmacy", "Medical", "Inventory", "Firebase", "Next.js", "TypeScript"],
-  authors: [{ name: "PharmaLynk Team" }],
+  title: "Z.ai Code Scaffold - AI-Powered Development",
+  description: "Modern Next.js scaffold optimized for AI-powered development with Z.ai. Built with TypeScript, Tailwind CSS, and shadcn/ui.",
+  keywords: ["Z.ai", "Next.js", "TypeScript", "Tailwind CSS", "shadcn/ui", "AI development", "React"],
+  authors: [{ name: "Z.ai Team" }],
   openGraph: {
-    title: "PharmaLynk - Pharmaceutical Management",
-    description: "Comprehensive pharmacy management system with modern web technologies",
-    url: "https://pharmalynkk.firebaseapp.com",
-    siteName: "PharmaLynk",
+    title: "Z.ai Code Scaffold",
+    description: "AI-powered development with modern React stack",
+    url: "https://chat.z.ai",
+    siteName: "Z.ai",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "PharmaLynk - Pharmaceutical Management System",
-    description: "Comprehensive pharmacy management system with modern web technologies",
-  },
-  manifest: "/manifest.json",
-  other: {
-    "apple-mobile-web-app-capable": "yes",
-    "apple-mobile-web-app-status-bar-style": "default",
-    "apple-mobile-web-app-title": "PharmaLynk",
-    "format-detection": "telephone=no",
+    title: "Z.ai Code Scaffold",
+    description: "AI-powered development with modern React stack",
   },
 };
 
@@ -51,42 +42,8 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}
       >
-        <AuthProvider>
-          {children}
-        </AuthProvider>
+        {children}
         <Toaster />
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-              // PWA Detection and Loading Screen
-              (function() {
-                // Check if running as PWA (standalone mode)
-                const isPWA = window.matchMedia('(display-mode: standalone)').matches || 
-                             window.navigator.standalone ||
-                             document.referrer.includes('android-app://');
-                
-                // If PWA and first load, redirect to loading screen
-                if (isPWA && !sessionStorage.getItem('pwaLoaded')) {
-                  sessionStorage.setItem('pwaLoaded', 'true');
-                  window.location.href = '/pwa-loading';
-                }
-                
-                // Service Worker Registration
-                if ('serviceWorker' in navigator) {
-                  window.addEventListener('load', function() {
-                    navigator.serviceWorker.register('/sw.js')
-                      .then(function(registration) {
-                        logger.success('ServiceWorker registration successful', { scope: registration.scope }, { context: 'PWA' });
-                      })
-                      .catch(function(err) {
-                        logger.error('ServiceWorker registration failed', err, { context: 'PWA' });
-                      });
-                  });
-                }
-              })();
-            `,
-          }}
-        />
       </body>
     </html>
   );

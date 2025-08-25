@@ -31,25 +31,26 @@ export function AuthComponent({ onShowRoleSelection }: AuthComponentProps) {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-white to-green-50 py-12 px-4 sm:px-6 lg:px-8">
       <div className="w-full max-w-md">
         {/* Brand Header */}
-        <div className="text-center mb-8">
-          <div className="flex justify-center mb-4">
-            <div className="relative w-20 h-20 bg-gradient-to-br from-blue-600 to-green-600 rounded-2xl flex items-center justify-center shadow-lg">
-              <Image 
-                src="/logo.png" 
-                alt="pHLynk Logo" 
-                width={60}
-                height={60}
-                className="drop-shadow-lg"
-              />
-            </div>
+       <div className="text-center mb-8">
+        <div className="flex items-center justify-center mb-4 space-x-3">
+          <div className="relative w-16 h-16 flex items-center justify-center">
+            <Image 
+              src="/logo.png" 
+              alt="pHLynk Logo" 
+              width={60}
+              height={60}
+              className="drop-shadow-lg"
+            />
           </div>
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent">
-            PharmaLync
+          <h1 className="text-3xl font-bold">
+            <span style={{ color: '#1f449d' }}>Pharma</span>
+            <span style={{ color: '#008733' }}>Lync</span>
           </h1>
-          <p className="text-gray-600 mt-2 text-sm">
-            PharmaLynk - Pharmaceutical Supply Chain Solutions
-          </p>
         </div>
+        <p className="text-gray-600 mt-2 text-sm">
+          PharmaLynk - Pharmaceutical Supply Chain Solutions
+        </p>
+      </div>
 
         {/* Auth Forms */}
         {mode === 'login' && (
