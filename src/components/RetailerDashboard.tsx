@@ -131,6 +131,98 @@ export function RetailerDashboard() {
 
   const [activeNav, setActiveNav] = useState('overview');
 
+  // Helper functions to get additional data
+  const [wholesalerNames, setWholesalerNames] = useState<Record<string, string>>({});
+  const [lineWorkerNames, setLineWorkerNames] = useState<Record<string, string>>({});
+
+  // Get wholesaler/tenant name by tenantId
+  const getWholesalerName = async (tenantId: string): Promise<string> => {
+    if (wholesalerNames[tenantId]) {
+      return wholesalerNames[tenantId];
+    }
+    
+    try {
+      const tenantDoc = await getDoc(doc(db, 'tenants', tenantId));
+      if (tenantDoc.exists()) {
+        const tenantData = tenantDoc.data();
+        const name = tenantData.name || 'Unknown Wholesaler';
+        setWholesalerNames(prev => ({ ...prev, [tenantId]: name }));
+        return name;
+      }
+    } catch (error) {
+      console.error('Error fetching wholesaler name:', error);
+    }
+    
+    return 'Unknown Wholesaler';
+  };
+
+  // Get line worker name by userId
+  const getLineWorkerName = async (lineWorkerId: string): Promise<string> => {
+    if (lineWorkerNames[lineWorkerId]) {
+      return lineWorkerNames[lineWorkerId];
+    }
+    
+    try {
+      const userDoc = await getDoc(doc(db, 'users', lineWorkerId));
+      if (userDoc.exists()) {
+        const userData = userDoc.data();
+        const name = userData.displayName || userData.email || 'Unknown Line Worker';
+        setLineWorkerNames(prev => ({ ...prev, [lineWorkerId]: name }));
+        return name;
+      }
+    } catch (error) {
+      console.error('Error fetching line worker name:', error);
+    }
+    
+    return 'Unknown Line Worker';
+  };
+
+  // Calculate remaining days from due date
+  const calculateRemainingDays = (dueDate: any): number => {
+    if (!dueDate) return 0;
+    
+    const due = dueDate.toDate();
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Set to start of day
+    due.setHours(0, 0, 0, 0); // Set to start of day
+    
+    const diffTime = due.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    return diffDays;
+  };
+
+  // Load all necessary data
+  const loadAdditionalData = async () => {
+    if (!tenantId || !invoices.length && !payments.length) return;
+    
+    // Get unique tenantIds and lineWorkerIds
+    const uniqueTenantIds = new Set<string>();
+    const uniqueLineWorkerIds = new Set<string>();
+    
+    // Add tenantId from invoices
+    if (tenantId) {
+      uniqueTenantIds.add(tenantId);
+    }
+    
+    // Add lineWorkerIds from payments
+    payments.forEach(payment => {
+      if (payment.lineWorkerId) {
+        uniqueLineWorkerIds.add(payment.lineWorkerId);
+      }
+    });
+    
+    // Fetch wholesaler names
+    for (const tenantId of uniqueTenantIds) {
+      await getWholesalerName(tenantId);
+    }
+    
+    // Fetch line worker names
+    for (const lineWorkerId of uniqueLineWorkerIds) {
+      await getLineWorkerName(lineWorkerId);
+    }
+  };
+
   useEffect(() => {
     const storedRetailerId = localStorage.getItem('retailerId');
     if (storedRetailerId) {
@@ -156,6 +248,13 @@ export function RetailerDashboard() {
       }
     };
   }, []);
+
+  // Load additional data when payments or invoices change
+  useEffect(() => {
+    if (payments.length > 0 || invoices.length > 0) {
+      loadAdditionalData();
+    }
+  }, [payments, invoices]);
 
   const fetchRetailerData = async (retailerId: string) => {
     setError(null);
@@ -285,6 +384,9 @@ export function RetailerDashboard() {
       setInvoices(invoicesData);
       setRetailerUser(retailerUserData);
       setTenantId(retailerUserData.tenantId);
+      
+      // Load additional data (wholesaler and line worker names)
+      loadAdditionalData();
       
       console.log('Final retailer data:', retailerData);
       console.log('Payments loaded:', paymentsData.length);
@@ -834,17 +936,15 @@ export function RetailerDashboard() {
                   <TableHead className="text-xs sm:text-sm">Issue Date</TableHead>
                   <TableHead className="text-xs sm:text-sm">Due Date</TableHead>
                   <TableHead className="text-xs sm:text-sm text-right">Total Amount</TableHead>
-                  <TableHead className="text-xs sm:text-sm text-right">Paid Amount</TableHead>
-                  <TableHead className="text-xs sm:text-sm text-right">Balance</TableHead>
+                  <TableHead className="text-xs sm:text-sm">Wholesaler Name</TableHead>
+                  <TableHead className="text-xs sm:text-sm text-right">Remaining Days</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {invoices.map((invoice) => {
                   const status = calculateInvoiceStatus(invoice, payments);
-                  const paidAmount = payments
-                    .filter(p => p.state === 'COMPLETED')
-                    .reduce((sum, p) => sum + p.totalPaid, 0);
-                  const balance = invoice.totalAmount - paidAmount;
+                  const remainingDays = calculateRemainingDays(invoice.dueDate);
+                  const wholesalerName = wholesalerNames[tenantId || ''] || 'Loading...';
                   
                   return (
                     <TableRow key={invoice.id}>
@@ -852,10 +952,10 @@ export function RetailerDashboard() {
                       <TableCell className="text-xs sm:text-sm">{formatTimestamp(invoice.issueDate)}</TableCell>
                       <TableCell className="text-xs sm:text-sm">{formatTimestamp(invoice.dueDate)}</TableCell>
                       <TableCell className="text-right text-xs sm:text-sm">{formatCurrency(invoice.totalAmount)}</TableCell>
-                      <TableCell className="text-right text-xs sm:text-sm">{formatCurrency(paidAmount)}</TableCell>
+                      <TableCell className="text-xs sm:text-sm">{wholesalerName}</TableCell>
                       <TableCell className="text-right text-xs sm:text-sm">
-                        <span className={balance > 0 ? 'text-red-600 font-medium' : 'text-green-600'}>
-                          {formatCurrency(balance)}
+                        <span className={remainingDays < 0 ? 'text-red-600 font-medium' : remainingDays <= 3 ? 'text-yellow-600 font-medium' : 'text-green-600'}>
+                          {remainingDays < 0 ? `${remainingDays} days` : `${remainingDays} days`}
                         </span>
                       </TableCell>
                     </TableRow>
@@ -929,7 +1029,8 @@ export function RetailerDashboard() {
                       <TableHeader>
                         <TableRow>
                           <TableHead>Date</TableHead>
-                          <TableHead>Line Worker</TableHead>
+                          <TableHead>Line Worker Name</TableHead>
+                          <TableHead>Wholesaler Name</TableHead>
                           <TableHead>Amount</TableHead>
                           <TableHead>Method</TableHead>
                           <TableHead>Status</TableHead>
@@ -939,7 +1040,8 @@ export function RetailerDashboard() {
                         {completedPayments.map((payment) => (
                           <TableRow key={payment.id}>
                             <TableCell>{formatTimestampWithTime(payment.createdAt)}</TableCell>
-                            <TableCell>{retailerUser?.name || 'Unknown'}</TableCell>
+                            <TableCell>{lineWorkerNames[payment.lineWorkerId] || 'Loading...'}</TableCell>
+                            <TableCell>{wholesalerNames[payment.tenantId] || 'Loading...'}</TableCell>
                             <TableCell>
                               <div className="text-right">
                                 <div className="font-medium">{formatCurrency(payment.totalPaid)}</div>
@@ -977,7 +1079,8 @@ export function RetailerDashboard() {
                       <TableHeader>
                         <TableRow>
                           <TableHead>Date</TableHead>
-                          <TableHead>Line Worker</TableHead>
+                          <TableHead>Line Worker Name</TableHead>
+                          <TableHead>Wholesaler Name</TableHead>
                           <TableHead>Amount</TableHead>
                           <TableHead>Method</TableHead>
                           <TableHead>Status</TableHead>
@@ -987,7 +1090,8 @@ export function RetailerDashboard() {
                         {pendingCancelledPayments.map((payment) => (
                           <TableRow key={payment.id}>
                             <TableCell>{formatTimestampWithTime(payment.createdAt)}</TableCell>
-                            <TableCell>{retailerUser?.name || 'Unknown'}</TableCell>
+                            <TableCell>{lineWorkerNames[payment.lineWorkerId] || 'Loading...'}</TableCell>
+                            <TableCell>{wholesalerNames[payment.tenantId] || 'Loading...'}</TableCell>
                             <TableCell>
                               <div className="text-right">
                                 <div className="font-medium">{formatCurrency(payment.totalPaid)}</div>
@@ -1039,17 +1143,24 @@ export function RetailerDashboard() {
         icon: FileText,
         color: 'text-blue-600'
       })),
-      ...payments.map(payment => ({
-        id: `payment_${payment.id}`,
-        type: 'payment',
-        title: payment.state === 'COMPLETED' ? 'Payment Completed' : 'Payment Initiated',
-        description: `${payment.method} payment of ${formatCurrency(payment.totalPaid)}`,
-        timestamp: payment.createdAt.toDate(),
-        amount: payment.totalPaid,
-        status: payment.state,
-        icon: payment.state === 'COMPLETED' ? CheckCircle : Clock,
-        color: payment.state === 'COMPLETED' ? 'text-green-600' : 'text-yellow-600'
-      }))
+      ...payments.map(payment => {
+        const lineWorkerName = lineWorkerNames[payment.lineWorkerId] || 'Loading...';
+        const wholesalerName = wholesalerNames[payment.tenantId] || 'Loading...';
+        const collectedBy = `Payment collected by ${lineWorkerName} from ${wholesalerName}`;
+        
+        return {
+          id: `payment_${payment.id}`,
+          type: 'payment',
+          title: payment.state === 'COMPLETED' ? 'Payment Completed' : 'Payment Initiated',
+          description: `${payment.method} payment of ${formatCurrency(payment.totalPaid)}`,
+          timestamp: payment.createdAt.toDate(),
+          amount: payment.totalPaid,
+          status: payment.state,
+          collectedBy: collectedBy,
+          icon: payment.state === 'COMPLETED' ? CheckCircle : Clock,
+          color: payment.state === 'COMPLETED' ? 'text-green-600' : 'text-yellow-600'
+        };
+      })
     ].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
 
     return (
@@ -1149,6 +1260,12 @@ export function RetailerDashboard() {
                     <div className="text-sm text-gray-600 mt-1">
                       {activity.description}
                     </div>
+                    {/* Show collected by information for payment activities */}
+                    {activity.type === 'payment' && activity.collectedBy && (
+                      <div className="text-sm text-blue-600 mt-1">
+                        {activity.collectedBy}
+                      </div>
+                    )}
                     <div className="flex items-center space-x-4 mt-2">
                       <div className="text-sm font-medium">
                         Amount: {formatCurrency(activity.amount)}
