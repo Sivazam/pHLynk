@@ -1798,7 +1798,7 @@ export function SuperAdminDashboard() {
       />
 
       {/* Main Content */}
-      <main className="flex-1 p-3 sm:p-4 lg:p-6 overflow-y-auto pb-20 lg:pb-6">
+      <main className="flex-1 pt-16 p-3 sm:p-4 lg:p-6 overflow-y-auto pb-20 lg:pb-6">
         {/* Header with refresh */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4 sm:mb-6">
           <div className="flex-1 min-w-0">

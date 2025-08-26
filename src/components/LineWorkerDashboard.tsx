@@ -1714,7 +1714,7 @@ export function LineWorkerDashboard() {
       />
 
       {/* Main Content */}
-      <main className="flex-1 p-3 sm:p-4 lg:p-6 overflow-y-auto pb-20 lg:pb-6">
+      <main className="flex-1 pt-16 p-3 sm:p-4 lg:p-6 overflow-y-auto pb-20 lg:pb-6">
         {error && (
           <Alert variant="destructive" className="mb-4 sm:mb-6">
             <AlertDescription className="text-sm">{error}</AlertDescription>
