@@ -88,9 +88,9 @@ export function DashboardNavigation({
   };
 
   return (
-    <div className="bg-gray-100 border-b border-gray-200">
+    <div className="bg-gray-100 border-b border-gray-200 min-h-screen">
       {/* Header */}
-      <header className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-40">
+      <header className="bg-white shadow-sm border-b border-gray-200 fixed top-0 left-0 right-0 z-40">
         <div className="flex items-center justify-between px-4 sm:px-6 lg:px-8 h-16">
           {/* Left Section */}
           <div className="flex items-center space-x-3 sm:space-x-4">
@@ -260,7 +260,7 @@ export function DashboardNavigation({
       </header>
 
       {/* Desktop Navigation Tabs */}
-      <div className="hidden lg:block">
+      <div className="hidden lg:block pt-16">
         <div className="px-4 sm:px-6 lg:px-8">
           <nav className="flex space-x-1 overflow-x-auto py-3" aria-label="Tabs">
             {navItems.map((item) => {
