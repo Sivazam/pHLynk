@@ -1140,6 +1140,7 @@ export function RetailerDashboard() {
         timestamp: invoice.issueDate.toDate(),
         amount: invoice.totalAmount,
         status: calculateInvoiceStatus(invoice, payments),
+        collectedBy: undefined, // Invoice activities don't have collectedBy info
         icon: FileText,
         color: 'text-blue-600'
       })),
