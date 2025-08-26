@@ -9,8 +9,6 @@ const nextConfig: NextConfig = {
   eslint: {
     ignoreDuringBuilds: false,
   },
-  domains: ['images.unsplash.com', 'localhost'],
-
   images: {
      remotePatterns: [
     {

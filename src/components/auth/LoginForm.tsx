@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useAuth } from '@/contexts/AuthContext';
-import { Loader2, Mail, Lock, Chrome, Shield, Store, Smartphone } from 'lucide-react';
+import { Loader2, Mail, Lock, Shield } from 'lucide-react';
 import Link from 'next/link';
 
 const loginSchema = z.object({
@@ -24,9 +24,10 @@ interface LoginFormProps {
   onToggleMode: () => void;
   onResetPassword: () => void;
   onShowRoleSelection?: () => void;
+  selectedRole?: string | null;
 }
 
-export function LoginForm({ onToggleMode, onResetPassword, onShowRoleSelection }: LoginFormProps) {
+export function LoginForm({ onToggleMode, onResetPassword, onShowRoleSelection, selectedRole }: LoginFormProps) {
   const { login, loginWithGoogle } = useAuth();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -74,18 +75,6 @@ export function LoginForm({ onToggleMode, onResetPassword, onShowRoleSelection }
         <CardDescription className="text-center text-gray-600">
           Sign in to access your PharmaLync account
         </CardDescription>
-        
-        {/* Retailer Login Notice */}
-        <div className="bg-gradient-to-r from-green-50 to-blue-50 border border-green-200 rounded-lg p-3 mt-4">
-          <div className="flex items-start space-x-2">
-            <div className="bg-green-100 p-1 rounded-full">
-              <Smartphone className="h-4 w-4 text-green-600" />
-            </div>
-            <div className="text-sm text-green-800">
-              <strong className="font-semibold">Retailers:</strong> Use the "Retailer Login" button below to login with your mobile number via OTP
-            </div>
-          </div>
-        </div>
       </CardHeader>
       <CardContent className="space-y-4">
         {error && (
@@ -140,21 +129,10 @@ export function LoginForm({ onToggleMode, onResetPassword, onShowRoleSelection }
                 Signing in...
               </>
             ) : (
-              'Wholesaler & Lineman Sign In'
+              'Sign In'
             )}
           </Button>
         </form>
-
-        <Link href="/retailer-login" className="block">
-              <Button
-                variant="default"
-                className="w-full bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-medium py-2.5"
-              >
-                <Smartphone className="mr-2 h-4 w-4" />
-                Retailer Login (Mobile OTP)
-              </Button>
-            </Link>
-            
 
         <div className="relative">
           <div className="absolute inset-0 flex items-center">
@@ -165,16 +143,6 @@ export function LoginForm({ onToggleMode, onResetPassword, onShowRoleSelection }
           </div>
         </div>
 
-        {/* <Button 
-          variant="outline" 
-          className="w-full border-gray-300 hover:bg-gray-50 font-medium"
-          onClick={handleGoogleLogin}
-          disabled={loading}
-        >
-          <Chrome className="mr-2 h-4 w-4" />
-          Sign in with Google
-        </Button> */}
-
         <div className="text-center space-y-1">
           <button
             type="button"
@@ -183,62 +151,16 @@ export function LoginForm({ onToggleMode, onResetPassword, onShowRoleSelection }
           >
             Forgot your password?
           </button>
-          
-          {/* <div className="text-sm text-gray-600">
-            Don't have an account?{' '}
-            <button
-              type="button"
-              onClick={onToggleMode}
-              className="text-blue-600 hover:text-blue-700 font-medium transition-colors"
-            >
-              Create account
-            </button>
-          </div> */}
-          
-          <div className="pt-4  space-y-2">
-            {/* Retailer Login Button */}
-            {/* <Link href="/retailer-login" className="block">
-              <Button
-                variant="default"
-                className="w-full bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-medium py-2.5"
-              >
-                <Smartphone className="mr-2 h-4 w-4" />
-                Retailer Login (Mobile OTP)
-              </Button>
-            </Link>
-             */}
+        </div>
 
-            {/* Other Roles Button */}
-            {/* {onShowRoleSelection && (
-              <Button
-                variant="outline"
-                className="w-full border-gray-300 hover:bg-gray-50 font-medium"
-                onClick={onShowRoleSelection}
-              >
-                <Store className="mr-2 h-4 w-4" />
-                Other Roles (Line Worker, Admin)
-              </Button>
-            )} */}
-            
-            {/* Super Admin Registration */}
-          
-              {/* <Link href="/init" className="inline-flex items-center text-sm text-blue-600 pt-10 hover:text-blue-700 font-medium transition-colors">
-                <Shield className="h-4 w-4 mr-1" />
-                Super Admin Registration
-              </Link> */}
-                 <div
-                    className="inline-flex items-center 
-                              rounded-full px-4 py-2 text-sm font-medium 
-                              transition-all duration-300 cursor-pointer
-                              bg-[#3d6dcf] hover:bg-[#345bb0]"
-                  >
-                    <Link href="/init" className="inline-flex items-center text-white">
-                      <Shield className="w-4 h-4 mr-1 text-white" />
-                      Super Admin Registration
-                    </Link>
-                  </div>
-      
-          </div>
+        {/* Super Admin Registration */}
+        <div className="text-center pt-4">
+          <Link href="/init" className="inline-flex items-center">
+            <div className="inline-flex items-center rounded-full px-4 py-2 text-sm font-medium transition-all duration-300 cursor-pointer bg-[#3d6dcf] hover:bg-[#345bb0]">
+              <Shield className="w-4 h-4 mr-1 text-white" />
+              <span className="text-white">Super Admin Registration</span>
+            </div>
+          </Link>
         </div>
       </CardContent>
     </Card>
