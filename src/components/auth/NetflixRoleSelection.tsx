@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence,Variants  } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -83,7 +83,7 @@ export function NetflixRoleSelection({ onRoleSelect, onBack }: NetflixRoleSelect
     }, 300);
   };
 
-  const containerVariants = {
+  const containerVariants: Variants = {
     hidden: { opacity: 0 },
     visible: {
       opacity: 1,
@@ -98,7 +98,7 @@ export function NetflixRoleSelection({ onRoleSelect, onBack }: NetflixRoleSelect
     }
   };
 
-  const profileVariants = {
+  const profileVariants: Variants = {
     hidden: { 
       opacity: 0, 
       scale: 0.7,
@@ -141,7 +141,7 @@ export function NetflixRoleSelection({ onRoleSelect, onBack }: NetflixRoleSelect
     }
   };
 
-  const iconVariants = {
+  const iconVariants: Variants = {
     hidden: { 
       scale: 0, 
       rotate: -180,
@@ -171,7 +171,7 @@ export function NetflixRoleSelection({ onRoleSelect, onBack }: NetflixRoleSelect
     }
   };
 
-  const glowVariants = {
+  const glowVariants: Variants = {
     hidden: { 
       opacity: 0, 
       scale: 0.6,
@@ -198,7 +198,7 @@ export function NetflixRoleSelection({ onRoleSelect, onBack }: NetflixRoleSelect
     }
   };
 
-  const textVariants = {
+  const textVariants: Variants = {
     hidden: { 
       opacity: 0, 
       y: 20
