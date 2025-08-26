@@ -140,10 +140,21 @@ export function LoginForm({ onToggleMode, onResetPassword, onShowRoleSelection }
                 Signing in...
               </>
             ) : (
-              'Sign In'
+              'Wholesaler & Lineman Sign In'
             )}
           </Button>
         </form>
+
+        <Link href="/retailer-login" className="block">
+              <Button
+                variant="default"
+                className="w-full bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-medium py-2.5"
+              >
+                <Smartphone className="mr-2 h-4 w-4" />
+                Retailer Login (Mobile OTP)
+              </Button>
+            </Link>
+            
 
         <div className="relative">
           <div className="absolute inset-0 flex items-center">
@@ -164,7 +175,7 @@ export function LoginForm({ onToggleMode, onResetPassword, onShowRoleSelection }
           Sign in with Google
         </Button> */}
 
-        <div className="text-center space-y-3">
+        <div className="text-center space-y-1">
           <button
             type="button"
             onClick={onResetPassword}
@@ -184,9 +195,9 @@ export function LoginForm({ onToggleMode, onResetPassword, onShowRoleSelection }
             </button>
           </div> */}
           
-          <div className="pt-4 border-t border-gray-200 space-y-2">
+          <div className="pt-4  space-y-2">
             {/* Retailer Login Button */}
-            <Link href="/retailer-login" className="block">
+            {/* <Link href="/retailer-login" className="block">
               <Button
                 variant="default"
                 className="w-full bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-medium py-2.5"
@@ -195,7 +206,8 @@ export function LoginForm({ onToggleMode, onResetPassword, onShowRoleSelection }
                 Retailer Login (Mobile OTP)
               </Button>
             </Link>
-            
+             */}
+
             {/* Other Roles Button */}
             {/* {onShowRoleSelection && (
               <Button
@@ -209,10 +221,23 @@ export function LoginForm({ onToggleMode, onResetPassword, onShowRoleSelection }
             )} */}
             
             {/* Super Admin Registration */}
-            <Link href="/init" className="inline-flex items-center text-sm text-blue-600 hover:text-blue-700 font-medium transition-colors">
-              <Shield className="h-4 w-4 mr-1" />
-              Super Admin Registration
-            </Link>
+          
+              {/* <Link href="/init" className="inline-flex items-center text-sm text-blue-600 pt-10 hover:text-blue-700 font-medium transition-colors">
+                <Shield className="h-4 w-4 mr-1" />
+                Super Admin Registration
+              </Link> */}
+                 <div
+                    className="inline-flex items-center 
+                              rounded-full px-4 py-2 text-sm font-medium 
+                              transition-all duration-300 cursor-pointer
+                              bg-[#3d6dcf] hover:bg-[#345bb0]"
+                  >
+                    <Link href="/init" className="inline-flex items-center text-white">
+                      <Shield className="w-4 h-4 mr-1 text-white" />
+                      Super Admin Registration
+                    </Link>
+                  </div>
+      
           </div>
         </div>
       </CardContent>

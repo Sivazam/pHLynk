@@ -203,14 +203,16 @@ export function RetailerAuth({ onAuthSuccess, onBackToRoleSelection }: RetailerA
       
       {/* Back Button */}
       {onBackToRoleSelection && (
-        <Button
-          variant="ghost"
-          className="mb-4"
-          onClick={onBackToRoleSelection}
-        >
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Back
-        </Button>
+        // <Button
+        //   variant="ghost"
+        //   className="mb-4"
+        //   onClick={onBackToRoleSelection}
+        // >
+        //   <ArrowLeft className="h-4 w-4 mr-2" />
+        //   Backzz
+        // </Button>
+        <>
+        </>
       )}
 
       <CardHeader className="text-center space-y-4 pb-6">
