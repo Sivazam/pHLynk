@@ -175,12 +175,12 @@ export function NetflixRoleSelection({ onRoleSelect, onBack }: NetflixRoleSelect
     hidden: { 
       opacity: 0, 
       scale: 0.6,
-      blur: 0
+      filter: "blur(0px)"
     },
     visible: {
       opacity: 1,
       scale: 1,
-      blur: 20,
+      filter: "blur(20px)",
       transition: {
         duration: 0.8,
         delay: 0.4,
@@ -190,7 +190,7 @@ export function NetflixRoleSelection({ onRoleSelect, onBack }: NetflixRoleSelect
     hover: {
       opacity: 0.7,
       scale: 1.4,
-      blur: 30,
+      filter: "blur(30px)",
       transition: {
         duration: 0.4,
         ease: "easeOut"
