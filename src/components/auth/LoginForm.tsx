@@ -154,14 +154,14 @@ export function LoginForm({ onToggleMode, onResetPassword, onShowRoleSelection, 
         </div>
 
         {/* Super Admin Registration */}
-        <div className="text-center pt-4">
+        {/* <div className="text-center pt-4">
           <Link href="/init" className="inline-flex items-center">
             <div className="inline-flex items-center rounded-full px-4 py-2 text-sm font-medium transition-all duration-300 cursor-pointer bg-[#3d6dcf] hover:bg-[#345bb0]">
               <Shield className="w-4 h-4 mr-1 text-white" />
               <span className="text-white">Super Admin Registration</span>
             </div>
           </Link>
-        </div>
+        </div> */}
       </CardContent>
     </Card>
   );

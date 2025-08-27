@@ -233,15 +233,15 @@ export function NetflixRoleSelection({ onRoleSelect, onBack }: NetflixRoleSelect
             <div className="flex items-center space-x-2 sm:space-x-3">
               <div className="relative">
                 <Image 
-                  src="/logo.png" 
+                  src="/logoMain.png" 
                   alt="PharmaLync" 
                   width={28}
                   height={28}
                   className="rounded sm:w-8 sm:h-8"
                 />
-                <div className="absolute -bottom-1 -right-1 w-1.5 h-1.5 sm:w-2 sm:h-2 bg-red-600 rounded-full animate-pulse"></div>
+                {/* <div className="absolute -bottom-1 -right-1 w-1.5 h-1.5 sm:w-2 sm:h-2 bg-red-600 rounded-full animate-pulse"></div> */}
               </div>
-              <span className="text-red-600 text-xl sm:text-2xl font-bold netflix-logo">
+              <span className=" text-xl sm:text-2xl font-bold netflix-logo">
                 PharmaLync
               </span>
             </div>
@@ -271,7 +271,7 @@ export function NetflixRoleSelection({ onRoleSelect, onBack }: NetflixRoleSelect
             initial={{ opacity: 0, y: -30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 1, ease: "easeOut" }}
-            className="text-center mb-12 sm:mb-16"
+            className="text-center mb-12 sm:mb-16 pt-4"
           >
             <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold text-white mb-4 sm:mb-6 font-heading">
               Choose Your Role
