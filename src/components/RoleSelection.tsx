@@ -19,14 +19,14 @@ export function RoleSelection({ onRoleSelect, onBack }: RoleSelectionProps) {
     {
       id: 'WHOLESALER_ADMIN',
       title: 'Wholesale Admin',
-      description: 'Manage retailers, areas, and view analytics',
+      description: 'Manage retailers, LineMan, Areas, View analytics & Track Payments and assign LineMan to Retailers',
       icon: Users,
       color: 'bg-blue-500 hover:bg-blue-600'
     },
     {
       id: 'LINE_WORKER',
       title: 'Line Worker',
-      description: 'Collect payments and manage retailer relationships',
+      description: 'Collect payments and manage retailer relationships and Track Payment Status and Assigned Retailer Outstandings',
       icon: UserIcon,
       color: 'bg-green-500 hover:bg-green-600'
     },

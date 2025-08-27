@@ -32,6 +32,7 @@ import { realtimeNotificationService } from '@/services/realtime-notifications';
 import { notificationService } from '@/services/notification-service';
 import { Tenant, CreateTenantForm, User, Area, Retailer, Invoice, Payment } from '@/types';
 import { formatTimestamp, formatTimestampWithTime, formatCurrency } from '@/lib/timestamp-utils';
+import { motion } from "framer-motion";
 import { 
   Building2, 
   Users, 
@@ -61,7 +62,8 @@ import {
   Bell,
   Menu,
   X,
-  RefreshCw
+  RefreshCw,
+  Heart
 } from 'lucide-react';
 
 interface TenantDetails {
@@ -1838,6 +1840,56 @@ export function SuperAdminDashboard() {
             {activeNav === 'analytics' && <Analytics />}
             {activeNav === 'activity' && <Activity />}
             {activeNav === 'settings' && <Settings />}
+
+            <div>
+                      <motion.div
+                        as="div"
+                        initial={{ opacity: 0, y: 30 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.8 }}
+                        className="px-4 pb-20 pt-2 text-left"
+                      >
+                        {/* Tagline */}
+                        <h2
+                          className="fw-bold lh-sm"
+                          style={{
+                            fontSize: "2.2rem",
+                            lineHeight: "1.2",
+                            color: "rgba(75, 75, 75, 1)",
+                            fontWeight: 700,
+                          }}
+                        >
+                          Payment <br />
+                          Collection <br />
+                          Made Secure{" "}
+                          <Heart
+                            className="inline-block"
+                            size={30}
+                            fill="red"
+                            color="red"
+                          />
+                        </h2>
+
+                        {/* Divider line */}
+                        <hr
+                          style={{
+                            borderTop: "1px solid rgba(75, 75, 75, 1)",
+                            margin: "18px 0",
+                          }}
+                        />
+
+                        {/* App name */}
+                        <p
+                          style={{
+                            fontSize: "1rem",
+                            color: "rgba(75, 75, 75, 1)",
+                            fontWeight: 500,
+                          }}
+                        >
+                          PharmaLync
+                        </p>
+                      </motion.div>
+            </div>
           </div>
       </main>
       

@@ -17,6 +17,7 @@ import { DatePicker } from '@/components/ui/date-picker';
 import { EnhancedDatePicker } from '@/components/ui/enhanced-date-picker';
 import { DateRangeFilter, DateRangeOption } from '@/components/ui/DateRangeFilter';
 import { Skeleton } from '@/components/ui/skeleton';
+import { motion } from "framer-motion";
 
 import { DashboardNavigation, NavItem, NotificationItem } from '@/components/DashboardNavigation';
 
@@ -85,7 +86,8 @@ import {
   Loader2,
   Wrench,
   Calculator,
-  Package
+  Package,
+  Heart
 } from 'lucide-react';
 
 // Activity Log Type
@@ -1495,7 +1497,11 @@ export function WholesalerAdminDashboard() {
             </p>
           </CardContent>
         </Card>
+      
+
+      
       </div>
+      
     );
   };
 
@@ -1583,6 +1589,8 @@ export function WholesalerAdminDashboard() {
           </div>
         </CardContent>
       </Card>
+
+
     </div>
   );
 
@@ -2529,7 +2537,7 @@ export function WholesalerAdminDashboard() {
   const AnalyticsComponent = () => (
     <div className="space-y-6">
       {/* Row 1: Heading and Description */}
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
+      <div className="flex flex-col  pt-16 sm:flex-row sm:justify-between sm:items-start gap-4">
         <div>
           <h2 className="text-2xl font-bold text-gray-900">Analytics</h2>
           <p className="text-gray-600">Comprehensive analytics and insights</p>
@@ -3191,7 +3199,7 @@ export function WholesalerAdminDashboard() {
   // Retailer Details Component - Complete detailed logs of retailers
   const RetailerDetails = () => (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
+      <div className="flex flex-col sm:pt-16  sm:flex-row sm:justify-between sm:items-start gap-4">
         <div>
           <h2 className="text-2xl font-bold text-gray-900">Retailer Details & Logs</h2>
           <p className="text-gray-600">Complete detailed logs of all retailers including invoices and payments</p>
@@ -3664,7 +3672,60 @@ export function WholesalerAdminDashboard() {
           {activeNav === 'workers' && <LineWorkers />}
           {activeNav === 'transactions' && <Transactions />}
           {activeNav === 'analytics' && <AnalyticsComponent />}
+
+        <div >
+          <motion.div
+            as="div"
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8 }}
+            className="px-4 pb-20 pt-2 text-left"
+          >
+            {/* Tagline */}
+            <h2
+              className="fw-bold lh-sm"
+              style={{
+                fontSize: "2.2rem",
+                lineHeight: "1.2",
+                color: "rgba(75, 75, 75, 1)",
+                fontWeight: 700,
+              }}
+            >
+              Payment <br />
+              Collection <br />
+              Made Secure{" "}
+              <Heart
+                className="inline-block"
+                size={30}
+                fill="red"
+                color="red"
+              />
+            </h2>
+
+            {/* Divider line */}
+            <hr
+              style={{
+                borderTop: "1px solid rgba(75, 75, 75, 1)",
+                margin: "18px 0",
+              }}
+            />
+
+            {/* App name */}
+            <p
+              style={{
+                fontSize: "1rem",
+                color: "rgba(75, 75, 75, 1)",
+                fontWeight: 500,
+              }}
+            >
+              PharmaLync
+            </p>
+          </motion.div>
         </div>
+
+        </div>
+
+          
 
         {/* Dialog Components */}
         {ViewInvoiceDialog()}
@@ -3684,9 +3745,16 @@ export function WholesalerAdminDashboard() {
           message={feedback.message}
           onClose={hideSuccess}
         />
+ 
       </main>
+   
+   
     </div>
+
+    
   );
+
+
 };
 
 export default WholesalerAdminDashboard;

@@ -26,7 +26,7 @@ export function NetflixRoleSelection({ onRoleSelect, onBack }: NetflixRoleSelect
     {
       id: 'WHOLESALER_ADMIN',
       title: 'Wholesale Admin',
-      description: 'Manage retailers, areas, and analytics',
+      description: 'Manage retailers, LineMan, areas, and analytics',
       icon: Pill,
       color: 'from-red-600 to-red-800',
       nameColor: 'text-red-400',
@@ -37,7 +37,7 @@ export function NetflixRoleSelection({ onRoleSelect, onBack }: NetflixRoleSelect
     {
       id: 'LINE_WORKER',
       title: 'Line Worker',
-      description: 'Field payment collection and retailer management',
+      description: "Field payment collection and retailer management",
       icon: User,
       color: 'from-blue-600 to-blue-800',
       nameColor: 'text-blue-400',
@@ -48,7 +48,7 @@ export function NetflixRoleSelection({ onRoleSelect, onBack }: NetflixRoleSelect
     {
       id: 'RETAILER',
       title: 'Retailer',
-      description: 'Access dashboard and manage payments',
+      description: 'Access dashboard - manage and track payments',
       icon: Store,
       color: 'from-green-600 to-green-800',
       nameColor: 'text-green-400',
@@ -241,7 +241,10 @@ export function NetflixRoleSelection({ onRoleSelect, onBack }: NetflixRoleSelect
                 />
                 {/* <div className="absolute -bottom-1 -right-1 w-1.5 h-1.5 sm:w-2 sm:h-2 bg-red-600 rounded-full animate-pulse"></div> */}
               </div>
-              <span className=" text-xl sm:text-2xl font-bold netflix-logo">
+              <span className="text-xl sm:text-2xl font-bold " style={{
+                color: "#ffff",
+                textShadow: "0px 1px 2px rgba(0,0,0,0.25)",
+              }}>
                 PharmaLync
               </span>
             </div>

@@ -598,7 +598,7 @@ export function WholesalerAnalytics({
       ) : (
         <Card>
           <CardHeader>
-            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
+            <div className="flex flex-col  pt-16 sm:flex-row sm:justify-between sm:items-start gap-4">
               <div>
                 <CardTitle className="flex items-center">
                   <TrendingUp className="h-5 w-5 mr-2" />

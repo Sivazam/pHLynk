@@ -260,7 +260,7 @@ export function DashboardNavigation({
       </header>
 
       {/* Desktop Navigation Tabs */}
-      <div className="hidden lg:block pt-16">
+      <div className="hidden lg:block pt-16 sm:pt-20 border-b border-gray-200">
         <div className="px-4 sm:px-6 lg:px-8">
           <nav className="flex space-x-1 overflow-x-auto py-3" aria-label="Tabs">
             {navItems.map((item) => {

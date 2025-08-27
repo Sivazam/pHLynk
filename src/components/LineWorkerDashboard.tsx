@@ -15,6 +15,7 @@ import { DashboardNavigation, NavItem, NotificationItem } from '@/components/Das
 import { DateRangeFilter, DateRangeOption } from '@/components/ui/DateRangeFilter';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth, useLineWorker } from '@/contexts/AuthContext';
+import { motion } from "framer-motion";
 import { 
   retailerService, 
   invoiceService, 
@@ -49,7 +50,8 @@ import {
   CreditCard,
   TrendingUp,
   Bell,
-  RefreshCw
+  RefreshCw,
+  Heart
 } from 'lucide-react';
 
 // Utility functions for days outstanding calculation
@@ -1713,7 +1715,7 @@ export function LineWorkerDashboard() {
         onLogout={logout}
       />
 
-      {/* Main Content */}
+      {/* Main Content */} 
       <main className="flex-1 pt-16 p-3 sm:p-4 lg:p-6 overflow-y-auto pb-20 lg:pb-6">
         {error && (
           <Alert variant="destructive" className="mb-4 sm:mb-6">
@@ -1728,6 +1730,58 @@ export function LineWorkerDashboard() {
           {activeNav === 'retailer-details' && <RetailerDetails />}
           {activeNav === 'payments' && <PaymentsComponent />}
           {activeNav === 'history' && <HistoryComponent />}
+
+         <div >
+                  <motion.div
+                    as="div"
+                    initial={{ opacity: 0, y: 30 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.8 }}
+                    className="px-4 pb-20 pt-2 text-left"
+                  >
+                    {/* Tagline */}
+                    <h2
+                      className="fw-bold lh-sm"
+                      style={{
+                        fontSize: "2.2rem",
+                        lineHeight: "1.2",
+                        color: "rgba(75, 75, 75, 1)",
+                        fontWeight: 700,
+                      }}
+                    >
+                      Payment <br />
+                      Collection <br />
+                      Made Secure{" "}
+                      <Heart
+                        className="inline-block"
+                        size={30}
+                        fill="red"
+                        color="red"
+                      />
+                    </h2>
+        
+                    {/* Divider line */}
+                    <hr
+                      style={{
+                        borderTop: "1px solid rgba(75, 75, 75, 1)",
+                        margin: "18px 0",
+                      }}
+                    />
+        
+                    {/* App name */}
+                    <p
+                      style={{
+                        fontSize: "1rem",
+                        color: "rgba(75, 75, 75, 1)",
+                        fontWeight: 500,
+                      }}
+                    >
+                      PharmaLync
+                    </p>
+                  </motion.div>
+                </div>
+
+
         </div>
       </main>
 
@@ -1986,6 +2040,8 @@ export function LineWorkerDashboard() {
           )}
         </DialogContent>
       </Dialog>
+
+      
     </div>
   );
 }
