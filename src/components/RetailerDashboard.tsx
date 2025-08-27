@@ -21,7 +21,6 @@ import { db } from '@/lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import { DateRangeFilter, DateRangeOption } from '@/components/ui/DateRangeFilter';
 import { Skeleton } from '@/components/ui/skeleton';
-import { motion } from "framer-motion";
 import { 
   Store, 
   DollarSign, 
@@ -1325,13 +1324,8 @@ export function RetailerDashboard() {
           {activeNav === 'history' && <HistoryComponent />}
 
          <div >
-                  <motion.div
-                    as="div"
-                    initial={{ opacity: 0, y: 30 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.8 }}
-                    className="px-4 pb-20 pt-2 text-left"
-                  >
+          <div className="px-4 pb-20 pt-2 text-left">
+
                     {/* Tagline */}
                     <h2
                       className="fw-bold lh-sm"
@@ -1344,7 +1338,7 @@ export function RetailerDashboard() {
                     >
                       Payment <br />
                       Collection <br />
-                      Made Secure{" "}
+                      Made More Secure{" "}
                       <Heart
                         className="inline-block"
                         size={30}
@@ -1371,7 +1365,7 @@ export function RetailerDashboard() {
                     >
                       PharmaLync
                     </p>
-                  </motion.div>
+          </div>
                 </div>
 
         </div>

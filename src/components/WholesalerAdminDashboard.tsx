@@ -17,7 +17,6 @@ import { DatePicker } from '@/components/ui/date-picker';
 import { EnhancedDatePicker } from '@/components/ui/enhanced-date-picker';
 import { DateRangeFilter, DateRangeOption } from '@/components/ui/DateRangeFilter';
 import { Skeleton } from '@/components/ui/skeleton';
-import { motion } from "framer-motion";
 
 import { DashboardNavigation, NavItem, NotificationItem } from '@/components/DashboardNavigation';
 
@@ -3674,13 +3673,7 @@ export function WholesalerAdminDashboard() {
           {activeNav === 'analytics' && <AnalyticsComponent />}
 
         <div >
-          <motion.div
-            as="div"
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8 }}
-            className="px-4 pb-20 pt-2 text-left"
-          >
+            <div className="px-4 pb-20 pt-2 text-left">
             {/* Tagline */}
             <h2
               className="fw-bold lh-sm"
@@ -3693,7 +3686,7 @@ export function WholesalerAdminDashboard() {
             >
               Payment <br />
               Collection <br />
-              Made Secure{" "}
+              Made More Secure{" "}
               <Heart
                 className="inline-block"
                 size={30}
@@ -3720,7 +3713,7 @@ export function WholesalerAdminDashboard() {
             >
               PharmaLync
             </p>
-          </motion.div>
+            </div>
         </div>
 
         </div>

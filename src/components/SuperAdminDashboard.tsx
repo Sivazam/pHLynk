@@ -32,7 +32,6 @@ import { realtimeNotificationService } from '@/services/realtime-notifications';
 import { notificationService } from '@/services/notification-service';
 import { Tenant, CreateTenantForm, User, Area, Retailer, Invoice, Payment } from '@/types';
 import { formatTimestamp, formatTimestampWithTime, formatCurrency } from '@/lib/timestamp-utils';
-import { motion } from "framer-motion";
 import { 
   Building2, 
   Users, 
@@ -1842,13 +1841,8 @@ export function SuperAdminDashboard() {
             {activeNav === 'settings' && <Settings />}
 
             <div>
-                      <motion.div
-                        as="div"
-                        initial={{ opacity: 0, y: 30 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.8 }}
-                        className="px-4 pb-20 pt-2 text-left"
-                      >
+                     <div className="px-4 pb-20 pt-2 text-left">
+
                         {/* Tagline */}
                         <h2
                           className="fw-bold lh-sm"
@@ -1861,7 +1855,7 @@ export function SuperAdminDashboard() {
                         >
                           Payment <br />
                           Collection <br />
-                          Made Secure{" "}
+                          Made More Secure{" "}
                           <Heart
                             className="inline-block"
                             size={30}
@@ -1888,7 +1882,7 @@ export function SuperAdminDashboard() {
                         >
                           PharmaLync
                         </p>
-                      </motion.div>
+                      </div>
             </div>
           </div>
       </main>
