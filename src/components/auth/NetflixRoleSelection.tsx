@@ -22,6 +22,23 @@ export function NetflixRoleSelection({ onRoleSelect, onBack }: NetflixRoleSelect
   const [selectedRole, setSelectedRole] = useState<string | null>(null);
   const [isHovered, setIsHovered] = useState<string | null>(null);
 
+  // Prevent back navigation to dashboard when on role selection
+  useEffect(() => {
+    // Replace current history state to prevent back navigation to dashboard
+    window.history.replaceState({}, '', '/');
+    
+    const handlePopState = (event: PopStateEvent) => {
+      // If user tries to navigate back, prevent it
+      window.history.pushState({}, '', '/');
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, []);
+
   const roles = [
     {
       id: 'WHOLESALER_ADMIN',

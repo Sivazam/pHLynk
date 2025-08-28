@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { LoginForm } from './LoginForm';
 import { SignupForm } from './SignupForm';
 import { ResetPasswordForm } from './ResetPasswordForm';
@@ -18,6 +18,12 @@ export function AuthComponent({ onShowRoleSelection }: AuthComponentProps) {
   const [mode, setMode] = useState<AuthMode>('login');
   const [view, setView] = useState<AuthView>('roleSelection');
   const [selectedRole, setSelectedRole] = useState<string | null>(null);
+
+  // Always start with Netflix role selection for unauthenticated users
+  useEffect(() => {
+    setView('roleSelection');
+    setSelectedRole(null);
+  }, []);
 
   const toggleMode = () => {
     setMode(mode === 'login' ? 'signup' : 'login');

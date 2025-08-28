@@ -10,6 +10,7 @@ import { RetailerDashboard } from '@/components/RetailerDashboard';
 import { AppIntroCarousel } from '@/components/AppIntroCarousel';
 import { Skeleton } from '@/components/ui/skeleton';
 import { AppLoadingScreen } from '@/components/AppLoadingScreen';
+import { useRouteProtection } from '@/hooks/use-route-protection';
 import { useState, useEffect } from 'react';
 import { logger } from '@/lib/logger';
 
@@ -19,6 +20,9 @@ export default function Home() {
   const [retailerId, setRetailerId] = useState<string | null>(null);
   const [showIntro, setShowIntro] = useState(false);
 
+  // Apply route protection to prevent back navigation after logout
+  useRouteProtection();
+
   // Check for retailer ID in localStorage on mount
   useEffect(() => {
     const storedRetailerId = localStorage.getItem('retailerId');
@@ -26,6 +30,28 @@ export default function Home() {
       setRetailerId(storedRetailerId);
     }
   }, []);
+
+  // Prevent back navigation to dashboard after logout
+  useEffect(() => {
+    if (!loading && !user) {
+      // Clear any potential dashboard state from history
+      const handlePopState = (event: PopStateEvent) => {
+        // If user tries to navigate back to a dashboard, prevent it
+        if (!user && window.location.pathname === '/') {
+          window.history.pushState({}, '', '/');
+        }
+      };
+
+      window.addEventListener('popstate', handlePopState);
+      
+      // Replace current history state to prevent back navigation to dashboard
+      window.history.replaceState({}, '', '/');
+      
+      return () => {
+        window.removeEventListener('popstate', handlePopState);
+      };
+    }
+  }, [user, loading]);
 
   // Check if we should show the intro carousel - only for completely new users
   useEffect(() => {

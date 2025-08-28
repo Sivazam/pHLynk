@@ -155,7 +155,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const logout = async () => {
-    await signOut(auth);
+    try {
+      // Clear any retailer-specific data
+      localStorage.removeItem('retailerId');
+      
+      // Clear any role selection state
+      sessionStorage.removeItem('auth_view');
+      sessionStorage.removeItem('selected_role');
+      
+      // Clear any notification states
+      Object.keys(sessionStorage).forEach(key => {
+        if (key.startsWith('notifications_') || key.includes('auth')) {
+          sessionStorage.removeItem(key);
+        }
+      });
+      
+      // Sign out from Firebase
+      await signOut(auth);
+      
+      // Replace current history entry to prevent back navigation
+      if (typeof window !== 'undefined') {
+        window.history.replaceState({}, '', '/');
+        // Force a redirect to home to ensure clean state
+        window.location.href = '/';
+      }
+    } catch (error) {
+      console.error('Logout error:', error);
+      // Fallback - still attempt to redirect even if there's an error
+      if (typeof window !== 'undefined') {
+        window.location.href = '/';
+      }
+    }
   };
 
   const loginWithGoogle = async () => {
