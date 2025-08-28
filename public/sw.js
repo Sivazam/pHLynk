@@ -1,5 +1,5 @@
-// Dynamic cache version based on build timestamp
-const CACHE_VERSION = 'pharmalynk-v3-' + new Date().getTime();
+// Stable cache version - only change when actual updates are deployed
+const CACHE_VERSION = 'pharmalynk-v3-1.0.0';
 const CACHE_NAME = CACHE_VERSION;
 const STATIC_CACHE_NAME = 'pharmalynk-static-v3';
 const RUNTIME_CACHE_NAME = 'pharmalynk-runtime-v3';
@@ -21,7 +21,7 @@ const CORE_PAGES = [
 ];
 
 // Cache busting query parameter for dynamic content
-const CACHE_BUST_PARAM = '_v=' + CACHE_VERSION.split('-')[2];
+const CACHE_BUST_PARAM = '_v=' + CACHE_VERSION;
 
 // Install event - cache static resources
 self.addEventListener('install', event => {

@@ -1490,7 +1490,9 @@ export function LineWorkerDashboard() {
                     <CardTitle className="text-lg">{retailer.name}</CardTitle>
                     <CardDescription className="mt-1">
                       <div className="flex flex-wrap gap-4 text-sm">
-                        <span>📞 {retailer.phone}</span>
+                        <span>
+                          <a href={`tel:${retailer.phone}`} className="text-blue-600 hover:underline">📞 {retailer.phone}</a>
+                        </span>
                         <span>📍 {retailer.address}</span>
                         <span>🏷️ {retailer.zipcodes.join(', ')}</span>
                         <span>📊 Success Rate: {paymentSuccessRate.toFixed(1)}%</span>
@@ -1744,8 +1746,8 @@ export function LineWorkerDashboard() {
                       }}
                     >
                       Payment <br />
-                      Collection <br />
-                      Made More Secure{" "}
+                      Collection Made<br/>
+                      More Secure{" "}
                       <Heart
                         className="inline-block"
                         size={30}

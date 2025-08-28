@@ -3198,7 +3198,7 @@ export function WholesalerAdminDashboard() {
   // Retailer Details Component - Complete detailed logs of retailers
   const RetailerDetails = () => (
     <div className="space-y-6">
-      <div className="flex flex-col sm:pt-16  sm:flex-row sm:justify-between sm:items-start gap-4">
+      <div className="flex flex-col sm:pt-8  sm:flex-row sm:justify-between sm:items-start gap-4">
         <div>
           <h2 className="text-2xl font-bold text-gray-900">Retailer Details & Logs</h2>
           <p className="text-gray-600">Complete detailed logs of all retailers including invoices and payments</p>
@@ -3401,7 +3401,9 @@ export function WholesalerAdminDashboard() {
                       </CardTitle>
                       <CardDescription className="mt-1">
                         <div className="flex flex-wrap gap-4 text-sm">
-                          <span>📞 {retailer.phone}</span>
+                          <span>
+                            <a href={`tel:${retailer.phone}`} className="text-blue-600 hover:underline">📞 {retailer.phone}</a>
+                          </span>
                           <span>📍 {areas.find(a => a.id === retailer.areaId)?.name || 'Unassigned'}</span>
                           <span>🏷️ {retailer.zipcodes.join(', ')}</span>
                           <span className="flex items-center gap-1">
@@ -3685,8 +3687,8 @@ export function WholesalerAdminDashboard() {
               }}
             >
               Payment <br />
-              Collection <br />
-              Made More Secure{" "}
+              Collection Made<br />
+              More Secure{" "}
               <Heart
                 className="inline-block"
                 size={30}

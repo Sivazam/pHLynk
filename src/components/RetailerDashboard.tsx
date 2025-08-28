@@ -1337,8 +1337,8 @@ export function RetailerDashboard() {
                       }}
                     >
                       Payment <br />
-                      Collection <br />
-                      Made More Secure{" "}
+                      Collection Made<br />
+                      More Secure{" "}
                       <Heart
                         className="inline-block"
                         size={30}

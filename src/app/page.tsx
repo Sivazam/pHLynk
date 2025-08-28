@@ -12,7 +12,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { AppLoadingScreen } from '@/components/AppLoadingScreen';
 import { useRouteProtection } from '@/hooks/use-route-protection';
 import { useState, useEffect } from 'react';
-import { logger } from '@/lib/logger';
+import { hasSeenIntroCarousel, resetIntroCarousel } from '@/lib/intro-carousel';
 
 export default function Home() {
   const { user, loading, loadingProgress, loadingStage, hasRole } = useAuth();
@@ -56,8 +56,8 @@ export default function Home() {
   // Check if we should show the intro carousel - only for completely new users
   useEffect(() => {
     if (!loading && !user && !retailerId) {
-      const hasSeenIntro = localStorage.getItem('pharmalync-intro-seen');
-      if (hasSeenIntro !== 'true') {
+      const hasSeenIntro = hasSeenIntroCarousel();
+      if (!hasSeenIntro) {
         setShowIntro(true);
       }
     }
@@ -67,9 +67,9 @@ export default function Home() {
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
       if (e.ctrlKey && e.shiftKey && e.key === 'I') {
-        localStorage.removeItem('pharmalync-intro-seen');
+        resetIntroCarousel();
         setShowIntro(true);
-        logger.info('Intro carousel reset for testing', { context: 'Debug' });
+        console.log('Intro carousel reset for testing', { context: 'Debug' });
       }
     };
     
@@ -79,12 +79,12 @@ export default function Home() {
 
   const handleIntroComplete = () => {
     setShowIntro(false);
-    localStorage.setItem('pharmalync-intro-seen', 'true');
+    // The carousel component itself handles marking as seen
   };
 
   const handleIntroSkip = () => {
     setShowIntro(false);
-    localStorage.setItem('pharmalync-intro-seen', 'true');
+    // The carousel component itself handles marking as seen
   };
 
   // Loading state

@@ -479,6 +479,7 @@
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { X, CheckCircle, ArrowRight, ChevronLeft, ChevronRight } from 'lucide-react';
+import { markIntroCarouselAsSeen } from '@/lib/intro-carousel';
 
 interface AppIntroCarouselProps {
   onComplete: () => void;
@@ -539,7 +540,7 @@ export function AppIntroCarousel({ onComplete, onSkip }: AppIntroCarouselProps) 
   };
 
   const handleSkip = () => {
-    localStorage.setItem('pharmalync-intro-seen', 'true');
+    markIntroCarouselAsSeen();
     if (onSkip) {
       onSkip();
     } else {
@@ -548,7 +549,7 @@ export function AppIntroCarousel({ onComplete, onSkip }: AppIntroCarouselProps) 
   };
 
   const handleComplete = () => {
-    localStorage.setItem('pharmalync-intro-seen', 'true');
+    markIntroCarouselAsSeen();
     onComplete();
   };
 

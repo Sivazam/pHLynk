@@ -438,7 +438,12 @@ export function NetflixRoleSelection({ onRoleSelect, onBack }: NetflixRoleSelect
       <footer className="border-t border-gray-800 px-4 sm:px-6 py-6 sm:py-8">
         <div className="max-w-6xl mx-auto">
           <div className="text-gray-500 text-xs sm:text-sm space-y-3 sm:space-y-4 font-body">
-            <p className="text-center sm:text-left">Questions? Call 000-800-040-1843</p>
+              <p className="text-center sm:text-left">
+                Questions?{" "}
+                <a href="tel:9014882779" className="text-blue-600 hover:underline">
+                  9014882779
+                </a>
+              </p>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
               <div className="text-center sm:text-left">
                 <a href="#" className="hover:underline text-xs sm:text-sm">FAQ</a>
@@ -454,8 +459,8 @@ export function NetflixRoleSelection({ onRoleSelect, onBack }: NetflixRoleSelect
               </div>
             </div>
             <div className="flex flex-col sm:flex-row items-center justify-center sm:justify-start space-y-2 sm:space-y-0 sm:space-x-2 text-xs">
-              <span>PharmaLync</span>
-              <span>•</span>
+              {/* <span>PharmaLync</span>
+              <span>•</span> */}
               <span>© 2025 PharmaLync. All rights reserved.</span>
             </div>
           </div>
