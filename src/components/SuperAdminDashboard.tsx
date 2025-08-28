@@ -1853,9 +1853,9 @@ export function SuperAdminDashboard() {
                             fontWeight: 700,
                           }}
                         >
-                          Payment <br />
-                          Collection <br />
-                          Made More Secure{" "}
+                          Payment <br />s
+                          Collection Made<br />
+                          More Secure{" "}
                           <Heart
                             className="inline-block"
                             size={30}
