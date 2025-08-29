@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Image from 'next/image';
+import { StatusBarColor } from './ui/StatusBarColor';
 
 interface AppLoadingScreenProps {
   message?: string;
@@ -160,8 +161,12 @@ export function AppLoadingScreen({
   }
 
   return (
+     <>
+        <StatusBarColor theme="blue" />
+        
     <div className={`${bgColor} rounded-lg p-8 flex items-center justify-center loading-screen`}>
       {content}
     </div>
+    </>
   );
 }

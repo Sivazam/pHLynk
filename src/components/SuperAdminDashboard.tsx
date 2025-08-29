@@ -64,6 +64,7 @@ import {
   RefreshCw,
   Heart
 } from 'lucide-react';
+import { StatusBarColor } from './ui/StatusBarColor';
 
 interface TenantDetails {
   tenant: Tenant;
@@ -1784,6 +1785,8 @@ export function SuperAdminDashboard() {
   }
 
   return (
+          <>
+            <StatusBarColor theme="white" />
     <div className="min-h-screen bg-gray-50 flex flex-col dashboard-screen">
       {/* Navigation */}
       <DashboardNavigation
@@ -1894,5 +1897,7 @@ export function SuperAdminDashboard() {
         onClose={hideSuccess}
       />
     </div>
+
+    </>
   );
 }

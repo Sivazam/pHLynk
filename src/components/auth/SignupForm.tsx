@@ -11,6 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useAuth } from '@/contexts/AuthContext';
 import { Loader2, Mail, Lock, User as UserIcon, Chrome } from 'lucide-react';
+import { StatusBarColor } from '../ui/StatusBarColor';
 
 const signupSchema = z.object({
   displayName: z.string().min(2, 'Name must be at least 2 characters'),
@@ -68,6 +69,9 @@ export function SignupForm({ onToggleMode }: SignupFormProps) {
   };
 
   return (
+     <>
+        <StatusBarColor theme="white" />
+        
     <Card className="w-full max-w-md mx-auto border-0 shadow-xl bg-white/80 backdrop-blur-sm">
       <CardHeader className="space-y-1">
         <CardTitle className="text-2xl font-bold text-center text-gray-900">
@@ -202,5 +206,6 @@ export function SignupForm({ onToggleMode }: SignupFormProps) {
         </div>
       </CardContent>
     </Card>
+    </>
   );
 }

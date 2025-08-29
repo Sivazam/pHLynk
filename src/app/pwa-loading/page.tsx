@@ -53,7 +53,7 @@ export default function PWALoadingPage() {
         {/* Bouncing Logo */}
         <div className="animate-bounce">
           <Image 
-            src="/logoMain.png" 
+            src="/PharmaLogo.png" 
             alt="pHLynk" 
             width={120} 
             height={120}

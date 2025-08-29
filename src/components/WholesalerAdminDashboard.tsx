@@ -88,6 +88,7 @@ import {
   Package,
   Heart
 } from 'lucide-react';
+import { StatusBarColor } from './ui/StatusBarColor';
 
 // Activity Log Type
 interface ActivityLog {
@@ -3617,6 +3618,8 @@ export function WholesalerAdminDashboard() {
   );
 
   return (
+          <>
+            <StatusBarColor theme="white" />
     <div className="min-h-screen bg-gray-50 flex flex-col dashboard-screen">
       {/* Navigation */}
       <DashboardNavigation
@@ -3745,6 +3748,8 @@ export function WholesalerAdminDashboard() {
    
    
     </div>
+
+    </>
 
     
   );

@@ -12,6 +12,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useAuth } from '@/contexts/AuthContext';
 import { Loader2, Mail, Lock, Shield } from 'lucide-react';
 import Link from 'next/link';
+import { StatusBarColor } from '../ui/StatusBarColor';
 
 const loginSchema = z.object({
   email: z.string().email('Please enter a valid email address'),
@@ -67,104 +68,109 @@ export function LoginForm({ onToggleMode, onResetPassword, onShowRoleSelection, 
   };
 
   return (
-    <Card className="w-full max-w-md mx-auto border-0 shadow-xl bg-white/80 backdrop-blur-sm">
-      <CardHeader className="space-y-1">
-        <CardTitle className="text-2xl font-bold text-center text-gray-900">
-          Welcome Back
-        </CardTitle>
-        <CardDescription className="text-center text-gray-600">
-          Sign in to access your PharmaLync account
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {error && (
-          <Alert variant="destructive" className="border-red-200 bg-red-50">
-            <AlertDescription className="text-red-800">{error}</AlertDescription>
-          </Alert>
-        )}
-        
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="email" className="text-sm font-medium text-gray-700">Email Address</Label>
-            <div className="relative">
-              <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-              <Input
-                id="email"
-                type="email"
-                placeholder="Enter your email address"
-                className="pl-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
-                {...register('email')}
-              />
-            </div>
-            {errors.email && (
-              <p className="text-sm text-red-600">{errors.email.message}</p>
-            )}
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="password" className="text-sm font-medium text-gray-700">Password</Label>
-            <div className="relative">
-              <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-              <Input
-                id="password"
-                type="password"
-                placeholder="Enter your password"
-                className="pl-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
-                {...register('password')}
-              />
-            </div>
-            {errors.password && (
-              <p className="text-sm text-red-600">{errors.password.message}</p>
-            )}
-          </div>
-
-          <Button 
-            type="submit" 
-            className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-medium py-2.5"
-            disabled={loading}
-          >
-            {loading ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Signing in...
-              </>
-            ) : (
-              'Sign In'
-            )}
-          </Button>
-        </form>
-
-        <div className="relative">
-          <div className="absolute inset-0 flex items-center">
-            <span className="w-full border-t border-gray-300" />
-          </div>
-          <div className="relative flex justify-center text-xs uppercase">
-            <span className="bg-white px-2 text-gray-500">Or Need Help</span>
-          </div>
-        </div>
-
-        <div className="text-center space-y-1">
-          <button
-            type="button"
-            onClick={onResetPassword}
-            className="text-sm text-blue-600 hover:text-blue-700 font-medium transition-colors"
-          >
-            Forgot your password?
-          </button>
-        </div>
-      
-        {/* Super Admin Registration */}
-        {selectedRole === 'SUPER_ADMIN' && (
-          <div className="text-center pt-4">
-            <Link href="/init" className="inline-flex items-center">
-              <div className="inline-flex items-center rounded-full px-4 py-2 text-sm font-medium transition-all duration-300 cursor-pointer bg-[#3d6dcf] hover:bg-[#345bb0]">
-                <Shield className="w-4 h-4 mr-1 text-white" />
-                <span className="text-white">Super Admin Registration</span>
+     <>
+      <StatusBarColor theme="white" />
+          
+      <Card className="w-full max-w-md mx-auto border-0 shadow-xl bg-white/80 backdrop-blur-sm">
+        <CardHeader className="space-y-1">
+          <CardTitle className="text-2xl font-bold text-center text-gray-900">
+            Welcome Back
+          </CardTitle>
+          <CardDescription className="text-center text-gray-600">
+            Sign in to access your PharmaLync account
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {error && (
+            <Alert variant="destructive" className="border-red-200 bg-red-50">
+              <AlertDescription className="text-red-800">{error}</AlertDescription>
+            </Alert>
+          )}
+          
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="email" className="text-sm font-medium text-gray-700">Email Address</Label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="Enter your email address"
+                  className="pl-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                  {...register('email')}
+                />
               </div>
-            </Link>
-          </div>)
-        }
-      </CardContent>
-    </Card>
+              {errors.email && (
+                <p className="text-sm text-red-600">{errors.email.message}</p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="password" className="text-sm font-medium text-gray-700">Password</Label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                <Input
+                  id="password"
+                  type="password"
+                  placeholder="Enter your password"
+                  className="pl-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                  {...register('password')}
+                />
+              </div>
+              {errors.password && (
+                <p className="text-sm text-red-600">{errors.password.message}</p>
+              )}
+            </div>
+
+            <Button 
+              type="submit" 
+              className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-medium py-2.5"
+              disabled={loading}
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Signing in...
+                </>
+              ) : (
+                'Sign In'
+              )}
+            </Button>
+          </form>
+
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <span className="w-full border-t border-gray-300" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-white px-2 text-gray-500">Or Need Help</span>
+            </div>
+          </div>
+
+          <div className="text-center space-y-1">
+            <button
+              type="button"
+              onClick={onResetPassword}
+              className="text-sm text-blue-600 hover:text-blue-700 font-medium transition-colors"
+            >
+              Forgot your password?
+            </button>
+          </div>
+        
+          {/* Super Admin Registration */}
+          {selectedRole === 'SUPER_ADMIN' && (
+            <div className="text-center pt-4">
+              <Link href="/init" className="inline-flex items-center">
+                <div className="inline-flex items-center rounded-full px-4 py-2 text-sm font-medium transition-all duration-300 cursor-pointer bg-[#3d6dcf] hover:bg-[#345bb0]">
+                  <Shield className="w-4 h-4 mr-1 text-white" />
+                  <span className="text-white">Super Admin Registration</span>
+                </div>
+              </Link>
+            </div>)
+          }
+        </CardContent>
+      </Card>
+    </>
+
   );
 }

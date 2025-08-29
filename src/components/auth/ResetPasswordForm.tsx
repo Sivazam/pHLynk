@@ -11,6 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useAuth } from '@/contexts/AuthContext';
 import { Loader2, Mail, ArrowLeft } from 'lucide-react';
+import { StatusBarColor } from '../ui/StatusBarColor';
 
 const resetPasswordSchema = z.object({
   email: z.string().email('Please enter a valid email address')
@@ -53,6 +54,9 @@ export function ResetPasswordForm({ onBackToLogin }: ResetPasswordFormProps) {
 
   if (success) {
     return (
+       <>
+          <StatusBarColor theme="white" />
+          
       <Card className="w-full max-w-md mx-auto border-0 shadow-xl bg-white/80 backdrop-blur-sm">
         <CardHeader className="space-y-1">
           <CardTitle className="text-2xl font-bold text-center text-gray-900">
@@ -81,10 +85,14 @@ export function ResetPasswordForm({ onBackToLogin }: ResetPasswordFormProps) {
           </div>
         </CardContent>
       </Card>
+      </>
     );
   }
 
   return (
+     <>
+    <StatusBarColor theme="white" />
+    
     <Card className="w-full max-w-md mx-auto border-0 shadow-xl bg-white/80 backdrop-blur-sm">
       <CardHeader className="space-y-1">
         <CardTitle className="text-2xl font-bold text-center text-gray-900">
@@ -147,5 +155,6 @@ export function ResetPasswordForm({ onBackToLogin }: ResetPasswordFormProps) {
         </div>
       </CardContent>
     </Card>
+    </>
   );
 }

@@ -46,6 +46,7 @@ import {
   RefreshCw,
   Heart
 } from 'lucide-react';
+import { StatusBarColor } from './ui/StatusBarColor';
 
 export function RetailerDashboard() {
   const [retailer, setRetailer] = useState<Retailer | null>(null);
@@ -1295,160 +1296,163 @@ export function RetailerDashboard() {
   // Main component return - no global loading state
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col dashboard-screen">
-      {/* Navigation */}
-      <DashboardNavigation
-        activeNav={activeNav}
-        setActiveNav={setActiveNav}
-        navItems={navItems}
-        title="PharmaLync"
-        subtitle="Retailer Dashboard"
-        notificationCount={notificationCount}
-        user={retailerUser ? { displayName: retailerUser.name, email: retailerUser.email } : undefined}
-        onLogout={handleLogout}
-      />
+          <>
+            <StatusBarColor theme="white" />
+            <div className="min-h-screen bg-gray-50 flex flex-col dashboard-screen">
+              {/* Navigation */}
+              <DashboardNavigation
+                activeNav={activeNav}
+                setActiveNav={setActiveNav}
+                navItems={navItems}
+                title="PharmaLync"
+                subtitle="Retailer Dashboard"
+                notificationCount={notificationCount}
+                user={retailerUser ? { displayName: retailerUser.name, email: retailerUser.email } : undefined}
+                onLogout={handleLogout}
+              />
 
-      {/* Main Content */}
-      <main className="flex-1 p-3 sm:p-4 lg:p-6 overflow-y-auto pb-20 lg:pb-6">
-        {error && (
-          <Alert variant="destructive" className="mb-4 sm:mb-6">
-            <AlertDescription className="text-sm">{error}</AlertDescription>
-          </Alert>
-        )}
+              {/* Main Content */}
+              <main className="flex-1 p-3 sm:p-4 lg:p-6 overflow-y-auto pb-20 lg:pb-6">
+                {error && (
+                  <Alert variant="destructive" className="mb-4 sm:mb-6">
+                    <AlertDescription className="text-sm">{error}</AlertDescription>
+                  </Alert>
+                )}
 
-        {/* Content based on active navigation */}
-        <div className="space-y-4 sm:space-y-6">
-          {activeNav === 'overview' && <Overview />}
-          {activeNav === 'invoices' && <InvoicesComponent />}
-          {activeNav === 'payments' && <PaymentsComponent />}
-          {activeNav === 'history' && <HistoryComponent />}
+                {/* Content based on active navigation */}
+                <div className="space-y-4 sm:space-y-6">
+                  {activeNav === 'overview' && <Overview />}
+                  {activeNav === 'invoices' && <InvoicesComponent />}
+                  {activeNav === 'payments' && <PaymentsComponent />}
+                  {activeNav === 'history' && <HistoryComponent />}
 
-         <div >
-          <div className="px-4 pb-20 pt-2 text-left">
+                <div >
+                  <div className="px-4 pb-20 pt-2 text-left">
 
-                    {/* Tagline */}
-                    <h2
-                      className="fw-bold lh-sm"
-                      style={{
-                        fontSize: "2.2rem",
-                        lineHeight: "1.2",
-                        color: "rgba(75, 75, 75, 1)",
-                        fontWeight: 700,
-                      }}
-                    >
-                      Payment <br />
-                      Collection Made<br />
-                      More Secure{" "}
-                      <Heart
-                        className="inline-block"
-                        size={30}
-                        fill="red"
-                        color="red"
-                      />
-                    </h2>
-        
-                    {/* Divider line */}
-                    <hr
-                      style={{
-                        borderTop: "1px solid rgba(75, 75, 75, 1)",
-                        margin: "18px 0",
-                      }}
-                    />
-        
-                    {/* App name */}
-                    <p
-                      style={{
-                        fontSize: "1rem",
-                        color: "rgba(75, 75, 75, 1)",
-                        fontWeight: 500,
-                      }}
-                    >
-                      PharmaLync
-                    </p>
-          </div>
+                            {/* Tagline */}
+                            <h2
+                              className="fw-bold lh-sm"
+                              style={{
+                                fontSize: "2.2rem",
+                                lineHeight: "1.2",
+                                color: "rgba(75, 75, 75, 1)",
+                                fontWeight: 700,
+                              }}
+                            >
+                              Payment <br />
+                              Collection Made<br />
+                              More Secure{" "}
+                              <Heart
+                                className="inline-block"
+                                size={30}
+                                fill="red"
+                                color="red"
+                              />
+                            </h2>
+                
+                            {/* Divider line */}
+                            <hr
+                              style={{
+                                borderTop: "1px solid rgba(75, 75, 75, 1)",
+                                margin: "18px 0",
+                              }}
+                            />
+                
+                            {/* App name */}
+                            <p
+                              style={{
+                                fontSize: "1rem",
+                                color: "rgba(75, 75, 75, 1)",
+                                fontWeight: 500,
+                              }}
+                            >
+                              PharmaLync
+                            </p>
+                  </div>
+                        </div>
+
                 </div>
+              </main>
 
-        </div>
-      </main>
+              {/* OTP Popup */}
+              {showOTPPopup && newPayment && (
+                <Dialog open={showOTPPopup} onOpenChange={setShowOTPPopup}>
+                  <DialogContent className="max-w-md mx-4">
+                    <DialogHeader>
+                      <DialogTitle className="flex items-center space-x-2 text-base sm:text-lg">
+                        <Volume2 className="h-5 w-5" />
+                        <span>New Payment Request</span>
+                      </DialogTitle>
+                      <DialogDescription className="text-sm">
+                        A line worker has initiated a payment that requires your verification
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                      <div className="bg-blue-50 p-4 rounded-lg">
+                        <div className="grid grid-cols-2 gap-2 text-sm">
+                          <div>Amount:</div>
+                          <div className="font-medium">{formatCurrency(newPayment.totalPaid)}</div>
+                          <div>Line Worker:</div>
+                          <div className="font-medium">{activeOTPs[0]?.lineWorkerName || 'Unknown'}</div>
+                          <div>Method:</div>
+                          <div className="font-medium">{newPayment.method}</div>
+                          <div>OTP Code:</div>
+                          <div className="font-medium text-blue-600">{activeOTPs[0]?.code}</div>
+                        </div>
+                      </div>
+                      <p className="text-sm text-gray-600">
+                        Please share this OTP code with the line worker to complete the payment verification.
+                      </p>
+                      <div className="flex space-x-2">
+                        <Button onClick={() => setShowOTPPopup(false)}>
+                          I Understand
+                        </Button>
+                      </div>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              )}
 
-      {/* OTP Popup */}
-      {showOTPPopup && newPayment && (
-        <Dialog open={showOTPPopup} onOpenChange={setShowOTPPopup}>
-          <DialogContent className="max-w-md mx-4">
-            <DialogHeader>
-              <DialogTitle className="flex items-center space-x-2 text-base sm:text-lg">
-                <Volume2 className="h-5 w-5" />
-                <span>New Payment Request</span>
-              </DialogTitle>
-              <DialogDescription className="text-sm">
-                A line worker has initiated a payment that requires your verification
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div className="bg-blue-50 p-4 rounded-lg">
-                <div className="grid grid-cols-2 gap-2 text-sm">
-                  <div>Amount:</div>
-                  <div className="font-medium">{formatCurrency(newPayment.totalPaid)}</div>
-                  <div>Line Worker:</div>
-                  <div className="font-medium">{activeOTPs[0]?.lineWorkerName || 'Unknown'}</div>
-                  <div>Method:</div>
-                  <div className="font-medium">{newPayment.method}</div>
-                  <div>OTP Code:</div>
-                  <div className="font-medium text-blue-600">{activeOTPs[0]?.code}</div>
-                </div>
-              </div>
-              <p className="text-sm text-gray-600">
-                Please share this OTP code with the line worker to complete the payment verification.
-              </p>
-              <div className="flex space-x-2">
-                <Button onClick={() => setShowOTPPopup(false)}>
-                  I Understand
-                </Button>
-              </div>
+              {/* Settlement Popup */}
+              {showSettlementPopup && newCompletedPayment && (
+                <Dialog open={showSettlementPopup} onOpenChange={setShowSettlementPopup}>
+                  <DialogContent className="max-w-md">
+                    <DialogHeader>
+                      <DialogTitle className="flex items-center space-x-2">
+                        <CheckCircle className="h-5 w-5 text-green-600" />
+                        <span>Payment Completed</span>
+                      </DialogTitle>
+                      <DialogDescription>
+                        A payment has been successfully completed for your account
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                      <div className="bg-green-50 p-4 rounded-lg">
+                        <div className="grid grid-cols-2 gap-2 text-sm">
+                          <div>Amount Paid:</div>
+                          <div className="font-medium">{formatCurrency(newCompletedPayment.amount)}</div>
+                          <div>Line Worker:</div>
+                          <div className="font-medium">{newCompletedPayment.lineWorkerName}</div>
+                          <div>Completed At:</div>
+                          <div className="font-medium">{formatTimestampWithTime(newCompletedPayment.completedAt)}</div>
+                          <div>Remaining Outstanding:</div>
+                          <div className="font-medium">{formatCurrency(newCompletedPayment.remainingOutstanding)}</div>
+                        </div>
+                      </div>
+                      <p className="text-sm text-gray-600">
+                        Thank you for your payment! Your outstanding balance has been updated.
+                      </p>
+                      <div className="flex space-x-2">
+                        <Button onClick={() => handleAcknowledgeSettlement(newCompletedPayment.paymentId)}>
+                          Acknowledge
+                        </Button>
+                      </div>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              )}
+            
             </div>
-          </DialogContent>
-        </Dialog>
-      )}
-
-      {/* Settlement Popup */}
-      {showSettlementPopup && newCompletedPayment && (
-        <Dialog open={showSettlementPopup} onOpenChange={setShowSettlementPopup}>
-          <DialogContent className="max-w-md">
-            <DialogHeader>
-              <DialogTitle className="flex items-center space-x-2">
-                <CheckCircle className="h-5 w-5 text-green-600" />
-                <span>Payment Completed</span>
-              </DialogTitle>
-              <DialogDescription>
-                A payment has been successfully completed for your account
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div className="bg-green-50 p-4 rounded-lg">
-                <div className="grid grid-cols-2 gap-2 text-sm">
-                  <div>Amount Paid:</div>
-                  <div className="font-medium">{formatCurrency(newCompletedPayment.amount)}</div>
-                  <div>Line Worker:</div>
-                  <div className="font-medium">{newCompletedPayment.lineWorkerName}</div>
-                  <div>Completed At:</div>
-                  <div className="font-medium">{formatTimestampWithTime(newCompletedPayment.completedAt)}</div>
-                  <div>Remaining Outstanding:</div>
-                  <div className="font-medium">{formatCurrency(newCompletedPayment.remainingOutstanding)}</div>
-                </div>
-              </div>
-              <p className="text-sm text-gray-600">
-                Thank you for your payment! Your outstanding balance has been updated.
-              </p>
-              <div className="flex space-x-2">
-                <Button onClick={() => handleAcknowledgeSettlement(newCompletedPayment.paymentId)}>
-                  Acknowledge
-                </Button>
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
-      )}
-    
-    </div>
+          </>
   );
 }

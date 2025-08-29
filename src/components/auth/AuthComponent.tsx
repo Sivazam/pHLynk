@@ -6,6 +6,7 @@ import { SignupForm } from './SignupForm';
 import { ResetPasswordForm } from './ResetPasswordForm';
 import { NetflixRoleSelection } from './NetflixRoleSelection';
 import Image from 'next/image';
+import { StatusBarColor } from '../ui/StatusBarColor';
 
 type AuthMode = 'login' | 'signup' | 'reset';
 type AuthView = 'roleSelection' | 'authForm';
@@ -61,6 +62,9 @@ export function AuthComponent({ onShowRoleSelection }: AuthComponentProps) {
 
   // Show auth forms after role selection
   return (
+    <>
+    <StatusBarColor theme="white" />
+    
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-white to-green-50 py-12 px-4 sm:px-6 lg:px-8">
       <div className="w-full max-w-md">
         {/* Brand Header */}
@@ -136,5 +140,6 @@ export function AuthComponent({ onShowRoleSelection }: AuthComponentProps) {
         </div>
       </div>
     </div>
+    </>
   );
 }
