@@ -48,7 +48,7 @@ export default function PWALoadingPage() {
   }, [router]);
 
   return (
-    <div className="fixed inset-0 bg-[#20439f] flex items-center justify-center z-50">
+    <div className="fixed inset-0 bg-[#20439f] flex items-center justify-center z-50 loading-screen">
       <div className="flex flex-col items-center justify-center space-y-8">
         {/* Bouncing Logo */}
         <div className="animate-bounce">

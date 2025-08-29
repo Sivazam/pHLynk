@@ -121,6 +121,41 @@
   }
 }
 
+/* Black status bar area for all screens except loading screen */
+body:not(.loading-screen) {
+  /* Create black status bar area above content */
+  padding-top: env(safe-area-inset-top);
+}
+
+/* Black status bar overlay */
+.status-bar-black {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: env(safe-area-inset-top);
+  background-color: black;
+  z-index: 9999;
+  pointer-events: none;
+}
+
+/* Apply black status bar to all dashboard screens */
+.dashboard-screen {
+  padding-top: env(safe-area-inset-top);
+}
+
+.dashboard-screen::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: env(safe-area-inset-top);
+  background-color: black;
+  z-index: 9999;
+  pointer-events: none;
+}
+
 /* Custom utility classes */
 .scrollbar-hide {
   -ms-overflow-style: none;  /* IE and Edge */

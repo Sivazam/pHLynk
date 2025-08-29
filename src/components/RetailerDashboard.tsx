@@ -1295,7 +1295,7 @@ export function RetailerDashboard() {
   // Main component return - no global loading state
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <div className="min-h-screen bg-gray-50 flex flex-col dashboard-screen">
       {/* Navigation */}
       <DashboardNavigation
         activeNav={activeNav}

@@ -153,14 +153,14 @@ export function AppLoadingScreen({
 
   if (fullScreen) {
     return (
-      <div className={`fixed inset-0 ${bgColor} flex items-center justify-center z-50`}>
+      <div className={`fixed inset-0 ${bgColor} flex items-center justify-center z-50 loading-screen`}>
         {content}
       </div>
     );
   }
 
   return (
-    <div className={`${bgColor} rounded-lg p-8 flex items-center justify-center`}>
+    <div className={`${bgColor} rounded-lg p-8 flex items-center justify-center loading-screen`}>
       {content}
     </div>
   );
