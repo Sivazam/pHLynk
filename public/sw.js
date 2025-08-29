@@ -16,8 +16,7 @@ const STATIC_ASSETS = [
 // Core pages that should be cached for offline use
 const CORE_PAGES = [
   '/',
-  '/pwa-loading',
-  '/splash.html'
+  '/pwa-loading'
 ];
 
 // Cache busting query parameter for dynamic content
