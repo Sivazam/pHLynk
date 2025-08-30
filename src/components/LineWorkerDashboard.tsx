@@ -137,6 +137,10 @@ export function LineWorkerDashboard() {
     const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
     return { startDate: startOfDay, endDate: endOfDay };
   });
+  
+  // Add loading state for initial data fetch
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [dataFetchProgress, setDataFetchProgress] = useState(0);
 
   // Helper functions to filter data by date range
   const filterPaymentsByDateRange = (paymentsData: Payment[]) => {
@@ -190,8 +194,13 @@ export function LineWorkerDashboard() {
       // Check if user has the required assigned data
       if (!user.assignedAreas || user.assignedAreas.length === 0) {
         setError('No areas assigned to your account. Please contact your administrator.');
+        setIsInitialLoading(false);
         return;
       }
+      
+      // Reset loading state and start fetching data
+      setIsInitialLoading(true);
+      setDataFetchProgress(0);
       fetchLineWorkerData();
       
       // Start real-time notifications
@@ -332,6 +341,7 @@ export function LineWorkerDashboard() {
     if (!currentTenantId) return;
     
     setError(null);
+    setDataFetchProgress(20);
     
     try {
       console.log('Fetching line worker data for user:', user?.uid);
@@ -339,6 +349,7 @@ export function LineWorkerDashboard() {
       console.log('User assigned zips:', user?.assignedZips);
       
       // Clean up any stuck payments first
+      setDataFetchProgress(40);
       try {
         await paymentService.cleanupStuckPayments(currentTenantId);
         console.log('✅ Cleaned up stuck payments');
@@ -347,6 +358,7 @@ export function LineWorkerDashboard() {
       }
       
       // Get all retailers first
+      setDataFetchProgress(60);
       const allRetailers = await retailerService.getAll(currentTenantId);
       const allInvoices = await invoiceService.getAll(currentTenantId);
       const allAreas = await areaService.getAll(currentTenantId);
@@ -362,6 +374,7 @@ export function LineWorkerDashboard() {
       });
 
       // Filter retailers by assigned areas OR direct assignments
+      setDataFetchProgress(80);
       const assignedRetailers = allRetailers.filter(retailer => {
         // First check if retailer is directly assigned to this line worker
         if (retailer.assignedLineWorkerId === user?.uid) {
@@ -411,6 +424,9 @@ export function LineWorkerDashboard() {
       setInvoices(assignedInvoices);
       setPayments(paymentsData);
       setAreas(allAreas);
+      
+      setDataFetchProgress(100);
+      setIsInitialLoading(false);
       
       // Calculate notification count
       const overdueRetailers = assignedRetailers.filter(r => r.currentOutstanding > 0).length;
@@ -1703,18 +1719,36 @@ export function LineWorkerDashboard() {
   // Main component return - no global loading state
 
   return (
-     <>
-    
-    <StatusBarColor theme="white" />
-        
-    <div className="min-h-screen bg-gray-50 flex flex-col dashboard-screen">
-      {/* Navigation */}
-      <DashboardNavigation
-        activeNav={activeNav}
-        setActiveNav={setActiveNav}
-        navItems={navItems}
-        title="PharmaLync"
-        subtitle="Line Worker Dashboard"
+    <>
+      <StatusBarColor theme="white" />
+      
+      {/* Loading Overlay */}
+      {isInitialLoading && (
+        <div className="fixed inset-0 bg-white bg-opacity-90 flex items-center justify-center z-50">
+          <div className="flex flex-col items-center space-y-4">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+            <div className="text-center">
+              <p className="text-gray-600 font-medium">Loading dashboard data...</p>
+              <div className="w-48 bg-gray-200 rounded-full h-2 mt-2">
+                <div 
+                  className="bg-blue-600 h-2 rounded-full transition-all duration-300 ease-out"
+                  style={{ width: `${dataFetchProgress}%` }}
+                ></div>
+              </div>
+              <p className="text-sm text-gray-500 mt-1">{dataFetchProgress}%</p>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      <div className="min-h-screen bg-gray-50 flex flex-col dashboard-screen">
+        {/* Navigation */}
+        <DashboardNavigation
+          activeNav={activeNav}
+          setActiveNav={setActiveNav}
+          navItems={navItems}
+          title="PharmaLync"
+          subtitle="Line Worker Dashboard"
         notificationCount={notificationCount}
         notifications={notifications}
         user={user ? { displayName: user.displayName, email: user.email } : undefined}

@@ -92,6 +92,10 @@ export function RetailerDashboard() {
     const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
     return { startDate: startOfDay, endDate: endOfDay };
   });
+  
+  // Add loading state for initial data fetch
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [dataFetchProgress, setDataFetchProgress] = useState(0);
 
   // Helper functions to filter data by date range
   const filterPaymentsByDateRange = (paymentsData: Payment[]) => {
@@ -228,6 +232,9 @@ export function RetailerDashboard() {
   useEffect(() => {
     const storedRetailerId = localStorage.getItem('retailerId');
     if (storedRetailerId) {
+      // Reset loading state and start fetching data
+      setIsInitialLoading(true);
+      setDataFetchProgress(0);
       fetchRetailerData(storedRetailerId);
       
       // Start real-time notifications
@@ -260,14 +267,17 @@ export function RetailerDashboard() {
 
   const fetchRetailerData = async (retailerId: string) => {
     setError(null);
+    setDataFetchProgress(20);
     
     try {
       console.log('Fetching retailer data for:', retailerId);
       
       // Get retailer user account - this contains all the data we need
+      setDataFetchProgress(40);
       const retailerUserData = await RetailerAuthService.getRetailerUserByRetailerId(retailerId);
       if (!retailerUserData) {
         setError('Retailer user account not found');
+        setIsInitialLoading(false);
         return;
       }
       
@@ -277,6 +287,7 @@ export function RetailerDashboard() {
       console.log('🏠 Address from retailer user data:', retailerUserData.address);
       
       // Try to get retailer details from retailers collection first
+      setDataFetchProgress(60);
       let retailerData;
       try {
         const retailerRef = doc(db, 'retailers', retailerId);
@@ -334,6 +345,7 @@ export function RetailerDashboard() {
       }
       
       // Get payment history using the tenantId and retailerId from user data
+      setDataFetchProgress(80);
       const paymentsData = await paymentService.getPaymentsByRetailer(retailerUserData.tenantId, retailerUserData.retailerId);
       
       // Get invoice data to calculate proper outstanding amount
@@ -390,6 +402,9 @@ export function RetailerDashboard() {
       // Load additional data (wholesaler and line worker names)
       loadAdditionalData();
       
+      setDataFetchProgress(100);
+      setIsInitialLoading(false);
+      
       console.log('Final retailer data:', retailerData);
       console.log('Payments loaded:', paymentsData.length);
       console.log('Final outstanding amount:', currentOutstanding);
@@ -397,6 +412,8 @@ export function RetailerDashboard() {
     } catch (err: any) {
       console.error('Error fetching retailer data:', err);
       setError(err.message || 'Failed to fetch retailer data');
+      setDataFetchProgress(100);
+      setIsInitialLoading(false);
     }
   };
 
@@ -1296,16 +1313,36 @@ export function RetailerDashboard() {
   // Main component return - no global loading state
 
   return (
-          <>
-            <StatusBarColor theme="white" />
-            <div className="min-h-screen bg-gray-50 flex flex-col dashboard-screen">
-              {/* Navigation */}
-              <DashboardNavigation
-                activeNav={activeNav}
-                setActiveNav={setActiveNav}
-                navItems={navItems}
-                title="PharmaLync"
-                subtitle="Retailer Dashboard"
+    <>
+      <StatusBarColor theme="white" />
+      
+      {/* Loading Overlay */}
+      {isInitialLoading && (
+        <div className="fixed inset-0 bg-white bg-opacity-90 flex items-center justify-center z-50">
+          <div className="flex flex-col items-center space-y-4">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+            <div className="text-center">
+              <p className="text-gray-600 font-medium">Loading dashboard data...</p>
+              <div className="w-48 bg-gray-200 rounded-full h-2 mt-2">
+                <div 
+                  className="bg-blue-600 h-2 rounded-full transition-all duration-300 ease-out"
+                  style={{ width: `${dataFetchProgress}%` }}
+                ></div>
+              </div>
+              <p className="text-sm text-gray-500 mt-1">{dataFetchProgress}%</p>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      <div className="min-h-screen bg-gray-50 flex flex-col dashboard-screen">
+        {/* Navigation */}
+        <DashboardNavigation
+          activeNav={activeNav}
+          setActiveNav={setActiveNav}
+          navItems={navItems}
+          title="PharmaLync"
+          subtitle="Retailer Dashboard"
                 notificationCount={notificationCount}
                 user={retailerUser ? { displayName: retailerUser.name, email: retailerUser.email } : undefined}
                 onLogout={handleLogout}

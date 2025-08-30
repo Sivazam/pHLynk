@@ -143,6 +143,10 @@ export function SuperAdminDashboard() {
     return { startDate: startOfDay, endDate: endOfDay };
   });
 
+  // Add loading state for initial data fetch
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [dataFetchProgress, setDataFetchProgress] = useState(0);
+
   // Helper functions to filter data by date range
   const filterPaymentsByDateRange = (paymentsData: Payment[]) => {
     return paymentsData.filter(payment => {
@@ -377,10 +381,14 @@ export function SuperAdminDashboard() {
 
       const sortedActivities = activities.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime()).slice(0, 10);
       setRecentActivities(sortedActivities);
+      setDataFetchProgress(100);
+      setIsInitialLoading(false); // All data loaded
       return sortedActivities;
     } catch (error) {
       console.error('Failed to fetch recent activities:', error);
       setRecentActivities([]);
+      setDataFetchProgress(100);
+      setIsInitialLoading(false); // Still mark as loaded even if there's an error
       return [];
     }
   };
@@ -406,6 +414,11 @@ export function SuperAdminDashboard() {
 
   useEffect(() => {
     if (isSuperAdmin && user) {
+      // Reset loading state
+      setIsInitialLoading(true);
+      setDataFetchProgress(0);
+      
+      // Start fetching data
       fetchTenants();
       fetchAnalytics();
       fetchRecentActivities();
@@ -443,17 +456,20 @@ export function SuperAdminDashboard() {
 
   const fetchTenants = async () => {
     setError(null);
+    setDataFetchProgress(20);
     
     try {
       const tenantsData = await tenantService.getAllTenants();
       setTenants(tenantsData);
       setLastUpdate(new Date());
+      setDataFetchProgress(40);
     } catch (err: any) {
       setError(err.message || 'Failed to fetch tenants');
     }
   };
 
   const fetchAnalytics = async () => {
+    setDataFetchProgress(60);
     try {
       const tenantsData = await tenantService.getAllTenants();
       let totalRevenue = 0;
@@ -538,16 +554,9 @@ export function SuperAdminDashboard() {
           (totalRevenue / (totalRevenue + totalOutstanding)) * 100 : 0,
         tenantAnalytics
       });
-
-      // Generate notifications
-      const activities = await fetchRecentActivities();
-      const newNotifications = generateNotifications(tenantsData, tenantAnalytics, activities);
-      setNotifications(newNotifications);
-      setNotificationCount(newNotifications.length);
-      setLastUpdate(new Date());
+      setDataFetchProgress(80);
     } catch (error) {
       console.error('Failed to fetch analytics:', error);
-      setError('Failed to fetch analytics data');
     }
   };
 
@@ -1785,16 +1794,36 @@ export function SuperAdminDashboard() {
   }
 
   return (
-          <>
-            <StatusBarColor theme="white" />
-    <div className="min-h-screen bg-gray-50 flex flex-col dashboard-screen">
-      {/* Navigation */}
-      <DashboardNavigation
-        activeNav={activeNav}
-        setActiveNav={setActiveNav}
-        navItems={navItems}
-        title="PharmaLync"
-        subtitle="Super Admin Dashboard"
+    <>
+      <StatusBarColor theme="white" />
+      
+      {/* Loading Overlay */}
+      {isInitialLoading && (
+        <div className="fixed inset-0 bg-white bg-opacity-90 flex items-center justify-center z-50">
+          <div className="flex flex-col items-center space-y-4">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+            <div className="text-center">
+              <p className="text-gray-600 font-medium">Loading dashboard data...</p>
+              <div className="w-48 bg-gray-200 rounded-full h-2 mt-2">
+                <div 
+                  className="bg-blue-600 h-2 rounded-full transition-all duration-300 ease-out"
+                  style={{ width: `${dataFetchProgress}%` }}
+                ></div>
+              </div>
+              <p className="text-sm text-gray-500 mt-1">{dataFetchProgress}%</p>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      <div className="min-h-screen bg-gray-50 flex flex-col dashboard-screen">
+        {/* Navigation */}
+        <DashboardNavigation
+          activeNav={activeNav}
+          setActiveNav={setActiveNav}
+          navItems={navItems}
+          title="PharmaLync"
+          subtitle="Super Admin Dashboard"
         notificationCount={notificationCount}
         notifications={notifications}
         user={user ? { displayName: user.displayName, email: user.email } : undefined}

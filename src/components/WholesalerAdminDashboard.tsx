@@ -250,6 +250,10 @@ export function WholesalerAdminDashboard() {
     return { startDate: startOfDay, endDate: endOfDay };
   });
   
+  // Add loading state for initial data fetch
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [dataFetchProgress, setDataFetchProgress] = useState(0);
+  
   // Separate state for the filter date picker
   const [filterDate, setFilterDate] = useState<{ from: Date | null; to: Date | null } | null>(null);
   
@@ -519,6 +523,10 @@ export function WholesalerAdminDashboard() {
     const currentTenantId = getCurrentTenantId();
     if (isWholesalerAdmin && user?.uid && currentTenantId) {
       console.log('🔔 Setting up wholesaler admin real-time notifications for user:', user.uid, 'tenant:', currentTenantId);
+      
+      // Reset loading state and start fetching data
+      setIsInitialLoading(true);
+      setDataFetchProgress(0);
       fetchDashboardData();
       
       // Start real-time notifications - ensure it's always set up
@@ -596,9 +604,11 @@ export function WholesalerAdminDashboard() {
     }
     
     setError(null);
+    setDataFetchProgress(20);
     
     try {
       // Fetch base data
+      setDataFetchProgress(40);
       const [areasData, retailersData, invoicesData, lineWorkersData, stats] = await Promise.all([
         areaService.getActiveAreas(currentTenantId),
         retailerService.getAll(currentTenantId),
@@ -608,6 +618,7 @@ export function WholesalerAdminDashboard() {
       ]);
 
       // Fetch payments with filters - only apply date range filter for Overview tab
+      setDataFetchProgress(60);
       let paymentsData = await paymentService.getAll(currentTenantId);
       let paymentsQuery = paymentsData;
       if (selectedLineWorker && selectedLineWorker !== "all") {
@@ -638,6 +649,7 @@ export function WholesalerAdminDashboard() {
       setDashboardStats(stats);
       
       // Recompute retailer data for accuracy
+      setDataFetchProgress(80);
       try {
         console.log('🔄 Recomputing retailer data for accuracy...');
         for (const retailer of retailersData) {
@@ -681,9 +693,13 @@ export function WholesalerAdminDashboard() {
       // Local notification generation removed to prevent conflicts
       
       setLastUpdate(new Date());
+      setDataFetchProgress(100);
+      setIsInitialLoading(false);
       
     } catch (err: any) {
       setError(err.message || 'Failed to fetch dashboard data');
+      setDataFetchProgress(100);
+      setIsInitialLoading(false);
     }
   };
 
@@ -3618,16 +3634,36 @@ export function WholesalerAdminDashboard() {
   );
 
   return (
-          <>
-            <StatusBarColor theme="white" />
-    <div className="min-h-screen bg-gray-50 flex flex-col dashboard-screen">
-      {/* Navigation */}
-      <DashboardNavigation
-        activeNav={activeNav}
-        setActiveNav={setActiveNav}
-        navItems={navItems}
-        title="PharmaLync"
-        subtitle="Wholesaler Dashboard"
+    <>
+      <StatusBarColor theme="white" />
+      
+      {/* Loading Overlay */}
+      {isInitialLoading && (
+        <div className="fixed inset-0 bg-white bg-opacity-90 flex items-center justify-center z-50">
+          <div className="flex flex-col items-center space-y-4">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+            <div className="text-center">
+              <p className="text-gray-600 font-medium">Loading dashboard data...</p>
+              <div className="w-48 bg-gray-200 rounded-full h-2 mt-2">
+                <div 
+                  className="bg-blue-600 h-2 rounded-full transition-all duration-300 ease-out"
+                  style={{ width: `${dataFetchProgress}%` }}
+                ></div>
+              </div>
+              <p className="text-sm text-gray-500 mt-1">{dataFetchProgress}%</p>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      <div className="min-h-screen bg-gray-50 flex flex-col dashboard-screen">
+        {/* Navigation */}
+        <DashboardNavigation
+          activeNav={activeNav}
+          setActiveNav={setActiveNav}
+          navItems={navItems}
+          title="PharmaLync"
+          subtitle="Wholesaler Dashboard"
         notificationCount={notificationCount}
         notifications={notifications}
         user={user ? { displayName: user.displayName, email: user.email } : undefined}
