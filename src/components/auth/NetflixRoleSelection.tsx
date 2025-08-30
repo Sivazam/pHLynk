@@ -725,7 +725,7 @@ export function NetflixRoleSelection({ onRoleSelect, onBack }: NetflixRoleSelect
         </header>
 
         {/* Main */}
-        <main className="flex-1 flex flex-col items-center px-4 sm:px-6 pb-12 sm:pb-16">
+        <main className="flex-1 pt-6 flex flex-col items-center px-4 sm:px-6 pb-12 sm:pb-16">
           <div className="w-full max-w-6xl mx-auto">
             <motion.div initial={{ opacity: 0, y: -30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 1 }}>
               <h1 className="text-4xl sm:text-5xl font-bold text-white text-center mb-6">Choose Your Role</h1>
