@@ -1067,19 +1067,16 @@ export function LineWorkerDashboard() {
           <h2 className="text-2xl font-bold text-gray-900">Your Retailers</h2>
           <p className="text-gray-600">Retailers assigned to your areas</p>
         </div>
-        <Button 
+        <LoadingButton 
           onClick={handleManualRefresh} 
-          disabled={refreshLoading}
+          isLoading={mainLoadingState.loadingState.isRefreshing}
+          loadingText="Refreshing..."
           variant="outline"
           className="flex items-center justify-center space-x-2 w-full sm:w-auto"
         >
-          {refreshLoading ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <RefreshCw className="h-4 w-4" />
-          )}
+          <RefreshCw className="h-4 w-4" />
           <span>Refresh</span>
-        </Button>
+        </LoadingButton>
       </div>
 
       <Card>
@@ -1188,19 +1185,16 @@ export function LineWorkerDashboard() {
             <h2 className="text-2xl font-bold text-gray-900">Payment History</h2>
             <p className="text-gray-600">All your payment collections</p>
           </div>
-          <Button 
+          <LoadingButton 
             onClick={handleManualRefresh} 
-            disabled={refreshLoading}
+            isLoading={mainLoadingState.loadingState.isRefreshing}
+            loadingText="Refreshing..."
             variant="outline"
             className="flex items-center space-x-2"
           >
-            {refreshLoading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <RefreshCw className="h-4 w-4" />
-            )}
+            <RefreshCw className="h-4 w-4" />
             <span>Refresh</span>
-          </Button>
+          </LoadingButton>
         </div>
 
         <Card>
@@ -1351,19 +1345,16 @@ export function LineWorkerDashboard() {
           <h2 className="text-2xl font-bold text-gray-900">Activity History</h2>
           <p className="text-gray-600">Your recent activities and achievements</p>
         </div>
-        <Button 
+        <LoadingButton 
           onClick={handleManualRefresh} 
-          disabled={refreshLoading}
+          isLoading={mainLoadingState.loadingState.isRefreshing}
+          loadingText="Refreshing..."
           variant="outline"
           className="flex items-center space-x-2"
         >
-          {refreshLoading ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <RefreshCw className="h-4 w-4" />
-          )}
+          <RefreshCw className="h-4 w-4" />
           <span>Refresh</span>
-        </Button>
+        </LoadingButton>
       </div>
 
       <Card>
@@ -1414,19 +1405,16 @@ export function LineWorkerDashboard() {
           <h2 className="text-2xl font-bold text-gray-900">Retailer Details & Logs</h2>
           <p className="text-gray-600">Complete detailed logs of your assigned retailers including invoices and payments</p>
         </div>
-        <Button 
+        <LoadingButton 
           onClick={handleManualRefresh} 
-          disabled={refreshLoading}
+          isLoading={mainLoadingState.loadingState.isRefreshing}
+          loadingText="Refreshing..."
           variant="outline"
           className="flex items-center justify-center space-x-2 w-full sm:w-auto"
         >
-          {refreshLoading ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <RefreshCw className="h-4 w-4" />
-          )}
+          <RefreshCw className="h-4 w-4" />
           <span>Refresh</span>
-        </Button>
+        </LoadingButton>
       </div>
 
       {/* Summary Cards */}
