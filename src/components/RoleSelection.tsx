@@ -36,6 +36,13 @@ export function RoleSelection({ onRoleSelect, onBack }: RoleSelectionProps) {
       description: 'Login with mobile number to view payments and outstanding amounts',
       icon: Store,
       color: 'bg-purple-500 hover:bg-purple-600'
+    },
+    {
+      id: 'SUPER_ADMIN',
+      title: 'Super Admin',
+      description: 'System-wide administration and configuration - manage wholesalers and monitor entire system',
+      icon: Smartphone,
+      color: 'bg-red-500 hover:bg-red-600'
     }
   ];
 
@@ -83,7 +90,7 @@ export function RoleSelection({ onRoleSelect, onBack }: RoleSelectionProps) {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {roles.map((role) => {
             const Icon = role.icon;
             return (
