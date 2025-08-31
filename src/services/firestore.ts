@@ -651,11 +651,11 @@ export class RetailerService extends FirestoreService<Retailer> {
 
       // Initialize activeOTPs array if it doesn't exist
       const activeOTPs = retailer.activeOTPs || [];
-      logger.debug('Current activeOTPs count', , activeOTPs.length, { context: 'OTPService' });
+      logger.debug('Current activeOTPs count', activeOTPs.length, { context: 'OTPService' });
       
       // Add new OTP to the array
       activeOTPs.push(otpData);
-      logger.debug('New activeOTPs count', , activeOTPs.length, { context: 'OTPService' });
+      logger.debug('New activeOTPs count', activeOTPs.length, { context: 'OTPService' });
 
       // Update retailer document with new OTP
       logger.debug('Updating retailer document with new OTP array', { context: 'OTPService' });
@@ -708,7 +708,7 @@ export class RetailerService extends FirestoreService<Retailer> {
       })), { context: 'OTPService' });
 
       const now = new Date();
-      logger.debug('Current time for expiration check', , now, { context: 'OTPService' });
+      logger.debug('Current time for expiration check', now, { context: 'OTPService' });
       
       // Filter out used and expired OTPs
       const activeOTPs = retailer.activeOTPs.filter(otp => {
