@@ -14,6 +14,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { DashboardNavigation, NavItem, NotificationItem } from '@/components/DashboardNavigation';
 import { DateRangeFilter, DateRangeOption } from '@/components/ui/DateRangeFilter';
 import { Skeleton } from '@/components/ui/skeleton';
+import { LoadingOverlay } from '@/components/ui/LoadingOverlay';
+import { LoadingButton } from '@/components/ui/LoadingButton';
+import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
+import { useLoadingState } from '@/hooks/useLoadingState';
 import { useAuth, useLineWorker } from '@/contexts/AuthContext';
 import { 
   retailerService, 
@@ -128,7 +132,6 @@ export function LineWorkerDashboard() {
     zips: string[];
     retailers: string[];
   } | null>(null);
-  const [refreshLoading, setRefreshLoading] = useState(false);
   const [paymentTab, setPaymentTab] = useState('completed');
   const [selectedDateRangeOption, setSelectedDateRangeOption] = useState('today');
   const [dateRange, setDateRange] = useState<{ startDate: Date; endDate: Date }>(() => {
@@ -138,8 +141,8 @@ export function LineWorkerDashboard() {
     return { startDate: startOfDay, endDate: endOfDay };
   });
   
-  // Add loading state for initial data fetch
-  const [isInitialLoading, setIsInitialLoading] = useState(true);
+  // Standardized loading state management
+  const mainLoadingState = useLoadingState();
   const [dataFetchProgress, setDataFetchProgress] = useState(0);
 
   // Helper functions to filter data by date range
@@ -194,12 +197,12 @@ export function LineWorkerDashboard() {
       // Check if user has the required assigned data
       if (!user.assignedAreas || user.assignedAreas.length === 0) {
         setError('No areas assigned to your account. Please contact your administrator.');
-        setIsInitialLoading(false);
+        mainLoadingState.setLoading(false);
         return;
       }
       
       // Reset loading state and start fetching data
-      setIsInitialLoading(true);
+      mainLoadingState.setLoading(true);
       setDataFetchProgress(0);
       fetchLineWorkerData();
       
@@ -426,7 +429,7 @@ export function LineWorkerDashboard() {
       setAreas(allAreas);
       
       setDataFetchProgress(100);
-      setIsInitialLoading(false);
+      mainLoadingState.setLoading(false);
       
       // Calculate notification count
       const overdueRetailers = assignedRetailers.filter(r => r.currentOutstanding > 0).length;
@@ -486,13 +489,13 @@ export function LineWorkerDashboard() {
     const currentTenantId = getCurrentTenantId();
     if (!currentTenantId) return;
     
-    setRefreshLoading(true);
+    mainLoadingState.setRefreshing(true);
     try {
       await fetchLineWorkerData();
     } catch (error) {
       console.error('Error during manual refresh:', error);
     } finally {
-      setRefreshLoading(false);
+      mainLoadingState.setRefreshing(false);
     }
   };
 
@@ -951,19 +954,16 @@ export function LineWorkerDashboard() {
         {/* Date filter and refresh button row */}
         <div className="flex justify-center sm:justify-between items-center space-x-4">
           <DateRangeFilter value={selectedDateRangeOption} onValueChange={handleDateRangeChange} />
-          <Button 
+          <LoadingButton 
+            isLoading={mainLoadingState.loadingState.isRefreshing}
+            loadingText="Refreshing..."
             onClick={handleManualRefresh} 
-            disabled={refreshLoading}
             variant="outline"
             className="flex items-center space-x-2"
           >
-            {refreshLoading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <RefreshCw className="h-4 w-4" />
-            )}
+            <RefreshCw className="h-4 w-4" />
             <span>Refresh</span>
-          </Button>
+          </LoadingButton>
         </div>
 
         {/* Stats Cards */}
@@ -1723,23 +1723,12 @@ export function LineWorkerDashboard() {
       <StatusBarColor theme="white" />
       
       {/* Loading Overlay */}
-      {isInitialLoading && (
-        <div className="fixed inset-0 bg-white bg-opacity-90 flex items-center justify-center z-50">
-          <div className="flex flex-col items-center space-y-4">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-            <div className="text-center">
-              <p className="text-gray-600 font-medium">Loading dashboard data...</p>
-              <div className="w-48 bg-gray-200 rounded-full h-2 mt-2">
-                <div 
-                  className="bg-blue-600 h-2 rounded-full transition-all duration-300 ease-out"
-                  style={{ width: `${dataFetchProgress}%` }}
-                ></div>
-              </div>
-              <p className="text-sm text-gray-500 mt-1">{dataFetchProgress}%</p>
-            </div>
-          </div>
-        </div>
-      )}
+      <LoadingOverlay 
+        isLoading={mainLoadingState.loadingState.isLoading}
+        message="Loading dashboard data..."
+        progress={dataFetchProgress}
+        variant="fullscreen"
+      />
       
       <div className="min-h-screen bg-gray-50 flex flex-col dashboard-screen">
         {/* Navigation */}

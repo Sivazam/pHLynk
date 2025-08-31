@@ -17,6 +17,11 @@ import { DatePicker } from '@/components/ui/date-picker';
 import { EnhancedDatePicker } from '@/components/ui/enhanced-date-picker';
 import { DateRangeFilter, DateRangeOption } from '@/components/ui/DateRangeFilter';
 import { Skeleton } from '@/components/ui/skeleton';
+import { LoadingOverlay } from '@/components/ui/LoadingOverlay';
+import { LoadingButton } from '@/components/ui/LoadingButton';
+import { LoadingText } from '@/components/ui/LoadingText';
+import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
+import { useLoadingState } from '@/hooks/useLoadingState';
 
 import { DashboardNavigation, NavItem, NotificationItem } from '@/components/DashboardNavigation';
 
@@ -240,7 +245,6 @@ export function WholesalerAdminDashboard() {
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
   const [notificationCount, setNotificationCount] = useState(0);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
-  const [refreshLoading, setRefreshLoading] = useState(false);
   const [paymentTab, setPaymentTab] = useState('completed');
   const [selectedDateRangeOption, setSelectedDateRangeOption] = useState('today');
   const [dateRange, setDateRange] = useState<{ startDate: Date; endDate: Date }>(() => {
@@ -250,8 +254,8 @@ export function WholesalerAdminDashboard() {
     return { startDate: startOfDay, endDate: endOfDay };
   });
   
-  // Add loading state for initial data fetch
-  const [isInitialLoading, setIsInitialLoading] = useState(true);
+  // Standardized loading state management
+  const mainLoadingState = useLoadingState();
   const [dataFetchProgress, setDataFetchProgress] = useState(0);
   
   // Separate state for the filter date picker
@@ -525,7 +529,7 @@ export function WholesalerAdminDashboard() {
       console.log('🔔 Setting up wholesaler admin real-time notifications for user:', user.uid, 'tenant:', currentTenantId);
       
       // Reset loading state and start fetching data
-      setIsInitialLoading(true);
+      mainLoadingState.setLoading(true);
       setDataFetchProgress(0);
       fetchDashboardData();
       
@@ -694,12 +698,12 @@ export function WholesalerAdminDashboard() {
       
       setLastUpdate(new Date());
       setDataFetchProgress(100);
-      setIsInitialLoading(false);
+      mainLoadingState.setLoading(false);
       
     } catch (err: any) {
       setError(err.message || 'Failed to fetch dashboard data');
       setDataFetchProgress(100);
-      setIsInitialLoading(false);
+      mainLoadingState.setLoading(false);
     }
   };
 
@@ -707,7 +711,7 @@ export function WholesalerAdminDashboard() {
     const currentTenantId = getCurrentTenantId();
     if (!currentTenantId) return;
     
-    setRefreshLoading(true);
+    mainLoadingState.setRefreshing(true);
     try {
       await fetchDashboardData();
       
@@ -728,7 +732,7 @@ export function WholesalerAdminDashboard() {
     } catch (error) {
       console.error('Error during manual refresh:', error);
     } finally {
-      setRefreshLoading(false);
+      mainLoadingState.setRefreshing(false);
     }
   };
 
@@ -1531,18 +1535,14 @@ export function WholesalerAdminDashboard() {
         </div>
         <div className="flex space-x-2">
           <DateRangeFilter value={selectedDateRangeOption} onValueChange={handleDateRangeChange} />
-          <Button
-            variant="outline"
+          <LoadingButton
+            isLoading={mainLoadingState.loadingState.isRefreshing}
+            loadingText="Refreshing..."
             onClick={handleManualRefresh}
-            disabled={refreshLoading}
+            variant="outline"
           >
-            {refreshLoading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <RefreshCw className="h-4 w-4" />
-            )}
-            <span className="sr-only">Refresh</span>
-          </Button>
+            <RefreshCw className="h-4 w-4" />
+          </LoadingButton>
         </div>
       </div>
       <StatsCards />
@@ -1767,17 +1767,14 @@ export function WholesalerAdminDashboard() {
           <p className="text-gray-600">Manage your retailer network</p>
         </div>
         <div className="flex gap-2">
-          <Button
+          <LoadingButton
+            isLoading={mainLoadingState.loadingState.isRefreshing}
+            loadingText="Refreshing..."
             onClick={handleManualRefresh}
-            disabled={refreshLoading}
           >
-            {refreshLoading ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <RefreshCw className="h-4 w-4 mr-2" />
-            )}
+            <RefreshCw className="h-4 w-4 mr-2" />
             Refresh
-          </Button>
+          </LoadingButton>
           <Dialog key="retailer-dialog" open={showCreateRetailer} onOpenChange={handleRetailerDialogChange}>
             <DialogTrigger asChild>
               <Button>
@@ -3233,7 +3230,7 @@ export function WholesalerAdminDashboard() {
         </Button>
       </div>
 
-      {refreshLoading && (
+      {mainLoadingState.loadingState.isRefreshing && (
         <Card>
           <CardHeader>
             <CardTitle>Retailer Details Loading</CardTitle>
@@ -3638,23 +3635,12 @@ export function WholesalerAdminDashboard() {
       <StatusBarColor theme="white" />
       
       {/* Loading Overlay */}
-      {isInitialLoading && (
-        <div className="fixed inset-0 bg-white bg-opacity-90 flex items-center justify-center z-50">
-          <div className="flex flex-col items-center space-y-4">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-            <div className="text-center">
-              <p className="text-gray-600 font-medium">Loading dashboard data...</p>
-              <div className="w-48 bg-gray-200 rounded-full h-2 mt-2">
-                <div 
-                  className="bg-blue-600 h-2 rounded-full transition-all duration-300 ease-out"
-                  style={{ width: `${dataFetchProgress}%` }}
-                ></div>
-              </div>
-              <p className="text-sm text-gray-500 mt-1">{dataFetchProgress}%</p>
-            </div>
-          </div>
-        </div>
-      )}
+      <LoadingOverlay 
+        isLoading={mainLoadingState.loadingState.isLoading}
+        message="Loading dashboard data..."
+        progress={dataFetchProgress}
+        variant="fullscreen"
+      />
       
       <div className="min-h-screen bg-gray-50 flex flex-col dashboard-screen">
         {/* Navigation */}

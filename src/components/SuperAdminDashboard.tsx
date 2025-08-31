@@ -18,6 +18,11 @@ import { SuccessFeedback } from '@/components/SuccessFeedback';
 import { useSuccessFeedback } from '@/hooks/useSuccessFeedback';
 
 import { Skeleton } from '@/components/ui/skeleton';
+import { LoadingOverlay } from '@/components/ui/LoadingOverlay';
+import { LoadingButton } from '@/components/ui/LoadingButton';
+import { LoadingText } from '@/components/ui/LoadingText';
+import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
+import { useLoadingState } from '@/hooks/useLoadingState';
 import { useAuth, useSuperAdmin } from '@/contexts/AuthContext';
 import { 
   tenantService, 
@@ -40,7 +45,6 @@ import {
   Plus, 
   Settings, 
   LogOut,
-  Loader2,
   TrendingUp,
   AlertCircle,
   Eye,
@@ -126,7 +130,6 @@ export function SuperAdminDashboard() {
   const [showCreateTenant, setShowCreateTenant] = useState(false);
   const [selectedTenant, setSelectedTenant] = useState<Tenant | null>(null);
   const [tenantDetails, setTenantDetails] = useState<TenantDetails | null>(null);
-  const [loadingTenantDetails, setLoadingTenantDetails] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
   const [notificationCount, setNotificationCount] = useState(0);
@@ -134,7 +137,6 @@ export function SuperAdminDashboard() {
   const [recentActivities, setRecentActivities] = useState<any[]>([]);
   const [selectedTenantForAnalytics, setSelectedTenantForAnalytics] = useState<string>('ALL');
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const [selectedDateRangeOption, setSelectedDateRangeOption] = useState('today');
   const [dateRange, setDateRange] = useState<{ startDate: Date; endDate: Date }>(() => {
     const today = new Date();
@@ -143,8 +145,9 @@ export function SuperAdminDashboard() {
     return { startDate: startOfDay, endDate: endOfDay };
   });
 
-  // Add loading state for initial data fetch
-  const [isInitialLoading, setIsInitialLoading] = useState(true);
+  // Standardized loading state management
+  const mainLoadingState = useLoadingState();
+  const tenantDetailsLoadingState = useLoadingState();
   const [dataFetchProgress, setDataFetchProgress] = useState(0);
 
   // Helper functions to filter data by date range
@@ -178,12 +181,12 @@ export function SuperAdminDashboard() {
   };
 
   const refreshData = async () => {
-    setIsRefreshing(true);
+    mainLoadingState.setRefreshing(true);
     try {
       await Promise.all([fetchTenants(), fetchAnalytics(), fetchRecentActivities()]);
       setLastUpdate(new Date());
     } finally {
-      setIsRefreshing(false);
+      mainLoadingState.setRefreshing(false);
     }
   };
 
@@ -382,13 +385,13 @@ export function SuperAdminDashboard() {
       const sortedActivities = activities.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime()).slice(0, 10);
       setRecentActivities(sortedActivities);
       setDataFetchProgress(100);
-      setIsInitialLoading(false); // All data loaded
+      mainLoadingState.setLoading(false); // All data loaded
       return sortedActivities;
     } catch (error) {
       console.error('Failed to fetch recent activities:', error);
       setRecentActivities([]);
       setDataFetchProgress(100);
-      setIsInitialLoading(false); // Still mark as loaded even if there's an error
+      mainLoadingState.setLoading(false); // Still mark as loaded even if there's an error
       return [];
     }
   };
@@ -415,7 +418,7 @@ export function SuperAdminDashboard() {
   useEffect(() => {
     if (isSuperAdmin && user) {
       // Reset loading state
-      setIsInitialLoading(true);
+      mainLoadingState.setLoading(true);
       setDataFetchProgress(0);
       
       // Start fetching data
@@ -561,7 +564,7 @@ export function SuperAdminDashboard() {
   };
 
   const fetchTenantDetails = async (tenantId: string) => {
-    setLoadingTenantDetails(true);
+    tenantDetailsLoadingState.setLoading(true);
     try {
       const [tenant, users, areas, retailers, invoices, payments] = await Promise.all([
         tenantService.getById(tenantId, 'system'),
@@ -599,7 +602,7 @@ export function SuperAdminDashboard() {
     } catch (err: any) {
       setError(err.message || 'Failed to fetch tenant details');
     } finally {
-      setLoadingTenantDetails(false);
+      tenantDetailsLoadingState.setLoading(false);
     }
   };
 
@@ -1069,9 +1072,9 @@ export function SuperAdminDashboard() {
               </DialogDescription>
             </DialogHeader>
             
-            {loadingTenantDetails ? (
+            {tenantDetailsLoadingState.loadingState.isLoading ? (
               <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-8 w-8 animate-spin" />
+                <LoadingSpinner size="lg" />
               </div>
             ) : (
               <div className="space-y-6">
@@ -1798,23 +1801,12 @@ export function SuperAdminDashboard() {
       <StatusBarColor theme="white" />
       
       {/* Loading Overlay */}
-      {isInitialLoading && (
-        <div className="fixed inset-0 bg-white bg-opacity-90 flex items-center justify-center z-50">
-          <div className="flex flex-col items-center space-y-4">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-            <div className="text-center">
-              <p className="text-gray-600 font-medium">Loading dashboard data...</p>
-              <div className="w-48 bg-gray-200 rounded-full h-2 mt-2">
-                <div 
-                  className="bg-blue-600 h-2 rounded-full transition-all duration-300 ease-out"
-                  style={{ width: `${dataFetchProgress}%` }}
-                ></div>
-              </div>
-              <p className="text-sm text-gray-500 mt-1">{dataFetchProgress}%</p>
-            </div>
-          </div>
-        </div>
-      )}
+      <LoadingOverlay 
+        isLoading={mainLoadingState.loadingState.isLoading}
+        message="Loading dashboard data..."
+        progress={dataFetchProgress}
+        variant="fullscreen"
+      />
       
       <div className="min-h-screen bg-gray-50 flex flex-col dashboard-screen">
         {/* Navigation */}
@@ -1842,18 +1834,16 @@ export function SuperAdminDashboard() {
               Last updated: {formatTimestampWithTime(lastUpdate)}
             </p>
           </div>
-          <Button 
+          <LoadingButton 
+            isLoading={mainLoadingState.loadingState.isRefreshing}
+            loadingText="Refreshing..."
             onClick={refreshData} 
-            disabled={isRefreshing}
+            variant="outline"
             className="flex items-center space-x-2"
           >
-            {isRefreshing ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <RefreshCw className="h-4 w-4" />
-            )}
-            <span>{isRefreshing ? 'Refreshing...' : 'Refresh Data'}</span>
-          </Button>
+            <RefreshCw className="h-4 w-4" />
+            <span>Refresh Data</span>
+          </LoadingButton>
         </div>
 
         {error && (

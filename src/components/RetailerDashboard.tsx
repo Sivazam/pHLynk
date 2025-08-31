@@ -22,6 +22,10 @@ import { doc, getDoc } from 'firebase/firestore';
 import { logger } from '@/lib/logger';
 import { DateRangeFilter, DateRangeOption } from '@/components/ui/DateRangeFilter';
 import { Skeleton } from '@/components/ui/skeleton';
+import { LoadingOverlay } from '@/components/ui/LoadingOverlay';
+import { LoadingButton } from '@/components/ui/LoadingButton';
+import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
+import { useLoadingState } from '@/hooks/useLoadingState';
 import { 
   Store, 
   DollarSign, 
@@ -84,7 +88,6 @@ export function RetailerDashboard() {
   const [shownOTPpopups, setShownOTPpopups] = useState<Set<string>>(new Set());
   const [notificationCount, setNotificationCount] = useState(0);
   const [notifications, setNotifications] = useState<any[]>([]);
-  const [refreshLoading, setRefreshLoading] = useState(false);
   const [paymentTab, setPaymentTab] = useState('completed');
   const [selectedDateRangeOption, setSelectedDateRangeOption] = useState('today');
   const [dateRange, setDateRange] = useState<{ startDate: Date; endDate: Date }>(() => {
@@ -94,8 +97,8 @@ export function RetailerDashboard() {
     return { startDate: startOfDay, endDate: endOfDay };
   });
   
-  // Add loading state for initial data fetch
-  const [isInitialLoading, setIsInitialLoading] = useState(true);
+  // Standardized loading state management
+  const mainLoadingState = useLoadingState();
   const [dataFetchProgress, setDataFetchProgress] = useState(0);
 
   // Helper functions to filter data by date range
@@ -234,7 +237,7 @@ export function RetailerDashboard() {
     const storedRetailerId = localStorage.getItem('retailerId');
     if (storedRetailerId) {
       // Reset loading state and start fetching data
-      setIsInitialLoading(true);
+      mainLoadingState.setLoading(true);
       setDataFetchProgress(0);
       fetchRetailerData(storedRetailerId);
       
@@ -278,7 +281,7 @@ export function RetailerDashboard() {
       const retailerUserData = await RetailerAuthService.getRetailerUserByRetailerId(retailerId);
       if (!retailerUserData) {
         setError('Retailer user account not found');
-        setIsInitialLoading(false);
+        mainLoadingState.setLoading(false);
         return;
       }
       
@@ -404,7 +407,7 @@ export function RetailerDashboard() {
       loadAdditionalData();
       
       setDataFetchProgress(100);
-      setIsInitialLoading(false);
+      mainLoadingState.setLoading(false);
       
       logger.debug('Final retailer data', retailerData, { context: 'RetailerDashboard' });
       logger.debug('Payments loaded', paymentsData.length, { context: 'RetailerDashboard' });
@@ -414,7 +417,7 @@ export function RetailerDashboard() {
       logger.error('Error fetching retailer data', err, { context: 'RetailerDashboard' });
       setError(err.message || 'Failed to fetch retailer data');
       setDataFetchProgress(100);
-      setIsInitialLoading(false);
+      mainLoadingState.setLoading(false);
     }
   };
 
@@ -643,7 +646,7 @@ export function RetailerDashboard() {
     const storedRetailerId = localStorage.getItem('retailerId');
     if (!storedRetailerId) return;
     
-    setRefreshLoading(true);
+    mainLoadingState.setRefreshing(true);
     try {
       // Refresh main data
       await fetchRetailerData(storedRetailerId);
@@ -652,7 +655,7 @@ export function RetailerDashboard() {
     } catch (error) {
       logger.error('Error during manual refresh', error, { context: 'RetailerDashboard' });
     } finally {
-      setRefreshLoading(false);
+      mainLoadingState.setRefreshing(false);
     }
   };
 
@@ -702,20 +705,17 @@ export function RetailerDashboard() {
               onValueChange={handleDateRangeChange} 
               className="w-full sm:w-auto"
             />
-            <Button 
+            <LoadingButton 
+              isLoading={mainLoadingState.loadingState.isRefreshing}
+              loadingText="Refreshing..."
               onClick={handleManualRefresh} 
-              disabled={refreshLoading}
               variant="outline"
               className="flex items-center justify-center space-x-2 w-full sm:w-auto"
               size="sm"
             >
-              {refreshLoading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <RefreshCw className="h-4 w-4" />
-              )}
+              <RefreshCw className="h-4 w-4" />
               <span>Refresh</span>
-            </Button>
+            </LoadingButton>
           </div>
         </div>
 
@@ -1318,23 +1318,12 @@ export function RetailerDashboard() {
       <StatusBarColor theme="white" />
       
       {/* Loading Overlay */}
-      {isInitialLoading && (
-        <div className="fixed inset-0 bg-white bg-opacity-90 flex items-center justify-center z-50">
-          <div className="flex flex-col items-center space-y-4">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-            <div className="text-center">
-              <p className="text-gray-600 font-medium">Loading dashboard data...</p>
-              <div className="w-48 bg-gray-200 rounded-full h-2 mt-2">
-                <div 
-                  className="bg-blue-600 h-2 rounded-full transition-all duration-300 ease-out"
-                  style={{ width: `${dataFetchProgress}%` }}
-                ></div>
-              </div>
-              <p className="text-sm text-gray-500 mt-1">{dataFetchProgress}%</p>
-            </div>
-          </div>
-        </div>
-      )}
+      <LoadingOverlay 
+        isLoading={mainLoadingState.loadingState.isLoading}
+        message="Loading dashboard data..."
+        progress={dataFetchProgress}
+        variant="fullscreen"
+      />
       
       <div className="min-h-screen bg-gray-50 flex flex-col dashboard-screen">
         {/* Navigation */}
