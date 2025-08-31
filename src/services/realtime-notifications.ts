@@ -20,6 +20,7 @@ export class RealTimeNotificationService {
   private static instance: RealTimeNotificationService;
   private unsubscribeFunctions: Map<string, () => void> = new Map();
   private notificationCallbacks: Map<string, (notifications: NotificationItem[]) => void> = new Map();
+  private userTenantIds: Map<string, string> = new Map(); // Track tenantId for each user
   private updateTimeouts: Map<string, NodeJS.Timeout> = new Map();
   private readonly UPDATE_DELAY = 3000; // 3 second delay between updates (increased from 1 second)
 
@@ -39,17 +40,18 @@ export class RealTimeNotificationService {
     tenantId: string,
     callback: (notifications: NotificationItem[]) => void
   ): void {
-    console.log('🔔 Starting notification listener for user:', userId, 'role:', role);
+    console.log('🔔 Starting notification listener for user:', userId, 'role:', role, 'tenant:', tenantId);
     
     // Stop any existing listeners for this user
     this.stopListening(userId);
 
-    // Store the callback
+    // Store the callback and tenantId
     this.notificationCallbacks.set(userId, callback);
+    this.userTenantIds.set(userId, tenantId);
 
-    // Immediately provide current notifications to the callback
-    const currentNotifications = notificationService.getNotifications();
-    console.log('🔔 Providing current notifications to callback:', currentNotifications.length, 'notifications');
+    // Immediately provide current notifications to the callback for this tenant
+    const currentNotifications = notificationService.getNotifications(tenantId);
+    console.log('🔔 Providing current notifications to callback:', currentNotifications.length, 'notifications for tenant:', tenantId);
     
     // Only call callback if there are notifications to prevent unnecessary initial render
     if (currentNotifications.length > 0) {
@@ -62,7 +64,7 @@ export class RealTimeNotificationService {
         }
       }, 0);
     } else {
-      console.log('🔔 Skipping initial callback - no notifications to show');
+      console.log('🔔 Skipping initial callback - no notifications to show for tenant:', tenantId);
     }
 
     // Start role-specific listeners
@@ -97,7 +99,9 @@ export class RealTimeNotificationService {
       this.updateTimeouts.delete(userId);
     }
     
+    // Remove callback and tenantId mapping
     this.notificationCallbacks.delete(userId);
+    this.userTenantIds.delete(userId);
   }
 
   // Trigger callback with delay to prevent rapid updates
@@ -111,9 +115,21 @@ export class RealTimeNotificationService {
     // Set a new timeout
     const timeout = setTimeout(() => {
       const callback = this.notificationCallbacks.get(userId);
-      if (callback) {
+      const tenantId = this.userTenantIds.get(userId);
+      
+      if (callback && tenantId) {
         try {
-          const notifications = notificationService.getNotifications();
+          let notifications;
+          
+          // For Super Admin (tenantId === 'all'), get all notifications across all tenants
+          if (tenantId === 'all') {
+            notifications = notificationService.getAllNotifications();
+            console.log('🔔 Super Admin: Getting all notifications across all tenants:', notifications.length, 'total notifications');
+          } else {
+            // For regular users, get notifications for their specific tenant
+            notifications = notificationService.getNotifications(tenantId);
+            console.log('🔔 Getting notifications for tenant:', tenantId, notifications.length, 'notifications');
+          }
           
           // Only trigger callback if there are actual notifications to prevent unnecessary re-renders
           if (notifications.length > 0) {
@@ -125,6 +141,8 @@ export class RealTimeNotificationService {
         } catch (error) {
           console.error(`Error in notification callback for user ${userId}:`, error);
         }
+      } else if (!tenantId) {
+        console.warn('🔔 No tenantId found for user:', userId, 'skipping callback');
       }
       this.updateTimeouts.delete(userId);
     }, this.UPDATE_DELAY);
@@ -135,6 +153,9 @@ export class RealTimeNotificationService {
   // Super Admin listeners - gets updates about all activities
   private startSuperAdminListeners(userId: string, tenantId: string): void {
     console.log('🔔 Starting Super Admin notification listeners');
+
+    // For Super Admin, we store a special tenantId 'all' to indicate they should see all notifications
+    this.userTenantIds.set(userId, 'all');
 
     // Listen to all payment activities across all tenants
     const paymentsUnsubscribe = onSnapshot(
@@ -752,8 +773,11 @@ export class RealTimeNotificationService {
         _id: uniqueId // Add deterministic ID based on content
       };
       
-      const notificationId = notificationService.addNotification(uniqueNotification);
-      console.log('🔔 Notification added with ID:', notificationId);
+      // Extract tenantId from notification, default to 'system' for super admin
+      const tenantId = notification.tenantId || 'system';
+      
+      const notificationId = notificationService.addNotification(uniqueNotification, tenantId);
+      console.log('🔔 Notification added with ID:', notificationId, 'for tenant:', tenantId);
       
       // Only trigger callbacks if a notification was actually added (not a duplicate)
       if (notificationId && notificationId !== '') {

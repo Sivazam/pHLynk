@@ -5,12 +5,12 @@ import { NotificationItem } from '@/components/DashboardNavigation';
 // Notification service for managing app-wide notifications
 export class NotificationService {
   private static instance: NotificationService;
-  private notifications: NotificationItem[] = [];
+  private notifications: Map<string, NotificationItem[]> = new Map(); // tenantId -> notifications[]
   private listeners: Set<(notifications: NotificationItem[]) => void> = new Set();
 
   private constructor() {
     // Initialize empty notifications - no sample data
-    this.notifications = [];
+    this.notifications.clear();
   }
 
   static getInstance(): NotificationService {
@@ -21,9 +21,11 @@ export class NotificationService {
   }
 
   // Add a new notification
-  addNotification(notification: Omit<NotificationItem, 'id'>): string {
+  addNotification(notification: Omit<NotificationItem, 'id'>, tenantId: string = 'system'): string {
     // Check for duplicate notifications based on content and recent timestamp
-    const isDuplicate = this.notifications.some(existingNotification => {
+    const tenantNotifications = this.notifications.get(tenantId) || [];
+    
+    const isDuplicate = tenantNotifications.some(existingNotification => {
       const timeDiff = Math.abs(
         new Date(notification.timestamp).getTime() - 
         new Date(existingNotification.timestamp).getTime()
@@ -63,10 +65,15 @@ export class NotificationService {
       ...notification
     };
     
-    this.notifications.unshift(fullNotification); // Add to beginning (most recent first)
+    // Add to tenant-specific notifications
+    if (!this.notifications.has(tenantId)) {
+      this.notifications.set(tenantId, []);
+    }
+    this.notifications.get(tenantId)!.unshift(fullNotification); // Add to beginning (most recent first)
+    
     this.notifyListeners();
     
-    console.log('New notification added:', fullNotification);
+    console.log(`New notification added for tenant ${tenantId}:`, fullNotification);
     return id;
   }
 
@@ -75,7 +82,8 @@ export class NotificationService {
     workerName: string,
     retailerName: string,
     amount: number,
-    paymentId: string
+    paymentId: string,
+    tenantId: string = 'system'
   ): string {
     return this.addNotification({
       type: 'success',
@@ -86,7 +94,7 @@ export class NotificationService {
       workerName,
       amount,
       collectionTime: formatTimestampWithTime(new Date())
-    });
+    }, tenantId);
   }
 
   // Add a payment initiated notification
@@ -94,7 +102,8 @@ export class NotificationService {
     workerName: string,
     retailerName: string,
     amount: number,
-    paymentId: string
+    paymentId: string,
+    tenantId: string = 'system'
   ): string {
     return this.addNotification({
       type: 'info',
@@ -105,7 +114,7 @@ export class NotificationService {
       workerName,
       amount,
       initiatedAt: formatTimestampWithTime(new Date())
-    });
+    }, tenantId);
   }
 
   // Add a payment failed notification
@@ -113,7 +122,8 @@ export class NotificationService {
     workerName: string,
     retailerName: string,
     amount: number,
-    paymentId: string
+    paymentId: string,
+    tenantId: string = 'system'
   ): string {
     return this.addNotification({
       type: 'warning',
@@ -124,14 +134,15 @@ export class NotificationService {
       workerName,
       amount,
       initiatedAt: formatTimestampWithTime(new Date())
-    });
+    }, tenantId);
   }
 
   // Add a top performer notification
   addTopPerformerNotification(
     workerName: string,
     amount: number,
-    collectionCount: number
+    collectionCount: number,
+    tenantId: string = 'system'
   ): string {
     return this.addNotification({
       type: 'success',
@@ -142,7 +153,7 @@ export class NotificationService {
       workerName,
       amount,
       collectionCount
-    });
+    }, tenantId);
   }
 
   // Add an overdue invoice notification
@@ -150,7 +161,8 @@ export class NotificationService {
     retailerName: string,
     amount: number,
     invoiceNumber: string,
-    daysOverdue: number
+    daysOverdue: number,
+    tenantId: string = 'system'
   ): string {
     return this.addNotification({
       type: 'warning',
@@ -160,13 +172,14 @@ export class NotificationService {
       read: false,
       amount,
       dueDate: formatTimestampWithTime(new Date())
-    });
+    }, tenantId);
   }
 
   // Add an inactive worker activity notification
   addInactiveWorkerActivityNotification(
     workerName: string,
-    activityCount: number
+    activityCount: number,
+    tenantId: string = 'system'
   ): string {
     return this.addNotification({
       type: 'info',
@@ -176,7 +189,7 @@ export class NotificationService {
       read: false,
       workerName,
       activityCount
-    });
+    }, tenantId);
   }
 
   // Line Worker Specific Notifications
@@ -185,7 +198,8 @@ export class NotificationService {
   addLineWorkerPaymentCompletedNotification(
     retailerName: string,
     amount: number,
-    paymentId: string
+    paymentId: string,
+    tenantId: string = 'system'
   ): string {
     return this.addNotification({
       type: 'success',
@@ -196,14 +210,15 @@ export class NotificationService {
       amount,
       retailerName,
       paymentId
-    });
+    }, tenantId);
   }
 
   // Add payment initiated notification for line worker
   addLineWorkerPaymentInitiatedNotification(
     retailerName: string,
     amount: number,
-    paymentId: string
+    paymentId: string,
+    tenantId: string = 'system'
   ): string {
     return this.addNotification({
       type: 'info',
@@ -214,14 +229,15 @@ export class NotificationService {
       amount,
       retailerName,
       paymentId
-    });
+    }, tenantId);
   }
 
   // Add payment failed notification for line worker
   addLineWorkerPaymentFailedNotification(
     retailerName: string,
     amount: number,
-    paymentId: string
+    paymentId: string,
+    tenantId: string = 'system'
   ): string {
     return this.addNotification({
       type: 'warning',
@@ -232,14 +248,15 @@ export class NotificationService {
       amount,
       retailerName,
       paymentId
-    });
+    }, tenantId);
   }
 
   // Add new retailer assignment notification for line worker
   addLineWorkerNewRetailerAssignment(
     retailerName: string,
     areaName: string,
-    retailerCount: number
+    retailerCount: number,
+    tenantId: string = 'system'
   ): string {
     return this.addNotification({
       type: 'info',
@@ -250,14 +267,15 @@ export class NotificationService {
       retailerName,
       areaName,
       retailerCount
-    });
+    }, tenantId);
   }
 
   // Add new area assignment notification for line worker
   addLineWorkerNewAreaAssignment(
     areaName: string,
     zipCount: number,
-    retailerCount: number
+    retailerCount: number,
+    tenantId: string = 'system'
   ): string {
     return this.addNotification({
       type: 'info',
@@ -268,14 +286,15 @@ export class NotificationService {
       areaName,
       zipCount,
       retailerCount
-    });
+    }, tenantId);
   }
 
   // Add daily collection summary notification for line worker
   addLineWorkerDailySummary(
     totalCollections: number,
     paymentCount: number,
-    retailerCount: number
+    retailerCount: number,
+    tenantId: string = 'system'
   ): string {
     return this.addNotification({
       type: 'success',
@@ -286,14 +305,15 @@ export class NotificationService {
       totalCollections,
       paymentCount,
       retailerCount
-    });
+    }, tenantId);
   }
 
   // Add high-value collection notification for line worker
   addLineWorkerHighValueCollection(
     retailerName: string,
     amount: number,
-    paymentId: string
+    paymentId: string,
+    tenantId: string = 'system'
   ): string {
     return this.addNotification({
       type: 'success',
@@ -304,14 +324,15 @@ export class NotificationService {
       amount,
       retailerName,
       paymentId
-    });
+    }, tenantId);
   }
 
   // Add milestone notification for line worker
   addLineWorkerMilestone(
     milestoneType: 'PAYMENTS' | 'AMOUNT' | 'RETAILERS',
     milestoneValue: number,
-    description: string
+    description: string,
+    tenantId: string = 'system'
   ): string {
     return this.addNotification({
       type: 'success',
@@ -321,45 +342,67 @@ export class NotificationService {
       read: false,
       milestoneType,
       milestoneValue
+    }, tenantId);
+  }
+
+  // Get all notifications for a specific tenant
+  getNotifications(tenantId: string = 'system'): NotificationItem[] {
+    // Return notifications for the specified tenant, sorted by timestamp (most recent first)
+    const tenantNotifications = this.notifications.get(tenantId) || [];
+    return [...tenantNotifications].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+  }
+
+  // Get all notifications across all tenants (for super admin)
+  getAllNotifications(): NotificationItem[] {
+    // Return all notifications from all tenants, sorted by timestamp (most recent first)
+    const allNotifications: NotificationItem[] = [];
+    this.notifications.forEach((tenantNotifications) => {
+      allNotifications.push(...tenantNotifications);
     });
+    return allNotifications.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
   }
 
-  // Get all notifications
-  getNotifications(): NotificationItem[] {
-    // Return notifications sorted by timestamp (most recent first)
-    return [...this.notifications].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
-  }
-
-  // Get unread notification count
-  getUnreadCount(): number {
-    return this.notifications.filter(n => !n.read).length;
+  // Get unread notification count for a specific tenant
+  getUnreadCount(tenantId: string = 'system'): number {
+    const tenantNotifications = this.notifications.get(tenantId) || [];
+    return tenantNotifications.filter(n => !n.read).length;
   }
 
   // Mark notification as read
-  markAsRead(id: string): void {
-    const notification = this.notifications.find(n => n.id === id);
+  markAsRead(id: string, tenantId: string = 'system'): void {
+    const tenantNotifications = this.notifications.get(tenantId) || [];
+    const notification = tenantNotifications.find(n => n.id === id);
     if (notification) {
       notification.read = true;
       this.notifyListeners();
     }
   }
 
-  // Mark all notifications as read
-  markAllAsRead(): void {
-    this.notifications.forEach(n => n.read = true);
+  // Mark all notifications as read for a specific tenant
+  markAllAsRead(tenantId: string = 'system'): void {
+    const tenantNotifications = this.notifications.get(tenantId) || [];
+    tenantNotifications.forEach(n => n.read = true);
     this.notifyListeners();
   }
 
-  // Remove a notification
-  removeNotification(id: string): void {
-    this.notifications = this.notifications.filter(n => n.id !== id);
+  // Remove a notification for a specific tenant
+  removeNotification(id: string, tenantId: string = 'system'): void {
+    const tenantNotifications = this.notifications.get(tenantId) || [];
+    this.notifications.set(tenantId, tenantNotifications.filter(n => n.id !== id));
     this.notifyListeners();
   }
 
-  // Clear all notifications
-  clearNotifications(): void {
-    console.log('🔔 Clearing all notifications');
-    this.notifications = [];
+  // Clear all notifications for a specific tenant
+  clearNotifications(tenantId: string = 'system'): void {
+    console.log(`🔔 Clearing all notifications for tenant ${tenantId}`);
+    this.notifications.set(tenantId, []);
+    this.notifyListeners();
+  }
+
+  // Clear all notifications across all tenants
+  clearAllNotifications(): void {
+    console.log('🔔 Clearing all notifications across all tenants');
+    this.notifications.clear();
     this.notifyListeners();
   }
 
