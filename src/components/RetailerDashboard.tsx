@@ -860,12 +860,12 @@ export function RetailerDashboard() {
         </div>
         <Button 
           onClick={handleManualRefresh} 
-          disabled={refreshLoading}
+          disabled={mainLoadingState.loadingState.isRefreshing}
           variant="outline"
           className="flex items-center justify-center space-x-2 w-full sm:w-auto"
           size="sm"
         >
-          {refreshLoading ? (
+          {mainLoadingState.loadingState.isRefreshing ? (
             <Loader2 className="h-4 w-4 animate-spin" />
           ) : (
             <RefreshCw className="h-4 w-4" />
@@ -1011,11 +1011,11 @@ export function RetailerDashboard() {
           </div>
           <Button 
             onClick={handleManualRefresh} 
-            disabled={refreshLoading}
+            disabled={mainLoadingState.loadingState.isRefreshing}
             variant="outline"
             className="flex items-center space-x-2"
           >
-            {refreshLoading ? (
+            {mainLoadingState.loadingState.isRefreshing ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
               <RefreshCw className="h-4 w-4" />
@@ -1193,11 +1193,11 @@ export function RetailerDashboard() {
           </div>
           <Button 
             onClick={handleManualRefresh} 
-            disabled={refreshLoading}
+            disabled={mainLoadingState.loadingState.isRefreshing}
             variant="outline"
             className="flex items-center space-x-2"
           >
-            {refreshLoading ? (
+            {mainLoadingState.loadingState.isRefreshing ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
               <RefreshCw className="h-4 w-4" />

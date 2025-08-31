@@ -1560,7 +1560,7 @@ export function WholesalerAdminDashboard() {
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {refreshLoading ? (
+            {mainLoadingState.loadingState.isRefreshing ? (
               <>
                 {[...Array(5)].map((_, index) => (
                   <div key={index} className="flex items-center space-x-4 p-3 border rounded-lg">
@@ -1622,9 +1622,9 @@ export function WholesalerAdminDashboard() {
           <Button
             variant="outline"
             onClick={handleManualRefresh}
-            disabled={refreshLoading}
+            disabled={mainLoadingState.loadingState.isRefreshing}
           >
-            {refreshLoading ? (
+            {mainLoadingState.loadingState.isRefreshing ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
               <RefreshCw className="h-4 w-4" />
@@ -1662,7 +1662,7 @@ export function WholesalerAdminDashboard() {
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {refreshLoading ? (
+            {mainLoadingState.loadingState.isRefreshing ? (
               <>
                 {[...Array(5)].map((_, index) => (
                   <div key={index} className="flex items-center justify-between p-4 border rounded-lg">
@@ -1806,7 +1806,7 @@ export function WholesalerAdminDashboard() {
           <CardDescription>Manage your retailer network</CardDescription>
         </CardHeader>
         <CardContent>
-          {refreshLoading ? (
+          {mainLoadingState.loadingState.isRefreshing ? (
             <div className="space-y-4">
               {[...Array(5)].map((_, index) => (
                 <div key={index} className="flex items-center space-x-4">
@@ -1934,9 +1934,9 @@ export function WholesalerAdminDashboard() {
           <Button
             variant="outline"
             onClick={handleManualRefresh}
-            disabled={refreshLoading}
+            disabled={mainLoadingState.loadingState.isRefreshing}
           >
-            {refreshLoading ? (
+            {mainLoadingState.loadingState.isRefreshing ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
               <RefreshCw className="h-4 w-4" />
@@ -1975,7 +1975,7 @@ export function WholesalerAdminDashboard() {
           <CardDescription>Manage all invoices in your system</CardDescription>
         </CardHeader>
         <CardContent>
-          {refreshLoading ? (
+          {mainLoadingState.loadingState.isRefreshing ? (
             <div className="space-y-4">
               {[...Array(5)].map((_, index) => (
                 <div key={index} className="flex items-center space-x-4">
@@ -2067,9 +2067,9 @@ export function WholesalerAdminDashboard() {
           <Button
             variant="outline"
             onClick={handleManualRefresh}
-            disabled={refreshLoading}
+            disabled={mainLoadingState.loadingState.isRefreshing}
           >
-            {refreshLoading ? (
+            {mainLoadingState.loadingState.isRefreshing ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
               <RefreshCw className="h-4 w-4" />
@@ -2225,7 +2225,7 @@ export function WholesalerAdminDashboard() {
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {refreshLoading ? (
+            {mainLoadingState.loadingState.isRefreshing ? (
               <>
                 {[...Array(5)].map((_, index) => (
                   <div key={index} className="flex items-center justify-between p-4 border rounded-lg">
@@ -2369,10 +2369,10 @@ export function WholesalerAdminDashboard() {
             </div>
             <Button
               onClick={handleManualRefresh}
-              disabled={refreshLoading}
+              disabled={mainLoadingState.loadingState.isRefreshing}
               className="w-full sm:w-auto"
             >
-              {refreshLoading ? (
+              {mainLoadingState.loadingState.isRefreshing ? (
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
               ) : (
                 <RefreshCw className="h-4 w-4 mr-2" />
@@ -2402,7 +2402,7 @@ export function WholesalerAdminDashboard() {
               
               <TabsContent value="completed" className="space-y-4">
                 <div className="overflow-x-auto">
-                  {refreshLoading ? (
+                  {mainLoadingState.loadingState.isRefreshing ? (
                     <div className="space-y-4">
                       {[...Array(5)].map((_, index) => (
                         <div key={index} className="flex items-center space-x-4">
@@ -2470,7 +2470,7 @@ export function WholesalerAdminDashboard() {
               
               <TabsContent value="pending" className="space-y-4">
                 <div className="overflow-x-auto">
-                  {refreshLoading ? (
+                  {mainLoadingState.loadingState.isRefreshing ? (
                     <div className="space-y-4">
                       {[...Array(5)].map((_, index) => (
                         <div key={index} className="flex items-center space-x-4">
@@ -2562,9 +2562,9 @@ export function WholesalerAdminDashboard() {
         <Button
           variant="outline"
           onClick={handleManualRefresh}
-          disabled={refreshLoading}
+          disabled={mainLoadingState.loadingState.isRefreshing}
         >
-          {refreshLoading ? (
+          {mainLoadingState.loadingState.isRefreshing ? (
             <Loader2 className="h-4 w-4 animate-spin mr-2" />
           ) : (
             <RefreshCw className="h-4 w-4 mr-2" />
@@ -2603,7 +2603,7 @@ export function WholesalerAdminDashboard() {
         invoices={invoices}
         areas={areas}
         onRefresh={handleManualRefresh}
-        refreshLoading={refreshLoading}
+        refreshLoading={mainLoadingState.loadingState.isRefreshing}
         tenantId={getCurrentTenantId() || undefined}
       />
     </div>
@@ -3219,9 +3219,9 @@ export function WholesalerAdminDashboard() {
         </div>
         <Button
           onClick={handleManualRefresh}
-          disabled={refreshLoading}
+          disabled={mainLoadingState.loadingState.isRefreshing}
         >
-          {refreshLoading ? (
+          {mainLoadingState.loadingState.isRefreshing ? (
             <Loader2 className="h-4 w-4 mr-2 animate-spin" />
           ) : (
             <RefreshCw className="h-4 w-4 mr-2" />

@@ -1,13 +1,16 @@
 'use client';
 
-import { Button, ButtonProps } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { LoadingSpinner } from './LoadingSpinner';
 import { cn } from '@/lib/utils';
+import type { VariantProps } from "class-variance-authority";
 
-interface LoadingButtonProps extends Omit<ButtonProps, 'disabled'> {
+interface LoadingButtonProps extends React.ComponentProps<"button">,
+  VariantProps<typeof buttonVariants> {
   isLoading?: boolean;
   loadingText?: string;
   children: React.ReactNode;
+  asChild?: boolean;
 }
 
 export function LoadingButton({ 
