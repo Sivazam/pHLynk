@@ -19,6 +19,7 @@ import { formatTimestamp, formatTimestampWithTime, formatCurrency } from '@/lib/
 import { getActiveOTPsForRetailer, getCompletedPaymentsForRetailer, removeCompletedPayment } from '@/lib/otp-store';
 import { db } from '@/lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
+import { logger } from '@/lib/logger';
 import { DateRangeFilter, DateRangeOption } from '@/components/ui/DateRangeFilter';
 import { Skeleton } from '@/components/ui/skeleton';
 import { 
@@ -156,7 +157,7 @@ export function RetailerDashboard() {
         return name;
       }
     } catch (error) {
-      console.error('Error fetching wholesaler name:', error);
+      logger.error('Error fetching wholesaler name', error, { context: 'RetailerDashboard' });
     }
     
     return 'Unknown Wholesaler';
@@ -177,7 +178,7 @@ export function RetailerDashboard() {
         return name;
       }
     } catch (error) {
-      console.error('Error fetching line worker name:', error);
+      logger.error('Error fetching line worker name', error, { context: 'RetailerDashboard' });
     }
     
     return 'Unknown Line Worker';
@@ -270,7 +271,7 @@ export function RetailerDashboard() {
     setDataFetchProgress(20);
     
     try {
-      console.log('Fetching retailer data for:', retailerId);
+      logger.debug('Fetching retailer data for retailerId', { retailerId }, { context: 'RetailerDashboard' });
       
       // Get retailer user account - this contains all the data we need
       setDataFetchProgress(40);
@@ -281,10 +282,10 @@ export function RetailerDashboard() {
         return;
       }
       
-      console.log('Retailer user data found:', retailerUserData);
-      console.log('Tenant ID from user data:', retailerUserData.tenantId);
-      console.log('📋 Retailer user data fields:', Object.keys(retailerUserData || {}));
-      console.log('🏠 Address from retailer user data:', retailerUserData.address);
+      logger.debug('Retailer user data found', retailerUserData, { context: 'RetailerDashboard' });
+      logger.debug('Tenant ID from user data', retailerUserData.tenantId, { context: 'RetailerDashboard' });
+      logger.debug('Retailer user data fields', Object.keys(retailerUserData || {}), { context: 'RetailerDashboard' });
+      logger.debug('Address from retailer user data', retailerUserData.address, { context: 'RetailerDashboard' });
       
       // Try to get retailer details from retailers collection first
       setDataFetchProgress(60);
@@ -298,23 +299,23 @@ export function RetailerDashboard() {
             id: retailerId,
             ...retailerDoc.data()
           };
-          console.log('✅ Retailer data found in retailers collection:', retailerData);
-          console.log('📋 Retailer document fields:', Object.keys(retailerDoc.data() || {}));
-          console.log('🏠 Address from retailer document:', retailerDoc.data()?.address);
-          console.log('🏠 retailerData.address after spread:', retailerData.address);
-          console.log('🏠 typeof retailerData.address:', typeof retailerData.address);
-          console.log('🏠 retailerData.address length:', retailerData.address?.length);
+          logger.debug('Retailer data found in retailers collection', retailerData, { context: 'RetailerDashboard' });
+          logger.debug('Retailer document fields', Object.keys(retailerDoc.data() || {}), { context: 'RetailerDashboard' });
+          logger.debug('Address from retailer document', retailerDoc.data()?.address, { context: 'RetailerDashboard' });
+          logger.debug('retailerData.address after spread', retailerData.address, { context: 'RetailerDashboard' });
+          logger.debug('typeof retailerData.address', typeof retailerData.address, { context: 'RetailerDashboard' });
+          logger.debug('retailerData.address length', retailerData.address?.length, { context: 'RetailerDashboard' });
           
           // If retailer document doesn't have address, try to get from user data
           if (!retailerData.address && retailerUserData.address) {
             retailerData.address = retailerUserData.address;
-            console.log('🏠 Using address from retailer user data:', retailerData.address);
+            logger.debug('Using address from retailer user data', retailerData.address, { context: 'RetailerDashboard' });
           }
           
           // Final address value
-          console.log('🏠 Final retailerData.address:', retailerData.address);
+          logger.debug('Final retailerData.address', retailerData.address, { context: 'RetailerDashboard' });
         } else {
-          console.log('⚠️ Retailer document not found in retailers collection, using user data');
+          logger.warn('Retailer document not found in retailers collection, using user data', { context: 'RetailerDashboard' });
           // Fallback to user data
           retailerData = {
             id: retailerUserData.retailerId,
@@ -329,7 +330,7 @@ export function RetailerDashboard() {
           };
         }
       } catch (error) {
-        console.log('❌ Error accessing retailers collection, using user data:', error);
+        logger.error('Error accessing retailers collection, using user data', error, { context: 'RetailerDashboard' });
         // Fallback to user data
         retailerData = {
           id: retailerUserData.retailerId,
@@ -354,19 +355,19 @@ export function RetailerDashboard() {
       try {
         invoicesData = await invoiceService.getInvoicesByRetailer(retailerUserData.tenantId, retailerUserData.retailerId);
         totalInvoiceAmount = invoicesData.reduce((sum, invoice) => sum + invoice.totalAmount, 0);
-        console.log('Total invoice amount:', totalInvoiceAmount);
-        console.log('Invoices found:', invoicesData.length);
+        logger.debug('Total invoice amount', totalInvoiceAmount, { context: 'RetailerDashboard' });
+        logger.debug('Invoices found', invoicesData.length, { context: 'RetailerDashboard' });
       } catch (error) {
-        console.warn('Could not fetch invoice data:', error);
+        logger.warn('Could not fetch invoice data', error, { context: 'RetailerDashboard' });
       }
       
-      console.log('Payments data fetched:', paymentsData);
-      console.log('Payments details:', paymentsData.map(p => ({ 
+      logger.debug('Payments data fetched', paymentsData, { context: 'RetailerDashboard' });
+      logger.debug('Payments details', paymentsData.map(p => ({ 
         id: p.id, 
         state: p.state, 
         totalPaid: p.totalPaid,
         method: p.method 
-      })));
+      })), { context: 'RetailerDashboard' });
       
       // Calculate total paid from completed payments
       const completedPayments = paymentsData.filter(p => p.state === 'COMPLETED');
@@ -375,11 +376,11 @@ export function RetailerDashboard() {
       // Calculate current outstanding: Total Invoice Amount - Total Paid
       const currentOutstanding = Math.max(0, totalInvoiceAmount - totalPaid);
       
-      console.log('Completed payments:', completedPayments.length);
-      console.log('Total paid amount:', totalPaid);
-      console.log('Total invoice amount:', totalInvoiceAmount);
-      console.log('Calculated outstanding amount:', currentOutstanding);
-      console.log('Outstanding from retailer document:', retailerData.currentOutstanding);
+      logger.debug('Completed payments', completedPayments.length, { context: 'RetailerDashboard' });
+      logger.debug('Total paid amount', totalPaid, { context: 'RetailerDashboard' });
+      logger.debug('Total invoice amount', totalInvoiceAmount, { context: 'RetailerDashboard' });
+      logger.debug('Calculated outstanding amount', currentOutstanding, { context: 'RetailerDashboard' });
+      logger.debug('Outstanding from retailer document', retailerData.currentOutstanding, { context: 'RetailerDashboard' });
       
       // Use the calculated outstanding amount (more accurate than retailer document)
       retailerData.currentOutstanding = currentOutstanding;
@@ -390,8 +391,8 @@ export function RetailerDashboard() {
       setNotificationCount(activeOTPCount + outstandingCount);
       
       // Final debugging before setting state
-      console.log('🏠 FINAL retailerData.address before setState:', retailerData.address);
-      console.log('🏠 FINAL retailerData object:', retailerData);
+      logger.debug('FINAL retailerData.address before setState', retailerData.address, { context: 'RetailerDashboard' });
+      logger.debug('FINAL retailerData object', retailerData, { context: 'RetailerDashboard' });
       
       setRetailer(retailerData as any);
       setPayments(paymentsData);
@@ -405,12 +406,12 @@ export function RetailerDashboard() {
       setDataFetchProgress(100);
       setIsInitialLoading(false);
       
-      console.log('Final retailer data:', retailerData);
-      console.log('Payments loaded:', paymentsData.length);
-      console.log('Final outstanding amount:', currentOutstanding);
+      logger.debug('Final retailer data', retailerData, { context: 'RetailerDashboard' });
+      logger.debug('Payments loaded', paymentsData.length, { context: 'RetailerDashboard' });
+      logger.debug('Final outstanding amount', currentOutstanding, { context: 'RetailerDashboard' });
       
     } catch (err: any) {
-      console.error('Error fetching retailer data:', err);
+      logger.error('Error fetching retailer data', err, { context: 'RetailerDashboard' });
       setError(err.message || 'Failed to fetch retailer data');
       setDataFetchProgress(100);
       setIsInitialLoading(false);
@@ -438,12 +439,12 @@ export function RetailerDashboard() {
           expiresAt: otp.expiresAt.toDate(),
           createdAt: otp.createdAt.toDate()
         }));
-        console.log('📱 Fetched OTPs from retailer document:', retailerOTPs.length);
+        logger.debug('Fetched OTPs from retailer document', retailerOTPs.length, { context: 'RetailerDashboard' });
       } catch (error) {
-        console.error('❌ Error fetching OTPs from retailer document:', error);
+        logger.error('Error fetching OTPs from retailer document', error, { context: 'RetailerDashboard' });
       }
     } else {
-      console.warn('⚠️ Tenant ID not available, cannot fetch OTPs from retailer document');
+      logger.warn('Tenant ID not available, cannot fetch OTPs from retailer document', { context: 'RetailerDashboard' });
     }
     
     // Combine in-memory and retailer document OTPs, removing duplicates
@@ -466,7 +467,7 @@ export function RetailerDashboard() {
     });
     
     if (expiredOTPs.length > 0) {
-      console.log('🕐 Expired OTPs removed:', expiredOTPs.map(otp => otp.paymentId));
+      logger.debug('Expired OTPs removed', expiredOTPs.map(otp => otp.paymentId), { context: 'RetailerDashboard' });
     }
     
     // Check if there are new OTPs
@@ -480,7 +481,7 @@ export function RetailerDashboard() {
     );
     
     if (newOTPs.length > 0) {
-      console.log('🔔 New OTP detected for retailer:', newOTPs);
+      logger.debug('New OTP detected for retailer', newOTPs, { context: 'RetailerDashboard' });
       setActiveOTPs(validOTPs);
       
       // Check if any of the new OTPs haven't been shown as popup yet
@@ -520,7 +521,7 @@ export function RetailerDashboard() {
     }
     
     if (newCompleted.length > 0) {
-      console.log('✅ New completed payment detected for retailer:', newCompleted);
+      logger.debug('New completed payment detected for retailer', newCompleted, { context: 'RetailerDashboard' });
       setCompletedPayments(completedPaymentsForRetailer);
       setShowSettlementPopup(true);
       
@@ -649,7 +650,7 @@ export function RetailerDashboard() {
       // Check for active OTPs
       await checkActiveOTPs();
     } catch (error) {
-      console.error('Error during manual refresh:', error);
+      logger.error('Error during manual refresh', error, { context: 'RetailerDashboard' });
     } finally {
       setRefreshLoading(false);
     }

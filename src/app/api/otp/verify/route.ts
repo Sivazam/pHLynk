@@ -5,6 +5,7 @@ import { db } from '@/lib/firebase';
 import { RetailerAuthService } from '@/services/retailer-auth';
 import { retailerService, paymentService } from '@/services/firestore';
 import { Retailer } from '@/types';
+import { logger } from '@/lib/logger';
 
 interface OTPVerifyRequest {
   paymentId: string;
@@ -79,7 +80,7 @@ export async function POST(request: NextRequest) {
 
     // Get OTP from in-memory store first
     let otpData = otpStore.get(paymentId);
-    console.log('🔍 OTP found in in-memory store:', otpData ? 'YES' : 'NO');
+    logger.debug('OTP found in in-memory store', otpData ? 'YES' : 'NO', { context: 'OTPVerifyAPI' });
     
     // If not found in memory, try to get from retailer document
     if (!otpData) {

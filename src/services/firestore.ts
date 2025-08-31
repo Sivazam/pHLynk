@@ -24,6 +24,7 @@ import {
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage, COLLECTIONS, ROLES } from '@/lib/firebase';
 import { toMillis, toDate, compareTimestamps } from '@/lib/timestamp-utils';
+import { logger } from '@/lib/logger';
 import { RetailerAuthService } from './retailer-auth';
 import { 
   Tenant, 
@@ -68,38 +69,38 @@ export class FirestoreService<T extends BaseDocument> {
       });
       return docRef.id;
     } catch (error) {
-      console.error(`Error creating document in ${this.collectionName}:`, error);
+      logger.error(`Error creating document in ${this.collectionName}`, error, { context: 'FirestoreService' });
       throw error;
     }
   }
 
   async getById(id: string, tenantId: string): Promise<T | null> {
     try {
-      console.log('🔍 getById called for collection:', this.collectionName);
-      console.log('  Document ID:', id);
-      console.log('  Tenant ID:', tenantId);
+      logger.debug('getById called for collection', this.collectionName, { context: 'FirestoreService' });
+      logger.debug('Document ID', id, { context: 'FirestoreService' });
+      logger.debug('Tenant ID', tenantId, { context: 'FirestoreService' });
       
       const docRef = doc(db, this.collectionName, id);
       const docSnap = await getDoc(docRef);
       
-      console.log('🔍 Document exists:', docSnap.exists());
+      logger.debug('Document exists', docSnap.exists(), { context: 'FirestoreService' });
       if (docSnap.exists()) {
         const data = docSnap.data();
-        console.log('🔍 Document tenantId:', data.tenantId);
-        console.log('🔍 Tenant ID match:', data.tenantId === tenantId);
+        logger.debug('Document tenantId', data.tenantId, { context: 'FirestoreService' });
+        logger.debug('Tenant ID match', data.tenantId === tenantId, { context: 'FirestoreService' });
         
         if (data.tenantId === tenantId) {
-          console.log('✅ Document found and tenant ID matches');
+          logger.debug('Document found and tenant ID matches', { context: 'FirestoreService' });
           return { id: docSnap.id, ...data } as T;
         } else {
-          console.log('❌ Tenant ID mismatch - document belongs to different tenant');
+          logger.warn('Tenant ID mismatch - document belongs to different tenant', { context: 'FirestoreService' });
         }
       } else {
-        console.log('❌ Document does not exist');
+        logger.debug('Document does not exist', { context: 'FirestoreService' });
       }
       return null;
     } catch (error) {
-      console.error(`Error getting document ${id} from ${this.collectionName}:`, error);
+      logger.error(`Error getting document ${id} from ${this.collectionName}`, error, { context: 'FirestoreService' });
       throw error;
     }
   }
@@ -120,17 +121,17 @@ export class FirestoreService<T extends BaseDocument> {
       
       return documents;
     } catch (error) {
-      console.error(`Error getting documents from ${this.collectionName}:`, error);
+      logger.error(`Error getting documents from ${this.collectionName}`, error, { context: 'FirestoreService' });
       throw error;
     }
   }
 
   async update(id: string, data: Partial<T>, tenantId: string): Promise<void> {
     try {
-      console.log('🔍 update called for collection:', this.collectionName);
-      console.log('  Document ID:', id);
-      console.log('  Tenant ID:', tenantId);
-      console.log('  Data to update:', Object.keys(data));
+      logger.debug('update called for collection', this.collectionName, { context: 'FirestoreService' });
+      logger.debug('Document ID', id, { context: 'FirestoreService' });
+      logger.debug('Tenant ID', tenantId, { context: 'FirestoreService' });
+      logger.debug('Data to update', Object.keys(data), { context: 'FirestoreService' });
       
       const docRef = doc(db, this.collectionName, id);
       
@@ -146,16 +147,16 @@ export class FirestoreService<T extends BaseDocument> {
         }
       });
       
-      console.log('🔍 Processed data keys:', Object.keys(processedData));
+      logger.debug('Processed data keys', Object.keys(processedData), { context: 'FirestoreService' });
       
       await updateDoc(docRef, {
         ...processedData,
         updatedAt: Timestamp.now()
       });
       
-      console.log('✅ Document updated successfully');
+      logger.debug('Document updated successfully', { context: 'FirestoreService' });
     } catch (error) {
-      console.error(`Error updating document ${id} in ${this.collectionName}:`, error);
+      logger.error(`Error updating document ${id} in ${this.collectionName}`, error, { context: 'FirestoreService' });
       throw error;
     }
   }
@@ -165,7 +166,7 @@ export class FirestoreService<T extends BaseDocument> {
       const docRef = doc(db, this.collectionName, id);
       await deleteDoc(docRef);
     } catch (error) {
-      console.error(`Error deleting document ${id} from ${this.collectionName}:`, error);
+      logger.error(`Error deleting document ${id} from ${this.collectionName}`, error, { context: 'FirestoreService' });
       throw error;
     }
   }
@@ -186,7 +187,7 @@ export class FirestoreService<T extends BaseDocument> {
       
       return documents;
     } catch (error) {
-      console.error(`Error querying ${this.collectionName}:`, error);
+      logger.error(`Error querying ${this.collectionName}`, error, { context: 'FirestoreService' });
       throw error;
     }
   }
@@ -218,7 +219,7 @@ export class TenantService extends FirestoreService<Tenant> {
       
       return docRef.id;
     } catch (error) {
-      console.error(`Error creating tenant:`, error);
+      logger.error('Error creating tenant', error, { context: 'TenantService' });
       throw error;
     }
   }
@@ -235,7 +236,7 @@ export class TenantService extends FirestoreService<Tenant> {
       
       return tenants;
     } catch (error) {
-      console.error('Error getting all tenants:', error);
+      logger.error('Error getting all tenants', error, { context: 'TenantService' });
       throw error;
     }
   }
@@ -294,7 +295,7 @@ export class UserService extends FirestoreService<User> {
       
       return firebaseUser.uid;
     } catch (error) {
-      console.error('Error creating user with auth:', error);
+      logger.error('Error creating user with auth', error, { context: 'UserService' });
       throw error;
     }
   }
@@ -323,7 +324,7 @@ export class UserService extends FirestoreService<User> {
         updatedAt: serverTimestamp()
       });
     } catch (error) {
-      console.error(`Error creating user document with ID ${userId}:`, error);
+      logger.error(`Error creating user document with ID ${userId}`, error, { context: 'UserService' });
       throw error;
     }
   }
@@ -419,9 +420,9 @@ export class RetailerService extends FirestoreService<Retailer> {
       };
 
       await RetailerAuthService.createRetailerUser(retailerData, tenantId);
-      console.log('✅ Retailer user account created for:', data.phone);
+      logger.success('Retailer user account created for', data.phone, { context: 'RetailerService' });
     } catch (error) {
-      console.error('❌ Error creating retailer user account:', error);
+      logger.error('Error creating retailer user account', error, { context: 'RetailerService' });
       // Don't throw here - the retailer was created successfully
     }
 
@@ -475,7 +476,7 @@ export class RetailerService extends FirestoreService<Retailer> {
         computedAt: Timestamp.now()
       }, tenantId);
       
-      console.log(`✅ Updated retailer ${retailerId} for new invoice: +₹${invoice.totalAmount}, outstanding: ₹${newOutstanding}`);
+      logger.success(`Updated retailer ${retailerId} for new invoice: +₹${invoice.totalAmount}, outstanding: ₹${newOutstanding}`, { context: 'RetailerService' });
     }
   }
 
@@ -508,14 +509,14 @@ export class RetailerService extends FirestoreService<Retailer> {
         computedAt: Timestamp.now()
       }, tenantId);
       
-      console.log(`✅ Updated retailer ${retailerId} for payment: -₹${payment.totalPaid}, outstanding: ₹${newOutstanding}`);
+      logger.success(`Updated retailer ${retailerId} for payment: -₹${payment.totalPaid}, outstanding: ₹${newOutstanding}`, { context: 'RetailerService' });
     }
   }
 
   // Recompute all retailer data from scratch (for data correction/migration)
   async recomputeRetailerData(retailerId: string, tenantId: string): Promise<void> {
     try {
-      console.log(`🔄 Recomputing data for retailer ${retailerId}`);
+      logger.debug(`Recomputing data for retailer ${retailerId}`, { context: 'RetailerService' });
       
       // Get all related data
       const invoiceService = new InvoiceService();
@@ -524,16 +525,16 @@ export class RetailerService extends FirestoreService<Retailer> {
       const invoices = await invoiceService.getInvoicesByRetailer(tenantId, retailerId);
       const payments = await paymentService.getPaymentsByRetailer(tenantId, retailerId);
       
-      console.log(`📊 Retailer ${retailerId} - Found ${invoices.length} invoices and ${payments.length} payments`);
+      logger.debug(`Retailer ${retailerId} - Found ${invoices.length} invoices and ${payments.length} payments`, { context: 'RetailerService' });
       
       // Log invoice details
       invoices.forEach((inv, index) => {
-        console.log(`📄 Invoice ${index + 1}: ID=${inv.id}, Amount=₹${inv.totalAmount}, Status=${inv.status}`);
+        logger.debug(`Invoice ${index + 1}`, { id: inv.id, amount: inv.totalAmount, status: inv.status }, { context: 'RetailerService' });
       });
       
       // Log payment details
       payments.forEach((p, index) => {
-        console.log(`💳 Payment ${index + 1}: ID=${p.id}, Amount=₹${p.totalPaid}, State=${p.state}, Date=${p.createdAt}`);
+        logger.debug(`Payment ${index + 1}`, { id: p.id, amount: p.totalPaid, state: p.state, date: p.createdAt }, { context: 'RetailerService' });
       });
       
       // Compute totals
@@ -542,7 +543,7 @@ export class RetailerService extends FirestoreService<Retailer> {
                                    .reduce((sum, p) => sum + p.totalPaid, 0);
       const currentOutstanding = totalInvoiceAmount - totalPaidAmount;
       
-      console.log(`💰 Retailer ${retailerId} - Total Invoices: ₹${totalInvoiceAmount}, Total Paid: ₹${totalPaidAmount}, Outstanding: ₹${currentOutstanding}`);
+      logger.debug(`Retailer ${retailerId} summary`, { totalInvoices: totalInvoiceAmount, totalPaid: totalPaidAmount, outstanding: currentOutstanding }, { context: 'RetailerService' });
       
       // Get recent invoices
       const recentInvoices = invoices
@@ -591,10 +592,10 @@ export class RetailerService extends FirestoreService<Retailer> {
         computedAt: Timestamp.now()
       }, tenantId);
       
-      console.log(`✅ Recomputed data for retailer ${retailerId}: outstanding ₹${currentOutstanding}, invoices ${invoices.length}, payments ${payments.length}`);
+      logger.success(`Recomputed data for retailer ${retailerId}: outstanding ₹${currentOutstanding}, invoices ${invoices.length}, payments ${payments.length}`, { context: 'RetailerService' });
       
     } catch (error) {
-      console.error(`❌ Error recomputing data for retailer ${retailerId}:`, error);
+      logger.error(`Error recomputing data for retailer ${retailerId}`, error, { context: 'RetailerService' });
       throw error;
     }
   }
@@ -608,9 +609,9 @@ export class RetailerService extends FirestoreService<Retailer> {
       await this.update(retailerId, {
         assignedLineWorkerId: lineWorkerId || undefined
       }, tenantId);
-      console.log(`✅ ${lineWorkerId ? 'Assigned' : 'Unassigned'} retailer ${retailerId} ${lineWorkerId ? 'to' : 'from'} line worker ${lineWorkerId || '(unassigned)'}`);
+      logger.success(`${lineWorkerId ? 'Assigned' : 'Unassigned'} retailer ${retailerId} ${lineWorkerId ? 'to' : 'from'} line worker ${lineWorkerId || '(unassigned)'}`, { context: 'RetailerService' });
     } catch (error) {
-      console.error('Error assigning line worker to retailer:', error);
+      logger.error('Error assigning line worker to retailer', error, { context: 'RetailerService' });
       throw error;
     }
   }
@@ -639,13 +640,10 @@ export class RetailerService extends FirestoreService<Retailer> {
     usedAt?: Timestamp;
   }): Promise<void> {
     try {
-      console.log('🔍 addOTPToRetailer called with:');
-      console.log('  Retailer ID:', retailerId);
-      console.log('  Tenant ID:', tenantId);
-      console.log('  OTP Payment ID:', otpData.paymentId);
+      logger.debug('addOTPToRetailer called', { retailerId, tenantId, paymentId: otpData.paymentId }, { context: 'OTPService' });
       
       const retailer = await this.getById(retailerId, tenantId);
-      console.log('🔍 Retailer found:', retailer ? 'YES' : 'NO');
+      logger.debug('Retailer found in addOTPToRetailer', retailer ? 'YES' : 'NO', { context: 'OTPService' });
       
       if (!retailer) {
         throw new Error('Retailer not found');
@@ -653,21 +651,21 @@ export class RetailerService extends FirestoreService<Retailer> {
 
       // Initialize activeOTPs array if it doesn't exist
       const activeOTPs = retailer.activeOTPs || [];
-      console.log('🔍 Current activeOTPs count:', activeOTPs.length);
+      logger.debug('Current activeOTPs count', , activeOTPs.length, { context: 'OTPService' });
       
       // Add new OTP to the array
       activeOTPs.push(otpData);
-      console.log('🔍 New activeOTPs count:', activeOTPs.length);
+      logger.debug('New activeOTPs count', , activeOTPs.length, { context: 'OTPService' });
 
       // Update retailer document with new OTP
-      console.log('🔍 Updating retailer document with new OTP array...');
+      logger.debug('Updating retailer document with new OTP array', { context: 'OTPService' });
       await this.update(retailerId, {
         activeOTPs
       }, tenantId);
 
-      console.log(`✅ OTP added to retailer ${retailerId} for payment ${otpData.paymentId}`);
+      logger.success(`OTP added to retailer ${retailerId} for payment ${otpData.paymentId}`, { context: 'OTPService' });
     } catch (error) {
-      console.error('Error adding OTP to retailer:', error);
+      logger.error('Error adding OTP to retailer', error, { context: 'OTPService' });
       throw error;
     }
   }
@@ -683,81 +681,78 @@ export class RetailerService extends FirestoreService<Retailer> {
     usedAt?: Timestamp;
   }>> {
     try {
-      console.log('🔍 getActiveOTPsFromRetailer called:', {
-        retailerId,
-        tenantId
-      });
+      logger.debug('getActiveOTPsFromRetailer called', { retailerId, tenantId }, { context: 'OTPService' });
       
       const retailer = await this.getById(retailerId, tenantId);
-      console.log('🔍 Retailer found:', retailer ? 'YES' : 'NO');
+      logger.debug('Retailer found in getActiveOTPsFromRetailer', retailer ? 'YES' : 'NO', { context: 'OTPService' });
       
       if (!retailer) {
-        console.log('❌ Retailer not found');
+        logger.warn('Retailer not found', { context: 'OTPService' });
         return [];
       }
       
-      console.log('🔍 Retailer activeOTPs array:', retailer.activeOTPs ? 'EXISTS' : 'MISSING');
+      logger.debug('Retailer activeOTPs array', retailer.activeOTPs ? 'EXISTS' : 'MISSING', { context: 'OTPService' });
       if (!retailer.activeOTPs) {
-        console.log('❌ Retailer has no activeOTPs array');
+        logger.warn('Retailer has no activeOTPs array', { context: 'OTPService' });
         return [];
       }
 
-      console.log('🔍 Total OTPs in retailer document:', retailer.activeOTPs.length);
-      console.log('🔍 All OTPs in retailer document:', retailer.activeOTPs.map(otp => ({
+      logger.debug('Total OTPs in retailer document', retailer.activeOTPs.length, { context: 'OTPService' });
+      logger.debug('All OTPs in retailer document', retailer.activeOTPs.map(otp => ({
         paymentId: otp.paymentId,
         code: otp.code,
         amount: otp.amount,
         isUsed: otp.isUsed,
         expiresAt: otp.expiresAt.toDate(),
         createdAt: otp.createdAt.toDate()
-      })));
+      })), { context: 'OTPService' });
 
       const now = new Date();
-      console.log('🔍 Current time for expiration check:', now);
+      logger.debug('Current time for expiration check', , now, { context: 'OTPService' });
       
       // Filter out used and expired OTPs
       const activeOTPs = retailer.activeOTPs.filter(otp => {
         // Skip used OTPs
         if (otp.isUsed) {
-          console.log(`🔍 Skipping used OTP: ${otp.paymentId}`);
+          logger.debug('Skipping used OTP', ${otp.paymentId}, { context: 'OTPService' });
           return false;
         }
         
         // Skip expired OTPs
         const expiresAt = otp.expiresAt.toDate();
         const isExpired = expiresAt <= now;
-        console.log(`🔍 OTP ${otp.paymentId} expiration check:`, {
+        logger.debug(`OTP ${otp.paymentId} expiration check`, {
           expiresAt: expiresAt,
           now: now,
           isExpired: isExpired
-        });
+        }, { context: 'OTPService' });
         
         if (isExpired) {
-          console.log(`🔍 Skipping expired OTP: ${otp.paymentId}`);
+          logger.debug('Skipping expired OTP', otp.paymentId, { context: 'OTPService' });
           return false;
         }
         
-        console.log(`🔍 Keeping active OTP: ${otp.paymentId}`);
+        logger.debug('Keeping active OTP', otp.paymentId, { context: 'OTPService' });
         return true;
       });
 
-      console.log('🔍 Active OTPs after filtering:', activeOTPs.length);
-      console.log('🔍 Active OTPs details:', activeOTPs.map(otp => ({
+      logger.debug('Active OTPs after filtering', activeOTPs.length, { context: 'OTPService' });
+      logger.debug('Active OTPs details', activeOTPs.map(otp => ({
         paymentId: otp.paymentId,
         code: otp.code,
         amount: otp.amount,
         expiresAt: otp.expiresAt.toDate()
-      })));
+      })), { context: 'OTPService' });
 
       // Sort by creation time (newest first)
       const sortedOTPs = activeOTPs.sort((a, b) => 
         b.createdAt.toMillis() - a.createdAt.toMillis()
       );
       
-      console.log('✅ Returning sorted active OTPs:', sortedOTPs.length);
+      logger.success('Returning sorted active OTPs', sortedOTPs.length, { context: 'OTPService' });
       return sortedOTPs;
     } catch (error) {
-      console.error('Error getting active OTPs from retailer:', error);
+      logger.error('Error getting active OTPs from retailer', error, { context: 'OTPService' });
       return [];
     }
   }
@@ -786,9 +781,9 @@ export class RetailerService extends FirestoreService<Retailer> {
         activeOTPs: updatedOTPs
       }, tenantId);
 
-      console.log(`✅ OTP marked as used for retailer ${retailerId}, payment ${paymentId}`);
+      logger.success(`OTP marked as used for retailer ${retailerId} payment ${paymentId}`, { context: 'OTPService' });
     } catch (error) {
-      console.error('Error marking OTP as used in retailer:', error);
+      logger.error('Error marking OTP as used in retailer', error, { context: 'OTPService' });
       throw error;
     }
   }
@@ -817,10 +812,10 @@ export class RetailerService extends FirestoreService<Retailer> {
           activeOTPs: cleanedOTPs
         }, tenantId);
         
-        console.log(`🧹 Cleaned up ${retailer.activeOTPs.length - cleanedOTPs.length} expired OTPs for retailer ${retailerId}`);
+        logger.success(`Cleaned up ${retailer.activeOTPs.length - cleanedOTPs.length} expired OTPs for retailer ${retailerId}`, { context: 'OTPService' });
       }
     } catch (error) {
-      console.error('Error cleaning up expired OTPs in retailer:', error);
+      logger.error('Error cleaning up expired OTPs in retailer', error, { context: 'OTPService' });
       // Don't throw error for cleanup operations
     }
   }
@@ -872,7 +867,7 @@ export class InvoiceService extends FirestoreService<Invoice> {
       };
       await retailerService.updateForInvoice(data.retailerId, tenantId, invoiceData);
     } catch (error) {
-      console.error('Error updating retailer computed fields:', error);
+      logger.error('Error updating retailer computed fields', error, { context: 'RetailerService' });
       // Don't throw here - the invoice was created successfully
     }
 
@@ -962,7 +957,7 @@ export class InvoiceService extends FirestoreService<Invoice> {
         const retailerService = new RetailerService();
         await retailerService.recomputeRetailerData(invoice.retailerId, tenantId);
       } catch (error) {
-        console.error('Error updating retailer computed fields:', error);
+        logger.error('Error updating retailer computed fields', error, { context: 'RetailerService' });
         // Don't throw here - the invoice was updated successfully
       }
     }
@@ -982,7 +977,7 @@ export class InvoiceService extends FirestoreService<Invoice> {
       const retailerService = new RetailerService();
       await retailerService.recomputeRetailerData(invoice.retailerId, tenantId);
     } catch (error) {
-      console.error('Error updating retailer computed fields:', error);
+      logger.error('Error updating retailer computed fields', error, { context: 'RetailerService' });
       // Don't throw here - the invoice was deleted successfully
     }
   }
@@ -1068,7 +1063,7 @@ export class PaymentService extends FirestoreService<Payment> {
         };
         await retailerService.updateForPayment(payment.retailerId, tenantId, paymentData);
       } catch (error) {
-        console.error('Error updating outstanding amounts:', error);
+        logger.error('Error updating outstanding amounts', error, { context: 'RetailerService' });
         // Don't throw here - we still want to update the payment state
       }
     }
@@ -1090,7 +1085,7 @@ export class PaymentService extends FirestoreService<Payment> {
 
       for (const payment of stuckPayments) {
         if (toDate(payment.timeline.initiatedAt) < cutoffTime) {
-          console.log(`Cleaning up stuck payment ${payment.id} initiated at ${toDate(payment.timeline.initiatedAt)}`);
+          logger.debug('Cleaning up stuck payment ${payment.id} initiated at ${toDate(payment.timeline.initiatedAt)}', { context: 'PaymentService' });
           await this.updatePaymentState(payment.id, tenantId, 'CANCELLED', {
             timeline: {
               ...payment.timeline,
@@ -1100,7 +1095,7 @@ export class PaymentService extends FirestoreService<Payment> {
         }
       }
     } catch (error) {
-      console.error('Error cleaning up stuck payments:', error);
+      logger.error('Error cleaning up stuck payments', error, { context: 'PaymentService' });
     }
   }
 
@@ -1182,7 +1177,7 @@ export class SubscriptionService extends FirestoreService<Subscription> {
       }
       return null;
     } catch (error) {
-      console.error('Error getting subscription by tenant:', error);
+      logger.error('Error getting subscription by tenant', error, { context: 'SubscriptionService' });
       throw error;
     }
   }
@@ -1200,7 +1195,7 @@ export class StorageService {
       
       return storagePath;
     } catch (error) {
-      console.error('Error uploading evidence:', error);
+      logger.error('Error uploading evidence', error, { context: 'PaymentService' });
       throw error;
     }
   }
@@ -1254,7 +1249,7 @@ export class DashboardService {
         topLineWorkers
       };
     } catch (error) {
-      console.error('Error getting dashboard stats:', error);
+      logger.error('Error getting dashboard stats', error, { context: 'AnalyticsService' });
       throw error;
     }
   }
@@ -1286,7 +1281,7 @@ export class DashboardService {
       }
       return null;
     } catch (error) {
-      console.error('Error getting monthly targets:', error);
+      logger.error('Error getting monthly targets', error, { context: 'TargetService' });
       return null;
     }
   }
@@ -1310,14 +1305,14 @@ export class DashboardService {
           ...targetsData,
           updatedAt: Timestamp.now()
         });
-        console.log('✅ Monthly targets updated successfully');
+        logger.success('Monthly targets updated successfully', { context: 'TargetService' });
       } else {
         // Create new document
         await addDoc(collection(db, COLLECTIONS.MONTHLY_TARGETS), targetsData);
-        console.log('✅ Monthly targets created successfully');
+        logger.success('Monthly targets created successfully', { context: 'TargetService' });
       }
     } catch (error) {
-      console.error('Error saving monthly targets:', error);
+      logger.error('Error saving monthly targets', error, { context: 'TargetService' });
       throw error;
     }
   }
@@ -1356,7 +1351,7 @@ export class DashboardService {
         revenue: monthlyRevenue[month]
       }));
     } catch (error) {
-      console.error('Error getting monthly revenue:', error);
+      logger.error('Error getting monthly revenue', error, { context: 'AnalyticsService' });
       return [];
     }
   }
@@ -1409,7 +1404,7 @@ export class OTPService extends FirestoreService<OTP> {
       // Sort by creation time (newest first)
       return otps.sort((a, b) => toMillis(b.createdAt) - toMillis(a.createdAt));
     } catch (error) {
-      console.error('Error getting active OTPs for retailer:', error);
+      logger.error('Error getting active OTPs for retailer', error, { context: 'OTPService' });
       return [];
     }
   }
@@ -1421,7 +1416,7 @@ export class OTPService extends FirestoreService<OTP> {
         usedAt: Timestamp.now()
       }, 'system');
     } catch (error) {
-      console.error('Error marking OTP as used:', error);
+      logger.error('Error marking OTP as used', error, { context: 'OTPService' });
       throw error;
     }
   }
@@ -1441,7 +1436,7 @@ export class OTPService extends FirestoreService<OTP> {
       }
       return null;
     } catch (error) {
-      console.error('Error getting OTP by payment ID:', error);
+      logger.error('Error getting OTP by payment ID', error, { context: 'OTPService' });
       return null;
     }
   }
@@ -1462,9 +1457,9 @@ export class OTPService extends FirestoreService<OTP> {
       });
       
       await batch.commit();
-      console.log(`Cleaned up ${querySnapshot.size} expired OTPs`);
+      logger.success('Cleaned up ${querySnapshot.size} expired OTPs', { context: 'OTPService' });
     } catch (error) {
-      console.error('Error cleaning up expired OTPs:', error);
+      logger.error('Error cleaning up expired OTPs', error, { context: 'OTPService' });
     }
   }
 }
@@ -1501,7 +1496,7 @@ export async function getProducts(tenantId: string): Promise<ProductData[]> {
     const productService = new ProductService();
     return await productService.getAll(tenantId);
   } catch (error) {
-    console.error('Error getting products:', error);
+    logger.error('Error getting products', error, { context: 'ProductService' });
     throw error;
   }
 }
@@ -1513,7 +1508,7 @@ export async function createProduct(tenantId: string, data: Omit<ProductData, 'i
     const { tenantId: _, ...productData } = data as any;
     return await productService.create(productData, tenantId);
   } catch (error) {
-    console.error('Error creating product:', error);
+    logger.error('Error creating product', error, { context: 'ProductService' });
     throw error;
   }
 }
@@ -1523,7 +1518,7 @@ export async function updateProduct(productId: string, tenantId: string, data: P
     const productService = new ProductService();
     await productService.update(productId, data, tenantId);
   } catch (error) {
-    console.error('Error updating product:', error);
+    logger.error('Error updating product', error, { context: 'ProductService' });
     throw error;
   }
 }
