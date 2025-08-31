@@ -4,7 +4,7 @@ import { Button, ButtonProps } from '@/components/ui/button';
 import { LoadingSpinner } from './LoadingSpinner';
 import { cn } from '@/lib/utils';
 
-interface LoadingButtonProps extends ButtonProps {
+interface LoadingButtonProps extends Omit<ButtonProps, 'disabled'> {
   isLoading?: boolean;
   loadingText?: string;
   children: React.ReactNode;
@@ -16,6 +16,7 @@ export function LoadingButton({
   children,
   disabled,
   className,
+  onClick,
   ...props 
 }: LoadingButtonProps) {
   const isDisabled = disabled || isLoading;
@@ -23,6 +24,7 @@ export function LoadingButton({
   return (
     <Button 
       disabled={isDisabled}
+      onClick={onClick}
       className={cn('relative', className)}
       {...props}
     >
