@@ -714,7 +714,7 @@ export class RetailerService extends FirestoreService<Retailer> {
       const activeOTPs = retailer.activeOTPs.filter(otp => {
         // Skip used OTPs
         if (otp.isUsed) {
-          logger.debug('Skipping used OTP', ${otp.paymentId}, { context: 'OTPService' });
+          logger.debug('Skipping used OTP', otp.paymentId, { context: 'OTPService' });
           return false;
         }
         
