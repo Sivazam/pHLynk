@@ -97,8 +97,13 @@ export default function Home() {
     return <AppIntroCarousel onComplete={handleIntroComplete} onSkip={handleIntroSkip} />;
   }
 
-  // Show retailer dashboard if retailer ID is present
-  if (retailerId) {
+  // Show retailer dashboard if user is a retailer
+  if (user && user.isRetailer) {
+    return <RetailerDashboard />;
+  }
+
+  // Show retailer dashboard if retailer ID is present (backward compatibility)
+  if (retailerId && !user) {
     return <RetailerDashboard />;
   }
 

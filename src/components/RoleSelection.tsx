@@ -55,9 +55,11 @@ export function RoleSelection({ onRoleSelect, onBack }: RoleSelectionProps) {
     return (
       <RetailerAuth 
         onAuthSuccess={(retailerId) => {
-          // Store retailer ID in localStorage or context
+          // Store retailer ID in localStorage for backward compatibility
           localStorage.setItem('retailerId', retailerId);
-          window.location.reload(); // Reload to initialize retailer context
+          // Note: The AuthContext will automatically detect the Firebase Auth user
+          // and load the retailer data, so no page reload is needed
+          console.log('Retailer authentication successful, retailerId:', retailerId);
         }}
         onBackToRoleSelection={() => setSelectedRole(null)}
       />

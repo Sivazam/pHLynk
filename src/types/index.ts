@@ -338,6 +338,10 @@ export interface AuthUser {
   roles: (keyof typeof ROLES)[];
   assignedAreas?: string[];
   assignedZips?: string[];
+  // Retailer-specific fields
+  isRetailer?: boolean;
+  retailerId?: string;
+  phone?: string;
 }
 
 export interface AuthContextType {

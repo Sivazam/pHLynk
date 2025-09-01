@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { DashboardNavigation, NavItem } from '@/components/DashboardNavigation';
+import { useAuth } from '@/contexts/AuthContext';
 import { retailerService, paymentService, invoiceService } from '@/services/firestore';
 import { realtimeNotificationService } from '@/services/realtime-notifications';
 import { notificationService } from '@/services/notification-service';
@@ -54,6 +55,7 @@ import {
 import { StatusBarColor } from './ui/StatusBarColor';
 
 export function RetailerDashboard() {
+  const { user } = useAuth();
   const [retailer, setRetailer] = useState<Retailer | null>(null);
   const [retailerUser, setRetailerUser] = useState<any>(null);
   const [tenantId, setTenantId] = useState<string | null>(null);
@@ -234,16 +236,22 @@ export function RetailerDashboard() {
   };
 
   useEffect(() => {
-    const storedRetailerId = localStorage.getItem('retailerId');
-    if (storedRetailerId) {
+    // Get retailerId from AuthContext user or fallback to localStorage for backward compatibility
+    let retailerId = user?.retailerId;
+    if (!retailerId) {
+      const storedRetailerId = localStorage.getItem('retailerId');
+      retailerId = storedRetailerId;
+    }
+    
+    if (retailerId) {
       // Reset loading state and start fetching data
       mainLoadingState.setLoading(true);
       setDataFetchProgress(0);
-      fetchRetailerData(storedRetailerId);
+      fetchRetailerData(retailerId);
       
       // Start real-time notifications
       realtimeNotificationService.startListening(
-        storedRetailerId,
+        retailerId,
         'RETAILER',
         'retailer', // Retailers use their own ID as tenant ID
         (newNotifications) => {
@@ -255,12 +263,17 @@ export function RetailerDashboard() {
 
     // Cleanup on unmount
     return () => {
-      const storedRetailerId = localStorage.getItem('retailerId');
-      if (storedRetailerId) {
-        realtimeNotificationService.stopListening(storedRetailerId);
+      let retailerId = user?.retailerId;
+      if (!retailerId) {
+        const storedRetailerId = localStorage.getItem('retailerId');
+        retailerId = storedRetailerId;
+      }
+      
+      if (retailerId) {
+        realtimeNotificationService.stopListening(retailerId);
       }
     };
-  }, []);
+  }, [user]); // Add user as dependency
 
   // Load additional data when payments or invoices change
   useEffect(() => {
@@ -422,18 +435,23 @@ export function RetailerDashboard() {
   };
 
   const checkActiveOTPs = async () => {
-    const storedRetailerId = localStorage.getItem('retailerId');
-    if (!storedRetailerId) return;
+    let retailerId = user?.retailerId;
+    if (!retailerId) {
+      const storedRetailerId = localStorage.getItem('retailerId');
+      retailerId = storedRetailerId;
+    }
+    
+    if (!retailerId) return;
     
     // Get OTPs from in-memory store (for real-time updates)
-    const activeOTPsForRetailer = getActiveOTPsForRetailer(storedRetailerId);
-    const completedPaymentsForRetailer = getCompletedPaymentsForRetailer(storedRetailerId);
+    const activeOTPsForRetailer = getActiveOTPsForRetailer(retailerId);
+    const completedPaymentsForRetailer = getCompletedPaymentsForRetailer(retailerId);
     
     // Get OTPs from retailer document (primary source)
     let retailerOTPs: any[] = [];
     if (tenantId) {
       try {
-        const retailerOTPData = await retailerService.getActiveOTPsFromRetailer(storedRetailerId, tenantId);
+        const retailerOTPData = await retailerService.getActiveOTPsFromRetailer(retailerId, tenantId);
         retailerOTPs = retailerOTPData.map(otp => ({
           code: otp.code,
           amount: otp.amount,
@@ -504,7 +522,7 @@ export function RetailerDashboard() {
       setNewPayment({
         id: latestOTP.paymentId,
         tenantId: retailerUser?.tenantId || '', // Use retailerUser tenantId if available
-        retailerId: storedRetailerId,
+        retailerId: retailerId,
         retailerName: retailer?.name || '',
         lineWorkerId: '',
         invoiceAllocations: [],
@@ -533,9 +551,14 @@ export function RetailerDashboard() {
       setNewCompletedPayment(latestCompleted);
       
       // Refresh retailer data to update outstanding amount
-      const storedRetailerId = localStorage.getItem('retailerId');
-      if (storedRetailerId) {
-        fetchRetailerData(storedRetailerId);
+      let retailerId = user?.retailerId;
+      if (!retailerId) {
+        const storedRetailerId = localStorage.getItem('retailerId');
+        retailerId = storedRetailerId;
+      }
+      
+      if (retailerId) {
+        fetchRetailerData(retailerId);
       }
     } else {
       setCompletedPayments(completedPaymentsForRetailer);
@@ -628,9 +651,14 @@ export function RetailerDashboard() {
     setNewCompletedPayment(null);
     
     // Refresh the completed payments list
-    const storedRetailerId = localStorage.getItem('retailerId');
-    if (storedRetailerId) {
-      const updatedCompletedPayments = getCompletedPaymentsForRetailer(storedRetailerId);
+    let retailerId = user?.retailerId;
+    if (!retailerId) {
+      const storedRetailerId = localStorage.getItem('retailerId');
+      retailerId = storedRetailerId;
+    }
+    
+    if (retailerId) {
+      const updatedCompletedPayments = getCompletedPaymentsForRetailer(retailerId);
       setCompletedPayments(updatedCompletedPayments);
     }
   };
@@ -638,18 +666,23 @@ export function RetailerDashboard() {
   const handleLogout = () => {
     // Clear retailer ID from localStorage
     localStorage.removeItem('retailerId');
-    // Redirect to retailer login page
-    window.location.href = '/retailer-login';
+    // Redirect to home page
+    window.location.href = '/';
   };
 
   const handleManualRefresh = async () => {
-    const storedRetailerId = localStorage.getItem('retailerId');
-    if (!storedRetailerId) return;
+    let retailerId = user?.retailerId;
+    if (!retailerId) {
+      const storedRetailerId = localStorage.getItem('retailerId');
+      retailerId = storedRetailerId;
+    }
+    
+    if (!retailerId) return;
     
     mainLoadingState.setRefreshing(true);
     try {
       // Refresh main data
-      await fetchRetailerData(storedRetailerId);
+      await fetchRetailerData(retailerId);
       // Check for active OTPs
       await checkActiveOTPs();
     } catch (error) {

@@ -57,7 +57,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           // Small delay before Firestore call
           await new Promise(resolve => setTimeout(resolve, 150));
           
-          // Fetch user data from Firestore
+          // Try to fetch user data from users collection first
           const userDoc = await getDoc(doc(db, COLLECTIONS.USERS, firebaseUser.uid));
           
           updateProgress(50, 'Validating user permissions...');
@@ -88,10 +88,53 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             updateProgress(95, 'Almost ready...');
             setUser(authUser);
           } else {
-            // User exists in Auth but not in Firestore - this shouldn't happen in our flow
-            console.error('User exists in Auth but not in Firestore');
-            updateProgress(90, 'Setting up guest access...');
-            setUser(null);
+            // If not found in users collection, try retailerUsers collection
+            updateProgress(40, 'Checking retailer account...');
+            
+            // Check if this is a retailer user by phone number
+            if (firebaseUser.phoneNumber) {
+              const phone = firebaseUser.phoneNumber.replace('+91', '').replace(/\D/g, '');
+              const retailerUid = `retailer_${phone}`;
+              const retailerUserDoc = await getDoc(doc(db, 'retailerUsers', retailerUid));
+              
+              if (retailerUserDoc.exists()) {
+                updateProgress(70, 'Loading retailer profile...');
+                
+                const retailerData = retailerUserDoc.data();
+                const authUser: AuthUser = {
+                  uid: firebaseUser.uid,
+                  email: firebaseUser.email || `retailer_${phone}@pharmalynk.local`,
+                  displayName: retailerData.name || 'Retailer',
+                  photoURL: firebaseUser.photoURL || undefined,
+                  tenantId: retailerData.tenantId,
+                  roles: ['RETAILER'], // Retailer users always have RETAILER role
+                  isRetailer: true,
+                  retailerId: retailerData.retailerId,
+                  phone: retailerData.phone
+                };
+                
+                // Also store retailerId in localStorage for backward compatibility
+                localStorage.setItem('retailerId', retailerData.retailerId);
+                
+                updateProgress(85, 'Setting up retailer dashboard...');
+                
+                // Final delay before completing
+                await new Promise(resolve => setTimeout(resolve, 150));
+                
+                updateProgress(95, 'Almost ready...');
+                setUser(authUser);
+              } else {
+                // User exists in Auth but not in either collection
+                console.error('User exists in Auth but not in users or retailerUsers collection');
+                updateProgress(90, 'Setting up guest access...');
+                setUser(null);
+              }
+            } else {
+              // User exists in Auth but no phone number and not in users collection
+              console.error('User exists in Auth but no phone number and not in users collection');
+              updateProgress(90, 'Setting up guest access...');
+              setUser(null);
+            }
           }
         } else {
           updateProgress(40, 'Preparing guest interface...');
@@ -170,8 +213,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       });
       
-      // Sign out from Firebase
+      // Sign out from Firebase - this will clear the Firebase Auth session
+      // for both email/password users and retailer phone auth users
       await signOut(auth);
+      
+      // The onAuthStateChanged listener will automatically detect the signout
+      // and set the user state to null, so we don't need to manually setUser(null)
       
       // Replace current history entry to prevent back navigation
       if (typeof window !== 'undefined') {
