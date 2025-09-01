@@ -30,6 +30,16 @@ export async function POST(request: NextRequest) {
         await simulateWholesalerWorker(userId, tenantId, testData);
         break;
       
+      case 'RETAILER_INVOICE':
+        // Simulate a retailer receiving an invoice
+        await simulateRetailerInvoice(userId, tenantId, testData);
+        break;
+      
+      case 'RETAILER_PAYMENT':
+        // Simulate a retailer payment completion
+        await simulateRetailerPayment(userId, tenantId, testData);
+        break;
+      
       default:
         return NextResponse.json({ 
           error: 'Unknown notification type' 
@@ -96,5 +106,44 @@ async function simulateWholesalerWorker(userId: string, tenantId: string, testDa
   const service = (realtimeNotificationService as any);
   if (service.handleWholesalerWorkerChange) {
     service.handleWholesalerWorkerChange(worker, 'test_worker_id', tenantId);
+  }
+}
+
+// Simulate retailer invoice notification
+async function simulateRetailerInvoice(userId: string, tenantId: string, testData: any) {
+  const invoice = {
+    invoiceNumber: testData?.invoiceNumber || 'TEST-001',
+    totalAmount: testData?.amount || 5000,
+    retailerName: testData?.retailerName || 'Test Retailer',
+    issueDate: new Date(),
+    tenantId: tenantId
+  };
+
+  console.log('🧪 Simulating retailer invoice notification:', { userId, tenantId, invoice });
+
+  // Access the private method for testing
+  const service = (realtimeNotificationService as any);
+  if (service.handleRetailerInvoiceChange) {
+    service.handleRetailerInvoiceChange(invoice, 'test_invoice_id', userId);
+  }
+}
+
+// Simulate retailer payment notification
+async function simulateRetailerPayment(userId: string, tenantId: string, testData: any) {
+  const payment = {
+    state: 'COMPLETED',
+    totalPaid: testData?.amount || 1500,
+    lineWorkerName: testData?.workerName || 'Test Line Worker',
+    retailerName: testData?.retailerName || 'Test Retailer',
+    createdAt: new Date(),
+    tenantId: tenantId
+  };
+
+  console.log('🧪 Simulating retailer payment notification:', { userId, tenantId, payment });
+
+  // Access the private method for testing
+  const service = (realtimeNotificationService as any);
+  if (service.handleRetailerPaymentChange) {
+    service.handleRetailerPaymentChange(payment, 'test_payment_id', userId);
   }
 }

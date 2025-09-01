@@ -767,8 +767,8 @@ export function RetailerDashboard() {
               className="flex items-center justify-center space-x-2 w-full sm:w-auto"
               size="sm"
             >
-              <RefreshCw className="h-4 w-4" />
-              <span>Refresh</span>
+              
+              <span><RefreshCw className="h-4 w-4" /> Refresh</span>
             </LoadingButton>
           </div>
         </div>
@@ -922,9 +922,9 @@ export function RetailerDashboard() {
           {mainLoadingState.loadingState.isRefreshing ? (
             <Loader2 className="h-4 w-4 animate-spin" />
           ) : (
-            <RefreshCw className="h-4 w-4" />
+            <span><RefreshCw className="h-4 w-4" /> Refresh</span> 
           )}
-          <span>Refresh</span>
+          
         </Button>
       </div>
 
@@ -1072,9 +1072,9 @@ export function RetailerDashboard() {
             {mainLoadingState.loadingState.isRefreshing ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
-              <RefreshCw className="h-4 w-4" />
+              <span><RefreshCw className="h-4 w-4" /> Refresh</span>
             )}
-            <span>Refresh</span>
+            
           </Button>
         </div>
 
@@ -1254,9 +1254,9 @@ export function RetailerDashboard() {
             {mainLoadingState.loadingState.isRefreshing ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
-              <RefreshCw className="h-4 w-4" />
+              <span><RefreshCw className="h-4 w-4" /> Refresh</span>
             )}
-            <span>Refresh</span>
+            
           </Button>
         </div>
 

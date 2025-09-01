@@ -398,7 +398,7 @@ export class RealTimeNotificationService {
 
   // Retailer listeners - invoices, successful payments, OTP notifications
   private startRetailerListeners(userId: string, tenantId: string): void {
-    console.log('🔔 Starting Retailer notification listeners for user:', userId);
+    console.log('🔔 Starting Retailer notification listeners for user:', userId, 'with tenantId:', tenantId);
 
     // Listen to invoices for this retailer
     const invoicesQuery = query(
@@ -408,10 +408,23 @@ export class RealTimeNotificationService {
       limit(50)
     );
 
+    console.log('🔔 Retailer invoice query created with filters:', {
+      collection: COLLECTIONS.INVOICES,
+      tenantId: tenantId,
+      retailerId: userId
+    });
+
     const invoicesUnsubscribe = onSnapshot(
       invoicesQuery,
       (snapshot) => {
+        console.log('🔔 Retailer invoice snapshot received:', snapshot.size, 'documents');
         snapshot.docChanges().forEach((change) => {
+          console.log('🔔 Retailer invoice change detected:', {
+            type: change.type,
+            docId: change.doc.id,
+            data: change.doc.data()
+          });
+          
           if (change.type === 'added') {
             const invoice = change.doc.data();
             console.log('🔔 Retailer invoice change detected:', invoice.id, invoice.invoiceNumber);
@@ -696,7 +709,13 @@ export class RealTimeNotificationService {
 
   // Retailer handlers
   private handleRetailerInvoiceChange(invoice: DocumentData, invoiceId: string, retailerId: string): void {
-    console.log('🔔 Handling Retailer invoice change:', invoiceId, invoice.invoiceNumber);
+    console.log('🔔 Handling Retailer invoice change:', {
+      invoiceId,
+      invoiceNumber: invoice.invoiceNumber,
+      retailerId,
+      tenantId: invoice.tenantId,
+      invoiceData: invoice
+    });
     
     const notification = {
       type: 'info' as const,
@@ -709,6 +728,8 @@ export class RealTimeNotificationService {
       dueDate: invoice.dueDate ? formatTimestampWithTime(invoice.dueDate) : undefined,
       tenantId: invoice.tenantId // Use the same tenantId as the invoice (wholesaler's tenantId)
     };
+    
+    console.log('🔔 Creating retailer invoice notification:', notification);
     this.addNotificationToService(notification);
   }
 
@@ -780,6 +801,8 @@ export class RealTimeNotificationService {
       // Extract tenantId from notification, default to 'system' for super admin
       const tenantId = notification.tenantId || 'system';
       
+      console.log('🔔 Extracted tenantId for notification:', tenantId);
+      
       const notificationId = notificationService.addNotification(uniqueNotification, tenantId);
       console.log('🔔 Notification added with ID:', notificationId, 'for tenant:', tenantId);
       
@@ -788,6 +811,7 @@ export class RealTimeNotificationService {
         console.log('🔔 Notification was successfully added, triggering callbacks');
         // Trigger all callbacks with delay to prevent rapid re-renders
         this.notificationCallbacks.forEach((callback, userId) => {
+          console.log('🔔 Triggering callback for user:', userId);
           this.triggerCallback(userId);
         });
       } else {

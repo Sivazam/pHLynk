@@ -961,8 +961,8 @@ export function LineWorkerDashboard() {
             variant="outline"
             className="flex items-center space-x-2"
           >
-            <RefreshCw className="h-4 w-4" />
-            <span>Refresh</span>
+            
+            <span><RefreshCw className="h-4 w-4" /> Refresh</span>
           </LoadingButton>
         </div>
 
@@ -1074,8 +1074,8 @@ export function LineWorkerDashboard() {
           variant="outline"
           className="flex items-center justify-center space-x-2 w-full sm:w-auto"
         >
-          <RefreshCw className="h-4 w-4" />
-          <span>Refresh</span>
+          
+          <span><RefreshCw className="h-4 w-4" /> Refresh</span>
         </LoadingButton>
       </div>
 
@@ -1192,8 +1192,8 @@ export function LineWorkerDashboard() {
             variant="outline"
             className="flex items-center space-x-2"
           >
-            <RefreshCw className="h-4 w-4" />
-            <span>Refresh</span>
+            
+            <span><RefreshCw className="h-4 w-4" /> Refresh</span>
           </LoadingButton>
         </div>
 
@@ -1352,8 +1352,8 @@ export function LineWorkerDashboard() {
           variant="outline"
           className="flex items-center space-x-2"
         >
-          <RefreshCw className="h-4 w-4" />
-          <span>Refresh</span>
+          
+          <span><RefreshCw className="h-4 w-4" /> Refresh</span>
         </LoadingButton>
       </div>
 
@@ -1412,8 +1412,8 @@ export function LineWorkerDashboard() {
           variant="outline"
           className="flex items-center justify-center space-x-2 w-full sm:w-auto"
         >
-          <RefreshCw className="h-4 w-4" />
-          <span>Refresh</span>
+          
+          <span><RefreshCw className="h-4 w-4" /> Refresh</span>
         </LoadingButton>
       </div>
 
