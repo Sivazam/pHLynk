@@ -17,6 +17,11 @@ import { DatePicker } from '@/components/ui/date-picker';
 import { EnhancedDatePicker } from '@/components/ui/enhanced-date-picker';
 import { DateRangeFilter, DateRangeOption } from '@/components/ui/DateRangeFilter';
 import { Skeleton } from '@/components/ui/skeleton';
+import { LoadingOverlay } from '@/components/ui/LoadingOverlay';
+import { LoadingButton } from '@/components/ui/LoadingButton';
+import { LoadingText } from '@/components/ui/LoadingText';
+import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
+import { useLoadingState } from '@/hooks/useLoadingState';
 
 import { DashboardNavigation, NavItem, NotificationItem } from '@/components/DashboardNavigation';
 
@@ -67,7 +72,7 @@ import {
   RefreshCw,
   
   // Icons
-  IndianRupee,
+  DollarSign,
   Phone,
   Calendar,
   Clock,
@@ -240,7 +245,6 @@ export function WholesalerAdminDashboard() {
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
   const [notificationCount, setNotificationCount] = useState(0);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
-  const [refreshLoading, setRefreshLoading] = useState(false);
   const [paymentTab, setPaymentTab] = useState('completed');
   const [selectedDateRangeOption, setSelectedDateRangeOption] = useState('today');
   const [dateRange, setDateRange] = useState<{ startDate: Date; endDate: Date }>(() => {
@@ -250,8 +254,8 @@ export function WholesalerAdminDashboard() {
     return { startDate: startOfDay, endDate: endOfDay };
   });
   
-  // Add loading state for initial data fetch
-  const [isInitialLoading, setIsInitialLoading] = useState(true);
+  // Standardized loading state management
+  const mainLoadingState = useLoadingState();
   const [dataFetchProgress, setDataFetchProgress] = useState(0);
   
   // Separate state for the filter date picker
@@ -374,6 +378,7 @@ export function WholesalerAdminDashboard() {
 
   // Debug logging for notifications - DISABLED to prevent focus issues
   // useEffect(() => {
+  //   console.log('🔔 Notification state updated:', {
   //     count: notificationCount,
   //     notifications: notifications.length,
   //     notificationList: notifications.map(n => ({ id: n.id, title: n.title, read: n.read }))
@@ -497,12 +502,15 @@ export function WholesalerAdminDashboard() {
 
   // Memoized notification callback to prevent unnecessary re-renders
   const handleNotificationUpdate = useCallback((newNotifications: NotificationItem[]) => {
+    console.log('🔔 Received real-time notifications callback:', newNotifications.length, 'notifications');
+    console.log('🔔 Real-time notification details:', newNotifications.map(n => ({ id: n.id, title: n.title, read: n.read })));
     
     // Use functional updates to avoid dependency on notifications state
     setNotifications(prevNotifications => {
       // Only update if notifications have actually changed
       if (prevNotifications.length === newNotifications.length && 
           JSON.stringify(prevNotifications) === JSON.stringify(newNotifications)) {
+        console.log('🔔 Notifications unchanged, skipping state update');
         return prevNotifications;
       }
       return newNotifications;
@@ -518,9 +526,10 @@ export function WholesalerAdminDashboard() {
   useEffect(() => {
     const currentTenantId = getCurrentTenantId();
     if (isWholesalerAdmin && user?.uid && currentTenantId) {
+      console.log('🔔 Setting up wholesaler admin real-time notifications for user:', user.uid, 'tenant:', currentTenantId);
       
       // Reset loading state and start fetching data
-      setIsInitialLoading(true);
+      mainLoadingState.setLoading(true);
       setDataFetchProgress(0);
       fetchDashboardData();
       
@@ -536,6 +545,7 @@ export function WholesalerAdminDashboard() {
     // Cleanup on unmount
     return () => {
       if (user?.uid) {
+        console.log('🔔 Cleaning up real-time notifications for user:', user.uid);
         realtimeNotificationService.stopListening(user.uid);
       }
     };
@@ -564,9 +574,12 @@ export function WholesalerAdminDashboard() {
   // The real-time notification service already handles notification updates
   // useEffect(() => {
   //   if (isWholesalerAdmin && user?.uid) {
+  //     console.log('🔔 Setting up notification service sync for user:', user.uid);
       
   //     // Add a listener to the notification service to ensure we stay in sync
   //     const notificationListener = (newNotifications: NotificationItem[]) => {
+  //       console.log('🔔 Notification service update received:', newNotifications.length, 'notifications');
+  //       console.log('🔔 Notification details:', newNotifications.map(n => ({ id: n.id, title: n.title, read: n.read })));
   //       setNotifications(newNotifications);
   //       setNotificationCount(newNotifications.filter(n => !n.read).length);
   //     };
@@ -575,10 +588,13 @@ export function WholesalerAdminDashboard() {
 
   //     // Initial sync
   //     const currentNotifications = notificationService.getNotifications();
+  //     console.log('🔔 Initial notification sync:', currentNotifications.length, 'notifications');
+  //     console.log('🔔 Initial notification details:', currentNotifications.map(n => ({ id: n.id, title: n.title, read: n.read })));
   //     setNotifications(currentNotifications);
   //     setNotificationCount(currentNotifications.filter(n => !n.read).length);
 
   //     return () => {
+  //       console.log('🔔 Cleaning up notification service listener for user:', user.uid);
   //       notificationService.removeListener(notificationListener);
   //     };
   //   }
@@ -627,11 +643,11 @@ export function WholesalerAdminDashboard() {
       setRetailers(retailersData);
       setInvoices(invoicesData);
       setLineWorkers(lineWorkersData);
-        const workerSummary = lineWorkersData.map(w => ({
+      console.log('📊 Fetched line workers:', lineWorkersData.map(w => ({
         id: w.id,
         displayName: w.displayName,
         assignedAreas: w.assignedAreas
-      }));
+      })));
       
       setPayments(paymentsQuery);
       setDashboardStats(stats);
@@ -639,17 +655,16 @@ export function WholesalerAdminDashboard() {
       // Recompute retailer data for accuracy
       setDataFetchProgress(80);
       try {
+        console.log('🔄 Recomputing retailer data for accuracy...');
         for (const retailer of retailersData) {
           await retailerService.recomputeRetailerData(retailer.id, currentTenantId);
         }
         // Refresh retailers after recomputation
         const updatedRetailers = await retailerService.getAll(currentTenantId);
         setRetailers(updatedRetailers);
+        console.log('✅ Retailer data recomputed and updated');
       } catch (error) {
-        // Use proper error logging instead of console.warn
-        if (process.env.NODE_ENV === 'development') {
-          console.warn('Warning: Could not recompute retailer data:', error);
-        }
+        console.warn('Warning: Could not recompute retailer data:', error);
       }
       
       // Generate activity logs - use filtered data only for Overview tab
@@ -683,12 +698,12 @@ export function WholesalerAdminDashboard() {
       
       setLastUpdate(new Date());
       setDataFetchProgress(100);
-      setIsInitialLoading(false);
+      mainLoadingState.setLoading(false);
       
     } catch (err: any) {
       setError(err.message || 'Failed to fetch dashboard data');
       setDataFetchProgress(100);
-      setIsInitialLoading(false);
+      mainLoadingState.setLoading(false);
     }
   };
 
@@ -696,26 +711,28 @@ export function WholesalerAdminDashboard() {
     const currentTenantId = getCurrentTenantId();
     if (!currentTenantId) return;
     
-    setRefreshLoading(true);
+    mainLoadingState.setRefreshing(true);
     try {
       await fetchDashboardData();
       
       // Also refresh notifications manually - only if they've changed
       const currentNotifications = notificationService.getNotifications();
-      const existingNotifications = notifications; // Get current state
+      console.log('🔔 Manual notification refresh:', currentNotifications.length, 'notifications');
+      console.log('🔔 Manual refresh notification details:', currentNotifications.map(n => ({ id: n.id, title: n.title, read: n.read })));
       
       // Only update if notifications have actually changed
-      if (currentNotifications.length !== existingNotifications.length || 
-          JSON.stringify(currentNotifications) !== JSON.stringify(existingNotifications)) {
+      if (currentNotifications.length !== notifications.length || 
+          JSON.stringify(currentNotifications) !== JSON.stringify(notifications)) {
         setNotifications(currentNotifications);
         setNotificationCount(currentNotifications.filter(n => !n.read).length);
       } else {
+        console.log('🔔 Manual refresh: Notifications unchanged, skipping state update');
       }
       
     } catch (error) {
       console.error('Error during manual refresh:', error);
     } finally {
-      setRefreshLoading(false);
+      mainLoadingState.setRefreshing(false);
     }
   };
 
@@ -725,7 +742,7 @@ export function WholesalerAdminDashboard() {
     const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
     const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
-    const debugData = {
+    console.log('Generating notifications with:', {
       payments: payments.length,
       invoices: invoices.length,
       retailers: retailers.length,
@@ -733,7 +750,7 @@ export function WholesalerAdminDashboard() {
       now: now.toISOString(),
       oneHourAgo: oneHourAgo.toISOString(),
       oneDayAgo: oneDayAgo.toISOString()
-    };
+    });
 
     // 1. Individual completed payments (last 24 hours) - Success notifications
     const recentCompletedPayments = payments.filter(payment => 
@@ -742,6 +759,7 @@ export function WholesalerAdminDashboard() {
       toDate(payment.timeline.completedAt) >= oneDayAgo
     );
 
+    console.log('Recent completed payments (24h):', recentCompletedPayments.length);
 
     recentCompletedPayments.forEach(payment => {
       const worker = workers.find(w => w.id === payment.lineWorkerId);
@@ -766,6 +784,7 @@ export function WholesalerAdminDashboard() {
       toDate(payment.createdAt) <= oneHourAgo
     );
 
+    console.log('Pending payments:', pendingPayments.length);
 
     pendingPayments.slice(0, 5).forEach(payment => {
       const worker = workers.find(w => w.id === payment.lineWorkerId);
@@ -787,6 +806,7 @@ export function WholesalerAdminDashboard() {
     // 3. Failed payments - Warning notifications
     const failedPayments = payments.filter(payment => payment.state === 'CANCELLED' || payment.state === 'EXPIRED');
 
+    console.log('Failed payments:', failedPayments.length);
 
     failedPayments.slice(0, 3).forEach(payment => {
       const worker = workers.find(w => w.id === payment.lineWorkerId);
@@ -811,6 +831,7 @@ export function WholesalerAdminDashboard() {
       toDate(payment.timeline.completedAt) >= oneDayAgo
     );
 
+    console.log('Today completed payments:', todayCompletedPayments.length);
 
     const workerPerformance = new Map<string, { count: number; amount: number; name: string }>();
     todayCompletedPayments.forEach(payment => {
@@ -847,6 +868,7 @@ export function WholesalerAdminDashboard() {
       return dueDate < now && invoice.status !== 'PAID';
     });
 
+    console.log('Overdue invoices:', overdueInvoices.length);
 
     overdueInvoices.slice(0, 5).forEach(invoice => {
       const retailer = retailers.find(r => r.id === invoice.retailerId);
@@ -870,6 +892,7 @@ export function WholesalerAdminDashboard() {
       payments.some(payment => payment.lineWorkerId === worker.id && toDate(payment.createdAt) >= oneDayAgo)
     );
 
+    console.log('Inactive workers with activity:', inactiveWorkersWithActivity.length);
 
     inactiveWorkersWithActivity.slice(0, 3).forEach(worker => {
       const recentPayments = payments.filter(payment => 
@@ -1193,8 +1216,16 @@ export function WholesalerAdminDashboard() {
         updateData.assignedAreas = null; // This will remove the field from Firestore
       }
       
+      console.log('🔧 Updating line worker:', {
+        workerId: editingLineWorker.id,
+        updateData,
+        currentAssignedAreas: editingLineWorker.assignedAreas,
+        newSelectedAreas: editingSelectedAreas
+      });
+      
       await userService.update(editingLineWorker.id, updateData, currentTenantId);
       
+      console.log('✅ Line worker updated, fetching fresh data...');
       await fetchDashboardData();
       setShowEditLineWorkerDialog(false);
       setEditingLineWorker(null);
@@ -1251,7 +1282,7 @@ export function WholesalerAdminDashboard() {
         gstAmount,
         totalAmount,
         outstandingAmount: totalAmount,
-        status: 'PENDING' as const,
+        status: 'OPEN' as const,
         lineItems: formData.lineItems.filter((item: any) => item.name.trim()),
         version: 1,
         attachments: []
@@ -1406,7 +1437,7 @@ export function WholesalerAdminDashboard() {
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium text-gray-600">Total Revenue</CardTitle>
             <div className="bg-blue-100 p-2 rounded-full">
-              <IndianRupee className="h-4 w-4 text-blue-600" />
+              <DollarSign className="h-4 w-4 text-blue-600" />
             </div>
           </CardHeader>
           <CardContent>
@@ -1504,18 +1535,14 @@ export function WholesalerAdminDashboard() {
         </div>
         <div className="flex space-x-2">
           <DateRangeFilter value={selectedDateRangeOption} onValueChange={handleDateRangeChange} />
-          <Button
-            variant="outline"
+          <LoadingButton
+            isLoading={mainLoadingState.loadingState.isRefreshing}
+            loadingText="Refreshing..."
             onClick={handleManualRefresh}
-            disabled={refreshLoading}
+            variant="outline"
           >
-            {refreshLoading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <span className="sr-only"><RefreshCw className="h-4 w-4" /> Refresh</span>
-            )}
-            
-          </Button>
+            <RefreshCw className="h-4 w-4" />
+          </LoadingButton>
         </div>
       </div>
       <StatsCards />
@@ -1533,7 +1560,7 @@ export function WholesalerAdminDashboard() {
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {refreshLoading ? (
+            {mainLoadingState.loadingState.isRefreshing ? (
               <>
                 {[...Array(5)].map((_, index) => (
                   <div key={index} className="flex items-center space-x-4 p-3 border rounded-lg">
@@ -1550,7 +1577,7 @@ export function WholesalerAdminDashboard() {
               activityLogs.slice(0, 5).map((log) => (
                 <div key={log.id} className="flex items-center space-x-4 p-3 border rounded-lg">
                   <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-                    {log.type === 'PAYMENT' && <IndianRupee className="h-5 w-5 text-blue-600" />}
+                    {log.type === 'PAYMENT' && <DollarSign className="h-5 w-5 text-blue-600" />}
                     {log.type === 'INVOICE' && <FileText className="h-5 w-5 text-blue-600" />}
                     {log.type === 'RETAILER' && <Store className="h-5 w-5 text-blue-600" />}
                     {log.type === 'LINEWORKER' && <Users className="h-5 w-5 text-blue-600" />}
@@ -1595,14 +1622,14 @@ export function WholesalerAdminDashboard() {
           <Button
             variant="outline"
             onClick={handleManualRefresh}
-            disabled={refreshLoading}
+            disabled={mainLoadingState.loadingState.isRefreshing}
           >
-            {refreshLoading ? (
+            {mainLoadingState.loadingState.isRefreshing ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
-                <span className="sr-only"><RefreshCw className="h-4 w-4" /> Refresh</span>
+              <RefreshCw className="h-4 w-4" />
             )}
-          
+            <span className="sr-only">Refresh</span>
           </Button>
           <Dialog key="area-dialog" open={showCreateArea} onOpenChange={handleAreaDialogChange}>
             <DialogTrigger asChild>
@@ -1635,7 +1662,7 @@ export function WholesalerAdminDashboard() {
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {refreshLoading ? (
+            {mainLoadingState.loadingState.isRefreshing ? (
               <>
                 {[...Array(5)].map((_, index) => (
                   <div key={index} className="flex items-center justify-between p-4 border rounded-lg">
@@ -1740,17 +1767,14 @@ export function WholesalerAdminDashboard() {
           <p className="text-gray-600">Manage your retailer network</p>
         </div>
         <div className="flex gap-2">
-          <Button
+          <LoadingButton
+            isLoading={mainLoadingState.loadingState.isRefreshing}
+            loadingText="Refreshing..."
             onClick={handleManualRefresh}
-            disabled={refreshLoading}
           >
-            {refreshLoading ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <RefreshCw className="h-4 w-4 mr-2" />
-            )}
+            <RefreshCw className="h-4 w-4 mr-2" />
             Refresh
-          </Button>
+          </LoadingButton>
           <Dialog key="retailer-dialog" open={showCreateRetailer} onOpenChange={handleRetailerDialogChange}>
             <DialogTrigger asChild>
               <Button>
@@ -1782,7 +1806,7 @@ export function WholesalerAdminDashboard() {
           <CardDescription>Manage your retailer network</CardDescription>
         </CardHeader>
         <CardContent>
-          {refreshLoading ? (
+          {mainLoadingState.loadingState.isRefreshing ? (
             <div className="space-y-4">
               {[...Array(5)].map((_, index) => (
                 <div key={index} className="flex items-center space-x-4">
@@ -1910,14 +1934,14 @@ export function WholesalerAdminDashboard() {
           <Button
             variant="outline"
             onClick={handleManualRefresh}
-            disabled={refreshLoading}
+            disabled={mainLoadingState.loadingState.isRefreshing}
           >
-            {refreshLoading ? (
+            {mainLoadingState.loadingState.isRefreshing ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
-                          <span className="sr-only"><RefreshCw className="h-4 w-4" /> Refresh</span>
-
+              <RefreshCw className="h-4 w-4" />
             )}
+            <span className="sr-only">Refresh</span>
           </Button>
           <Dialog key="invoice-dialog" open={showCreateInvoice} onOpenChange={handleInvoiceDialogChange}>
             <DialogTrigger asChild>
@@ -1951,7 +1975,7 @@ export function WholesalerAdminDashboard() {
           <CardDescription>Manage all invoices in your system</CardDescription>
         </CardHeader>
         <CardContent>
-          {refreshLoading ? (
+          {mainLoadingState.loadingState.isRefreshing ? (
             <div className="space-y-4">
               {[...Array(5)].map((_, index) => (
                 <div key={index} className="flex items-center space-x-4">
@@ -2043,14 +2067,14 @@ export function WholesalerAdminDashboard() {
           <Button
             variant="outline"
             onClick={handleManualRefresh}
-            disabled={refreshLoading}
+            disabled={mainLoadingState.loadingState.isRefreshing}
           >
-            {refreshLoading ? (
+            {mainLoadingState.loadingState.isRefreshing ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
-              <span className="sr-only"><RefreshCw className="h-4 w-4" /> Refresh</span>
+              <RefreshCw className="h-4 w-4" />
             )}
-            
+            <span className="sr-only">Refresh</span>
           </Button>
           <Dialog key="line-worker-dialog" open={showCreateLineWorker} onOpenChange={handleLineWorkerDialogChange}>
             <DialogTrigger asChild>
@@ -2201,7 +2225,7 @@ export function WholesalerAdminDashboard() {
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {refreshLoading ? (
+            {mainLoadingState.loadingState.isRefreshing ? (
               <>
                 {[...Array(5)].map((_, index) => (
                   <div key={index} className="flex items-center justify-between p-4 border rounded-lg">
@@ -2345,10 +2369,10 @@ export function WholesalerAdminDashboard() {
             </div>
             <Button
               onClick={handleManualRefresh}
-              disabled={refreshLoading}
+              disabled={mainLoadingState.loadingState.isRefreshing}
               className="w-full sm:w-auto"
             >
-              {refreshLoading ? (
+              {mainLoadingState.loadingState.isRefreshing ? (
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
               ) : (
                 <RefreshCw className="h-4 w-4 mr-2" />
@@ -2378,7 +2402,7 @@ export function WholesalerAdminDashboard() {
               
               <TabsContent value="completed" className="space-y-4">
                 <div className="overflow-x-auto">
-                  {refreshLoading ? (
+                  {mainLoadingState.loadingState.isRefreshing ? (
                     <div className="space-y-4">
                       {[...Array(5)].map((_, index) => (
                         <div key={index} className="flex items-center space-x-4">
@@ -2446,7 +2470,7 @@ export function WholesalerAdminDashboard() {
               
               <TabsContent value="pending" className="space-y-4">
                 <div className="overflow-x-auto">
-                  {refreshLoading ? (
+                  {mainLoadingState.loadingState.isRefreshing ? (
                     <div className="space-y-4">
                       {[...Array(5)].map((_, index) => (
                         <div key={index} className="flex items-center space-x-4">
@@ -2538,9 +2562,9 @@ export function WholesalerAdminDashboard() {
         <Button
           variant="outline"
           onClick={handleManualRefresh}
-          disabled={refreshLoading}
+          disabled={mainLoadingState.loadingState.isRefreshing}
         >
-          {refreshLoading ? (
+          {mainLoadingState.loadingState.isRefreshing ? (
             <Loader2 className="h-4 w-4 animate-spin mr-2" />
           ) : (
             <RefreshCw className="h-4 w-4 mr-2" />
@@ -2579,7 +2603,7 @@ export function WholesalerAdminDashboard() {
         invoices={invoices}
         areas={areas}
         onRefresh={handleManualRefresh}
-        refreshLoading={refreshLoading}
+        refreshLoading={mainLoadingState.loadingState.isRefreshing}
         tenantId={getCurrentTenantId() || undefined}
       />
     </div>
@@ -2992,6 +3016,7 @@ export function WholesalerAdminDashboard() {
                         defaultChecked={isCurrentlyAssigned}
                         disabled={isAssignedToOther && !isCurrentlyAssigned}
                         onChange={(e) => {
+                          console.log('🔄 Area checkbox changed:', {
                             areaId: area.id,
                             areaName: area.name,
                             checked: e.target.checked,
@@ -3002,9 +3027,11 @@ export function WholesalerAdminDashboard() {
                           
                           if (e.target.checked) {
                             const newSelectedAreas = [...editingSelectedAreas, area.id];
+                            console.log('✅ Adding area to selection:', newSelectedAreas);
                             setEditingSelectedAreas(newSelectedAreas);
                           } else {
                             const newSelectedAreas = editingSelectedAreas.filter(id => id !== area.id);
+                            console.log('❌ Removing area from selection:', newSelectedAreas);
                             setEditingSelectedAreas(newSelectedAreas);
                           }
                         }}
@@ -3192,9 +3219,9 @@ export function WholesalerAdminDashboard() {
         </div>
         <Button
           onClick={handleManualRefresh}
-          disabled={refreshLoading}
+          disabled={mainLoadingState.loadingState.isRefreshing}
         >
-          {refreshLoading ? (
+          {mainLoadingState.loadingState.isRefreshing ? (
             <Loader2 className="h-4 w-4 mr-2 animate-spin" />
           ) : (
             <RefreshCw className="h-4 w-4 mr-2" />
@@ -3203,7 +3230,7 @@ export function WholesalerAdminDashboard() {
         </Button>
       </div>
 
-      {refreshLoading && (
+      {mainLoadingState.loadingState.isRefreshing && (
         <Card>
           <CardHeader>
             <CardTitle>Retailer Details Loading</CardTitle>
@@ -3331,7 +3358,7 @@ export function WholesalerAdminDashboard() {
           <Card className="border-l-4 border-l-green-600">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium text-gray-600">Total Collected</CardTitle>
-              <IndianRupee className="h-4 w-4 text-green-600" />
+              <DollarSign className="h-4 w-4 text-green-600" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-gray-900">
@@ -3608,23 +3635,12 @@ export function WholesalerAdminDashboard() {
       <StatusBarColor theme="white" />
       
       {/* Loading Overlay */}
-      {isInitialLoading && (
-        <div className="fixed inset-0 bg-white bg-opacity-90 flex items-center justify-center z-50">
-          <div className="flex flex-col items-center space-y-4">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-            <div className="text-center">
-              <p className="text-gray-600 font-medium">Loading dashboard data...</p>
-              <div className="w-48 bg-gray-200 rounded-full h-2 mt-2">
-                <div 
-                  className="bg-blue-600 h-2 rounded-full transition-all duration-300 ease-out"
-                  style={{ width: `${dataFetchProgress}%` }}
-                ></div>
-              </div>
-              <p className="text-sm text-gray-500 mt-1">{dataFetchProgress}%</p>
-            </div>
-          </div>
-        </div>
-      )}
+      <LoadingOverlay 
+        isLoading={mainLoadingState.loadingState.isLoading}
+        message="Loading dashboard data..."
+        progress={dataFetchProgress}
+        variant="fullscreen"
+      />
       
       <div className="min-h-screen bg-gray-50 flex flex-col dashboard-screen">
         {/* Navigation */}
@@ -3751,8 +3767,16 @@ export function WholesalerAdminDashboard() {
         />
  
       </main>
+   
+   
     </div>
+
+    </>
+
+    
   );
+
+
 };
 
 export default WholesalerAdminDashboard;
