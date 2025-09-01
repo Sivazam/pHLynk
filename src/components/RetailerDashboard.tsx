@@ -55,7 +55,7 @@ import {
 import { StatusBarColor } from './ui/StatusBarColor';
 
 export function RetailerDashboard() {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const [retailer, setRetailer] = useState<Retailer | null>(null);
   const [retailerUser, setRetailerUser] = useState<any>(null);
   const [tenantId, setTenantId] = useState<string | null>(null);
@@ -673,11 +673,14 @@ export function RetailerDashboard() {
     }
   };
 
-  const handleLogout = () => {
-    // Clear retailer ID from localStorage
-    localStorage.removeItem('retailerId');
-    // Redirect to home page
-    window.location.href = '/';
+  const handleLogout = async () => {
+    try {
+      await logout();
+    } catch (error) {
+      console.error('Logout error:', error);
+      // Fallback redirect if logout fails
+      window.location.href = '/';
+    }
   };
 
   const handleManualRefresh = async () => {

@@ -97,14 +97,22 @@ export default function Home() {
     return <AppIntroCarousel onComplete={handleIntroComplete} onSkip={handleIntroSkip} />;
   }
 
-  // Show retailer dashboard if user is a retailer
+  // Show retailer dashboard if user is a retailer (authenticated)
   if (user && user.isRetailer) {
+    console.log('🏪 Showing retailer dashboard for authenticated user:', user.uid);
     return <RetailerDashboard />;
   }
 
-  // Show retailer dashboard if retailer ID is present (backward compatibility)
-  if (retailerId && !user) {
+  // Show retailer dashboard if retailer ID is present AND user is loading (for backward compatibility during initial load)
+  // This should only apply during the initial loading state, not after logout
+  if (retailerId && !user && loading) {
+    console.log('🏪 Showing retailer dashboard from localStorage during loading:', retailerId);
     return <RetailerDashboard />;
+  }
+
+  // Debug: Show what's happening when we have retailerId but no user and not loading
+  if (retailerId && !user && !loading) {
+    console.log('⚠️ RetailerId found but no user and not loading - should NOT show dashboard:', retailerId);
   }
 
   // Show login for non-authenticated users

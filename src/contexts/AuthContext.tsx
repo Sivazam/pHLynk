@@ -48,6 +48,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         updateProgress(15, 'Checking authentication status...');
         
+        console.log('🔍 Auth state changed. Firebase user:', firebaseUser ? firebaseUser.uid : 'null');
+        
         // Small delay for auth state check
         await new Promise(resolve => setTimeout(resolve, 200));
         
@@ -137,6 +139,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             }
           }
         } else {
+          console.log('👋 No Firebase user - setting user to null');
           updateProgress(40, 'Preparing guest interface...');
           
           // Delay for non-authenticated user setup
@@ -147,6 +150,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           
           updateProgress(90, 'Finalizing setup...');
           setUser(null);
+          console.log('✅ User state set to null');
         }
         
         // Final completion
@@ -199,12 +203,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = async () => {
     try {
+      console.log('🚪 Starting logout process...');
+      
       // Clear any retailer-specific data
       localStorage.removeItem('retailerId');
+      console.log('🗑️ Cleared retailerId from localStorage');
       
       // Clear any role selection state
       sessionStorage.removeItem('auth_view');
       sessionStorage.removeItem('selected_role');
+      console.log('🗑️ Cleared session storage');
       
       // Clear any notification states
       Object.keys(sessionStorage).forEach(key => {
@@ -215,21 +223,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       // Sign out from Firebase - this will clear the Firebase Auth session
       // for both email/password users and retailer phone auth users
+      console.log('🔥 Signing out from Firebase...');
       await signOut(auth);
+      console.log('✅ Firebase sign out successful');
       
       // The onAuthStateChanged listener will automatically detect the signout
       // and set the user state to null, so we don't need to manually setUser(null)
       
       // Replace current history entry to prevent back navigation
       if (typeof window !== 'undefined') {
+        console.log('🔄 Waiting for auth state to clear before redirect...');
+        
+        // Wait a moment for the auth state to update before redirecting
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        console.log('🔄 Redirecting to home page...');
         window.history.replaceState({}, '', '/');
         // Force a redirect to home to ensure clean state
         window.location.href = '/';
       }
     } catch (error) {
-      console.error('Logout error:', error);
+      console.error('❌ Logout error:', error);
       // Fallback - still attempt to redirect even if there's an error
       if (typeof window !== 'undefined') {
+        console.log('🔄 Fallback redirect to home page...');
         window.location.href = '/';
       }
     }
