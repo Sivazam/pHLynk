@@ -706,7 +706,8 @@ export class RealTimeNotificationService {
       read: false,
       amount: invoice.totalAmount,
       invoiceNumber: invoice.invoiceNumber,
-      dueDate: invoice.dueDate ? formatTimestampWithTime(invoice.dueDate) : undefined
+      dueDate: invoice.dueDate ? formatTimestampWithTime(invoice.dueDate) : undefined,
+      tenantId: invoice.tenantId // Use the same tenantId as the invoice (wholesaler's tenantId)
     };
     this.addNotificationToService(notification);
   }
@@ -723,7 +724,8 @@ export class RealTimeNotificationService {
         read: false,
         amount: payment.totalPaid,
         workerName: payment.lineWorkerName,
-        collectionTime: formatTimestampWithTime(payment.createdAt)
+        collectionTime: formatTimestampWithTime(payment.createdAt),
+        tenantId: payment.tenantId // Use the same tenantId as the payment (wholesaler's tenantId)
       };
       this.addNotificationToService(notification);
     }
@@ -740,7 +742,8 @@ export class RealTimeNotificationService {
         timestamp: toDate(otp.createdAt),
         read: false,
         otpId: otpId,
-        paymentId: otp.paymentId
+        paymentId: otp.paymentId,
+        tenantId: otp.tenantId // Use the same tenantId as the OTP (wholesaler's tenantId)
       };
       this.addNotificationToService(notification);
     } else if (otp.status === 'VERIFIED') {
@@ -751,7 +754,8 @@ export class RealTimeNotificationService {
         timestamp: toDate(otp.createdAt),
         read: false,
         otpId: otpId,
-        paymentId: otp.paymentId
+        paymentId: otp.paymentId,
+        tenantId: otp.tenantId // Use the same tenantId as the OTP (wholesaler's tenantId)
       };
       this.addNotificationToService(notification);
     }

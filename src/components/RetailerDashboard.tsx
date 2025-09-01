@@ -98,6 +98,7 @@ export function RetailerDashboard() {
     const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
     return { startDate: startOfDay, endDate: endOfDay };
   });
+  const [notificationTenantId, setNotificationTenantId] = useState<string | null>(null); // Store the correct tenantId for notifications
   
   // Standardized loading state management
   const mainLoadingState = useLoadingState();
@@ -250,17 +251,6 @@ export function RetailerDashboard() {
       mainLoadingState.setLoading(true);
       setDataFetchProgress(0);
       fetchRetailerData(retailerId);
-      
-      // Start real-time notifications
-      realtimeNotificationService.startListening(
-        retailerId,
-        'RETAILER',
-        'retailer', // Retailers use their own ID as tenant ID
-        (newNotifications) => {
-          setNotifications(newNotifications);
-          setNotificationCount(newNotifications.filter(n => !n.read).length);
-        }
-      );
     }
 
     // Cleanup on unmount
@@ -306,6 +296,22 @@ export function RetailerDashboard() {
       logger.debug('Tenant ID from user data', retailerUserData.tenantId, { context: 'RetailerDashboard' });
       logger.debug('Retailer user data fields', Object.keys(retailerUserData || {}), { context: 'RetailerDashboard' });
       logger.debug('Address from retailer user data', retailerUserData.address, { context: 'RetailerDashboard' });
+      
+      // Start real-time notifications using the correct tenantId from retailer user data
+      const correctTenantId = retailerUserData.tenantId;
+      setNotificationTenantId(correctTenantId);
+      console.log('🔔 Setting up retailer notifications with tenantId:', correctTenantId);
+      
+      realtimeNotificationService.startListening(
+        retailerId,
+        'RETAILER',
+        correctTenantId, // Use the wholesaler's tenantId (not hardcoded 'retailer')
+        (newNotifications) => {
+          console.log('🔔 Retailer received notifications:', newNotifications.length, 'notifications');
+          setNotifications(newNotifications);
+          setNotificationCount(newNotifications.filter(n => !n.read).length);
+        }
+      );
       
       // Try to get retailer details from retailers collection first
       setDataFetchProgress(60);
