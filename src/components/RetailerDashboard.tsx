@@ -237,10 +237,12 @@ export function RetailerDashboard() {
 
   useEffect(() => {
     // Get retailerId from AuthContext user or fallback to localStorage for backward compatibility
-    let retailerId = user?.retailerId;
+    let retailerId: string | undefined = user?.retailerId;
     if (!retailerId) {
       const storedRetailerId = localStorage.getItem('retailerId');
-      retailerId = storedRetailerId;
+      if (storedRetailerId) {
+        retailerId = storedRetailerId;
+      }
     }
     
     if (retailerId) {
@@ -263,10 +265,12 @@ export function RetailerDashboard() {
 
     // Cleanup on unmount
     return () => {
-      let retailerId = user?.retailerId;
+      let retailerId: string | undefined = user?.retailerId;
       if (!retailerId) {
         const storedRetailerId = localStorage.getItem('retailerId');
-        retailerId = storedRetailerId;
+        if (storedRetailerId) {
+          retailerId = storedRetailerId;
+        }
       }
       
       if (retailerId) {
@@ -435,10 +439,12 @@ export function RetailerDashboard() {
   };
 
   const checkActiveOTPs = async () => {
-    let retailerId = user?.retailerId;
+    let retailerId: string | undefined = user?.retailerId;
     if (!retailerId) {
       const storedRetailerId = localStorage.getItem('retailerId');
-      retailerId = storedRetailerId;
+      if (storedRetailerId) {
+        retailerId = storedRetailerId;
+      }
     }
     
     if (!retailerId) return;
@@ -551,10 +557,12 @@ export function RetailerDashboard() {
       setNewCompletedPayment(latestCompleted);
       
       // Refresh retailer data to update outstanding amount
-      let retailerId = user?.retailerId;
+      let retailerId: string | undefined = user?.retailerId;
       if (!retailerId) {
         const storedRetailerId = localStorage.getItem('retailerId');
-        retailerId = storedRetailerId;
+        if (storedRetailerId) {
+          retailerId = storedRetailerId;
+        }
       }
       
       if (retailerId) {
@@ -651,10 +659,12 @@ export function RetailerDashboard() {
     setNewCompletedPayment(null);
     
     // Refresh the completed payments list
-    let retailerId = user?.retailerId;
+    let retailerId: string | undefined = user?.retailerId;
     if (!retailerId) {
       const storedRetailerId = localStorage.getItem('retailerId');
-      retailerId = storedRetailerId;
+      if (storedRetailerId) {
+        retailerId = storedRetailerId;
+      }
     }
     
     if (retailerId) {
@@ -671,10 +681,12 @@ export function RetailerDashboard() {
   };
 
   const handleManualRefresh = async () => {
-    let retailerId = user?.retailerId;
+    let retailerId: string | undefined = user?.retailerId;
     if (!retailerId) {
       const storedRetailerId = localStorage.getItem('retailerId');
-      retailerId = storedRetailerId;
+      if (storedRetailerId) {
+        retailerId = storedRetailerId;
+      }
     }
     
     if (!retailerId) return;
