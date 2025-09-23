@@ -29,13 +29,12 @@ import {
   userService, 
   areaService, 
   retailerService, 
-  invoiceService, 
   paymentService,
   Timestamp
 } from '@/services/firestore';
 import { realtimeNotificationService } from '@/services/realtime-notifications';
 import { notificationService } from '@/services/notification-service';
-import { Tenant, CreateTenantForm, User, Area, Retailer, Invoice, Payment } from '@/types';
+import { Tenant, CreateTenantForm, User, Area, Retailer, Payment } from '@/types';
 import { formatTimestamp, formatTimestampWithTime, formatCurrency } from '@/lib/timestamp-utils';
 import { 
   Building2, 
@@ -75,7 +74,6 @@ interface TenantDetails {
   users: User[];
   areas: Area[];
   retailers: Retailer[];
-  invoices: Invoice[];
   payments: Payment[];
   stats: {
     totalUsers: number;
@@ -84,40 +82,34 @@ interface TenantDetails {
     activeAreas: number;
     totalRetailers: number;
     activeRetailers: number;
-    totalInvoices: number;
     totalPayments: number;
     totalRevenue: number;
-    outstandingAmount: number;
   };
 }
 
 interface AnalyticsData {
   totalRevenue: number;
-  totalOutstanding: number;
   totalTenants: number;
   totalUsers: number;
   totalRetailers: number;
   totalPayments: number;
-  totalInvoices: number;
   activeTenants: number;
   suspendedTenants: number;
   avgRevenuePerUser: number;
   avgRevenuePerRetailer: number;
   paymentSuccessRate: number;
-  collectionEfficiency: number;
+  avgCollectionPerUser: number;
   tenantAnalytics: Array<{
     tenantId: string;
     tenantName: string;
     revenue: number;
-    outstanding: number;
     users: number;
     retailers: number;
     payments: number;
-    invoices: number;
     activeUsers: number;
     activeRetailers: number;
     avgRevenuePerUser: number;
-    collectionRate: number;
+    avgCollectionPerUser: number;
   }>;
 }
 
@@ -156,23 +148,6 @@ export function SuperAdminDashboard() {
       const paymentDate = payment.createdAt.toDate();
       return paymentDate >= dateRange.startDate && paymentDate <= dateRange.endDate;
     });
-  };
-
-  const filterInvoicesByDateRange = (invoicesData: Invoice[]) => {
-    return invoicesData.filter(invoice => {
-      const invoiceDate = invoice.issueDate.toDate();
-      return invoiceDate >= dateRange.startDate && invoiceDate <= dateRange.endDate;
-    });
-  };
-
-  const calculateOutstandingForDateRange = (invoicesData: Invoice[], paymentsData: Payment[]) => {
-    const filteredInvoices = filterInvoicesByDateRange(invoicesData);
-    const filteredPayments = filterPaymentsByDateRange(paymentsData).filter(p => p.state === 'COMPLETED');
-    
-    const totalInvoiceAmount = filteredInvoices.reduce((sum, invoice) => sum + invoice.totalAmount, 0);
-    const totalPaid = filteredPayments.reduce((sum, payment) => sum + payment.totalPaid, 0);
-    
-    return Math.max(0, totalInvoiceAmount - totalPaid);
   };
 
   const handleDateRangeChange = (value: string, newDateRange: { startDate: Date; endDate: Date }) => {
@@ -218,27 +193,14 @@ export function SuperAdminDashboard() {
       });
     });
 
-    // Add notifications for high outstanding amounts
-    const highOutstandingTenants = tenantAnalytics.filter(t => t.outstanding > 10000);
-    highOutstandingTenants.forEach(tenant => {
-      newNotifications.push({
-        id: `outstanding-${tenant.tenantId}`,
-        type: 'warning',
-        title: 'High Outstanding Amount',
-        message: `${tenant.tenantName} has outstanding amount of ${formatCurrency(tenant.outstanding)}`,
-        timestamp: new Date(),
-        read: false
-      });
-    });
-
-    // Add notifications for low collection rates
-    const lowCollectionTenants = tenantAnalytics.filter(t => t.collectionRate < 50);
+    // Add notifications for low collection performance
+    const lowCollectionTenants = tenantAnalytics.filter(t => t.avgCollectionPerUser < 1);
     lowCollectionTenants.forEach(tenant => {
       newNotifications.push({
         id: `collection-${tenant.tenantId}`,
         type: 'info',
-        title: 'Low Collection Rate',
-        message: `${tenant.tenantName} has a collection rate of ${tenant.collectionRate.toFixed(1)}%`,
+        title: 'Low Collection Performance',
+        message: `${tenant.tenantName} has ${tenant.avgCollectionPerUser.toFixed(1)} avg collections per user`,
         timestamp: new Date(),
         read: false
       });
@@ -277,11 +239,10 @@ export function SuperAdminDashboard() {
 
       for (const tenant of tenantsData) {
         try {
-          const [users, retailers, payments, invoices] = await Promise.all([
+          const [users, retailers, payments] = await Promise.all([
             userService.getAll(tenant.id),
             retailerService.getAll(tenant.id),
-            paymentService.getAll(tenant.id),
-            invoiceService.getAll(tenant.id)
+            paymentService.getAll(tenant.id)
           ]);
 
           // Get recent users (last 7 days)
@@ -306,14 +267,6 @@ export function SuperAdminDashboard() {
             const weekAgo = new Date();
             weekAgo.setDate(weekAgo.getDate() - 7);
             return paymentDate > weekAgo && p.state === 'COMPLETED';
-          });
-
-          // Get recent invoices (last 7 days)
-          const recentInvoices = invoices.filter(i => {
-            const invoiceDate = i.createdAt ? i.createdAt.toDate() : new Date();
-            const weekAgo = new Date();
-            weekAgo.setDate(weekAgo.getDate() - 7);
-            return invoiceDate > weekAgo;
           });
 
           // Count line workers
@@ -361,19 +314,6 @@ export function SuperAdminDashboard() {
               count: recentPayments.length,
               amount: totalAmount,
               icon: CreditCard
-            });
-          }
-
-          if (recentInvoices.length > 0) {
-            activities.push({
-              id: `invoices-${tenant.id}-${Date.now()}`,
-              type: 'info',
-              title: 'New Invoices Created',
-              message: `${tenant.name} created ${recentInvoices.length} new invoice${recentInvoices.length > 1 ? 's' : ''}`,
-              timestamp: new Date(),
-              tenant: tenant.name,
-              count: recentInvoices.length,
-              icon: FileText
             });
           }
 
@@ -476,64 +416,51 @@ export function SuperAdminDashboard() {
     try {
       const tenantsData = await tenantService.getAllTenants();
       let totalRevenue = 0;
-      let totalOutstanding = 0;
       let totalUsers = 0;
       let totalRetailers = 0;
       let totalPayments = 0;
-      let totalInvoices = 0;
       
       const tenantAnalytics: Array<{
         tenantId: string;
         tenantName: string;
         revenue: number;
-        outstanding: number;
         users: number;
         retailers: number;
         payments: number;
-        invoices: number;
         activeUsers: number;
         activeRetailers: number;
         avgRevenuePerUser: number;
-        collectionRate: number;
+        avgCollectionPerUser: number;
       }> = [];
 
       for (const tenant of tenantsData) {
         try {
-          const [users, retailers, payments, invoices] = await Promise.all([
+          const [users, retailers, payments] = await Promise.all([
             userService.getAll(tenant.id),
             retailerService.getAll(tenant.id),
-            paymentService.getAll(tenant.id),
-            invoiceService.getAll(tenant.id)
+            paymentService.getAll(tenant.id)
           ]);
 
           const tenantRevenue = payments
             .filter(p => p.state === 'COMPLETED')
             .reduce((sum, p) => sum + p.totalPaid, 0);
-          
-          const tenantOutstanding = retailers
-            .reduce((sum, r) => sum + r.currentOutstanding, 0);
 
           totalRevenue += tenantRevenue;
-          totalOutstanding += tenantOutstanding;
           totalUsers += users.length;
           totalRetailers += retailers.length;
           totalPayments += payments.filter(p => p.state === 'COMPLETED').length;
-          totalInvoices += invoices.length;
 
           tenantAnalytics.push({
             tenantId: tenant.id,
             tenantName: tenant.name,
             revenue: tenantRevenue,
-            outstanding: tenantOutstanding,
             users: users.length,
             retailers: retailers.length,
             payments: payments.filter(p => p.state === 'COMPLETED').length,
-            invoices: invoices.length,
             activeUsers: users.filter(u => u.active).length,
             activeRetailers: retailers.length, // All retailers are considered active
             avgRevenuePerUser: users.length > 0 ? tenantRevenue / users.length : 0,
-            collectionRate: tenantRevenue + tenantOutstanding > 0 ? 
-              (tenantRevenue / (tenantRevenue + tenantOutstanding)) * 100 : 0
+            avgCollectionPerUser: users.length > 0 ? payments.filter(p => p.state === 'COMPLETED').length / users.length : 0
           });
         } catch (error) {
           console.error(`Failed to fetch analytics for tenant ${tenant.id}:`, error);
@@ -542,19 +469,16 @@ export function SuperAdminDashboard() {
 
       setAnalytics({
         totalRevenue,
-        totalOutstanding,
         totalTenants: tenantsData.length,
         totalUsers,
         totalRetailers,
         totalPayments,
-        totalInvoices,
         activeTenants: tenantsData.filter(t => t.status === 'ACTIVE').length,
         suspendedTenants: tenantsData.filter(t => t.status === 'SUSPENDED').length,
         avgRevenuePerUser: totalUsers > 0 ? totalRevenue / totalUsers : 0,
         avgRevenuePerRetailer: totalRetailers > 0 ? totalRevenue / totalRetailers : 0,
         paymentSuccessRate: totalUsers > 0 ? (totalPayments / totalUsers) * 100 : 0,
-        collectionEfficiency: totalRevenue + totalOutstanding > 0 ? 
-          (totalRevenue / (totalRevenue + totalOutstanding)) * 100 : 0,
+        avgCollectionPerUser: totalUsers > 0 ? totalPayments / totalUsers : 0,
         tenantAnalytics
       });
       setDataFetchProgress(80);
@@ -566,12 +490,11 @@ export function SuperAdminDashboard() {
   const fetchTenantDetails = async (tenantId: string) => {
     tenantDetailsLoadingState.setLoading(true);
     try {
-      const [tenant, users, areas, retailers, invoices, payments] = await Promise.all([
+      const [tenant, users, areas, retailers, payments] = await Promise.all([
         tenantService.getById(tenantId, 'system'),
         userService.getAll(tenantId),
         areaService.getAll(tenantId),
         retailerService.getAll(tenantId),
-        invoiceService.getAll(tenantId),
         paymentService.getAll(tenantId)
       ]);
 
@@ -584,10 +507,8 @@ export function SuperAdminDashboard() {
         activeAreas: areas.filter(a => a.active).length,
         totalRetailers: retailers.length,
         activeRetailers: retailers.length,
-        totalInvoices: invoices.length,
         totalPayments: payments.filter(p => p.state === 'COMPLETED').length,
-        totalRevenue: payments.filter(p => p.state === 'COMPLETED').reduce((sum, p) => sum + p.totalPaid, 0),
-        outstandingAmount: retailers.reduce((sum, r) => sum + r.currentOutstanding, 0)
+        totalRevenue: payments.filter(p => p.state === 'COMPLETED').reduce((sum, p) => sum + p.totalPaid, 0)
       };
 
       setTenantDetails({
@@ -595,7 +516,6 @@ export function SuperAdminDashboard() {
         users,
         areas,
         retailers,
-        invoices,
         payments,
         stats
       });
@@ -728,19 +648,6 @@ export function SuperAdminDashboard() {
               </CardContent>
             </Card>
 
-            <Card className="hover:shadow-lg transition-shadow duration-300 border-l-4 border-l-red-500">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium text-gray-600">Total Outstanding</CardTitle>
-                <div className="bg-red-100 p-2 rounded-full">
-                  <AlertCircle className="h-4 w-4 text-red-600" />
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-gray-900">{formatCurrency(analytics.totalOutstanding)}</div>
-                <p className="text-xs text-gray-500">Total unpaid amount</p>
-              </CardContent>
-            </Card>
-
             <Card className="hover:shadow-lg transition-shadow duration-300 border-l-4 border-l-green-500">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium text-gray-600">Active Tenants</CardTitle>
@@ -771,20 +678,7 @@ export function SuperAdminDashboard() {
           </div>
 
           {/* Additional Overview Stats */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <Card className="hover:shadow-lg transition-shadow duration-300 border-l-4 border-l-orange-500">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium text-gray-600">Total Invoices</CardTitle>
-                <div className="bg-orange-100 p-2 rounded-full">
-                  <FileText className="h-4 w-4 text-orange-600" />
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-gray-900">{analytics.totalInvoices}</div>
-                <p className="text-xs text-gray-500">Total invoices generated</p>
-              </CardContent>
-            </Card>
-
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <Card className="hover:shadow-lg transition-shadow duration-300 border-l-4 border-l-teal-500">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium text-gray-600">Total Payments</CardTitle>
@@ -800,14 +694,14 @@ export function SuperAdminDashboard() {
 
             <Card className="hover:shadow-lg transition-shadow duration-300 border-l-4 border-l-indigo-500">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium text-gray-600">Collection Rate</CardTitle>
+                <CardTitle className="text-sm font-medium text-gray-600">Avg Collections/User</CardTitle>
                 <div className="bg-indigo-100 p-2 rounded-full">
                   <TrendingUp className="h-4 w-4 text-indigo-600" />
                 </div>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold text-gray-900">{analytics.collectionEfficiency.toFixed(1)}%</div>
-                <p className="text-xs text-gray-500">Overall collection efficiency</p>
+                <div className="text-2xl font-bold text-gray-900">{analytics.avgCollectionPerUser.toFixed(1)}</div>
+                <p className="text-xs text-gray-500">Average collections per user</p>
               </CardContent>
             </Card>
           </div>
@@ -816,7 +710,7 @@ export function SuperAdminDashboard() {
           <Card>
             <CardHeader>
               <CardTitle>Top Performing Tenants</CardTitle>
-              <CardDescription>Revenue and outstanding amounts by tenant</CardDescription>
+              <CardDescription>Revenue and collection performance by tenant</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
@@ -836,7 +730,7 @@ export function SuperAdminDashboard() {
                       </div>
                       <div className="text-right">
                         <div className="font-medium text-green-600">{formatCurrency(tenant.revenue)}</div>
-                        <div className="text-sm text-red-500">{formatCurrency(tenant.outstanding)} outstanding</div>
+                        <div className="text-sm text-gray-500">{tenant.avgCollectionPerUser.toFixed(1)} avg/user</div>
                       </div>
                     </div>
                   ))}
@@ -1100,8 +994,8 @@ export function SuperAdminDashboard() {
                   </Card>
                   <Card>
                     <CardContent className="pt-4">
-                      <div className="text-2xl font-bold">{formatCurrency(tenantDetails.stats.outstandingAmount)}</div>
-                      <p className="text-xs text-gray-500">Outstanding</p>
+                      <div className="text-2xl font-bold">{tenantDetails.stats.totalPayments}</div>
+                      <p className="text-xs text-gray-500">Total Payments</p>
                     </CardContent>
                   </Card>
                 </div>
@@ -1312,18 +1206,16 @@ export function SuperAdminDashboard() {
     return {
       ...analytics,
       totalRevenue: selectedTenantData.revenue,
-      totalOutstanding: selectedTenantData.outstanding,
       totalTenants: 1,
       totalUsers: selectedTenantData.users,
       totalRetailers: selectedTenantData.retailers,
       totalPayments: selectedTenantData.payments,
-      totalInvoices: selectedTenantData.invoices,
       activeTenants: 1,
       suspendedTenants: 0,
       avgRevenuePerUser: selectedTenantData.avgRevenuePerUser,
       avgRevenuePerRetailer: selectedTenantData.revenue / selectedTenantData.retailers,
       paymentSuccessRate: selectedTenantData.users > 0 ? (selectedTenantData.payments / selectedTenantData.users) * 100 : 0,
-      collectionEfficiency: selectedTenantData.collectionRate,
+      avgCollectionPerUser: selectedTenantData.avgCollectionPerUser,
       tenantAnalytics: [selectedTenantData]
     };
   };
@@ -1417,10 +1309,9 @@ export function SuperAdminDashboard() {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold text-gray-900">
-                    {filteredAnalytics.totalRevenue + filteredAnalytics.totalOutstanding > 0 ? 
-                      ((filteredAnalytics.totalRevenue / (filteredAnalytics.totalRevenue + filteredAnalytics.totalOutstanding)) * 100).toFixed(1) : '0'}%
+                    {filteredAnalytics.avgCollectionPerUser.toFixed(1)}
                   </div>
-                  <p className="text-xs text-gray-500">Revenue collection rate</p>
+                  <p className="text-xs text-gray-500">Average collections per user</p>
                 </CardContent>
               </Card>
             </div>
@@ -1463,29 +1354,28 @@ export function SuperAdminDashboard() {
 
               <Card>
                 <CardHeader>
-                  <CardTitle>Outstanding Analysis</CardTitle>
-                  <CardDescription>Outstanding amounts by tenant</CardDescription>
+                  <CardTitle>Collection Performance</CardTitle>
+                  <CardDescription>Collection performance by tenant</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
                     {filteredAnalytics.tenantAnalytics
-                      .sort((a, b) => b.outstanding - a.outstanding)
+                      .sort((a, b) => b.avgCollectionPerUser - a.avgCollectionPerUser)
                       .map((tenant) => {
-                        const percentage = filteredAnalytics.totalOutstanding > 0 ? (tenant.outstanding / filteredAnalytics.totalOutstanding) * 100 : 0;
                         return (
                           <div key={tenant.tenantId} className="space-y-2">
                             <div className="flex justify-between items-center">
                               <span className="text-sm font-medium">{tenant.tenantName}</span>
-                              <span className="text-sm text-gray-500">{percentage.toFixed(1)}%</span>
+                              <span className="text-sm text-gray-500">{tenant.avgCollectionPerUser.toFixed(1)} avg/user</span>
                             </div>
                             <div className="w-full bg-gray-200 rounded-full h-2">
                               <div 
-                                className="bg-red-600 h-2 rounded-full" 
-                                style={{ width: `${percentage}%` }}
+                                className="bg-blue-600 h-2 rounded-full" 
+                                style={{ width: `${Math.min(tenant.avgCollectionPerUser * 10, 100)}%` }}
                               />
                             </div>
                             <div className="flex justify-between items-center text-xs text-gray-500">
-                              <span>{formatCurrency(tenant.outstanding)}</span>
+                              <span>{tenant.payments} payments</span>
                               <span>{tenant.retailers} retailers</span>
                             </div>
                           </div>
@@ -1509,12 +1399,11 @@ export function SuperAdminDashboard() {
                       <TableRow>
                         <TableHead>Tenant Name</TableHead>
                         <TableHead className="text-right">Revenue</TableHead>
-                        <TableHead className="text-right">Outstanding</TableHead>
                         <TableHead className="text-right">Users</TableHead>
                         <TableHead className="text-right">Retailers</TableHead>
                         <TableHead className="text-right">Payments</TableHead>
                         <TableHead className="text-right">Revenue/User</TableHead>
-                        <TableHead className="text-right">Collection Rate</TableHead>
+                        <TableHead className="text-right">Avg Collections/User</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -1522,25 +1411,22 @@ export function SuperAdminDashboard() {
                         .sort((a, b) => b.revenue - a.revenue)
                         .map((tenant) => {
                           const revenuePerUser = tenant.users > 0 ? tenant.revenue / tenant.users : 0;
-                          const collectionRate = tenant.revenue + tenant.outstanding > 0 ? 
-                            (tenant.revenue / (tenant.revenue + tenant.outstanding)) * 100 : 0;
                           
                           return (
                             <TableRow key={tenant.tenantId}>
                               <TableCell className="font-medium">{tenant.tenantName}</TableCell>
                               <TableCell className="text-right">{formatCurrency(tenant.revenue)}</TableCell>
-                              <TableCell className="text-right">{formatCurrency(tenant.outstanding)}</TableCell>
                               <TableCell className="text-right">{tenant.users}</TableCell>
                               <TableCell className="text-right">{tenant.retailers}</TableCell>
                               <TableCell className="text-right">{tenant.payments}</TableCell>
                               <TableCell className="text-right">{formatCurrency(revenuePerUser)}</TableCell>
                               <TableCell className="text-right">
                                 <Badge className={
-                                  collectionRate >= 80 ? 'bg-green-100 text-green-800' :
-                                  collectionRate >= 60 ? 'bg-yellow-100 text-yellow-800' :
+                                  tenant.avgCollectionPerUser >= 5 ? 'bg-green-100 text-green-800' :
+                                  tenant.avgCollectionPerUser >= 2 ? 'bg-yellow-100 text-yellow-800' :
                                   'bg-red-100 text-red-800'
                                 }>
-                                  {collectionRate.toFixed(1)}%
+                                  {tenant.avgCollectionPerUser.toFixed(1)}
                                 </Badge>
                               </TableCell>
                             </TableRow>
@@ -1577,10 +1463,10 @@ export function SuperAdminDashboard() {
                     <div className="flex items-start space-x-3">
                       <div className="w-2 h-2 bg-red-600 rounded-full mt-2"></div>
                       <div>
-                        <div className="font-medium text-sm">Highest Outstanding</div>
+                        <div className="font-medium text-sm">Highest Collections/User</div>
                         <div className="text-sm text-gray-600">
                           {filteredAnalytics.tenantAnalytics.length > 0 ? 
-                          `${filteredAnalytics.tenantAnalytics.reduce((max, tenant) => tenant.outstanding > max.outstanding ? tenant : max).tenantName} has ${formatCurrency(filteredAnalytics.tenantAnalytics.reduce((max, tenant) => tenant.outstanding > max.outstanding ? tenant : max).outstanding)} outstanding` :
+                          `${filteredAnalytics.tenantAnalytics.reduce((max, tenant) => tenant.avgCollectionPerUser > max.avgCollectionPerUser ? tenant : max).tenantName} has ${filteredAnalytics.tenantAnalytics.reduce((max, tenant) => tenant.avgCollectionPerUser > max.avgCollectionPerUser ? tenant : max).avgCollectionPerUser.toFixed(1)} avg collections per user` :
                           'No tenant data available'
                         }
                       </div>
@@ -1590,20 +1476,14 @@ export function SuperAdminDashboard() {
                   <div className="flex items-start space-x-3">
                     <div className="w-2 h-2 bg-green-600 rounded-full mt-2"></div>
                     <div>
-                      <div className="font-medium text-sm">Best Collection Rate</div>
+                      <div className="font-medium text-sm">Best Collection Performance</div>
                       <div className="text-sm text-gray-600">
                         {filteredAnalytics.tenantAnalytics.length > 0 ? 
                           (() => {
-                            const best = filteredAnalytics.tenantAnalytics.reduce((best, tenant) => {
-                              const rate = tenant.revenue + tenant.outstanding > 0 ? 
-                                (tenant.revenue / (tenant.revenue + tenant.outstanding)) * 100 : 0;
-                              const bestRate = best.revenue + best.outstanding > 0 ? 
-                                (best.revenue / (best.revenue + best.outstanding)) * 100 : 0;
-                              return rate > bestRate ? tenant : best;
-                            });
-                            const bestRate = best.revenue + best.outstanding > 0 ? 
-                              (best.revenue / (best.revenue + best.outstanding)) * 100 : 0;
-                            return `${best.tenantName} with ${bestRate.toFixed(1)}% collection rate`;
+                            const best = filteredAnalytics.tenantAnalytics.reduce((best, tenant) => 
+                              tenant.avgCollectionPerUser > best.avgCollectionPerUser ? tenant : best
+                            );
+                            return `${best.tenantName} with ${best.avgCollectionPerUser.toFixed(1)} avg collections per user`;
                           })() :
                           'No tenant data available'
                         }
@@ -1624,9 +1504,9 @@ export function SuperAdminDashboard() {
                   <div className="flex items-start space-x-3">
                     <div className="w-2 h-2 bg-orange-600 rounded-full mt-2"></div>
                     <div>
-                      <div className="font-medium text-sm">Focus on High Outstanding</div>
+                      <div className="font-medium text-sm">Focus on Low Performance</div>
                       <div className="text-sm text-gray-600">
-                        Prioritize follow-up with tenants having outstanding amounts above {formatCurrency(filteredAnalytics.totalOutstanding / filteredAnalytics.tenantAnalytics.length * 1.5)}
+                        Prioritize follow-up with tenants having below {filteredAnalytics.avgCollectionPerUser.toFixed(1)} avg collections per user
                       </div>
                     </div>
                   </div>
