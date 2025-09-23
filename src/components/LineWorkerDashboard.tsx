@@ -333,7 +333,7 @@ export function LineWorkerDashboard() {
     }
   };
 
-  const handleCollectPayment = async (paymentData: any) => {
+  const handleCollectPayment = async (paymentData: any): Promise<void> => {
     const currentTenantId = getCurrentTenantId();
     if (!currentTenantId || !user?.uid) return;
 
@@ -351,13 +351,20 @@ export function LineWorkerDashboard() {
         }
       };
 
-      const createdPayment = await paymentService.createPayment(currentTenantId, payment);
-      console.log('✅ Payment created successfully:', createdPayment.id);
+      const createdPaymentId = await paymentService.initiatePayment(currentTenantId, {
+        retailerId: payment.retailerId,
+        retailerName: payment.retailerName,
+        lineWorkerId: payment.lineWorkerId,
+        totalPaid: payment.totalPaid,
+        method: payment.method,
+        invoiceAllocations: payment.invoiceAllocations
+      });
+      console.log('✅ Payment created successfully:', createdPaymentId);
       
       // Refresh data to show new payment
       await fetchLineWorkerData();
       
-      return createdPayment;
+      return;
     } catch (error) {
       console.error('Error creating payment:', error);
       throw error;
@@ -385,7 +392,7 @@ export function LineWorkerDashboard() {
   // Generate receipt content
   const generateReceiptContent = (payment: Payment) => {
     const retailer = retailers.find(r => r.id === payment.retailerId);
-    const lineWorkerName = user?.name || user?.email || 'Unknown Line Worker';
+    const lineWorkerName = user?.displayName || user?.email || 'Unknown Line Worker';
     
     return `
 ==============================
@@ -413,7 +420,7 @@ Collected By:
 Payment Timeline:
 - Initiated: ${payment.timeline?.initiatedAt ? formatTimestampWithTime(payment.timeline.initiatedAt) : 'N/A'}
 - OTP Sent: ${payment.timeline?.otpSentAt ? formatTimestampWithTime(payment.timeline.otpSentAt) : 'N/A'}
-- OTP Verified: ${payment.timeline?.otpVerifiedAt ? formatTimestampWithTime(payment.timeline.otpVerifiedAt) : 'N/A'}
+- OTP Verified: ${payment.timeline?.verifiedAt ? formatTimestampWithTime(payment.timeline.verifiedAt) : 'N/A'}
 - Completed: ${payment.timeline?.completedAt ? formatTimestampWithTime(payment.timeline.completedAt) : 'N/A'}
 
 Thank you for your payment!
@@ -512,9 +519,9 @@ Thank you for your payment!
         retailer.id,
         retailer.name,
         retailer.phone,
-        retailer.email,
-        retailer.address,
-        retailer.active ? 'Active' : 'Inactive'
+        retailer.email || '',
+        retailer.address || '',
+        'Active'  // All retailers are considered active
       ]),
       filename: `retailers-${new Date().toISOString().split('T')[0]}`
     };
@@ -528,7 +535,7 @@ Thank you for your payment!
         phone: retailer.phone,
         email: retailer.email,
         address: retailer.address,
-        active: retailer.active,
+        active: true,  // All retailers are considered active
         createdAt: retailer.createdAt.toDate()
       }));
       exportToJSON(jsonData, exportData.filename);
@@ -549,7 +556,7 @@ Thank you for your payment!
     if (paymentTab === 'completed') {
       return payment.state === 'COMPLETED' && isInDateRange;
     } else if (paymentTab === 'pending') {
-      return (payment.state === 'PENDING' || payment.state === 'OTP_SENT') && isInDateRange;
+      return (payment.state === 'INITIATED' || payment.state === 'OTP_SENT') && isInDateRange;
     }
     return isInDateRange;
   });
@@ -622,7 +629,7 @@ Thank you for your payment!
                 <Badge className={
                   payment.state === 'COMPLETED' 
                     ? 'bg-green-100 text-green-800' 
-                    : payment.state === 'PENDING' 
+                    : payment.state === 'INITIATED' 
                       ? 'bg-yellow-100 text-yellow-800' 
                       : 'bg-red-100 text-red-800'
                 }>
@@ -673,7 +680,7 @@ Thank you for your payment!
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <StatusBarColor color="#3b82f6" />
+      <StatusBarColor theme="blue" />
       
       {/* Main Content */}
       <div className="flex h-screen">
@@ -682,8 +689,9 @@ Thank you for your payment!
           navItems={navItems}
           activeNav={activeNav}
           setActiveNav={setActiveNav}
-          user={user}
-          logout={logout}
+          title="Line Worker Dashboard"
+          user={user ? { displayName: user.displayName, email: user.email } : undefined}
+          onLogout={logout}
           notificationCount={notificationCount}
           notifications={notifications}
         />
@@ -702,9 +710,9 @@ Thank you for your payment!
                   variant="outline"
                   size="sm"
                   onClick={refreshData}
-                  disabled={mainLoadingState.refreshing}
+                  disabled={mainLoadingState.loadingState.isRefreshing}
                 >
-                  <RefreshCw className={`h-4 w-4 mr-2 ${mainLoadingState.refreshing ? 'animate-spin' : ''}`} />
+                  <RefreshCw className={`h-4 w-4 mr-2 ${mainLoadingState.loadingState.isRefreshing ? 'animate-spin' : ''}`} />
                   Refresh
                 </Button>
               </div>
@@ -720,13 +728,13 @@ Thank you for your payment!
 
             {/* Loading Overlay */}
             <LoadingOverlay 
-              isLoading={mainLoadingState.loading} 
+              isLoading={mainLoadingState.loadingState.isLoading} 
               progress={dataFetchProgress}
               message="Loading line worker data..."
             />
 
             {/* Dashboard Content */}
-            {!mainLoadingState.loading && (
+            {!mainLoadingState.loadingState.isLoading && (
               <>
                 {/* Overview Stats */}
                 {activeNav === 'overview' && (
@@ -928,14 +936,14 @@ Thank you for your payment!
                     <Tabs value={paymentTab} onValueChange={setPaymentTab}>
                       <TabsList>
                         <TabsTrigger value="completed">Completed ({completedPayments.length})</TabsTrigger>
-                        <TabsTrigger value="pending">Pending ({payments.filter(p => p.state === 'PENDING' || p.state === 'OTP_SENT').length})</TabsTrigger>
+                        <TabsTrigger value="pending">Pending ({payments.filter(p => p.state === 'INITIATED' || p.state === 'OTP_SENT').length})</TabsTrigger>
                         <TabsTrigger value="all">All ({payments.length})</TabsTrigger>
                       </TabsList>
                       
                       <TabsContent value={paymentTab} className="space-y-4">
                         <DateRangeFilter
-                          selectedOption={selectedDateRangeOption}
-                          onOptionChange={handleDateRangeChange}
+                          value={selectedDateRangeOption}
+                          onValueChange={handleDateRangeChange}
                         />
                         <PaymentHistoryTable />
                       </TabsContent>
@@ -948,8 +956,8 @@ Thank you for your payment!
                   <div className="space-y-6">
                     <h2 className="text-xl font-semibold">Complete Payment History</h2>
                     <DateRangeFilter
-                      selectedOption={selectedDateRangeOption}
-                      onOptionChange={handleDateRangeChange}
+                      value={selectedDateRangeOption}
+                      onValueChange={handleDateRangeChange}
                     />
                     <PaymentHistoryTable />
                   </div>

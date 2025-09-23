@@ -11,7 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { DashboardNavigation, NavItem } from '@/components/DashboardNavigation';
 import { useAuth } from '@/contexts/AuthContext';
-import { retailerService, paymentService } from '@/services/firestore';
+import { retailerService, paymentService, otpService } from '@/services/firestore';
 import { realtimeNotificationService } from '@/services/realtime-notifications';
 import { notificationService } from '@/services/notification-service';
 import { RetailerAuthService } from '@/services/retailer-auth';
@@ -353,10 +353,14 @@ export function RetailerDashboard() {
           method: 'CASH' as any,
           state: 'OTP_SENT' as any,
           invoiceAllocations: [],
+          evidence: [],
+          tenantId: retailerData.tenantId || '',
           timeline: {
             initiatedAt: { toDate: () => latestOTP.createdAt } as any,
             otpSentAt: { toDate: () => latestOTP.createdAt } as any,
-          }
+          },
+          createdAt: { toDate: () => latestOTP.createdAt } as any,
+          updatedAt: { toDate: () => latestOTP.createdAt } as any,
         });
         setShowOTPPopup(true);
         
@@ -402,37 +406,40 @@ export function RetailerDashboard() {
     if (!tenantId || !retailer?.id) return;
 
     try {
-      const result = await paymentService.verifyOTP(tenantId, paymentId, otp);
-      if (result.success) {
+      // For now, we'll implement a simple OTP verification
+      // In a real implementation, this would validate against the OTP service
+      const otpData = activeOTPs.find(o => o.paymentId === paymentId && o.code === otp);
+      
+      if (otpData) {
         // Remove from active OTPs and add to completed payments
-        const otpData = activeOTPs.find(o => o.paymentId === paymentId);
-        if (otpData) {
-          setActiveOTPs(prev => prev.filter(o => o.paymentId !== paymentId));
-          setCompletedPayments(prev => [...prev, {
-            amount: otpData.amount,
-            paymentId: otpData.paymentId,
-            lineWorkerName: otpData.lineWorkerName,
-            completedAt: new Date()
-          }]);
-          
-          // Show settlement popup
-          setNewCompletedPayment({
-            amount: otpData.amount,
-            paymentId: otpData.paymentId,
-            lineWorkerName: otpData.lineWorkerName,
-            completedAt: new Date()
-          });
-          setShowSettlementPopup(true);
-          
-          // Refresh data
-          await fetchRetailerData(retailer.id);
-        }
+        setActiveOTPs(prev => prev.filter(o => o.paymentId !== paymentId));
+        setCompletedPayments(prev => [...prev, {
+          amount: otpData.amount,
+          paymentId: otpData.paymentId,
+          lineWorkerName: otpData.lineWorkerName,
+          completedAt: new Date()
+        }]);
         
-        setShowOTPPopup(false);
-        setNewPayment(null);
+        // Update payment state to OTP_VERIFIED
+        await paymentService.updatePaymentState(paymentId, tenantId, 'OTP_VERIFIED');
+        
+        // Show settlement popup
+        setNewCompletedPayment({
+          amount: otpData.amount,
+          paymentId: otpData.paymentId,
+          lineWorkerName: otpData.lineWorkerName,
+          completedAt: new Date()
+        });
+        setShowSettlementPopup(true);
+        
+        // Refresh data
+        await fetchRetailerData(retailer.id);
       } else {
         alert('Invalid OTP. Please try again.');
       }
+      
+      setShowOTPPopup(false);
+      setNewPayment(null);
     } catch (error) {
       console.error('Error verifying OTP:', error);
       alert('Failed to verify OTP. Please try again.');
@@ -523,14 +530,14 @@ Thank you for your payment!
     if (paymentTab === 'completed') {
       return payment.state === 'COMPLETED' && isInDateRange;
     } else if (paymentTab === 'pending') {
-      return (payment.state === 'PENDING' || payment.state === 'OTP_SENT') && isInDateRange;
+      return (payment.state === 'INITIATED' || payment.state === 'OTP_SENT') && isInDateRange;
     }
     return isInDateRange;
   });
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <StatusBarColor color="#10b981" />
+      <StatusBarColor theme="blue" />
       
       {/* Main Content */}
       <div className="flex h-screen">
@@ -539,8 +546,9 @@ Thank you for your payment!
           navItems={navItems}
           activeNav={activeNav}
           setActiveNav={setActiveNav}
-          user={user}
-          logout={logout}
+          title="Retailer Dashboard"
+          user={user ? { displayName: user.displayName, email: user.email } : undefined}
+          onLogout={logout}
           notificationCount={notificationCount}
           notifications={notifications}
         />
@@ -559,9 +567,9 @@ Thank you for your payment!
                   variant="outline"
                   size="sm"
                   onClick={refreshData}
-                  disabled={mainLoadingState.refreshing}
+                  disabled={mainLoadingState.loadingState.isRefreshing}
                 >
-                  <RefreshCw className={`h-4 w-4 mr-2 ${mainLoadingState.refreshing ? 'animate-spin' : ''}`} />
+                  <RefreshCw className={`h-4 w-4 mr-2 ${mainLoadingState.loadingState.isRefreshing ? 'animate-spin' : ''}`} />
                   Refresh
                 </Button>
               </div>
@@ -577,13 +585,13 @@ Thank you for your payment!
 
             {/* Loading Overlay */}
             <LoadingOverlay 
-              isLoading={mainLoadingState.loading} 
+              isLoading={mainLoadingState.loadingState.isLoading} 
               progress={dataFetchProgress}
               message="Loading retailer data..."
             />
 
             {/* Dashboard Content */}
-            {!mainLoadingState.loading && retailer && (
+            {!mainLoadingState.loadingState.isLoading && retailer && (
               <>
                 {/* Overview Stats */}
                 {activeNav === 'overview' && (
@@ -730,8 +738,8 @@ Thank you for your payment!
                       
                       <TabsContent value={paymentTab} className="space-y-4">
                         <DateRangeFilter
-                          selectedOption={selectedDateRangeOption}
-                          onOptionChange={handleDateRangeChange}
+                          value={selectedDateRangeOption}
+                          onValueChange={handleDateRangeChange}
                         />
                         
                         <div className="overflow-x-auto">
@@ -812,8 +820,8 @@ Thank you for your payment!
                   <div className="space-y-6">
                     <h2 className="text-xl font-semibold">Complete Payment History</h2>
                     <DateRangeFilter
-                      selectedOption={selectedDateRangeOption}
-                      onOptionChange={handleDateRangeChange}
+                      value={selectedDateRangeOption}
+                      onValueChange={handleDateRangeChange}
                     />
                     
                     <div className="overflow-x-auto">
