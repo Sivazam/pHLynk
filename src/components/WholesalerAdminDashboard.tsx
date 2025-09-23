@@ -29,7 +29,6 @@ import { useAuth, useWholesalerAdmin, useSuperAdmin } from '@/contexts/AuthConte
 import { 
   areaService, 
   retailerService, 
-  invoiceService, 
   userService,
   paymentService,
   DashboardService,
@@ -37,13 +36,12 @@ import {
 } from '@/services/firestore';
 import { realtimeNotificationService } from '@/services/realtime-notifications';
 import { notificationService } from '@/services/notification-service';
-import { Area, Retailer, Invoice, User, Payment, DashboardStats } from '@/types';
+import { Area, Retailer, User, Payment, DashboardStats } from '@/types';
 import { Timestamp } from 'firebase/firestore';
 import { formatTimestamp, formatTimestampWithTime, formatCurrency, toDate } from '@/lib/timestamp-utils';
 import { CompactDatePicker } from '@/components/ui/compact-date-picker';
 import { CreateAreaForm } from '@/components/ui/create-area-form';
 import { CreateRetailerForm } from '@/components/ui/create-retailer-form';
-import { CreateInvoiceForm } from '@/components/CreateInvoiceForm';
 import { WholesalerAnalytics } from '@/components/WholesalerAnalytics';
 import { SuccessFeedback } from '@/components/SuccessFeedback';
 import { Confetti } from '@/components/ui/Confetti';
@@ -53,7 +51,6 @@ import {
   LayoutDashboard,
   MapPin,
   Store,
-  FileText,
   Users,
   TrendingUp,
   BarChart3,
@@ -110,50 +107,6 @@ interface ActivityLog {
   metadata?: Record<string, any>;
 }
 
-// Line Item Interface for Edit Invoice
-interface LineItem {
-  name: string;
-  qty: number;
-  unitPrice: number;
-  gstPercent: number;
-}
-
-// Utility functions for days outstanding calculation
-const getDaysOutstanding = (invoice: Invoice): number => {
-  const now = new Date();
-  const dueDate = toDate(invoice.dueDate);
-  const diffTime = now.getTime() - dueDate.getTime();
-  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-  return diffDays;
-};
-
-const getDaysOutstandingDisplay = (invoice: Invoice): { text: string; color: string } => {
-  const daysOutstanding = getDaysOutstanding(invoice);
-  
-  if (daysOutstanding > 30) {
-    return { text: `${daysOutstanding} days`, color: 'text-red-600 font-medium' };
-  } else if (daysOutstanding > 7) {
-    return { text: `${daysOutstanding} days`, color: 'text-orange-600 font-medium' };
-  } else if (daysOutstanding > 0) {
-    return { text: `${daysOutstanding} days`, color: 'text-yellow-600 font-medium' };
-  } else if (daysOutstanding === 0) {
-    return { text: 'Due today', color: 'text-green-600 font-medium' };
-  } else {
-    const daysUntilDue = Math.abs(daysOutstanding);
-    return { text: `${daysUntilDue} days`, color: 'text-green-600' };
-  }
-};
-
-// Days Outstanding Display Component
-const DaysOutstandingDisplay = ({ invoice }: { invoice: Invoice }) => {
-  const display = getDaysOutstandingDisplay(invoice);
-  
-  return (
-    <span className={display.color}>
-      {display.text}
-    </span>
-  );
-};
 
 export function WholesalerAdminDashboard() {
   const { user, logout } = useAuth();
@@ -162,7 +115,6 @@ export function WholesalerAdminDashboard() {
   const { showSuccess, hideSuccess, feedback } = useSuccessFeedback();
   const [areas, setAreas] = useState<Area[]>([]);
   const [retailers, setRetailers] = useState<Retailer[]>([]);
-  const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [lineWorkers, setLineWorkers] = useState<User[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null);
@@ -173,7 +125,6 @@ export function WholesalerAdminDashboard() {
   const [activeNav, setActiveNav] = useState('overview');
   const [showCreateArea, setShowCreateArea] = useState(false);
   const [showCreateRetailer, setShowCreateRetailer] = useState(false);
-  const [showCreateInvoice, setShowCreateInvoice] = useState(false);
   const [showCreateLineWorker, setShowCreateLineWorker] = useState(false);
   const [editingArea, setEditingArea] = useState<Area | null>(null);
   const [editingRetailer, setEditingRetailer] = useState<Retailer | null>(null);
@@ -181,20 +132,17 @@ export function WholesalerAdminDashboard() {
   const [showEditLineWorkerDialog, setShowEditLineWorkerDialog] = useState(false);
   const [editingSelectedAreas, setEditingSelectedAreas] = useState<string[]>([]);
   const [editingActiveStatus, setEditingActiveStatus] = useState<boolean>(true);
-  const [viewingInvoice, setViewingInvoice] = useState<Invoice | null>(null);
   const [viewingPayment, setViewingPayment] = useState<Payment | null>(null);
-  const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
-  const [deletingInvoice, setDeletingInvoice] = useState<Invoice | null>(null);
-  const [editingInvoiceLineItems, setEditingInvoiceLineItems] = useState<LineItem[]>([]);
-  const [editingInvoiceForm, setEditingInvoiceForm] = useState({
-    invoiceNumber: '',
-    userInvoiceNumber: '',
-    issueDate: new Date(),
-    dueDate: new Date()
-  });
   
-  // Invoice creation state
+  // Invoice-related states (to be removed)
+  const [invoices, setInvoices] = useState<any[]>([]);
+  const [editingInvoice, setEditingInvoice] = useState<any>(null);
+  const [editingInvoiceForm, setEditingInvoiceForm] = useState<any>({});
+  const [editingInvoiceLineItems, setEditingInvoiceLineItems] = useState<any[]>([]);
+  const [viewingInvoice, setViewingInvoice] = useState<any>(null);
+  const [deletingInvoice, setDeletingInvoice] = useState<any>(null);
   const [creatingInvoice, setCreatingInvoice] = useState(false);
+  const [showCreateInvoice, setShowCreateInvoice] = useState(false);
   
   // Line worker creation state
   const [creatingLineWorker, setCreatingLineWorker] = useState(false);
@@ -218,13 +166,7 @@ export function WholesalerAdminDashboard() {
     }
   }, []);
 
-  const handleInvoiceDialogChange = useCallback((open: boolean) => {
-    if (open) {
-      setShowCreateInvoice(true);
-    } else {
-      setShowCreateInvoice(false);
-    }
-  }, []);
+  
 
   const handleLineWorkerDialogChange = useCallback((open: boolean) => {
     if (open) {
@@ -284,23 +226,6 @@ export function WholesalerAdminDashboard() {
       const paymentDate = payment.createdAt.toDate();
       return paymentDate >= dateRange.startDate && paymentDate <= dateRange.endDate;
     });
-  };
-
-  const filterInvoicesByDateRange = (invoicesData: any[]) => {
-    return invoicesData.filter(invoice => {
-      const invoiceDate = invoice.issueDate.toDate();
-      return invoiceDate >= dateRange.startDate && invoiceDate <= dateRange.endDate;
-    });
-  };
-
-  const calculateOutstandingForDateRange = (invoicesData: any[], paymentsData: any[]) => {
-    const filteredInvoices = filterInvoicesByDateRange(invoicesData);
-    const filteredPayments = filterPaymentsByDateRange(paymentsData).filter(p => p.state === 'COMPLETED');
-    
-    const totalInvoiceAmount = filteredInvoices.reduce((sum, invoice) => sum + invoice.totalAmount, 0);
-    const totalPaid = filteredPayments.reduce((sum, payment) => sum + payment.totalPaid, 0);
-    
-    return Math.max(0, totalInvoiceAmount - totalPaid);
   };
 
   const handleDateRangeChange = (value: string, newDateRange: { startDate: Date; endDate: Date }) => {
@@ -419,12 +344,10 @@ export function WholesalerAdminDashboard() {
       // Close all dialogs when component unmounts
       setShowCreateArea(false);
       setShowCreateRetailer(false);
-      setShowCreateInvoice(false);
       setShowCreateLineWorker(false);
       setEditingArea(null);
       setEditingRetailer(null);
       setEditingLineWorker(null);
-      setViewingInvoice(null);
       setViewingPayment(null);
       setShowEditLineWorkerDialog(false);
       setShowRetailerAssignment(false);
@@ -432,61 +355,7 @@ export function WholesalerAdminDashboard() {
   }, []);
 
   // Prevent multiple dialog openings
-  useEffect(() => {
-    const handleBeforeUnload = () => {
-      // Close all dialogs before page unload
-      setShowCreateArea(false);
-      setShowCreateRetailer(false);
-      setShowCreateInvoice(false);
-      setShowCreateLineWorker(false);
-    };
-
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-    };
-  }, []);
-
-  // Effect to populate edit form when invoice is selected
-  useEffect(() => {
-    if (editingInvoice) {
-      setEditingInvoiceForm({
-        invoiceNumber: editingInvoice.invoiceNumber,
-        userInvoiceNumber: editingInvoice.userInvoiceNumber || '',
-        issueDate: toDate(editingInvoice.issueDate),
-        dueDate: toDate(editingInvoice.dueDate)
-      });
-      
-      // Initialize line items - if invoice doesn't have line items, create a default one
-      if (editingInvoice.lineItems && editingInvoice.lineItems.length > 0) {
-        // Map InvoiceLineItem to LineItem, providing default values for optional fields
-        const mappedLineItems = editingInvoice.lineItems.map(item => ({
-          name: item.name,
-          qty: item.qty,
-          unitPrice: item.unitPrice,
-          gstPercent: item.gstPercent || 0
-        }));
-        setEditingInvoiceLineItems(mappedLineItems);
-      } else {
-        // Create a default line item from the total amount
-        setEditingInvoiceLineItems([{
-          name: 'Invoice Item',
-          qty: 1,
-          unitPrice: editingInvoice.totalAmount,
-          gstPercent: 0
-        }]);
-      }
-    } else {
-      // Reset form when no invoice is being edited
-      setEditingInvoiceLineItems([]);
-      setEditingInvoiceForm({
-        invoiceNumber: '',
-        userInvoiceNumber: '',
-        issueDate: new Date(),
-        dueDate: new Date()
-      });
-    }
-  }, [editingInvoice]);
+  
 
   // Navigation items
   const navItems: NavItem[] = [
@@ -494,7 +363,6 @@ export function WholesalerAdminDashboard() {
     { id: 'areas', label: 'Areas', icon: MapPin },
     { id: 'retailers', label: 'Retailers', icon: Store },
     { id: 'retailer-details', label: 'Retailer Details', icon: Eye },
-    { id: 'invoices', label: 'Invoices', icon: FileText },
     { id: 'workers', label: 'Line Workers', icon: Users },
     { id: 'transactions', label: 'Transactions', icon: CreditCard },
     { id: 'analytics', label: 'Analytics', icon: BarChart3 },
@@ -1245,194 +1113,15 @@ export function WholesalerAdminDashboard() {
     return lineWorkers.find(w => w.id === workerId)?.displayName || 'Unknown';
   };
 
-  // Invoice Creation Helper Functions
-  const generateSystemInvoiceId = (userInvoiceNumber: string): string => {
-    const timestamp = Date.now();
-    const random = Math.random().toString(36).substr(2, 6);
-    return `INV-${timestamp}-${random}-${userInvoiceNumber}`;
-  };
-
-  // New invoice creation handler
-  const handleCreateInvoice = async (formData: any) => {
-    const currentTenantId = getCurrentTenantId();
-    if (!currentTenantId) return;
-    
-    setCreatingInvoice(true);
-    
-    try {
-      // Calculate totals
-      const subtotal = formData.lineItems.reduce((sum: number, item: any) => sum + (item.qty * item.unitPrice), 0);
-      const gstAmount = formData.lineItems.reduce((sum: number, item: any) => {
-        const gstPercent = item.gstPercent || 0;
-        return sum + (item.qty * item.unitPrice * gstPercent / 100);
-      }, 0);
-      const totalAmount = subtotal + gstAmount;
-      
-      // Generate system invoice ID
-      const systemInvoiceId = generateSystemInvoiceId(formData.invoiceNumber);
-      
-      // Create invoice data
-      const invoiceData = {
-        retailerId: formData.retailerId,
-        invoiceNumber: systemInvoiceId, // Use system ID as the primary invoice number
-        userInvoiceNumber: formData.invoiceNumber, // Store user input separately
-        issueDate: formData.issueDate,
-        dueDate: formData.dueDate,
-        subtotal,
-        gstAmount,
-        totalAmount,
-        outstandingAmount: totalAmount,
-        status: 'OPEN' as const,
-        lineItems: formData.lineItems.filter((item: any) => item.name.trim()),
-        version: 1,
-        attachments: []
-      };
-      
-      // Create invoice
-      if (!user?.tenantId) {
-        setError('User tenant ID not found. Please log in again.');
-        return;
-      }
-      const invoiceId = await invoiceService.createInvoice(user.tenantId, invoiceData);
-      
-      // Refresh data
-      await fetchDashboardData();
-      
-      // Close dialog
-      setShowCreateInvoice(false);
-      
-      // Show success message with confetti
-      showSuccess(`Invoice "${formData.invoiceNumber}" created successfully! Amount: ${formatCurrency(totalAmount)}`);
-      
-    } catch (error: any) {
-      console.error('Error creating invoice:', error);
-      alert(`Failed to create invoice: ${error.message}`);
-    } finally {
-      setCreatingInvoice(false);
-    }
-  };
-
-  // Helper functions for editing invoice line items
-  const updateEditLineItem = useCallback((index: number, field: keyof LineItem, value: any) => {
-    setEditingInvoiceLineItems(prev => 
-      prev.map((item, i) => i === index ? { ...item, [field]: value } : item)
-    );
-  }, []);
-
-  const addEditLineItem = useCallback(() => {
-    setEditingInvoiceLineItems(prev => [...prev, { name: '', qty: 1, unitPrice: 0, gstPercent: 0 }]);
-  }, []);
-
-  const removeEditLineItem = useCallback((index: number) => {
-    setEditingInvoiceLineItems(prev => prev.filter((_, i) => i !== index));
-  }, []);
-
-  const updateEditFormField = useCallback((field: keyof typeof editingInvoiceForm, value: any) => {
-    setEditingInvoiceForm(prev => ({ ...prev, [field]: value }));
-  }, []);
-
-  // Calculate totals for editing invoice
-  const editInvoiceTotals = useMemo(() => {
-    const subtotal = editingInvoiceLineItems.reduce((sum, item) => sum + (item.qty * item.unitPrice), 0);
-    const gstAmount = editingInvoiceLineItems.reduce((sum, item) => {
-      const gstPercent = item.gstPercent || 0;
-      return sum + (item.qty * item.unitPrice * gstPercent / 100);
-    }, 0);
-    const totalAmount = subtotal + gstAmount;
-    
-    return { subtotal, gstAmount, totalAmount };
-  }, [editingInvoiceLineItems]);
-
-  const editLineItemTotals = useMemo(() => {
-    return editingInvoiceLineItems.map(item => 
-      formatCurrency((item.qty || 0) * (item.unitPrice || 0) * (1 + (item.gstPercent || 0) / 100))
-    );
-  }, [editingInvoiceLineItems]);
-
-  // Handle Edit Invoice
-  const handleEditInvoice = async () => {
-    if (!editingInvoice) return;
-    
-    const currentTenantId = getCurrentTenantId();
-    if (!currentTenantId) return;
-    
-    try {
-      // Validate required fields
-      if (!editingInvoiceForm.invoiceNumber.trim()) {
-        alert('Please enter an invoice number');
-        return;
-      }
-      
-      if (!editingInvoiceLineItems.some(item => item.name.trim() && item.unitPrice > 0)) {
-        alert('Please add at least one valid line item');
-        return;
-      }
-      
-      // Update invoice data with line items
-      const updateData: any = {
-        invoiceNumber: editingInvoiceForm.invoiceNumber,
-        userInvoiceNumber: editingInvoiceForm.userInvoiceNumber || null,
-        issueDate: Timestamp.fromDate(editingInvoiceForm.issueDate),
-        dueDate: Timestamp.fromDate(editingInvoiceForm.dueDate),
-        totalAmount: editInvoiceTotals.totalAmount,
-        lineItems: editingInvoiceLineItems
-      };
-      
-      // Update the invoice
-      await invoiceService.updateInvoice(currentTenantId, editingInvoice.id, updateData);
-      
-      // Refresh data
-      await fetchDashboardData();
-      
-      // Close dialog
-      setEditingInvoice(null);
-      
-      // Show success message
-      showSuccess(`Invoice "${editingInvoiceForm.invoiceNumber}" updated successfully!`);
-      
-    } catch (error: any) {
-      console.error('Error updating invoice:', error);
-      alert(`Failed to update invoice: ${error.message}`);
-    }
-  };
-
-  // Handle Delete Invoice
-  const handleDeleteInvoice = async () => {
-    if (!deletingInvoice) return;
-    
-    const currentTenantId = getCurrentTenantId();
-    if (!currentTenantId) return;
-    
-    try {
-      // Delete the invoice
-      await invoiceService.deleteInvoice(currentTenantId, deletingInvoice.id);
-      
-      // Refresh data
-      await fetchDashboardData();
-      
-      // Close dialog
-      setDeletingInvoice(null);
-      
-      // Show success message
-      showSuccess(`Invoice "${deletingInvoice.invoiceNumber}" deleted successfully!`);
-      
-    } catch (error: any) {
-      console.error('Error deleting invoice:', error);
-      alert(`Failed to delete invoice: ${error.message}`);
-    }
-  };
-
   // Stats Cards Component
   const StatsCards = () => {
     // Calculate filtered data for the selected date range
     const filteredPayments = filterPaymentsByDateRange(payments);
-    const filteredInvoices = filterInvoicesByDateRange(invoices);
     const filteredCompletedPayments = filteredPayments.filter(p => p.state === 'COMPLETED');
-    const filteredOutstandingAmount = calculateOutstandingForDateRange(invoices, payments);
     const filteredRevenue = filteredCompletedPayments.reduce((sum, p) => sum + p.totalPaid, 0);
 
     return (
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card className="hover:shadow-lg transition-shadow duration-300 border-l-4 border-l-blue-500">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium text-gray-600">Total Revenue</CardTitle>
@@ -1450,23 +1139,6 @@ export function WholesalerAdminDashboard() {
           </CardContent>
         </Card>
 
-        <Card className="hover:shadow-lg transition-shadow duration-300 border-l-4 border-l-green-500">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">Outstanding</CardTitle>
-            <div className="bg-green-100 p-2 rounded-full">
-              <AlertCircle className="h-4 w-4 text-green-600" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-gray-900">
-              {formatCurrency(filteredOutstandingAmount)}
-            </div>
-            <p className="text-xs text-gray-500">
-              Outstanding amount (filtered)
-            </p>
-          </CardContent>
-        </Card>
-
         <Card className="hover:shadow-lg transition-shadow duration-300 border-l-4 border-l-purple-500">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium text-gray-600">Completed Payments</CardTitle>
@@ -1480,23 +1152,6 @@ export function WholesalerAdminDashboard() {
             </div>
             <p className="text-xs text-gray-500">
               Payments completed (filtered)
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="hover:shadow-lg transition-shadow duration-300 border-l-4 border-l-orange-500">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">Total Invoices</CardTitle>
-            <div className="bg-orange-100 p-2 rounded-full">
-              <FileText className="h-4 w-4 text-orange-600" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-gray-900">
-              {filteredInvoices.length}
-            </div>
-            <p className="text-xs text-gray-500">
-              Invoices created (filtered)
             </p>
           </CardContent>
         </Card>
@@ -1578,7 +1233,7 @@ export function WholesalerAdminDashboard() {
                 <div key={log.id} className="flex items-center space-x-4 p-3 border rounded-lg">
                   <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
                     {log.type === 'PAYMENT' && <DollarSign className="h-5 w-5 text-blue-600" />}
-                    {log.type === 'INVOICE' && <FileText className="h-5 w-5 text-blue-600" />}
+                    {log.type === 'PAYMENT' && <CreditCard className="h-5 w-5 text-green-600" />}
                     {log.type === 'RETAILER' && <Store className="h-5 w-5 text-blue-600" />}
                     {log.type === 'LINEWORKER' && <Users className="h-5 w-5 text-blue-600" />}
                   </div>
@@ -1919,139 +1574,6 @@ export function WholesalerAdminDashboard() {
           </DialogContent>
         </Dialog>
       )}
-    </div>
-  );
-
-  // Invoices Component
-  const Invoices = () => (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">Invoices Management</h2>
-          <p className="text-gray-600">Manage all invoices in your system</p>
-        </div>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            onClick={handleManualRefresh}
-            disabled={mainLoadingState.loadingState.isRefreshing}
-          >
-            {mainLoadingState.loadingState.isRefreshing ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <RefreshCw className="h-4 w-4" />
-            )}
-            <span className="sr-only">Refresh</span>
-          </Button>
-          <Dialog key="invoice-dialog" open={showCreateInvoice} onOpenChange={handleInvoiceDialogChange}>
-            <DialogTrigger asChild>
-              <Button>
-                <Plus className="h-4 w-4 mr-2" />
-                Create Invoice
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-2xl">
-              <DialogHeader>
-                <DialogTitle>Create New Invoice</DialogTitle>
-                <DialogDescription>
-                  Generate a new invoice for a retailer
-                </DialogDescription>
-              </DialogHeader>
-              <CreateInvoiceForm 
-                retailers={retailers}
-                onCreateInvoice={handleCreateInvoice}
-                onCancel={() => setShowCreateInvoice(false)}
-                creatingInvoice={creatingInvoice}
-                key="invoice-form" // Add key to prevent remounting
-              />
-            </DialogContent>
-          </Dialog>
-        </div>
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>All Invoices</CardTitle>
-          <CardDescription>Manage all invoices in your system</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {mainLoadingState.loadingState.isRefreshing ? (
-            <div className="space-y-4">
-              {[...Array(5)].map((_, index) => (
-                <div key={index} className="flex items-center space-x-4">
-                  <Skeleton className="h-4 w-20 animate-pulse" />
-                  <Skeleton className="h-4 w-32 animate-pulse" />
-                  <Skeleton className="h-4 w-24 animate-pulse" />
-                  <Skeleton className="h-4 w-24 animate-pulse" />
-                  <Skeleton className="h-4 w-16 animate-pulse" />
-                  <Skeleton className="h-6 w-16 animate-pulse" />
-                  <Skeleton className="h-8 w-16 animate-pulse" />
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Invoice #</TableHead>
-                    <TableHead>Retailer</TableHead>
-                    <TableHead>Issue Date</TableHead>
-                    <TableHead>Due Date</TableHead>
-                    <TableHead>Amount</TableHead>
-                    <TableHead>Days Outstanding</TableHead>
-                    <TableHead>Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {invoices.map((invoice) => (
-                    <TableRow key={invoice.id}>
-                      <TableCell>
-                        <div className="font-medium">{invoice.invoiceNumber}</div>
-                        {invoice.userInvoiceNumber && (
-                          <div className="text-sm text-gray-500">User: {invoice.userInvoiceNumber}</div>
-                        )}
-                      </TableCell>
-                      <TableCell>{getRetailerName(invoice.retailerId)}</TableCell>
-                      <TableCell>{formatTimestamp(invoice.issueDate)}</TableCell>
-                      <TableCell>{formatTimestamp(invoice.dueDate)}</TableCell>
-                      <TableCell>
-                        <div className="text-right">
-                          <div className="font-medium">{formatCurrency(invoice.totalAmount)}</div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <DaysOutstandingDisplay invoice={invoice} />
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex space-x-2">
-                          <Button variant="outline" size="sm" onClick={() => setViewingInvoice(invoice)}>
-                            <Eye className="h-4 w-4 mr-1" />
-                            View
-                          </Button>
-                          <Button variant="outline" size="sm" onClick={() => setEditingInvoice(invoice)}>
-                            <Edit className="h-4 w-4 mr-1" />
-                            Edit
-                          </Button>
-                          <Button 
-                            variant="outline" 
-                            size="sm" 
-                            onClick={() => setDeletingInvoice(invoice)}
-                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                          >
-                            <Trash2 className="h-4 w-4 mr-1" />
-                            Delete
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
     </div>
   );
 
@@ -2609,116 +2131,17 @@ export function WholesalerAdminDashboard() {
     </div>
   );
 
-  // View Invoice Dialog Component
-  const ViewInvoiceDialog = () => (
-    <Dialog open={!!viewingInvoice} onOpenChange={(open) => !open && setViewingInvoice(null)}>
-      <DialogContent className="max-w-2xl">
+  // Delete Invoice Dialog Component
+  const DeleteInvoiceDialog = () => (
+    <Dialog open={!!deletingInvoice} onOpenChange={(open) => !open && setDeletingInvoice(null)}>
+      <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Invoice Details</DialogTitle>
+          <DialogTitle>Delete Invoice</DialogTitle>
           <DialogDescription>
-            View detailed information about this invoice
+            This action cannot be undone. This will permanently delete the invoice.
           </DialogDescription>
         </DialogHeader>
-        {viewingInvoice && (
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label>Invoice Number</Label>
-                <div className="font-medium">{viewingInvoice.invoiceNumber}</div>
-              </div>
-              <div>
-                <Label>Status</Label>
-                <Badge className={
-                  viewingInvoice.status === 'PAID' ? 'bg-green-100 text-green-800' :
-                  viewingInvoice.status === 'PARTIAL' ? 'bg-yellow-100 text-yellow-800' :
-                  'bg-red-100 text-red-800'
-                }>
-                  {viewingInvoice.status}
-                </Badge>
-              </div>
-              <div>
-                <Label>Issue Date</Label>
-                <div className="font-medium">{formatTimestamp(viewingInvoice.issueDate)}</div>
-              </div>
-              <div>
-                <Label>Due Date</Label>
-                <div className="font-medium">{formatTimestamp(viewingInvoice.dueDate)}</div>
-              </div>
-              <div>
-                <Label>Total Amount</Label>
-                <div className="font-medium">{formatCurrency(viewingInvoice.totalAmount)}</div>
-              </div>
-              <div>
-                <Label>Retailer</Label>
-                <div className="font-medium">{getRetailerName(viewingInvoice.retailerId)}</div>
-              </div>
-            </div>
-          </div>
-        )}
-      </DialogContent>
-    </Dialog>
-  );
-
-  // Edit Invoice Dialog Component
-  const EditInvoiceDialog = () => (
-    <Dialog open={!!editingInvoice} onOpenChange={(open) => !open && setEditingInvoice(null)}>
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>Edit Invoice</DialogTitle>
-          <DialogDescription>
-            Edit invoice information. Note: Retailer cannot be changed.
-          </DialogDescription>
-        </DialogHeader>
-        {editingInvoice && (
-          <div className="space-y-4 max-h-[80vh] overflow-y-auto pr-2">
-            <Alert>
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>
-                Editing an invoice will automatically update all related calculations including outstanding amounts.
-              </AlertDescription>
-            </Alert>
-
-            {/* Basic Information */}
-            <div className="space-y-4">
-              <h3 className="text-sm font-medium text-gray-900 border-b pb-1">Basic Information</h3>
-              
-              {/* Invoice Number */}
-              <div className="space-y-1">
-                <Label className="text-sm font-medium text-gray-700">Invoice Number *</Label>
-                <Input
-                  value={editingInvoiceForm.invoiceNumber}
-                  onChange={(e) => updateEditFormField('invoiceNumber', e.target.value)}
-                  placeholder="Enter invoice number"
-                  className="h-9"
-                />
-              </div>
-
-              {/* User Invoice Number */}
-              <div className="space-y-1">
-                <Label className="text-sm font-medium text-gray-700">User Invoice Number</Label>
-                <Input
-                  value={editingInvoiceForm.userInvoiceNumber}
-                  onChange={(e) => updateEditFormField('userInvoiceNumber', e.target.value)}
-                  placeholder="Enter user invoice number (optional)"
-                  className="h-9"
-                />
-              </div>
-
-              {/* Dates */}
-              <div className="grid grid-cols-2 gap-4">
-                <CompactDatePicker
-                  value={editingInvoiceForm.issueDate}
-                  onChange={(date) => date && updateEditFormField('issueDate', date)}
-                  label="Issue Date"
-                />
-                <CompactDatePicker
-                  value={editingInvoiceForm.dueDate}
-                  onChange={(date) => date && updateEditFormField('dueDate', date)}
-                  label="Due Date"
-                />
-              </div>
-
-              {/* Retailer Display (Read-only) */}
+        {deletingInvoice && (
               <div className="space-y-1">
                 <Label className="text-sm font-medium text-gray-700">Retailer</Label>
                 <div className="h-9 px-3 py-2 bg-gray-100 border border-gray-300 rounded-md text-sm">
@@ -3329,19 +2752,6 @@ export function WholesalerAdminDashboard() {
             </CardContent>
           </Card>
 
-          <Card className="border-l-4 border-l-green-500">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">Total Invoices</CardTitle>
-              <FileText className="h-4 w-4 text-green-600" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-gray-900">{getFilteredInvoices().length}</div>
-              <p className="text-xs text-gray-500">
-                {getFilteredInvoices().filter(i => i.status === 'PAID').length} paid
-              </p>
-            </CardContent>
-          </Card>
-
           <Card className="border-l-4 border-l-purple-500">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium text-gray-600">Total Payments</CardTitle>
@@ -3507,51 +2917,9 @@ export function WholesalerAdminDashboard() {
 
                   {/* Tabs for Invoices and Payments */}
                   <Tabs defaultValue="invoices" className="w-full">
-                    <TabsList className="grid w-full grid-cols-2 h-8">
-                      <TabsTrigger value="invoices" className="text-xs">Invoices ({retailerInvoices.length})</TabsTrigger>
+                    <TabsList className="grid w-full grid-cols-1 h-8">
                       <TabsTrigger value="payments" className="text-xs">Payments ({retailerPayments.length})</TabsTrigger>
                     </TabsList>
-                    
-                    <TabsContent value="invoices" className="space-y-4 mt-4">
-                      {retailerInvoices.length > 0 ? (
-                        <div className="overflow-x-auto border rounded-lg">
-                          <Table>
-                            <TableHeader className="bg-gray-50">
-                              <TableRow>
-                                <TableHead className="text-xs font-medium text-gray-700 uppercase tracking-wider">Invoice #</TableHead>
-                                <TableHead className="text-xs font-medium text-gray-700 uppercase tracking-wider">Date</TableHead>
-                                <TableHead className="text-xs font-medium text-gray-700 uppercase tracking-wider">Due Date</TableHead>
-                                <TableHead className="text-xs font-medium text-gray-700 uppercase tracking-wider">Amount</TableHead>
-                                <TableHead className="text-xs font-medium text-gray-700 uppercase tracking-wider">Days Outstanding</TableHead>
-                              </TableRow>
-                            </TableHeader>
-                            <TableBody className="divide-y divide-gray-200">
-                              {retailerInvoices.map(invoice => (
-                                <TableRow key={invoice.id} className="hover:bg-gray-50">
-                                  <TableCell className="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-900">
-                                    {invoice.invoiceNumber}
-                                    {invoice.userInvoiceNumber && (
-                                      <div className="text-xs text-gray-500">User: {invoice.userInvoiceNumber}</div>
-                                    )}
-                                  </TableCell>
-                                  <TableCell className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{formatTimestamp(invoice.issueDate)}</TableCell>
-                                  <TableCell className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{formatTimestamp(invoice.dueDate)}</TableCell>
-                                  <TableCell className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{formatCurrency(invoice.totalAmount)}</TableCell>
-                                  <TableCell className="px-4 py-2 whitespace-nowrap">
-                                    <DaysOutstandingDisplay invoice={invoice} />
-                                  </TableCell>
-                                </TableRow>
-                              ))}
-                            </TableBody>
-                          </Table>
-                        </div>
-                      ) : (
-                        <div className="text-center py-6 text-gray-500 bg-gray-50 rounded-lg">
-                          <FileText className="h-8 w-8 mx-auto mb-2 text-gray-400" />
-                          No invoices found for this retailer
-                        </div>
-                      )}
-                    </TabsContent>
                     
                     <TabsContent value="payments" className="space-y-4 mt-4">
                       {retailerPayments.length > 0 ? (
@@ -3694,7 +3062,6 @@ export function WholesalerAdminDashboard() {
           {activeNav === 'areas' && <Areas />}
           {activeNav === 'retailers' && <Retailers />}
           {activeNav === 'retailer-details' && <RetailerDetails />}
-          {activeNav === 'invoices' && <Invoices />}
           {activeNav === 'workers' && <LineWorkers />}
           {activeNav === 'transactions' && <Transactions />}
           {activeNav === 'analytics' && <AnalyticsComponent />}
@@ -3748,10 +3115,7 @@ export function WholesalerAdminDashboard() {
           
 
         {/* Dialog Components */}
-        {ViewInvoiceDialog()}
         {ViewPaymentDialog()}
-        {EditInvoiceDialog()}
-        {DeleteInvoiceDialog()}
         
         {/* Edit Line Worker Dialog */}
         {EditLineWorkerDialog()}

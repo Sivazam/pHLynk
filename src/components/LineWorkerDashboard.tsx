@@ -697,7 +697,7 @@ Thank you for your payment!
         />
 
         {/* Main Dashboard Area */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto pt-16"> {/* Add padding-top for fixed header */}
           <div className="p-6">
             {/* Header */}
             <div className="flex items-center justify-between mb-6">
