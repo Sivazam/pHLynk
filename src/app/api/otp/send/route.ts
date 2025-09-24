@@ -6,8 +6,22 @@ import { RetailerAuthService } from '@/services/retailer-auth';
 import { retailerService } from '@/services/firestore';
 import { Timestamp as FirebaseTimestamp } from 'firebase/firestore';
 import { pushNotificationService } from '@/services/push-notification-service';
-import { getFunctions, httpsCallable } from 'firebase/functions';
 import { functions } from '@/lib/firebase';
+
+// Helper function to get httpsCallable if functions are available
+async function getHttpsCallable(functionName: string) {
+  if (!functions) {
+    return null;
+  }
+  
+  try {
+    const functionsModule = await import('firebase/functions');
+    return functionsModule.httpsCallable(functions, functionName);
+  } catch (error) {
+    console.log('⚠️ Firebase Functions not available, using fallback mode');
+    return null;
+  }
+}
 
 interface OTPRequest {
   retailerId: string;
@@ -82,24 +96,29 @@ export async function POST(request: NextRequest) {
     console.log('Line Worker Name:', lineWorkerName);
     console.log('Retailer User Data:', retailerUser);
 
-    // Use Cloud Function to generate OTP (more secure)
+    // Use Cloud Function to generate OTP (more secure) - if available
     let otpData;
     try {
-      const generateOTPFunction = httpsCallable(functions, 'generateOTP');
-      const result = await generateOTPFunction({
-        retailerId,
-        paymentId,
-        amount,
-        lineWorkerName: lineWorkerName || 'Line Worker'
-      });
+      const generateOTPFunction = await getHttpsCallable('generateOTP');
+      if (generateOTPFunction) {
+        const result = await generateOTPFunction({
+          retailerId,
+          paymentId,
+          amount,
+          lineWorkerName: lineWorkerName || 'Line Worker'
+        });
 
-      console.log('🔐 Cloud Function result:', result.data);
+        console.log('🔐 Cloud Function result:', result.data);
 
-      if (result.data && result.data.success) {
-        otpData = result.data;
-        console.log('✅ OTP generated successfully via cloud function');
+        const data = result.data as any;
+        if (data && data.success) {
+          otpData = data;
+          console.log('✅ OTP generated successfully via cloud function');
+        } else {
+          throw new Error(data?.error || 'Failed to generate OTP via cloud function');
+        }
       } else {
-        throw new Error(result.data?.error || 'Failed to generate OTP via cloud function');
+        throw new Error('Cloud Functions not available');
       }
     } catch (cloudFunctionError) {
       console.error('❌ Error calling cloud function:', cloudFunctionError);

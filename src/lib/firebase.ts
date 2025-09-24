@@ -2,7 +2,8 @@ import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
-import { getFunctions, connectFunctionsEmulator } from "firebase/functions";
+// Note: Firebase Functions are optional and only used if available
+let functions: any = null;
 
 const firebaseConfig = {
   apiKey: "AIzaSyAiuROMuOXyBTQ2tAn_7lCk8qBsKLcKBds",
@@ -39,18 +40,34 @@ export const db = getFirestore(app);
 // Initialize Firebase Storage and get a reference to the service
 export const storage = getStorage(app);
 
-// Initialize Firebase Functions and get a reference to the service
-export const functions = getFunctions(app);
-
-// Connect to emulator in development (optional - remove for production)
-if (process.env.NODE_ENV === 'development') {
-  try {
-    connectFunctionsEmulator(functions, 'localhost', 5001);
-    console.log('🔧 Connected to Firebase Functions emulator');
-  } catch (error) {
-    console.log('⚠️ Could not connect to Functions emulator, using production functions');
-  }
+// Initialize Firebase Functions and get a reference to the service (optional)
+// Only initialize if the functions module is available
+try {
+  // Use dynamic import to avoid require() and make it optional
+  import('firebase/functions').then(functionsModule => {
+    if (functionsModule.getFunctions) {
+      functions = functionsModule.getFunctions(app);
+      
+      // Connect to emulator in development (optional - remove for production)
+      if (process.env.NODE_ENV === 'development' && functionsModule.connectFunctionsEmulator) {
+        try {
+          functionsModule.connectFunctionsEmulator(functions, 'localhost', 5001);
+          console.log('🔧 Connected to Firebase Functions emulator');
+        } catch (error) {
+          console.log('⚠️ Could not connect to Functions emulator, using production functions');
+        }
+      }
+    }
+  }).catch(error => {
+    console.log('⚠️ Firebase Functions module not available, using fallback mode');
+    functions = null;
+  });
+} catch (error) {
+  console.log('⚠️ Firebase Functions module not available, using fallback mode');
+  functions = null;
 }
+
+export { functions };
 
 // Collection names
 export const COLLECTIONS = {

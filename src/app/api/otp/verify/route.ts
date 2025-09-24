@@ -4,12 +4,26 @@ import { doc, getDoc, updateDoc, collection, query, where, getDocs, Timestamp, w
 import { db } from '@/lib/firebase';
 import { RetailerAuthService } from '@/services/retailer-auth';
 import { retailerService, paymentService } from '@/services/firestore';
-import { fast2SMSService } from '@/services/fast2sms-service';
+import { fast2SMSService, Fast2SMSService } from '@/services/fast2sms-service';
 import { pushNotificationService } from '@/services/push-notification-service';
 import { Retailer } from '@/types';
 import { logger } from '@/lib/logger';
-import { getFunctions, httpsCallable } from 'firebase/functions';
 import { functions } from '@/lib/firebase';
+
+// Helper function to get httpsCallable if functions are available
+async function getHttpsCallable(functionName: string) {
+  if (!functions) {
+    return null;
+  }
+  
+  try {
+    const functionsModule = await import('firebase/functions');
+    return functionsModule.httpsCallable(functions, functionName);
+  } catch (error) {
+    console.log('⚠️ Firebase Functions not available, using fallback mode');
+    return null;
+  }
+}
 
 interface OTPVerifyRequest {
   paymentId: string;
@@ -254,21 +268,26 @@ export async function POST(request: NextRequest) {
     if (otpData.code === otp) {
       console.log('✅ OTP verification successful!');
       
-      // Use Cloud Function to verify OTP (more secure)
+      // Use Cloud Function to verify OTP (more secure) - if available
       try {
-        const verifyOTPFunction = httpsCallable(functions, 'verifyOTP');
-        const cloudResult = await verifyOTPFunction({
-          paymentId,
-          otp
-        });
+        const verifyOTPFunction = await getHttpsCallable('verifyOTP');
+        if (verifyOTPFunction) {
+          const cloudResult = await verifyOTPFunction({
+            paymentId,
+            otp
+          });
 
-        console.log('🔐 Cloud Function verification result:', cloudResult.data);
+          console.log('🔐 Cloud Function verification result:', cloudResult.data);
 
-        if (cloudResult.data && cloudResult.data.success) {
-          console.log('✅ OTP verified successfully via cloud function');
+          const data = cloudResult.data as any;
+          if (data && data.success) {
+            console.log('✅ OTP verified successfully via cloud function');
+          } else {
+            console.log('⚠️ Cloud function verification failed, continuing with local verification');
+            // Continue with local verification if cloud function fails
+          }
         } else {
-          console.log('⚠️ Cloud function verification failed, continuing with local verification');
-          // Continue with local verification if cloud function fails
+          console.log('⚠️ Cloud Functions not available, using local verification');
         }
       } catch (cloudFunctionError) {
         console.error('❌ Error calling cloud function for verification:', cloudFunctionError);
@@ -521,7 +540,7 @@ export async function POST(request: NextRequest) {
               }
               
               // Format collection date
-              const collectionDate = fast2SMSService.formatDateForSMS(new Date());
+              const collectionDate = Fast2SMSService.formatDateForSMS(new Date());
               
               // Send SMS to retailer
               if (retailerUser.phone) {
@@ -533,7 +552,8 @@ export async function POST(request: NextRequest) {
                     lineWorkerName,
                     retailerName: retailerUser.name || 'Retailer',
                     retailerArea,
-                    collectionDate
+                    collectionDate,
+                    wholesalerName: lineWorkerData.wholesalerName || 'Wholesaler'
                   }
                 );
                 
@@ -556,7 +576,8 @@ export async function POST(request: NextRequest) {
                         lineWorkerName,
                         retailerName: retailerUser.name || 'Retailer',
                         retailerArea,
-                        collectionDate
+                        collectionDate,
+                        wholesalerName: wholesalerData.displayName || 'Wholesaler'
                       }
                     );
                     

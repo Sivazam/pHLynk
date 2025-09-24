@@ -36,7 +36,7 @@ export class Fast2SMSService {
     phoneNumber: string,
     templateType: 'retailer' | 'wholesaler',
     variables: SMSVariables
-  ): Promise<{ success: boolean; message: string; error?: string }> {
+  ): Promise<{ success: boolean; message: string; error?: string; requestId?: string }> {
     try {
       // Format phone number (remove +91 if present, Fast2SMS expects 10-digit)
       const formattedPhone = phoneNumber.startsWith('+91') 
@@ -149,7 +149,7 @@ export class Fast2SMSService {
   async sendSecurityAlertSMS(
     phoneNumber: string,
     lineWorkerName: string
-  ): Promise<{ success: boolean; message: string; error?: string }> {
+  ): Promise<{ success: boolean; message: string; error?: string; requestId?: string }> {
     try {
       // Format phone number
       const formattedPhone = phoneNumber.startsWith('+91') 

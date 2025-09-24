@@ -45,7 +45,7 @@ export class PushNotificationService {
       
       const subscription = await this.registration.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: this.urlBase64ToUint8Array(publicVapidKey)
+        applicationServerKey: this.urlBase64ToUint8Array(publicVapidKey) as BufferSource
       });
 
       this.subscription = subscription;
@@ -115,16 +115,19 @@ export class PushNotificationService {
         badge: '/icon-96x96.png',
         tag: `otp-${otpData.paymentId}`,
         requireInteraction: true,
-        actions: [
-          {
-            action: 'view',
-            title: 'View OTP'
-          },
-          {
-            action: 'dismiss',
-            title: 'Dismiss'
-          }
-        ]
+        // Add actions if supported
+        ...(typeof Notification !== 'undefined' && 'actions' in Notification.prototype && {
+          actions: [
+            {
+              action: 'view',
+              title: 'View OTP'
+            },
+            {
+              action: 'dismiss',
+              title: 'Dismiss'
+            }
+          ]
+        })
       });
 
       // Handle notification click
@@ -216,14 +219,9 @@ export class PushNotificationService {
       .replace(/-/g, '+')
       .replace(/_/g, '/');
 
-    const rawData = window.atob(base64);
-    const outputArray = new Uint8Array(rawData.length);
-
-    for (let i = 0; i < rawData.length; ++i) {
-      outputArray[i] = rawData.charCodeAt(i);
-    }
-
-    return outputArray;
+    // Use Buffer for Node.js compatibility
+    const rawData = Buffer.from(base64, 'base64');
+    return new Uint8Array(rawData);
   }
 }
 

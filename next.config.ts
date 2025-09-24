@@ -112,6 +112,16 @@ const nextConfig: NextConfig = {
   generateBuildId: async () => {
     return 'pharmalynk-' + Date.now();
   },
+  // Webpack configuration to exclude Firebase Functions
+  webpack: (config, { dev, isServer, defaultLoaders }) => {
+    // Exclude the functions directory from being processed by Next.js
+    config.module.rules.push({
+      test: /functions\/.*\.(ts|js)$/,
+      use: 'ignore-loader'
+    });
+    
+    return config;
+  },
   // Experimental features for better PWA support
   experimental: {
     optimizeCss: true,

@@ -15,7 +15,8 @@ async function getPaymentWithCorrectTenant(paymentId: string) {
     // If not found with 'system', try to get the payment document directly without tenantId checking
     console.log('🔍 Not found with system tenant, trying direct document access...');
     try {
-      const { doc, getDoc, db } = await import('@/lib/firebase');
+      const { doc, getDoc } = await import('firebase/firestore');
+      const { db } = await import('@/lib/firebase');
       const paymentRef = doc(db, 'payments', paymentId);
       const paymentDoc = await getDoc(paymentRef);
       

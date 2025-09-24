@@ -721,6 +721,28 @@ export class RetailerService extends FirestoreService<Retailer> {
     }
   }
 
+  async removeOTPFromRetailer(retailerId: string, tenantId: string, paymentId: string): Promise<void> {
+    try {
+      const retailer = await this.getById(retailerId, tenantId);
+      if (!retailer || !retailer.activeOTPs) {
+        return;
+      }
+
+      // Remove the OTP from the activeOTPs array
+      const updatedOTPs = retailer.activeOTPs.filter(otp => otp.paymentId !== paymentId);
+
+      // Update retailer document
+      await this.update(retailerId, {
+        activeOTPs: updatedOTPs
+      }, tenantId);
+
+      logger.success(`OTP completely removed from retailer ${retailerId} payment ${paymentId}`, { context: 'OTPService' });
+    } catch (error) {
+      logger.error('Error removing OTP from retailer', error, { context: 'OTPService' });
+      throw error;
+    }
+  }
+
   async cleanupExpiredOTPsInRetailer(retailerId: string, tenantId: string): Promise<void> {
     try {
       const retailer = await this.getById(retailerId, tenantId);
