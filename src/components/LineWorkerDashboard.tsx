@@ -495,11 +495,26 @@ export function LineWorkerDashboard() {
 
       if (!response.ok) {
         const errorData = await response.json();
+        
+        // Handle active OTP case specifically
+        if (errorData.activeOTP && errorData.timeRemaining) {
+          const minutes = Math.floor(errorData.timeRemaining / 60);
+          const seconds = errorData.timeRemaining % 60;
+          const timeString = minutes > 0 
+            ? `${minutes} minute${minutes > 1 ? 's' : ''} and ${seconds} second${seconds !== 1 ? 's' : ''}`
+            : `${seconds} second${seconds !== 1 ? 's' : ''}`;
+          
+          throw new Error(`Active OTP already exists. Please wait ${timeString} for the current OTP to expire.`);
+        }
+        
         throw new Error(errorData.error || 'Failed to resend OTP');
       }
 
       const otpResult = await response.json();
       console.log('✅ OTP resent successfully:', otpResult);
+      
+      // Show success message
+      alert('OTP has been resent successfully!');
     } catch (error: any) {
       console.error('❌ Error resending OTP:', error);
       throw error;
@@ -801,7 +816,7 @@ Thank you for your payment!
                         )}
                         <div className="flex items-center gap-2">
                           <Store className="h-4 w-4 text-gray-400 flex-shrink-0" />
-                          <span>{getAreaName(retailer.areaId)}</span>
+                          <span>{getAreaName(retailer.areaId || '')}</span>
                         </div>
                       </div>
                     </div>
@@ -864,7 +879,7 @@ Thank you for your payment!
                           
                           <div>
                             <Label className="text-sm font-medium text-gray-700">Service Area</Label>
-                            <p className="text-sm text-gray-600 mt-1">{getAreaName(retailer.areaId)}</p>
+                            <p className="text-sm text-gray-600 mt-1">{getAreaName(retailer.areaId || '')}</p>
                           </div>
                           
                           {retailer.zipcodes && retailer.zipcodes.length > 0 && (
@@ -1415,8 +1430,6 @@ Thank you for your payment!
           )}
         </DialogContent>
       </Dialog>
-
-  
     </div>
   );
 }

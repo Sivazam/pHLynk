@@ -2,6 +2,7 @@ import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
+import { getFunctions, connectFunctionsEmulator } from "firebase/functions";
 
 const firebaseConfig = {
   apiKey: "AIzaSyAiuROMuOXyBTQ2tAn_7lCk8qBsKLcKBds",
@@ -37,6 +38,19 @@ export const db = getFirestore(app);
 
 // Initialize Firebase Storage and get a reference to the service
 export const storage = getStorage(app);
+
+// Initialize Firebase Functions and get a reference to the service
+export const functions = getFunctions(app);
+
+// Connect to emulator in development (optional - remove for production)
+if (process.env.NODE_ENV === 'development') {
+  try {
+    connectFunctionsEmulator(functions, 'localhost', 5001);
+    console.log('🔧 Connected to Firebase Functions emulator');
+  } catch (error) {
+    console.log('⚠️ Could not connect to Functions emulator, using production functions');
+  }
+}
 
 // Collection names
 export const COLLECTIONS = {

@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { otpStore, cleanupExpiredOTPs, removeActiveOTP, addCompletedPayment } from '@/lib/otp-store';
-import { doc, getDoc, updateDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { otpStore, cleanupExpiredOTPs, removeActiveOTP, addCompletedPayment, checkSecurityLimits, recordFailedAttempt, resetSecurityTracking, getSecurityStatus } from '@/lib/otp-store';
+import { doc, getDoc, updateDoc, collection, query, where, getDocs, Timestamp, writeBatch } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { RetailerAuthService } from '@/services/retailer-auth';
 import { retailerService, paymentService } from '@/services/firestore';
+import { fast2SMSService } from '@/services/fast2sms-service';
+import { pushNotificationService } from '@/services/push-notification-service';
 import { Retailer } from '@/types';
 import { logger } from '@/lib/logger';
+import { getFunctions, httpsCallable } from 'firebase/functions';
+import { functions } from '@/lib/firebase';
 
 interface OTPVerifyRequest {
   paymentId: string;
@@ -78,6 +82,19 @@ export async function POST(request: NextRequest) {
     // Clean up expired OTPs first
     cleanupExpiredOTPs();
 
+    // Check security limits before proceeding
+    const securityCheck = checkSecurityLimits(paymentId);
+    if (!securityCheck.canAttempt) {
+      console.log('🚫 Security limits exceeded:', securityCheck);
+      return NextResponse.json(
+        { 
+          error: securityCheck.message || 'Access denied due to security limits',
+          securityStatus: getSecurityStatus(paymentId)
+        },
+        { status: 400 }
+      );
+    }
+
     // Get OTP from in-memory store first
     let otpData = otpStore.get(paymentId);
     logger.debug('OTP found in in-memory store', otpData ? 'YES' : 'NO', { context: 'OTPVerifyAPI' });
@@ -136,16 +153,33 @@ export async function POST(request: NextRequest) {
                 expiresAt: retailerOTP.expiresAt.toDate(),
                 isUsed: retailerOTP.isUsed
               });
-              // Convert retailer OTP to in-memory format
+              
+              // Check if we already have security tracking for this payment
+              const existingSecurityData = otpStore.get(paymentId);
+              const existingAttempts = existingSecurityData ? existingSecurityData.attempts : 0;
+              const existingConsecutiveFailures = existingSecurityData ? existingSecurityData.consecutiveFailures : 0;
+              
+              // Convert retailer OTP to in-memory format, preserving existing security data
               otpData = {
                 code: retailerOTP.code,
                 expiresAt: retailerOTP.expiresAt.toDate(),
-                attempts: 0 // Retailer OTPs don't have attempt tracking
+                attempts: existingAttempts, // Preserve existing attempts
+                lastAttemptAt: existingSecurityData?.lastAttemptAt || null,
+                cooldownUntil: existingSecurityData?.cooldownUntil || null,
+                consecutiveFailures: existingConsecutiveFailures, // Preserve consecutive failures
+                breachDetected: existingSecurityData?.breachDetected || false
               };
+              
+              // Update the in-memory store with the preserved data
+              otpStore.set(paymentId, otpData);
+              
               console.log('🔍 Found OTP in retailer document, converted to memory format:', {
                 code: otpData.code,
                 expiresAt: otpData.expiresAt.toISOString(),
-                attempts: otpData.attempts
+                attempts: otpData.attempts,
+                consecutiveFailures: otpData.consecutiveFailures,
+                breachDetected: otpData.breachDetected,
+                inCooldown: otpData.cooldownUntil ? otpData.cooldownUntil > new Date() : false
               });
             } else {
               console.log('❌ OTP not found in retailer OTPs array');
@@ -198,8 +232,15 @@ export async function POST(request: NextRequest) {
     // Check attempts
     if (otpData.attempts >= 3) {
       otpStore.delete(paymentId);
+      const securityStatus = getSecurityStatus(paymentId);
+      console.log('🚫 Maximum attempts reached for payment:', paymentId);
       return NextResponse.json(
-        { error: 'Too many failed attempts. Please request a new OTP.' },
+        { 
+          error: 'Too many failed attempts. Please request a new OTP.',
+          remainingAttempts: 0,
+          securityStatus,
+          maxAttemptsReached: true
+        },
         { status: 400 }
       );
     }
@@ -212,6 +253,30 @@ export async function POST(request: NextRequest) {
     
     if (otpData.code === otp) {
       console.log('✅ OTP verification successful!');
+      
+      // Use Cloud Function to verify OTP (more secure)
+      try {
+        const verifyOTPFunction = httpsCallable(functions, 'verifyOTP');
+        const cloudResult = await verifyOTPFunction({
+          paymentId,
+          otp
+        });
+
+        console.log('🔐 Cloud Function verification result:', cloudResult.data);
+
+        if (cloudResult.data && cloudResult.data.success) {
+          console.log('✅ OTP verified successfully via cloud function');
+        } else {
+          console.log('⚠️ Cloud function verification failed, continuing with local verification');
+          // Continue with local verification if cloud function fails
+        }
+      } catch (cloudFunctionError) {
+        console.error('❌ Error calling cloud function for verification:', cloudFunctionError);
+        console.log('⚠️ Continuing with local verification');
+      }
+      
+      // Reset security tracking on successful verification
+      resetSecurityTracking(paymentId);
       
       // Update payment state to COMPLETED using PaymentService
       try {
@@ -231,8 +296,8 @@ export async function POST(request: NextRequest) {
             await paymentService.updatePaymentState(paymentId, tenantId, 'COMPLETED', {
               timeline: {
                 ...payment.timeline,
-                completedAt: Timestamp.now(),
-                verifiedAt: Timestamp.now()
+                completedAt: Timestamp.fromDate(new Date()),
+                verifiedAt: Timestamp.fromDate(new Date())
               }
             });
             console.log('✅ Payment state updated to COMPLETED using PaymentService');
@@ -241,8 +306,8 @@ export async function POST(request: NextRequest) {
             const paymentRef = doc(db, 'payments', paymentId);
             await updateDoc(paymentRef, {
               state: 'COMPLETED',
-              'timeline.completedAt': new Date(),
-              'timeline.verifiedAt': new Date(),
+              'timeline.completedAt': Timestamp.fromDate(new Date()),
+              'timeline.verifiedAt': Timestamp.fromDate(new Date()),
               updatedAt: new Date()
             });
             console.log('✅ Payment state updated to COMPLETED (direct fallback)');
@@ -255,7 +320,7 @@ export async function POST(request: NextRequest) {
         // Don't fail the verification if payment update fails
       }
       
-      // Mark OTP as used in retailer document
+      // Mark OTP as used in retailer document AND REMOVE IT
       try {
         // First, get the payment to find the retailerId and tenantId
         const payment = await getPaymentWithCorrectTenant(paymentId);
@@ -264,16 +329,16 @@ export async function POST(request: NextRequest) {
           // Get retailer user to get tenantId
           const retailerUser = await RetailerAuthService.getRetailerUserByRetailerId(payment.retailerId);
           if (retailerUser && retailerUser.tenantId) {
-            await retailerService.markOTPAsUsedInRetailer(payment.retailerId, retailerUser.tenantId, paymentId);
-            console.log('✅ OTP marked as used in retailer document');
+            await retailerService.removeOTPFromRetailer(payment.retailerId, retailerUser.tenantId, paymentId);
+            console.log('✅ OTP completely removed from retailer document');
           } else {
-            console.log('⚠️ Retailer user not found or missing tenantId, cannot mark OTP as used');
+            console.log('⚠️ Retailer user not found or missing tenantId, cannot remove OTP');
           }
         } else {
-          console.log('⚠️ Payment or retailerId not found, cannot mark OTP as used');
+          console.log('⚠️ Payment or retailerId not found, cannot remove OTP');
         }
       } catch (firestoreError) {
-        console.error('❌ Error marking OTP as used in retailer document:', firestoreError);
+        console.error('❌ Error removing OTP from retailer document:', firestoreError);
         // Don't fail the verification if retailer document update fails
       }
       
@@ -310,14 +375,14 @@ export async function POST(request: NextRequest) {
                   const retailerData = retailerDoc.data() as Retailer;
                   console.log('🏪 Retailer data found:', retailerData);
                   
-                  // Calculate remaining outstanding amount
-                  const currentOutstanding = retailerData.currentOutstanding || 0;
+                  // Since invoices are removed, outstanding is always 0
+                  const currentOutstanding = 0;
                   remainingOutstanding = Math.max(0, currentOutstanding - paymentData.totalPaid);
                   
                   // Update the retailer's outstanding amount in Firestore
                   await updateDoc(retailerRef, {
                     currentOutstanding: remainingOutstanding,
-                    updatedAt: new Date()
+                    updatedAt: Timestamp.fromDate(new Date())
                   });
                   console.log('✅ Updated retailer outstanding amount to:', remainingOutstanding);
                 } else {
@@ -342,6 +407,25 @@ export async function POST(request: NextRequest) {
               });
               
               console.log('✅ Added completed payment notification for retailer:', paymentData.retailerId);
+              
+              // Send PWA push notification for payment completion
+              try {
+                const paymentNotificationSent = await pushNotificationService.sendPaymentCompletedNotification({
+                  amount: paymentData.totalPaid,
+                  paymentId: paymentId,
+                  retailerName: retailerUser.name || 'Retailer',
+                  lineWorkerName: lineWorkerData.name || 'Line Worker'
+                });
+                
+                if (paymentNotificationSent) {
+                  console.log('📱 PWA payment completion notification sent successfully');
+                } else {
+                  console.log('⚠️ PWA payment completion notification failed');
+                }
+              } catch (notificationError) {
+                console.error('❌ Error sending PWA payment completion notification:', notificationError);
+                // Don't fail the verification if notification fails
+              }
             } else {
               console.log('❌ Line worker data not found');
               // Still remove active OTP and add basic notification
@@ -353,6 +437,18 @@ export async function POST(request: NextRequest) {
                 lineWorkerName: 'Line Worker',
                 remainingOutstanding: 0
               });
+              
+              // Send PWA notification for fallback case
+              try {
+                await pushNotificationService.sendPaymentCompletedNotification({
+                  amount: paymentData.totalPaid,
+                  paymentId: paymentId,
+                  retailerName: 'Retailer',
+                  lineWorkerName: 'Line Worker'
+                });
+              } catch (notificationError) {
+                console.error('❌ Error sending fallback PWA notification:', notificationError);
+              }
             }
           } else {
             console.log('❌ Retailer user data not found');
@@ -365,6 +461,18 @@ export async function POST(request: NextRequest) {
               lineWorkerName: 'Line Worker',
               remainingOutstanding: 0
             });
+            
+            // Send PWA notification for fallback case
+            try {
+              await pushNotificationService.sendPaymentCompletedNotification({
+                amount: paymentData.totalPaid,
+                paymentId: paymentId,
+                retailerName: 'Retailer',
+                lineWorkerName: 'Line Worker'
+              });
+            } catch (notificationError) {
+              console.error('❌ Error sending fallback PWA notification:', notificationError);
+            }
           }
         } else {
           console.log('❌ Payment data not found');
@@ -383,6 +491,87 @@ export async function POST(request: NextRequest) {
         console.log('🗑️ Removed OTP from in-memory store');
       }
       
+      // Comprehensive OTP cleanup - remove from all locations
+      await comprehensiveOTPCleanup(paymentId);
+      
+      // Send payment confirmation SMS to both retailer and wholesaler
+      try {
+        const payment = await getPaymentWithCorrectTenant(paymentId);
+        if (payment) {
+          // Get retailer user details
+          const retailerUser = await RetailerAuthService.getRetailerUserByRetailerId(payment.retailerId);
+          
+          if (retailerUser) {
+            // Get line worker details
+            const lineWorkerRef = doc(db, 'users', payment.lineWorkerId);
+            const lineWorkerDoc = await getDoc(lineWorkerRef);
+            
+            if (lineWorkerDoc.exists()) {
+              const lineWorkerData = lineWorkerDoc.data();
+              const lineWorkerName = lineWorkerData.name || 'Line Worker';
+              
+              // Get retailer details for area information
+              const retailerRef = doc(db, 'retailers', payment.retailerId);
+              const retailerDoc = await getDoc(retailerRef);
+              
+              let retailerArea = 'Unknown Area';
+              if (retailerDoc.exists()) {
+                const retailerData = retailerDoc.data();
+                retailerArea = retailerData.areaName || 'Unknown Area';
+              }
+              
+              // Format collection date
+              const collectionDate = fast2SMSService.formatDateForSMS(new Date());
+              
+              // Send SMS to retailer
+              if (retailerUser.phone) {
+                const retailerSMSResult = await fast2SMSService.sendPaymentConfirmationSMS(
+                  retailerUser.phone,
+                  'retailer',
+                  {
+                    amount: payment.totalPaid.toString(),
+                    lineWorkerName,
+                    retailerName: retailerUser.name || 'Retailer',
+                    retailerArea,
+                    collectionDate
+                  }
+                );
+                
+                console.log('📱 Retailer confirmation SMS result:', retailerSMSResult);
+              }
+              
+              // Send SMS to wholesaler
+              if (lineWorkerData.wholesalerId) {
+                const wholesalerRef = doc(db, 'users', lineWorkerData.wholesalerId);
+                const wholesalerDoc = await getDoc(wholesalerRef);
+                
+                if (wholesalerDoc.exists()) {
+                  const wholesalerData = wholesalerDoc.data();
+                  if (wholesalerData.phone) {
+                    const wholesalerSMSResult = await fast2SMSService.sendPaymentConfirmationSMS(
+                      wholesalerData.phone,
+                      'wholesaler',
+                      {
+                        amount: payment.totalPaid.toString(),
+                        lineWorkerName,
+                        retailerName: retailerUser.name || 'Retailer',
+                        retailerArea,
+                        collectionDate
+                      }
+                    );
+                    
+                    console.log('📱 Wholesaler confirmation SMS result:', wholesalerSMSResult);
+                  }
+                }
+              }
+            }
+          }
+        }
+      } catch (smsError) {
+        console.error('❌ Error sending payment confirmation SMS:', smsError);
+        // Don't fail the verification if SMS sending fails
+      }
+      
       return NextResponse.json({
         success: true,
         message: 'OTP verified successfully',
@@ -390,25 +579,92 @@ export async function POST(request: NextRequest) {
       });
     } else {
       console.log('❌ OTP verification failed!');
+      console.log('🔍 Before recording attempt - Current attempts:', otpData.attempts);
       
-      // Only increment attempts if OTP came from in-memory store
-      if (otpStore.has(paymentId)) {
-        otpData.attempts++;
-        // Update the store
-        otpStore.set(paymentId, otpData);
-        console.log(`🔢 Incremented attempts to ${otpData.attempts} for in-memory OTP`);
-      } else {
-        // For Firestore OTPs, we don't track attempts, so we'll allow unlimited attempts
-        // or implement a different strategy if needed
-        console.log('🔢 OTP from Firestore, no attempt tracking implemented');
+      // Record failed attempt and check security limits
+      const failureResult = recordFailedAttempt(paymentId);
+      
+      console.log('📊 Failed attempt recorded:', failureResult);
+      console.log('🔍 After recording attempt - Updated attempts:', otpStore.get(paymentId)?.attempts);
+      
+      // Get updated security status
+      const securityStatus = getSecurityStatus(paymentId);
+      console.log('🔍 Updated security status:', securityStatus);
+      
+      // If breach detected, send security alert to wholesaler
+      if (failureResult.breachDetected) {
+        console.log('🚨 BREACH DETECTED - Sending security alert');
+        try {
+          // Get payment details to find wholesaler
+          const payment = await getPaymentWithCorrectTenant(paymentId);
+          if (payment && payment.lineWorkerId) {
+            // Get line worker details
+            const lineWorkerRef = doc(db, 'users', payment.lineWorkerId);
+            const lineWorkerDoc = await getDoc(lineWorkerRef);
+            
+            if (lineWorkerDoc.exists()) {
+              const lineWorkerData = lineWorkerDoc.data();
+              const lineWorkerName = lineWorkerData.name || 'Line Worker';
+              
+              // Get wholesaler info (assuming line worker has wholesalerId field)
+              if (lineWorkerData.wholesalerId) {
+                const wholesalerRef = doc(db, 'users', lineWorkerData.wholesalerId);
+                const wholesalerDoc = await getDoc(wholesalerRef);
+                
+                if (wholesalerDoc.exists()) {
+                  const wholesalerData = wholesalerDoc.data();
+                  if (wholesalerData.phone) {
+                    // Send security alert to wholesaler
+                    const alertResult = await fast2SMSService.sendSecurityAlertSMS(
+                      wholesalerData.phone,
+                      lineWorkerName
+                    );
+                    
+                    console.log('🚨 Security alert sent to wholesaler:', alertResult);
+                  }
+                }
+              }
+            }
+          }
+        } catch (error) {
+          console.error('❌ Error sending security alert:', error);
+        }
       }
       
-      const remainingAttempts = otpStore.has(paymentId) ? 3 - otpData.attempts : 'unlimited';
+      // Calculate remaining attempts
+      const remainingAttempts = Math.max(0, 3 - securityStatus.attempts);
+      
+      // Construct appropriate error message
+      let errorMessage = failureResult.message || `Invalid OTP. ${remainingAttempts} attempts remaining.`;
+      
+      // Add cooldown information if applicable
+      if (securityStatus.inCooldown && securityStatus.cooldownTime) {
+        const cooldownMinutes = Math.floor(securityStatus.cooldownTime / 60);
+        const cooldownSeconds = securityStatus.cooldownTime % 60;
+        errorMessage = failureResult.message || `Too many attempts. Please wait ${cooldownMinutes}:${cooldownSeconds.toString().padStart(2, '0')} before trying again.`;
+      }
+      
+      // Add breach detection message
+      if (failureResult.breachDetected) {
+        errorMessage = failureResult.message || 'Security breach detected. Wholesaler has been notified.';
+      }
+      
+      console.log('📤 Returning error response:', {
+        error: errorMessage,
+        remainingAttempts,
+        securityStatus,
+        breachDetected: failureResult.breachDetected,
+        cooldownTriggered: failureResult.cooldownTriggered
+      });
       
       return NextResponse.json(
         { 
-          error: `Invalid OTP. ${remainingAttempts === 'unlimited' ? 'Please try again.' : `${remainingAttempts} attempts remaining.`}`,
-          remainingAttempts 
+          error: errorMessage,
+          securityStatus,
+          remainingAttempts,
+          breachDetected: failureResult.breachDetected,
+          cooldownTriggered: failureResult.cooldownTriggered,
+          maxAttemptsReached: remainingAttempts === 0
         },
         { status: 400 }
       );
@@ -420,5 +676,61 @@ export async function POST(request: NextRequest) {
       { error: 'Internal server error' },
       { status: 500 }
     );
+  }
+}
+
+// Comprehensive OTP cleanup function
+async function comprehensiveOTPCleanup(paymentId: string) {
+  console.log('🧹 Starting comprehensive OTP cleanup for payment:', paymentId);
+  
+  try {
+    // 1. Remove from in-memory store
+    if (otpStore.has(paymentId)) {
+      otpStore.delete(paymentId);
+      console.log('✅ Removed OTP from in-memory store');
+    }
+    
+    // 2. Remove from active OTPs display
+    removeActiveOTP(paymentId);
+    console.log('✅ Removed OTP from active display');
+    
+    // 3. Remove from retailer document in Firestore
+    try {
+      const payment = await getPaymentWithCorrectTenant(paymentId);
+      if (payment && payment.retailerId) {
+        const retailerUser = await RetailerAuthService.getRetailerUserByRetailerId(payment.retailerId);
+        if (retailerUser && retailerUser.tenantId) {
+          await retailerService.removeOTPFromRetailer(payment.retailerId, retailerUser.tenantId, paymentId);
+          console.log('✅ Removed OTP from retailer document');
+        }
+      }
+    } catch (firestoreError) {
+      console.error('❌ Error removing OTP from retailer document:', firestoreError);
+    }
+    
+    // 4. Remove from dedicated OTPs collection in Firestore (if cloud function didn't already)
+    try {
+      const otpsQuery = query(
+        collection(db, 'otps'),
+        where('paymentId', '==', paymentId)
+      );
+      const otpsSnapshot = await getDocs(otpsQuery);
+      
+      if (!otpsSnapshot.empty) {
+        const batch = writeBatch(db);
+        otpsSnapshot.docs.forEach(doc => {
+          batch.delete(doc.ref);
+        });
+        await batch.commit();
+        console.log(`✅ Removed ${otpsSnapshot.size} OTP documents from Firestore collection`);
+      }
+    } catch (collectionError) {
+      console.error('❌ Error removing OTP from Firestore collection:', collectionError);
+    }
+    
+    console.log('🎉 Comprehensive OTP cleanup completed for payment:', paymentId);
+    
+  } catch (error) {
+    console.error('❌ Error during comprehensive OTP cleanup:', error);
   }
 }

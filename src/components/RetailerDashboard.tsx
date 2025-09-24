@@ -73,6 +73,7 @@ export function RetailerDashboard() {
     completedAt: Date;
   }>>([]);
   const [showOTPPopup, setShowOTPPopup] = useState(false);
+  const [otpCountdowns, setOtpCountdowns] = useState<Map<string, number>>(new Map());
   const [showSettlementPopup, setShowSettlementPopup] = useState(false);
   const [newPayment, setNewPayment] = useState<Payment | null>(null);
   const [newCompletedPayment, setNewCompletedPayment] = useState<{
@@ -236,6 +237,23 @@ export function RetailerDashboard() {
       loadAdditionalData();
     }
   }, [payments]);
+
+  // Countdown timer for OTPs
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = new Date();
+      const newCountdowns = new Map<string, number>();
+      
+      activeOTPs.forEach(otp => {
+        const timeLeft = Math.max(0, Math.floor((otp.expiresAt.getTime() - now.getTime()) / 1000));
+        newCountdowns.set(otp.paymentId, timeLeft);
+      });
+      
+      setOtpCountdowns(newCountdowns);
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [activeOTPs]);
 
   const fetchRetailerData = async (retailerId: string) => {
     setError(null);
@@ -442,6 +460,20 @@ export function RetailerDashboard() {
     } catch (error) {
       console.error('Error verifying OTP:', error);
       alert('Failed to verify OTP. Please try again.');
+    }
+  };
+
+  // Format countdown time
+  const formatCountdown = (seconds: number): string => {
+    if (seconds <= 0) return 'Expired';
+    
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    
+    if (minutes > 0) {
+      return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+    } else {
+      return `${remainingSeconds}s`;
     }
   };
 
@@ -901,30 +933,60 @@ Thank you for your payment!
 
       {/* OTP Verification Popup */}
       <Dialog open={showOTPPopup} onOpenChange={setShowOTPPopup}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Verify Payment OTP</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <div className="bg-blue-100 p-2 rounded-full">
+                <Bell className="h-5 w-5 text-blue-600" />
+              </div>
+              Payment Verification Required
+            </DialogTitle>
             <DialogDescription>
-              A line worker is requesting payment verification
+              A line worker is requesting payment verification. Please confirm the OTP below.
             </DialogDescription>
           </DialogHeader>
           {newPayment && (
             <div className="space-y-4">
-              <div className="bg-blue-50 p-4 rounded-lg">
-                <div className="flex justify-between items-center mb-2">
-                  <span className="font-medium">Amount:</span>
-                  <span className="font-bold text-blue-600">{formatCurrency(newPayment.totalPaid)}</span>
-                </div>
-                <div className="flex justify-between items-center mb-2">
-                  <span className="font-medium">Line Worker:</span>
-                  <span className="font-medium">{newPayment.retailerName}</span>
-                </div>
+              {/* Countdown Timer */}
+              <div className="bg-gradient-to-r from-blue-500 to-purple-600 text-white p-4 rounded-lg">
                 <div className="flex justify-between items-center">
-                  <span className="font-medium">OTP Code:</span>
-                  <span className="font-bold text-blue-600 text-lg">{activeOTPs.find(otp => otp.paymentId === newPayment.id)?.code}</span>
+                  <div>
+                    <div className="text-sm opacity-90">OTP Expires In</div>
+                    <div className="text-2xl font-bold">
+                      {formatCountdown(otpCountdowns.get(newPayment.id) || 0)}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-sm opacity-90">Amount</div>
+                    <div className="text-xl font-bold">{formatCurrency(newPayment.totalPaid)}</div>
+                  </div>
                 </div>
               </div>
               
+              {/* OTP Code Display */}
+              <div className="bg-gray-50 border-2 border-dashed border-gray-300 p-6 rounded-lg text-center">
+                <div className="text-sm text-gray-600 mb-2">Your OTP Code</div>
+                <div className="text-4xl font-mono font-bold text-blue-600 tracking-wider">
+                  {activeOTPs.find(otp => otp.paymentId === newPayment.id)?.code}
+                </div>
+                <div className="text-xs text-gray-500 mt-2">
+                  Do not share this OTP with anyone
+                </div>
+              </div>
+              
+              {/* Payment Details */}
+              <div className="bg-blue-50 p-4 rounded-lg space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="font-medium text-gray-700">Line Worker:</span>
+                  <span className="font-medium">{newPayment.retailerName}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="font-medium text-gray-700">Payment ID:</span>
+                  <span className="font-mono text-sm">{newPayment.id}</span>
+                </div>
+              </div>
+              
+              {/* Action Buttons */}
               <div className="flex space-x-2">
                 <Button
                   variant="outline"
@@ -940,9 +1002,9 @@ Thank you for your payment!
                       handleVerifyOTP(otp, newPayment.id);
                     }
                   }}
-                  className="flex-1"
+                  className="flex-1 bg-blue-600 hover:bg-blue-700"
                 >
-                  Verify & Confirm
+                  Verify & Confirm Payment
                 </Button>
               </div>
             </div>

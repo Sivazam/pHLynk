@@ -43,8 +43,17 @@ export const OTPEnterForm: React.FC<OTPEnterFormProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [showSuccess, setShowSuccess] = useState(false);
   const [triggerConfetti, setTriggerConfetti] = useState(false);
-  const [timeLeft, setTimeLeft] = useState<number>(600); // 10 minutes in seconds
+  const [timeLeft, setTimeLeft] = useState<number>(420); // 7 minutes in seconds (420 seconds)
   const [canResend, setCanResend] = useState(false);
+  const [remainingAttempts, setRemainingAttempts] = useState<number>(3);
+  const [securityStatus, setSecurityStatus] = useState<{
+    attempts: number;
+    consecutiveFailures: number;
+    breachDetected: boolean;
+    inCooldown: boolean;
+    cooldownTime?: number;
+  } | null>(null);
+  const [cooldownTimeLeft, setCooldownTimeLeft] = useState<number>(0);
 
   // Countdown timer for OTP expiration
   useEffect(() => {
@@ -67,6 +76,80 @@ export const OTPEnterForm: React.FC<OTPEnterFormProps> = ({
     return () => clearInterval(timer);
   }, [timeLeft]);
 
+  // Fetch security status on component mount and periodically
+  useEffect(() => {
+    const fetchSecurityStatus = async () => {
+      try {
+        const response = await fetch(`/api/otp/security-status?paymentId=${payment.id}`, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        });
+        
+        if (response.ok) {
+          const status = await response.json();
+          setSecurityStatus(status);
+          setRemainingAttempts(Math.max(0, 3 - status.attempts));
+          
+          // Update cooldown time left
+          if (status.inCooldown && status.cooldownTime) {
+            setCooldownTimeLeft(status.cooldownTime);
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching security status:', error);
+      }
+    };
+
+    // Fetch immediately
+    fetchSecurityStatus();
+    
+    // Fetch every 2 seconds
+    const interval = setInterval(fetchSecurityStatus, 2000);
+    
+    return () => clearInterval(interval);
+  }, [payment.id]);
+
+  // Cooldown timer
+  useEffect(() => {
+    if (cooldownTimeLeft <= 0) {
+      return;
+    }
+
+    const timer = setInterval(() => {
+      setCooldownTimeLeft(prev => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          // Refresh security status when cooldown expires
+          const fetchSecurityStatus = async () => {
+            try {
+              const response = await fetch(`/api/otp/security-status?paymentId=${payment.id}`, {
+                method: 'GET',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+              });
+              
+              if (response.ok) {
+                const status = await response.json();
+                setSecurityStatus(status);
+                setRemainingAttempts(Math.max(0, 3 - status.attempts));
+              }
+            } catch (error) {
+              console.error('Error refreshing security status:', error);
+            }
+          };
+          fetchSecurityStatus();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [cooldownTimeLeft, payment.id]);
+
   const formatTime = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
@@ -74,8 +157,8 @@ export const OTPEnterForm: React.FC<OTPEnterFormProps> = ({
   };
 
   const handleOTPChange = (value: string) => {
-    // Only allow numbers and limit to 6 digits
-    if (/^\d{0,6}$/.test(value)) {
+    // Only allow alphanumeric characters and limit to 6 characters
+    if (/^[a-zA-Z0-9]{0,6}$/.test(value)) {
       setOTP(value);
       if (error) setError(null);
     }
@@ -83,7 +166,27 @@ export const OTPEnterForm: React.FC<OTPEnterFormProps> = ({
 
   const handleVerifyOTP = useCallback(async () => {
     if (!otp || otp.length !== 6) {
-      setError('Please enter a valid 6-digit OTP');
+      setError('Please enter a valid 6-character alphanumeric OTP');
+      return;
+    }
+
+    // Check if in cooldown
+    if (securityStatus?.inCooldown) {
+      const cooldownMinutes = Math.floor((securityStatus.cooldownTime || 0) / 60);
+      const cooldownSeconds = (securityStatus.cooldownTime || 0) % 60;
+      setError(`Too many attempts. Please wait ${cooldownMinutes}:${cooldownSeconds.toString().padStart(2, '0')} before trying again.`);
+      return;
+    }
+
+    // Check if breach detected
+    if (securityStatus?.breachDetected) {
+      setError('Security breach detected. Please contact your wholesaler.');
+      return;
+    }
+
+    // Check remaining attempts
+    if (remainingAttempts <= 0) {
+      setError('No attempts remaining. Please request a new OTP.');
       return;
     }
 
@@ -105,6 +208,27 @@ export const OTPEnterForm: React.FC<OTPEnterFormProps> = ({
       const result = await response.json();
 
       if (!response.ok) {
+        // Update remaining attempts based on response
+        if (result.securityStatus) {
+          setSecurityStatus(result.securityStatus);
+          setRemainingAttempts(Math.max(0, 3 - result.securityStatus.attempts));
+        }
+        
+        if (result.remainingAttempts !== undefined) {
+          setRemainingAttempts(result.remainingAttempts);
+        }
+        
+        // Handle max attempts reached
+        if (result.maxAttemptsReached) {
+          setCanResend(true); // Enable resend immediately when max attempts reached
+        }
+        
+        // Handle cooldown
+        if (result.cooldownTriggered || result.securityStatus?.inCooldown) {
+          // Disable verification during cooldown
+          console.log('Cooldown triggered, disabling verification');
+        }
+        
         throw new Error(result.error || 'OTP verification failed');
       }
 
@@ -124,16 +248,19 @@ export const OTPEnterForm: React.FC<OTPEnterFormProps> = ({
       console.error('❌ Error verifying OTP:', error);
       setError(error.message || 'Failed to verify OTP. Please try again.');
     }
-  }, [otp, payment.id, onVerifySuccess]);
+  }, [otp, payment.id, onVerifySuccess, securityStatus, remainingAttempts]);
 
   const handleResendOTP = async () => {
     if (onResendOTP) {
       try {
         await onResendOTP();
-        setTimeLeft(600); // Reset timer to 10 minutes
+        setTimeLeft(420); // Reset timer to 7 minutes (420 seconds)
         setCanResend(false);
         setError(null);
         setOTP('');
+        setRemainingAttempts(3); // Reset attempts on resend
+        setSecurityStatus(null); // Reset security status
+        setCooldownTimeLeft(0); // Reset cooldown timer
       } catch (error: any) {
         setError(error.message || 'Failed to resend OTP');
       }
@@ -218,12 +345,12 @@ export const OTPEnterForm: React.FC<OTPEnterFormProps> = ({
         <CardHeader className="pb-4">
           <CardTitle className="text-lg font-semibold text-gray-900">Enter OTP</CardTitle>
           <CardDescription>
-            Enter the 6-digit OTP sent to the retailer's phone number
+            Enter the 6-character alphanumeric OTP sent to the retailer's phone number
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {/* Timer */}
-          <div className="flex items-center justify-between">
+          {/* Timer and Attempts */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div className="flex items-center gap-2">
               <Clock className="h-4 w-4 text-gray-400" />
               <span className="text-sm text-gray-600">OTP expires in:</span>
@@ -231,6 +358,15 @@ export const OTPEnterForm: React.FC<OTPEnterFormProps> = ({
                 {formatTime(timeLeft)}
               </Badge>
             </div>
+            
+            {/* Attempts Counter */}
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-600">Attempts remaining:</span>
+              <Badge variant={remainingAttempts > 1 ? "secondary" : remainingAttempts === 1 ? "outline" : "destructive"}>
+                {remainingAttempts}/3
+              </Badge>
+            </div>
+            
             {canResend && onResendOTP && (
               <Button
                 variant="outline"
@@ -252,15 +388,35 @@ export const OTPEnterForm: React.FC<OTPEnterFormProps> = ({
             </Alert>
           )}
 
+          {/* Cooldown Warning */}
+          {cooldownTimeLeft > 0 && (
+            <Alert className="border-orange-200 bg-orange-50">
+              <Clock className="h-4 w-4 text-orange-600" />
+              <AlertDescription className="text-orange-700">
+                Too many failed attempts. Please wait {Math.floor(cooldownTimeLeft / 60)}:{(cooldownTimeLeft % 60).toString().padStart(2, '0')} before trying again.
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {/* Breach Warning */}
+          {securityStatus?.breachDetected && (
+            <Alert className="border-red-200 bg-red-50">
+              <AlertCircle className="h-4 w-4 text-red-600" />
+              <AlertDescription className="text-red-700">
+                Security breach detected. Wholesaler has been notified.
+              </AlertDescription>
+            </Alert>
+          )}
+
           {/* OTP Input */}
           <div className="space-y-2">
             <Label htmlFor="otp" className="text-sm font-medium text-gray-700">
-              Enter 6-digit OTP
+              Enter 6-character alphanumeric OTP
             </Label>
             <Input
               id="otp"
               type="text"
-              placeholder="Enter 6-digit OTP"
+              placeholder="Enter 6-character OTP"
               value={otp}
               onChange={(e) => handleOTPChange(e.target.value)}
               onKeyPress={handleKeyPress}
@@ -286,7 +442,7 @@ export const OTPEnterForm: React.FC<OTPEnterFormProps> = ({
             </Button>
             <Button
               onClick={handleVerifyOTP}
-              disabled={otp.length !== 6 || verifyingOTP}
+              disabled={otp.length !== 6 || verifyingOTP || cooldownTimeLeft > 0 || remainingAttempts <= 0}
               className="h-10 px-6 min-w-[120px]"
             >
               {verifyingOTP ? (

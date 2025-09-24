@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { doc, getDoc, collection, query, where, getDocs, updateDoc, arrayUnion, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { otpStore, generateOTP, sendOTPToRetailer, cleanupExpiredOTPs, addActiveOTP } from '@/lib/otp-store';
+import { otpStore, sendOTPToRetailer, cleanupExpiredOTPs, addActiveOTP } from '@/lib/otp-store';
 import { RetailerAuthService } from '@/services/retailer-auth';
 import { retailerService } from '@/services/firestore';
 import { Timestamp as FirebaseTimestamp } from 'firebase/firestore';
+import { pushNotificationService } from '@/services/push-notification-service';
+import { getFunctions, httpsCallable } from 'firebase/functions';
+import { functions } from '@/lib/firebase';
 
 interface OTPRequest {
   retailerId: string;
@@ -25,6 +28,36 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Check if there's already an active OTP for this payment
+    const existingOTP = otpStore.get(paymentId);
+    if (existingOTP) {
+      const now = new Date();
+      const timeRemaining = Math.ceil((existingOTP.expiresAt.getTime() - now.getTime()) / 1000);
+      
+      if (timeRemaining > 0) {
+        // Format remaining time for display
+        const minutes = Math.floor(timeRemaining / 60);
+        const seconds = timeRemaining % 60;
+        const timeString = minutes > 0 
+          ? `${minutes} minute${minutes > 1 ? 's' : ''} and ${seconds} second${seconds !== 1 ? 's' : ''}`
+          : `${seconds} second${seconds !== 1 ? 's' : ''}`;
+        
+        return NextResponse.json(
+          { 
+            error: `Active OTP already exists. Please wait ${timeString} for the current OTP to expire.`,
+            activeOTP: true,
+            timeRemaining,
+            expiresAt: existingOTP.expiresAt.toISOString()
+          },
+          { status: 400 }
+        );
+      } else {
+        // OTP has expired, remove it and continue
+        otpStore.delete(paymentId);
+        console.log('🗑️ Removed expired OTP before generating new one');
+      }
+    }
+
     // Get retailer user details from retailerUsers collection
     const retailerUser = await RetailerAuthService.getRetailerUserByRetailerId(retailerId);
     
@@ -42,33 +75,70 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log('📱 OTP SEND REQUEST:');
+    console.log('📱 OTP SEND REQUEST - Using Cloud Function:');
     console.log('Retailer ID:', retailerId);
     console.log('Payment ID:', paymentId);
     console.log('Amount:', amount);
     console.log('Line Worker Name:', lineWorkerName);
     console.log('Retailer User Data:', retailerUser);
 
-    // Generate OTP
-    const otp = generateOTP();
-    console.log('🔢 Generated OTP:', otp);
-    
-    // Store OTP with 10-minute expiration
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
-    otpStore.set(paymentId, {
-      code: otp,
-      expiresAt,
-      attempts: 0
-    });
-
-    console.log('📝 OTP stored in otpStore with paymentId:', paymentId);
-
-    // Save OTP directly to retailer document for persistence
+    // Use Cloud Function to generate OTP (more secure)
+    let otpData;
     try {
-      const firestoreExpiresAt = FirebaseTimestamp.fromDate(expiresAt);
-      const otpData = {
+      const generateOTPFunction = httpsCallable(functions, 'generateOTP');
+      const result = await generateOTPFunction({
+        retailerId,
         paymentId,
+        amount,
+        lineWorkerName: lineWorkerName || 'Line Worker'
+      });
+
+      console.log('🔐 Cloud Function result:', result.data);
+
+      if (result.data && result.data.success) {
+        otpData = result.data;
+        console.log('✅ OTP generated successfully via cloud function');
+      } else {
+        throw new Error(result.data?.error || 'Failed to generate OTP via cloud function');
+      }
+    } catch (cloudFunctionError) {
+      console.error('❌ Error calling cloud function:', cloudFunctionError);
+      
+      // Fallback to local generation if cloud function fails
+      console.log('⚠️ Falling back to local OTP generation');
+      const { generateOTP } = await import('@/lib/otp-store');
+      const otp = generateOTP();
+      const expiresAt = new Date(Date.now() + 7 * 60 * 1000);
+      
+      otpData = {
+        success: true,
+        otpId: `local_${Date.now()}`,
         code: otp,
+        expiresAt: expiresAt.toISOString(),
+        retailerName: retailerUser.name,
+        retailerPhone: retailerUser.phone
+      };
+      
+      // Store OTP locally for fallback
+      otpStore.set(paymentId, {
+        code: otp,
+        expiresAt,
+        attempts: 0,
+        lastAttemptAt: null,
+        cooldownUntil: null,
+        consecutiveFailures: 0,
+        breachDetected: false
+      });
+    }
+
+    console.log('📝 OTP generated:', otpData.code);
+
+    // Save OTP directly to retailer document for persistence (if not already done by cloud function)
+    try {
+      const firestoreExpiresAt = FirebaseTimestamp.fromDate(new Date(otpData.expiresAt));
+      const otpDocumentData = {
+        paymentId,
+        code: otpData.code,
         amount,
         lineWorkerName: lineWorkerName || 'Line Worker',
         expiresAt: firestoreExpiresAt,
@@ -79,10 +149,10 @@ export async function POST(request: NextRequest) {
       console.log('🔍 Attempting to save OTP to retailer document:');
       console.log('  Retailer ID:', retailerId);
       console.log('  Tenant ID:', retailerUser.tenantId);
-      console.log('  OTP Data:', otpData);
+      console.log('  OTP Data:', otpDocumentData);
 
       // Add OTP to retailer's activeOTPs array with correct tenantId
-      await retailerService.addOTPToRetailer(retailerId, retailerUser.tenantId, otpData);
+      await retailerService.addOTPToRetailer(retailerId, retailerUser.tenantId, otpDocumentData);
       console.log('✅ OTP saved to retailer document successfully');
     } catch (firestoreError) {
       console.error('❌ Error saving OTP to retailer document:', firestoreError);
@@ -91,7 +161,7 @@ export async function POST(request: NextRequest) {
 
     // Add OTP to active OTPs for retailer dashboard display
     addActiveOTP({
-      code: otp,
+      code: otpData.code,
       retailerId,
       amount,
       paymentId,
@@ -101,8 +171,28 @@ export async function POST(request: NextRequest) {
     console.log('📱 OTP added to active OTPs for retailer dashboard');
 
     // Send OTP to retailer (now just logs to console)
-    const sent = sendOTPToRetailer(retailerUser.phone, otp, amount);
+    const sent = sendOTPToRetailer(retailerUser.phone, otpData.code, amount);
     console.log('📤 OTP send result:', sent);
+    
+    // Send PWA push notification to retailer
+    try {
+      const notificationSent = await pushNotificationService.sendOTPNotification({
+        otp: otpData.code,
+        amount,
+        paymentId,
+        retailerName: retailerUser.name,
+        lineWorkerName: lineWorkerName || 'Line Worker'
+      });
+      
+      if (notificationSent) {
+        console.log('📱 PWA notification sent successfully');
+      } else {
+        console.log('⚠️ PWA notification failed, but OTP was generated');
+      }
+    } catch (notificationError) {
+      console.error('❌ Error sending PWA notification:', notificationError);
+      // Don't fail the request if notification fails
+    }
     
     if (!sent) {
       return NextResponse.json(
@@ -132,9 +222,10 @@ export async function POST(request: NextRequest) {
       success: true,
       message: 'OTP sent successfully',
       otpSent: true,
-      expiresAt: expiresAt.toISOString(),
+      expiresAt: otpData.expiresAt,
       retailerName: retailerUser.name,
-      retailerPhone: retailerUser.phone
+      retailerPhone: retailerUser.phone,
+      usedCloudFunction: !!otpData.otpId && !otpData.otpId.startsWith('local_')
     });
 
   } catch (error) {

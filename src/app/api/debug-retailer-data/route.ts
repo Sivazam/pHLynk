@@ -34,9 +34,9 @@ export async function GET(request: NextRequest) {
       retailer: {
         id: retailer.id,
         name: retailer.name,
-        currentOutstanding: retailer.currentOutstanding,
-        totalInvoiceAmount: retailer.totalInvoiceAmount,
-        totalPaidAmount: retailer.totalPaidAmount,
+        totalPaidAmount: retailer.totalPaidAmount || 0,
+        totalPaymentsCount: retailer.totalPaymentsCount || 0,
+        lastPaymentDate: retailer.lastPaymentDate,
         computedAt: retailer.computedAt
       },
       calculated: {

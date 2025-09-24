@@ -26,7 +26,7 @@ import {
   Loader2
 } from 'lucide-react';
 import { formatCurrency } from '@/lib/timestamp-utils';
-import { Retailer, Payment, User, Invoice } from '@/types';
+import { Retailer, Payment, User } from '@/types';
 import { DashboardService } from '@/services/firestore';
 
 interface EnhancedWorker extends User {

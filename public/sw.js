@@ -73,6 +73,163 @@ self.addEventListener('activate', event => {
   );
 });
 
+// Push notification event - handle OTP notifications
+self.addEventListener('push', event => {
+  console.log('📱 Push notification received');
+  
+  if (event.data) {
+    const data = event.data.json();
+    console.log('Push notification data:', data);
+    
+    const options = {
+      body: data.body || 'New notification received',
+      icon: '/icon-192x192.png',
+      badge: '/icon-96x96.png',
+      tag: data.tag || 'default',
+      requireInteraction: data.requireInteraction || false,
+      actions: data.actions || [],
+      data: data.data || {}
+    };
+    
+    // Customize for OTP notifications
+    if (data.type === 'otp') {
+      options.body = `🔐 OTP: ${data.otp} for ₹${data.amount}`;
+      options.tag = `otp-${data.paymentId}`;
+      options.requireInteraction = true;
+      options.actions = [
+        {
+          action: 'view',
+          title: 'View OTP',
+          icon: '/icon-96x96.png'
+        },
+        {
+          action: 'dismiss',
+          title: 'Dismiss',
+          icon: '/icon-96x96.png'
+        }
+      ];
+    }
+    
+    // Customize for payment completion
+    if (data.type === 'payment-completed') {
+      options.body = `✅ Payment of ₹${data.amount} completed successfully`;
+      options.tag = `payment-${data.paymentId}`;
+      options.requireInteraction = false;
+    }
+    
+    event.waitUntil(
+      self.registration.showNotification(data.title || 'PharmaLync', options)
+    );
+  }
+});
+
+// Notification click event - handle user interaction
+self.addEventListener('notificationclick', event => {
+  console.log('📱 Notification clicked:', event.action);
+  
+  event.notification.close();
+  
+  if (event.action === 'view' || event.action === 'open') {
+    // Open the retailer dashboard or specific payment
+    const urlToOpen = event.notification.data.url || '/';
+    
+    event.waitUntil(
+      clients.matchAll({ type: 'window', includeUncontrolled: true })
+        .then(clientList => {
+          // Check if there's already a window open
+          for (const client of clientList) {
+            if (client.url.includes(urlToOpen) && 'focus' in client) {
+              return client.focus();
+            }
+          }
+          
+          // If no window is open, open a new one
+          if (clients.openWindow) {
+            return clients.openWindow(urlToOpen);
+          }
+        })
+    );
+  }
+  
+  // Handle dismiss action
+  if (event.action === 'dismiss') {
+    console.log('📱 Notification dismissed');
+  }
+});
+
+// Notification close event
+self.addEventListener('notificationclose', event => {
+  console.log('📱 Notification closed:', event.notification.tag);
+});
+
+// Handle subscription to push notifications
+self.addEventListener('message', event => {
+  if (event.data && event.data.type === 'SUBSCRIBE_TO_PUSH') {
+    console.log('📱 Subscribing to push notifications');
+    
+    event.waitUntil(
+      self.registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: event.data.publicKey
+      })
+      .then(subscription => {
+        console.log('✅ Push notification subscription successful');
+        
+        // Send subscription back to client
+        event.ports[0].postMessage({
+          type: 'SUBSCRIPTION_SUCCESS',
+          subscription: subscription
+        });
+      })
+      .catch(error => {
+        console.error('❌ Push notification subscription failed:', error);
+        
+        event.ports[0].postMessage({
+          type: 'SUBSCRIPTION_ERROR',
+          error: error.message
+        });
+      })
+    );
+  }
+  
+  if (event.data && event.data.type === 'SEND_TEST_NOTIFICATION') {
+    console.log('📱 Sending test notification');
+    
+    event.waitUntil(
+      self.registration.showNotification('Test Notification', {
+        body: 'This is a test notification from PharmaLync',
+        icon: '/icon-192x192.png',
+        badge: '/icon-96x96.png',
+        tag: 'test-notification'
+      })
+    );
+  }
+  
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+  
+  if (event.data && event.data.type === 'CACHE_BUST') {
+    // Force clear all caches and reload
+    caches.keys().then(cacheNames => {
+      return Promise.all(
+        cacheNames.map(cacheName => {
+          if (cacheName.startsWith('pharmalynk-')) {
+            return caches.delete(cacheName);
+          }
+        })
+      );
+    }).then(() => {
+      // Notify all clients to reload
+      self.clients.matchAll().then(clients => {
+        clients.forEach(client => {
+          client.postMessage({ type: 'CACHE_CLEARED' });
+        });
+      });
+    });
+  }
+});
+
 // Fetch event - intelligent caching strategy
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);

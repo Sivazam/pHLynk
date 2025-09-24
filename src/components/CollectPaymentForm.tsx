@@ -198,12 +198,17 @@ const CollectPaymentFormComponent = ({
                     <DollarSign className="h-4 w-4 text-gray-400" />
                   </div>
                   <Input
-                    type="number"
-                    min="0.01"
-                    step="0.01"
+                    type="text"
                     placeholder="0.00"
-                    value={formData.amount || ''}
-                    onChange={(e) => updateField('amount', parseFloat(e.target.value) || 0)}
+                    value={formData.amount ? formData.amount.toString() : ''}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      // Allow only numbers and decimal point
+                      if (/^\d*\.?\d*$/.test(value) || value === '') {
+                        const numValue = parseFloat(value) || 0;
+                        updateField('amount', numValue);
+                      }
+                    }}
                     className="h-9 pl-9"
                   />
                 </div>

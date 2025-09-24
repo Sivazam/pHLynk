@@ -1,6 +1,14 @@
 // Shared OTP store for demo purposes
 // In production, you'd use a more robust storage solution like Redis or database
-export const otpStore = new Map<string, { code: string; expiresAt: Date; attempts: number }>();
+export const otpStore = new Map<string, { 
+  code: string; 
+  expiresAt: Date; 
+  attempts: number;
+  lastAttemptAt: Date | null;
+  cooldownUntil: Date | null;
+  consecutiveFailures: number;
+  breachDetected: boolean;
+}>();
 
 // Store for active OTPs that need to be displayed on retailer dashboard
 export const activeOTPs = new Map<string, {
@@ -24,7 +32,179 @@ export const completedPayments = new Map<string, {
 }>();
 
 export function generateOTP(): string {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+  // Generate 4 random digits
+  const digits = Math.floor(1000 + Math.random() * 9000).toString();
+  
+  // Randomly insert R and X at different positions
+  const positions = [0, 1, 2, 3, 4, 5];
+  const rPosition = positions.splice(Math.floor(Math.random() * positions.length), 1)[0];
+  const xPosition = positions.splice(Math.floor(Math.random() * positions.length), 1)[0];
+  
+  // Build the OTP with R and X inserted
+  let otp = digits.split('');
+  otp.splice(rPosition, 0, 'R');
+  otp.splice(xPosition + (xPosition > rPosition ? 1 : 0), 0, 'X');
+  
+  return otp.join('');
+}
+
+// Security tracking functions
+export function checkSecurityLimits(paymentId: string): {
+  canAttempt: boolean;
+  remainingAttempts: number;
+  cooldownTime?: number;
+  message?: string;
+} {
+  const otpData = otpStore.get(paymentId);
+  
+  if (!otpData) {
+    return { canAttempt: true, remainingAttempts: 3 };
+  }
+
+  const now = new Date();
+
+  // Check if in cooldown period
+  if (otpData.cooldownUntil && otpData.cooldownUntil > now) {
+    const remainingCooldown = Math.ceil((otpData.cooldownUntil.getTime() - now.getTime()) / 1000);
+    return {
+      canAttempt: false,
+      remainingAttempts: 0,
+      cooldownTime: remainingCooldown,
+      message: `Too many attempts. Please wait ${remainingCooldown} seconds before trying again.`
+    };
+  }
+
+  // Check if breach detected
+  if (otpData.breachDetected) {
+    return {
+      canAttempt: false,
+      remainingAttempts: 0,
+      message: 'Security breach detected. Please contact your wholesaler.'
+    };
+  }
+
+  // Check attempts
+  const remainingAttempts = Math.max(0, 3 - otpData.attempts);
+  
+  return {
+    canAttempt: remainingAttempts > 0,
+    remainingAttempts
+  };
+}
+
+export function recordFailedAttempt(paymentId: string): {
+  success: boolean;
+  breachDetected: boolean;
+  cooldownTriggered: boolean;
+  message?: string;
+} {
+  const otpData = otpStore.get(paymentId);
+  
+  if (!otpData) {
+    return { success: false, breachDetected: false, cooldownTriggered: false };
+  }
+
+  const now = new Date();
+  
+  // Update attempt tracking
+  otpData.attempts++;
+  otpData.lastAttemptAt = now;
+  otpData.consecutiveFailures++;
+
+  // Check for breach detection (6 consecutive failures)
+  if (otpData.consecutiveFailures >= 6) {
+    otpData.breachDetected = true;
+    otpStore.set(paymentId, otpData);
+    
+    console.log('🚨 SECURITY BREACH DETECTED:', {
+      paymentId,
+      consecutiveFailures: otpData.consecutiveFailures,
+      timestamp: now.toISOString()
+    });
+    
+    return {
+      success: true,
+      breachDetected: true,
+      cooldownTriggered: false,
+      message: 'Security breach detected. Wholesaler has been notified.'
+    };
+  }
+
+  // Check for cooldown trigger (3 failures)
+  if (otpData.attempts >= 3) {
+    otpData.cooldownUntil = new Date(now.getTime() + 2 * 60 * 1000); // 2 minutes cooldown
+    otpStore.set(paymentId, otpData);
+    
+    console.log('⏰ COOLDOWN TRIGGERED:', {
+      paymentId,
+      attempts: otpData.attempts,
+      cooldownUntil: otpData.cooldownUntil.toISOString()
+    });
+    
+    return {
+      success: true,
+      breachDetected: false,
+      cooldownTriggered: true,
+      message: 'Too many failed attempts. Please wait 2 minutes before trying again.'
+    };
+  }
+
+  // Update store
+  otpStore.set(paymentId, otpData);
+  
+  return {
+    success: true,
+    breachDetected: false,
+    cooldownTriggered: false
+  };
+}
+
+export function resetSecurityTracking(paymentId: string) {
+  const otpData = otpStore.get(paymentId);
+  
+  if (otpData) {
+    otpData.attempts = 0;
+    otpData.lastAttemptAt = null;
+    otpData.cooldownUntil = null;
+    otpData.consecutiveFailures = 0;
+    otpData.breachDetected = false;
+    otpStore.set(paymentId, otpData);
+    
+    console.log('🔄 Security tracking reset for payment:', paymentId);
+  }
+}
+
+export function getSecurityStatus(paymentId: string): {
+  attempts: number;
+  consecutiveFailures: number;
+  breachDetected: boolean;
+  inCooldown: boolean;
+  cooldownTime?: number;
+} {
+  const otpData = otpStore.get(paymentId);
+  
+  if (!otpData) {
+    return {
+      attempts: 0,
+      consecutiveFailures: 0,
+      breachDetected: false,
+      inCooldown: false
+    };
+  }
+
+  const now = new Date();
+  const inCooldown = otpData.cooldownUntil ? otpData.cooldownUntil > now : false;
+  const cooldownTime = inCooldown && otpData.cooldownUntil 
+    ? Math.ceil((otpData.cooldownUntil.getTime() - now.getTime()) / 1000)
+    : undefined;
+
+  return {
+    attempts: otpData.attempts,
+    consecutiveFailures: otpData.consecutiveFailures,
+    breachDetected: otpData.breachDetected,
+    inCooldown,
+    cooldownTime
+  };
 }
 
 export async function sendOTPToRetailer(phone: string, otp: string, amount: number): Promise<boolean> {
@@ -71,7 +251,7 @@ export function addActiveOTP(otpData: {
   paymentId: string;
   lineWorkerName: string;
 }) {
-  const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes (more than 2 mins as requested)
+  const expiresAt = new Date(Date.now() + 7 * 60 * 1000); // 7 minutes as requested
   const createdAt = new Date();
   
   activeOTPs.set(otpData.paymentId, {
@@ -86,7 +266,7 @@ export function addActiveOTP(otpData: {
     code: otpData.code,
     amount: otpData.amount,
     expiresAt: expiresAt.toISOString(),
-    duration: '10 minutes'
+    duration: '7 minutes'
   });
   
   // Also log to console for development
