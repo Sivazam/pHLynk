@@ -65,6 +65,7 @@ import {
   Menu,
   X,
   RefreshCw,
+  Loader2,
   Heart
 } from 'lucide-react';
 import { StatusBarColor } from './ui/StatusBarColor';
@@ -342,6 +343,7 @@ export function SuperAdminDashboard() {
     { id: 'tenants', label: 'Tenants', icon: Building2 },
     { id: 'users', label: 'Users', icon: Users },
     { id: 'line-workers', label: 'Line Workers', icon: UserCheck },
+    { id: 'payments', label: 'Payments', icon: CreditCard },
     { id: 'analytics', label: 'Analytics', icon: BarChart3 },
     { id: 'activity', label: 'Activity', icon: TrendingUp },
     { id: 'settings', label: 'Settings', icon: Menu },
@@ -1590,6 +1592,154 @@ export function SuperAdminDashboard() {
     </div>
   );
 
+  // Payments Component
+  const Payments = () => {
+    const [selectedTenant, setSelectedTenant] = useState<string>('');
+    const [tenantPayments, setTenantPayments] = useState<Payment[]>([]);
+    const [loading, setLoading] = useState(false);
+
+    useEffect(() => {
+      if (selectedTenant && tenants.length > 0) {
+        loadTenantPayments(selectedTenant);
+      }
+    }, [selectedTenant]);
+
+    const loadTenantPayments = async (tenantId: string) => {
+      setLoading(true);
+      try {
+        const paymentsData = await paymentService.getAll(tenantId);
+        setTenantPayments(paymentsData);
+      } catch (error) {
+        console.error('Error loading tenant payments:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    const completedPayments = tenantPayments.filter(p => p.state === 'COMPLETED');
+    const pendingPayments = tenantPayments.filter(p => ['INITIATED', 'OTP_SENT', 'OTP_VERIFIED'].includes(p.state));
+
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900">Payments</h2>
+            <p className="text-gray-600">View payment transactions across all tenants</p>
+          </div>
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+            <Select value={selectedTenant} onValueChange={setSelectedTenant}>
+              <SelectTrigger className="w-full sm:w-64">
+                <SelectValue placeholder="Select a tenant" />
+              </SelectTrigger>
+              <SelectContent>
+                {tenants.map(tenant => (
+                  <SelectItem key={tenant.id} value={tenant.id}>
+                    {tenant.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        {selectedTenant ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <CheckCircle className="h-5 w-5 text-green-600" />
+                  Completed Payments
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-3xl font-bold text-green-600">{completedPayments.length}</div>
+                <p className="text-sm text-gray-500">
+                  Total: {formatCurrency(completedPayments.reduce((sum, p) => sum + p.totalPaid, 0))}
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Clock className="h-5 w-5 text-yellow-600" />
+                  Pending Payments
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-3xl font-bold text-yellow-600">{pendingPayments.length}</div>
+                <p className="text-sm text-gray-500">
+                  Total: {formatCurrency(pendingPayments.reduce((sum, p) => sum + p.totalPaid, 0))}
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+        ) : (
+          <Card>
+            <CardContent className="flex items-center justify-center h-32">
+              <p className="text-gray-500">Select a tenant to view payments</p>
+            </CardContent>
+          </Card>
+        )}
+
+        {selectedTenant && !loading && tenantPayments.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Payment History</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Retailer</TableHead>
+                      <TableHead>Line Worker</TableHead>
+                      <TableHead>Amount</TableHead>
+                      <TableHead>Method</TableHead>
+                      <TableHead>Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {tenantPayments
+                      .sort((a, b) => b.createdAt.toDate().getTime() - a.createdAt.toDate().getTime())
+                      .map((payment) => (
+                        <TableRow key={payment.id}>
+                          <TableCell>{formatTimestampWithTime(payment.createdAt)}</TableCell>
+                          <TableCell>{payment.retailerName}</TableCell>
+                          <TableCell>{payment.lineWorkerId ? 'Line Worker' : 'Unknown'}</TableCell>
+                          <TableCell>{formatCurrency(payment.totalPaid)}</TableCell>
+                          <TableCell>{payment.method}</TableCell>
+                          <TableCell>
+                            <Badge className={
+                              payment.state === 'COMPLETED' ? 'bg-green-100 text-green-800' :
+                              payment.state === 'CANCELLED' ? 'bg-red-100 text-red-800' :
+                              'bg-yellow-100 text-yellow-800'
+                            }>
+                              {payment.state}
+                            </Badge>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {loading && (
+          <Card>
+            <CardContent className="flex items-center justify-center h-32">
+              <Loader2 className="h-6 w-6 animate-spin" />
+              <span className="ml-2">Loading payments...</span>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    );
+  };
+
   // Settings Component
   const Settings = () => (
     <div className="space-y-6">
@@ -1703,7 +1853,7 @@ export function SuperAdminDashboard() {
       />
 
       {/* Main Content */}
-      <main className="flex-1 pt-16 p-3 sm:p-4 lg:p-6 overflow-y-auto pb-20 lg:pb-6">
+      <main className="flex-1 pt-20 sm:pt-16 p-3 sm:p-4 lg:p-6 overflow-y-auto pb-20 lg:pb-6">
         {/* Header with refresh */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4 sm:mb-6">
           <div className="flex-1 min-w-0">
@@ -1738,6 +1888,7 @@ export function SuperAdminDashboard() {
             {activeNav === 'tenants' && <TenantsManagement />}
             {activeNav === 'users' && <UsersOverview />}
             {activeNav === 'line-workers' && <LineWorkers />}
+            {activeNav === 'payments' && <Payments />}
             {activeNav === 'analytics' && <Analytics />}
             {activeNav === 'activity' && <Activity />}
             {activeNav === 'settings' && <Settings />}

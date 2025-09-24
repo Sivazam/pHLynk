@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { 
@@ -309,84 +309,134 @@ export function DashboardNavigation({
       <div className="lg:hidden fixed bottom-0 left-0 right-0 z-50">
         <div className="bg-white border-t border-gray-200 shadow-lg">
           <nav className="flex justify-around items-center py-2" aria-label="Mobile navigation">
-            {/* First 3 navigation items */}
-            {navItems.slice(0, 3).map((item) => {
-              const Icon = item.icon;
-              const isActive = activeNav === item.id;
-              
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => handleNavClick(item.id)}
-                  className={`
-                    flex flex-col items-center justify-center px-4 py-2 min-w-[60px] max-w-[80px]
-                    transition-all duration-200 rounded-lg
-                    ${isActive 
-                      ? 'text-blue-600 bg-blue-50' 
-                      : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-                    }
-                  `}
-                >
-                  <div className="relative flex-shrink-0">
-                    {Icon && (
-                      <Icon className={`
+            {/* Show navigation items based on total count */}
+            {navItems.length <= 4 ? (
+              // If 4 or fewer items, show all of them directly
+              navItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = activeNav === item.id;
+                
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => handleNavClick(item.id)}
+                    className={`
+                      flex flex-col items-center justify-center px-4 py-2 min-w-[60px] max-w-[80px]
+                      transition-all duration-200 rounded-lg
+                      ${isActive 
+                        ? 'text-blue-600 bg-blue-50' 
+                        : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                      }
+                    `}
+                  >
+                    <div className="relative flex-shrink-0">
+                      {Icon && (
+                        <Icon className={`
+                          h-5 w-5 mb-1
+                          ${isActive ? 'text-blue-600' : 'text-gray-400'}
+                          transition-colors duration-200
+                        `} />
+                      )}
+                      {item.badge && (
+                        <Badge 
+                          variant="destructive"
+                          className="absolute -top-1 -right-1 h-4 w-4 flex items-center justify-center p-0 text-xs min-w-[16px] border border-white"
+                        >
+                          {item.badge > 99 ? '99+' : item.badge}
+                        </Badge>
+                      )}
+                    </div>
+                    <span className={`
+                      text-xs font-medium text-center leading-tight w-full
+                      ${isActive ? 'text-blue-600' : 'text-gray-600'}
+                      transition-colors duration-200
+                    `}>
+                      {item.label}
+                    </span>
+                  </button>
+                );
+              })
+            ) : (
+              // If more than 4 items, show first 4 items + More menu
+              <React.Fragment>
+                {/* First 4 navigation items */}
+                {navItems.slice(0, 4).map((item) => {
+                  const Icon = item.icon;
+                  const isActive = activeNav === item.id;
+                  
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => handleNavClick(item.id)}
+                      className={`
+                        flex flex-col items-center justify-center px-4 py-2 min-w-[60px] max-w-[80px]
+                        transition-all duration-200 rounded-lg
+                        ${isActive 
+                          ? 'text-blue-600 bg-blue-50' 
+                          : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                        }
+                      `}
+                    >
+                      <div className="relative flex-shrink-0">
+                        {Icon && (
+                          <Icon className={`
+                            h-5 w-5 mb-1
+                            ${isActive ? 'text-blue-600' : 'text-gray-400'}
+                            transition-colors duration-200
+                          `} />
+                        )}
+                        {item.badge && (
+                          <Badge 
+                            variant="destructive"
+                            className="absolute -top-1 -right-1 h-4 w-4 flex items-center justify-center p-0 text-xs min-w-[16px] border border-white"
+                          >
+                            {item.badge > 99 ? '99+' : item.badge}
+                          </Badge>
+                        )}
+                      </div>
+                      <span className={`
+                        text-xs font-medium text-center leading-tight w-full
+                        ${isActive ? 'text-blue-600' : 'text-gray-600'}
+                        transition-colors duration-200
+                      `}>
+                        {item.label}
+                      </span>
+                    </button>
+                  );
+                })}
+                
+                {/* More Menu Button */}
+                <div className="relative">
+                  <button
+                    onClick={() => setShowMoreMenu(!showMoreMenu)}
+                    className={`
+                      flex flex-col items-center justify-center px-4 py-2 min-w-[60px] max-w-[80px]
+                      transition-all duration-200 rounded-lg
+                      ${showMoreMenu 
+                        ? 'text-blue-600 bg-blue-50' 
+                        : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                      }
+                    `}
+                  >
+                    <div className="relative flex-shrink-0">
+                      <MoreHorizontal className={`
                         h-5 w-5 mb-1
-                        ${isActive ? 'text-blue-600' : 'text-gray-400'}
+                        ${showMoreMenu ? 'text-blue-600' : 'text-gray-400'}
                         transition-colors duration-200
                       `} />
-                    )}
-                    {item.badge && (
-                      <Badge 
-                        variant="destructive"
-                        className="absolute -top-1 -right-1 h-4 w-4 flex items-center justify-center p-0 text-xs min-w-[16px] border border-white"
-                      >
-                        {item.badge > 99 ? '99+' : item.badge}
-                      </Badge>
-                    )}
-                  </div>
-                  <span className={`
-                    text-xs font-medium text-center leading-tight w-full
-                    ${isActive ? 'text-blue-600' : 'text-gray-600'}
-                    transition-colors duration-200
-                  `}>
-                    {item.label}
-                  </span>
-                </button>
-              );
-            })}
-            
-            {/* More Menu Button */}
-            <div className="relative">
-              <button
-                onClick={() => setShowMoreMenu(!showMoreMenu)}
-                className={`
-                  flex flex-col items-center justify-center px-4 py-2 min-w-[60px] max-w-[80px]
-                  transition-all duration-200 rounded-lg
-                  ${showMoreMenu 
-                    ? 'text-blue-600 bg-blue-50' 
-                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-                  }
-                `}
-              >
-                <div className="relative flex-shrink-0">
-                  <MoreHorizontal className={`
-                    h-5 w-5 mb-1
-                    ${showMoreMenu ? 'text-blue-600' : 'text-gray-400'}
-                    transition-colors duration-200
-                  `} />
-                </div>
-                <span className={`
-                  text-xs font-medium text-center leading-tight w-full
-                  ${showMoreMenu ? 'text-blue-600' : 'text-gray-600'}
-                  transition-colors duration-200
-                `}>
-                  More
-                </span>
-              </button>
-              
-              {/* More Menu Dropdown */}
-              {showMoreMenu && navItems.length > 3 && (
-                <div className="absolute bottom-full right-0 mb-3 z-40 sm:right-auto sm:left-1/2 sm:transform sm:-translate-x-1/2">
+                    </div>
+                    <span className={`
+                      text-xs font-medium text-center leading-tight w-full
+                      ${showMoreMenu ? 'text-blue-600' : 'text-gray-600'}
+                      transition-colors duration-200
+                    `}>
+                      More
+                    </span>
+                  </button>
+                  
+                  {/* More Menu Dropdown */}
+                  {showMoreMenu && navItems.length > 4 && (
+                    <div className="absolute bottom-full right-0 mb-3 z-40 sm:right-auto sm:left-1/2 sm:transform sm:-translate-x-1/2">
                   {/* Menu container with professional styling */}
                   <div className="relative z-20">
                     {/* Arrow pointing to More button */}
@@ -401,7 +451,7 @@ export function DashboardNavigation({
                     {/* Menu items list */}
                     <div className="bg-white rounded-b-lg shadow-2xl border border-gray-200 min-w-[240px] max-h-[70vh] overflow-y-auto">
                       <div className="p-1">
-                        {navItems.slice(3).map((item, index) => {
+                        {navItems.slice(4).map((item, index) => {
                           const Icon = item.icon;
                           const isActive = activeNav === item.id;
                           
@@ -473,7 +523,7 @@ export function DashboardNavigation({
                       {/* Menu footer */}
                       <div className="border-t border-gray-200 bg-gray-50 px-4 py-2 rounded-b-lg">
                         <div className="flex items-center justify-between text-xs text-gray-500">
-                          <span>{navItems.length - 3} items</span>
+                          <span>{navItems.length - 4} items</span>
                           <span>Tap to close</span>
                         </div>
                       </div>
@@ -481,7 +531,9 @@ export function DashboardNavigation({
                   </div>
                 </div>
               )}
-            </div>
+              </div>
+              </React.Fragment>
+            )}
           </nav>
         </div>
       </div>

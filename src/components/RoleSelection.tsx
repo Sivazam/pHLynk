@@ -26,14 +26,14 @@ export function RoleSelection({ onRoleSelect, onBack }: RoleSelectionProps) {
     {
       id: 'LINE_WORKER',
       title: 'Line Worker',
-      description: 'Collect payments and manage retailer relationships and Track Payment Status and Assigned Retailer Outstandings',
+      description: 'Collect payments and manage retailer relationships and Track Payment Status',
       icon: UserIcon,
       color: 'bg-green-500 hover:bg-green-600'
     },
     {
       id: 'RETAILER',
       title: 'Retailer',
-      description: 'Login with mobile number to view payments and outstanding amounts',
+      description: 'Login with mobile number to view payments',
       icon: Store,
       color: 'bg-purple-500 hover:bg-purple-600'
     },

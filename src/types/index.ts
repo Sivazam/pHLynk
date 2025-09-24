@@ -1,5 +1,5 @@
 import { Timestamp } from 'firebase/firestore';
-import { ROLES, PAYMENT_STATES, PAYMENT_METHODS, INVOICE_STATUSES, TENANT_STATUSES } from '@/lib/firebase';
+import { ROLES, PAYMENT_STATES, PAYMENT_METHODS, TENANT_STATUSES } from '@/lib/firebase';
 
 // Base interface with common fields
 export interface BaseDocument {
@@ -44,24 +44,18 @@ export interface Retailer extends BaseDocument {
   address?: string;
   areaId?: string;
   zipcodes: string[];
-  currentOutstanding: number;
   
   // Direct line worker assignment (optional, overrides area-based assignment)
   assignedLineWorkerId?: string;
   
   // Computed fields for performance
-  totalInvoiceAmount?: number;
   totalPaidAmount?: number;
-  totalInvoicesCount?: number;
   totalPaymentsCount?: number;
-  lastInvoiceDate?: Timestamp;
   lastPaymentDate?: Timestamp;
-  recentInvoices?: InvoiceSummary[];
   recentPayments?: PaymentSummary[];
   computedAt?: Timestamp;
   
   // Additional fields
-  creditLimit?: number;
   gstNumber?: string;
   paymentTerms?: string;
   
@@ -79,60 +73,12 @@ export interface Retailer extends BaseDocument {
 }
 
 // Summary interfaces for recent activity
-export interface InvoiceSummary {
-  id: string;
-  invoiceNumber: string;
-  totalAmount: number;
-  issueDate: Timestamp;
-  status: string;
-}
-
 export interface PaymentSummary {
   id: string;
   amount: number;
   method: string;
   date: Timestamp;
   state: string;
-}
-
-// Invoice Line Item
-export interface InvoiceLineItem {
-  name: string;
-  qty: number;
-  unitPrice: number;
-  gstPercent?: number;
-  batch?: string;
-  expiry?: string;
-}
-
-// Invoice Attachment
-export interface InvoiceAttachment {
-  storagePath: string;
-  type: string;
-  uploadedAt: Timestamp;
-}
-
-// Invoice
-export interface Invoice extends BaseDocument {
-  retailerId: string;
-  invoiceNumber: string;
-  userInvoiceNumber?: string;
-  issueDate: Timestamp;
-  dueDate?: Timestamp;
-  subtotal: number;
-  gstAmount: number;
-  totalAmount: number;
-  outstandingAmount: number;
-  status: keyof typeof INVOICE_STATUSES;
-  lineItems: InvoiceLineItem[];
-  version: number;
-  attachments: InvoiceAttachment[];
-}
-
-// Payment Invoice Allocation
-export interface PaymentInvoiceAllocation {
-  invoiceId: string;
-  amount: number;
 }
 
 // Payment OTP Data
@@ -184,7 +130,6 @@ export interface Payment extends BaseDocument {
   retailerId: string;
   retailerName: string; // Added to preserve historical retailer name
   lineWorkerId: string;
-  invoiceAllocations: PaymentInvoiceAllocation[];
   totalPaid: number;
   method: keyof typeof PAYMENT_METHODS;
   state: keyof typeof PAYMENT_STATES;
@@ -210,10 +155,8 @@ export interface Subscription extends BaseDocument {
   tenantId: string;
   plan: string;
   status: string;
-  invoicesThisPeriod: number;
   paymentsThisPeriod: number;
   limits: {
-    maxInvoices: number;
     maxPayments: number;
     maxRetailers: number;
     maxLineWorkers: number;
@@ -231,14 +174,7 @@ export interface Config extends BaseDocument {
 // UI Related Types
 export interface DashboardStats {
   totalRevenue: number;
-  totalOutstanding: number;
   todayCollections: number;
-  agingBuckets: {
-    '0-30': number;
-    '31-60': number;
-    '61-90': number;
-    '90+': number;
-  };
   topLineWorkers: Array<{
     id: string;
     name: string;
@@ -259,7 +195,6 @@ export interface LineWorkerPerformance {
 export interface AreaPerformance {
   areaId: string;
   areaName: string;
-  totalOutstanding: number;
   collectedThisPeriod: number;
   retailerCount: number;
 }
@@ -287,21 +222,11 @@ export interface CreateRetailerForm {
   zipcodes: string[];
 }
 
-export interface CreateInvoiceForm {
-  retailerId: string;
-  invoiceNumber?: string;
-  userInvoiceNumber?: string;
-  issueDate: Date;
-  dueDate?: Date;
-  lineItems: Omit<InvoiceLineItem, 'id'>[];
-}
-
 export interface InitiatePaymentForm {
   retailerId: string;
   retailerName: string; // Added to preserve historical retailer name
   totalPaid: number;
   method: keyof typeof PAYMENT_METHODS;
-  invoiceAllocations: PaymentInvoiceAllocation[];
 }
 
 // API Response Types

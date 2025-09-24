@@ -25,6 +25,7 @@ interface PaymentForm {
 
 interface CollectPaymentFormProps {
   retailers: Retailer[];
+  preSelectedRetailer?: Retailer | null;
   onCollectPayment: (formData: PaymentForm) => Promise<void>;
   onCancel: () => void;
   collectingPayment: boolean;
@@ -32,6 +33,7 @@ interface CollectPaymentFormProps {
 
 const CollectPaymentFormComponent = ({ 
   retailers, 
+  preSelectedRetailer,
   onCollectPayment, 
   onCancel, 
   collectingPayment 
@@ -48,9 +50,19 @@ const CollectPaymentFormComponent = ({
     onCollectRef.current = onCollectPayment;
   }, [onCollectPayment]);
 
+  // Update form when preSelectedRetailer changes
+  useEffect(() => {
+    if (preSelectedRetailer) {
+      setFormData(prev => ({
+        ...prev,
+        retailerId: preSelectedRetailer.id
+      }));
+    }
+  }, [preSelectedRetailer]);
+
   // Optimized state management
   const [formData, setFormData] = useState<PaymentForm>(() => ({
-    retailerId: '',
+    retailerId: preSelectedRetailer?.id || '',
     amount: 0,
     paymentMethod: 'CASH',
     notes: ''
@@ -78,7 +90,9 @@ const CollectPaymentFormComponent = ({
     
     try {
       setError(null);
+      console.log('🚀 Initiating payment collection...', formData);
       await onCollectRef.current(formData);
+      
       // Show success state and trigger confetti
       setShowSuccess(true);
       setTriggerConfetti(true);
@@ -86,7 +100,7 @@ const CollectPaymentFormComponent = ({
       // Reset form after success
       setTimeout(() => {
         setFormData({
-          retailerId: '',
+          retailerId: preSelectedRetailer?.id || '',
           amount: 0,
           paymentMethod: 'CASH',
           notes: ''
@@ -94,11 +108,17 @@ const CollectPaymentFormComponent = ({
         setShowSuccess(false);
         onCancel();
       }, 2000);
-    } catch (error) {
-      console.error('Error collecting payment:', error);
-      setError('Failed to collect payment. Please try again.');
+    } catch (error: any) {
+      console.error('❌ Error collecting payment:', error);
+      const errorMessage = error.message || 'Failed to collect payment. Please try again.';
+      setError(errorMessage);
+      
+      // Keep form open for user to retry
+      setTimeout(() => {
+        setError(null);
+      }, 5000);
     }
-  }, [formData.retailerId, formData.amount, onCancel]);
+  }, [formData.retailerId, formData.amount, onCancel, preSelectedRetailer?.id]);
 
   const handleConfettiComplete = () => {
     setTriggerConfetti(false);
@@ -263,13 +283,13 @@ const CollectPaymentFormComponent = ({
                 type="button" 
                 onClick={handleSubmit}
                 disabled={collectingPayment || !formData.retailerId || !formData.amount || formData.amount <= 0}
-                className="h-9 px-4 text-sm"
+                className="h-9 px-4 text-sm min-w-[120px]"
               >
                 {collectingPayment ? (
-                  <>
+                  <div className="flex items-center justify-center">
                     <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                    Collecting...
-                  </>
+                    Processing...
+                  </div>
                 ) : (
                   'Collect Payment'
                 )}

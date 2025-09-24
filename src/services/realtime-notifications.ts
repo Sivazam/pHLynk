@@ -174,22 +174,9 @@ export class RealTimeNotificationService {
       }
     );
 
-    // Listen to all invoice activities
-    const invoicesUnsubscribe = onSnapshot(
-      collection(db, COLLECTIONS.INVOICES),
-      (snapshot) => {
-        snapshot.docChanges().forEach((change) => {
-          if (change.type === 'added') {
-            const invoice = change.doc.data();
-            console.log('🔔 Super Admin invoice change detected:', invoice.id, invoice.invoiceNumber);
-            this.handleSuperAdminInvoiceChange(invoice, change.doc.id);
-          }
-        });
-      },
-      (error) => {
-        console.error('Error listening to invoices:', error);
-      }
-    );
+    // Listen to all invoice activities - DISABLED (invoices removed)
+    console.log('🔔 Invoice listener disabled - invoices have been removed from the application');
+    const invoicesUnsubscribe = () => {}; // Empty unsubscribe function
 
     // Listen to user activities (new users, role changes)
     const usersUnsubscribe = onSnapshot(
@@ -242,27 +229,9 @@ export class RealTimeNotificationService {
       }
     );
 
-    // Listen to invoices in this tenant
-    const invoicesQuery = query(
-      collection(db, COLLECTIONS.INVOICES),
-      where('tenantId', '==', tenantId),
-      limit(50)
-    );
-
-    const invoicesUnsubscribe = onSnapshot(
-      invoicesQuery,
-      (snapshot) => {
-        snapshot.docChanges().forEach((change) => {
-          if (change.type === 'added') {
-            const invoice = change.doc.data();
-            this.handleWholesalerInvoiceChange(invoice, change.doc.id, tenantId);
-          }
-        });
-      },
-      (error) => {
-        console.error('Error listening to wholesaler invoices:', error);
-      }
-    );
+    // Listen to invoices in this tenant - DISABLED (invoices removed)
+    console.log('🔔 Invoice listener disabled - invoices have been removed from the application');
+    const invoicesUnsubscribe = () => {}; // Empty unsubscribe function
 
     // Listen to line worker activities in this tenant
     const workersQuery = query(
@@ -400,42 +369,9 @@ export class RealTimeNotificationService {
   private startRetailerListeners(userId: string, tenantId: string): void {
     console.log('🔔 Starting Retailer notification listeners for user:', userId, 'with tenantId:', tenantId);
 
-    // Listen to invoices for this retailer
-    const invoicesQuery = query(
-      collection(db, COLLECTIONS.INVOICES),
-      where('tenantId', '==', tenantId),
-      where('retailerId', '==', userId),
-      limit(50)
-    );
-
-    console.log('🔔 Retailer invoice query created with filters:', {
-      collection: COLLECTIONS.INVOICES,
-      tenantId: tenantId,
-      retailerId: userId
-    });
-
-    const invoicesUnsubscribe = onSnapshot(
-      invoicesQuery,
-      (snapshot) => {
-        console.log('🔔 Retailer invoice snapshot received:', snapshot.size, 'documents');
-        snapshot.docChanges().forEach((change) => {
-          console.log('🔔 Retailer invoice change detected:', {
-            type: change.type,
-            docId: change.doc.id,
-            data: change.doc.data()
-          });
-          
-          if (change.type === 'added') {
-            const invoice = change.doc.data();
-            console.log('🔔 Retailer invoice change detected:', invoice.id, invoice.invoiceNumber);
-            this.handleRetailerInvoiceChange(invoice, change.doc.id, userId);
-          }
-        });
-      },
-      (error) => {
-        console.error('Error listening to retailer invoices:', error);
-      }
-    );
+    // Listen to invoices for this retailer - DISABLED (invoices removed)
+    console.log('🔔 Retailer invoice listener disabled - invoices have been removed from the application');
+    const invoicesUnsubscribe = () => {}; // Empty unsubscribe function
 
     // Listen to payments for this retailer
     const paymentsQuery = query(
@@ -514,19 +450,8 @@ export class RealTimeNotificationService {
   }
 
   private handleSuperAdminInvoiceChange(invoice: DocumentData, invoiceId: string): void {
-    console.log('🔔 Handling Super Admin invoice change:', invoiceId, invoice.invoiceNumber);
-    
-    const notification = {
-      type: 'info' as const,
-      title: 'New Invoice Created',
-      message: `Invoice #${invoice.invoiceNumber} for ₹${invoice.totalAmount?.toLocaleString() || 0} created for ${invoice.retailerName || 'Retailer'}`,
-      timestamp: toDate(invoice.issueDate),
-      read: false,
-      amount: invoice.totalAmount,
-      tenantId: invoice.tenantId,
-      retailerName: invoice.retailerName
-    };
-    this.addNotificationToService(notification);
+    // DISABLED - invoices have been removed from the application
+    console.log('🔔 Super Admin invoice handler disabled - invoices have been removed');
   }
 
   private handleSuperAdminUserChange(user: DocumentData, userId: string): void {
@@ -580,18 +505,8 @@ export class RealTimeNotificationService {
   }
 
   private handleWholesalerInvoiceChange(invoice: DocumentData, invoiceId: string, tenantId: string): void {
-    console.log('🔔 Wholesaler invoice change detected:', { invoiceId, invoiceNumber: invoice.invoiceNumber, tenantId });
-    
-    const notification = {
-      type: 'info' as const,
-      title: 'New Invoice Created',
-      message: `Invoice #${invoice.invoiceNumber} for ₹${invoice.totalAmount?.toLocaleString() || 0} created for ${invoice.retailerName || 'Retailer'}`,
-      timestamp: toDate(invoice.issueDate),
-      read: false,
-      amount: invoice.totalAmount,
-      retailerName: invoice.retailerName
-    };
-    this.addNotificationToService(notification);
+    // DISABLED - invoices have been removed from the application
+    console.log('🔔 Wholesaler invoice handler disabled - invoices have been removed');
   }
 
   private handleWholesalerWorkerChange(worker: DocumentData, workerId: string, tenantId: string): void {
@@ -709,28 +624,8 @@ export class RealTimeNotificationService {
 
   // Retailer handlers
   private handleRetailerInvoiceChange(invoice: DocumentData, invoiceId: string, retailerId: string): void {
-    console.log('🔔 Handling Retailer invoice change:', {
-      invoiceId,
-      invoiceNumber: invoice.invoiceNumber,
-      retailerId,
-      tenantId: invoice.tenantId,
-      invoiceData: invoice
-    });
-    
-    const notification = {
-      type: 'info' as const,
-      title: 'New Invoice Received',
-      message: `New invoice #${invoice.invoiceNumber} for ₹${invoice.totalAmount?.toLocaleString() || 0} has been created`,
-      timestamp: toDate(invoice.issueDate),
-      read: false,
-      amount: invoice.totalAmount,
-      invoiceNumber: invoice.invoiceNumber,
-      dueDate: invoice.dueDate ? formatTimestampWithTime(invoice.dueDate) : undefined,
-      tenantId: invoice.tenantId // Use the same tenantId as the invoice (wholesaler's tenantId)
-    };
-    
-    console.log('🔔 Creating retailer invoice notification:', notification);
-    this.addNotificationToService(notification);
+    // DISABLED - invoices have been removed from the application
+    console.log('🔔 Retailer invoice handler disabled - invoices have been removed');
   }
 
   private handleRetailerPaymentChange(payment: DocumentData, paymentId: string, retailerId: string): void {

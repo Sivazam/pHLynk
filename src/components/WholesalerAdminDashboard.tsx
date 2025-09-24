@@ -95,7 +95,7 @@ import { StatusBarColor } from './ui/StatusBarColor';
 // Activity Log Type
 interface ActivityLog {
   id: string;
-  type: 'PAYMENT' | 'INVOICE' | 'RETAILER' | 'LINEWORKER' | 'AREA';
+  type: 'PAYMENT' | 'RETAILER' | 'LINEWORKER' | 'AREA';
   action: string;
   description: string;
   amount?: number;
@@ -117,6 +117,7 @@ export function WholesalerAdminDashboard() {
   const [retailers, setRetailers] = useState<Retailer[]>([]);
   const [lineWorkers, setLineWorkers] = useState<User[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
+  const [invoices, setInvoices] = useState<any[]>([]); // Empty array - invoices have been removed from the application
   const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null);
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -133,16 +134,6 @@ export function WholesalerAdminDashboard() {
   const [editingSelectedAreas, setEditingSelectedAreas] = useState<string[]>([]);
   const [editingActiveStatus, setEditingActiveStatus] = useState<boolean>(true);
   const [viewingPayment, setViewingPayment] = useState<Payment | null>(null);
-  
-  // Invoice-related states (to be removed)
-  const [invoices, setInvoices] = useState<any[]>([]);
-  const [editingInvoice, setEditingInvoice] = useState<any>(null);
-  const [editingInvoiceForm, setEditingInvoiceForm] = useState<any>({});
-  const [editingInvoiceLineItems, setEditingInvoiceLineItems] = useState<any[]>([]);
-  const [viewingInvoice, setViewingInvoice] = useState<any>(null);
-  const [deletingInvoice, setDeletingInvoice] = useState<any>(null);
-  const [creatingInvoice, setCreatingInvoice] = useState(false);
-  const [showCreateInvoice, setShowCreateInvoice] = useState(false);
   
   // Line worker creation state
   const [creatingLineWorker, setCreatingLineWorker] = useState(false);
@@ -481,10 +472,9 @@ export function WholesalerAdminDashboard() {
     try {
       // Fetch base data
       setDataFetchProgress(40);
-      const [areasData, retailersData, invoicesData, lineWorkersData, stats] = await Promise.all([
+      const [areasData, retailersData, lineWorkersData, stats] = await Promise.all([
         areaService.getActiveAreas(currentTenantId),
         retailerService.getAll(currentTenantId),
-        invoiceService.getAll(currentTenantId),
         userService.getAllUsersByRole(currentTenantId, 'LINE_WORKER'),
         DashboardService.getWholesalerDashboardStats(currentTenantId)
       ]);
@@ -509,7 +499,6 @@ export function WholesalerAdminDashboard() {
 
       setAreas(areasData);
       setRetailers(retailersData);
-      setInvoices(invoicesData);
       setLineWorkers(lineWorkersData);
       console.log('📊 Fetched line workers:', lineWorkersData.map(w => ({
         id: w.id,
@@ -537,13 +526,11 @@ export function WholesalerAdminDashboard() {
       
       // Generate activity logs - use filtered data only for Overview tab
       let activityLogsData = paymentsQuery;
-      let activityInvoicesData = invoicesData;
       
       // If on Overview tab, use the filtered data for activity logs
       // If on other tabs, use all data for activity logs
       if (activeNav === 'overview') {
         activityLogsData = paymentsQuery; // Already filtered for Overview
-        activityInvoicesData = invoicesData; // Will be filtered in generateActivityLogs
       } else {
         // For other tabs, use all payments data (unfiltered by date range)
         activityLogsData = paymentsData.filter(p => {
@@ -555,10 +542,9 @@ export function WholesalerAdminDashboard() {
           }
           return true;
         });
-        activityInvoicesData = invoicesData; // All invoices
       }
       
-      const logs = generateActivityLogs(activityLogsData, activityInvoicesData, retailersData, lineWorkersData);
+      const logs = generateActivityLogs(activityLogsData, retailersData, lineWorkersData);
       setActivityLogs(logs);
       
       // Note: Notifications are now handled by real-time service only
@@ -604,7 +590,7 @@ export function WholesalerAdminDashboard() {
     }
   };
 
-  const generateNotifications = (payments: Payment[], invoices: Invoice[], retailers: Retailer[], workers: User[]): NotificationItem[] => {
+  const generateNotifications = (payments: Payment[], retailers: Retailer[], workers: User[]): NotificationItem[] => {
     const notifications: NotificationItem[] = [];
     const now = new Date();
     const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
@@ -612,7 +598,6 @@ export function WholesalerAdminDashboard() {
 
     console.log('Generating notifications with:', {
       payments: payments.length,
-      invoices: invoices.length,
       retailers: retailers.length,
       workers: workers.length,
       now: now.toISOString(),
@@ -730,30 +715,6 @@ export function WholesalerAdminDashboard() {
       }
     });
 
-    // 5. Overdue invoices - Warning notifications
-    const overdueInvoices = invoices.filter(invoice => {
-      const dueDate = toDate(invoice.dueDate);
-      return dueDate < now && invoice.status !== 'PAID';
-    });
-
-    console.log('Overdue invoices:', overdueInvoices.length);
-
-    overdueInvoices.slice(0, 5).forEach(invoice => {
-      const retailer = retailers.find(r => r.id === invoice.retailerId);
-      const daysOverdue = Math.floor((now.getTime() - toDate(invoice.dueDate).getTime()) / (24 * 60 * 60 * 1000));
-      
-      notifications.push({
-        id: `overdue_invoice_${invoice.id}`,
-        type: 'warning',
-        title: 'Overdue invoice',
-        message: `Invoice #${invoice.invoiceNumber} for ${retailer?.name || 'retailer'} is ${daysOverdue} days overdue (₹${invoice.totalAmount.toLocaleString()})`,
-        timestamp: toDate(invoice.dueDate),
-        read: false,
-        amount: invoice.totalAmount,
-        dueDate: formatTimestamp(invoice.dueDate)
-      });
-    });
-
     // 6. Inactive line workers with recent activity - Info notifications
     const inactiveWorkersWithActivity = workers.filter(worker => 
       !worker.active && 
@@ -782,7 +743,7 @@ export function WholesalerAdminDashboard() {
     return notifications;
   };
 
-  const generateActivityLogs = (payments: Payment[], invoices: Invoice[], retailers: Retailer[], workers: User[]): ActivityLog[] => {
+  const generateActivityLogs = (payments: Payment[], retailers: Retailer[], workers: User[]): ActivityLog[] => {
     const logs: ActivityLog[] = [];
 
     // Payment activities - filter by date range only for Overview tab
@@ -809,35 +770,6 @@ export function WholesalerAdminDashboard() {
         targetName: retailer?.name || 'retailer',
         targetType: 'RETAILER',
         timestamp: payment.createdAt
-      });
-    });
-
-    // Invoice activities - filter by date range only for Overview tab
-    const recentInvoices = invoices.filter(i => {
-      if (activeNav === 'overview') {
-        const invoiceDate = toDate(i.issueDate);
-        return invoiceDate >= dateRange.startDate && invoiceDate <= dateRange.endDate;
-      }
-      return true; // For other tabs, show all invoices
-    });
-    
-    recentInvoices.forEach(invoice => {
-      const retailer = retailers.find(r => r.id === invoice.retailerId);
-      
-      // Use userInvoiceNumber if available, otherwise fall back to system invoiceNumber
-      const displayInvoiceNumber = invoice.userInvoiceNumber || invoice.invoiceNumber;
-      
-      logs.push({
-        id: `invoice_${invoice.id}`,
-        type: 'INVOICE',
-        action: 'created',
-        description: `Invoice #${displayInvoiceNumber} created for ${retailer?.name || 'retailer'}`,
-        amount: invoice.totalAmount,
-        actorName: 'System',
-        actorType: 'SYSTEM',
-        targetName: retailer?.name || 'retailer',
-        targetType: 'RETAILER',
-        timestamp: invoice.issueDate
       });
     });
     
@@ -1254,7 +1186,7 @@ export function WholesalerAdminDashboard() {
               <div className="text-center py-8">
                 <Clock className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                 <h3 className="text-lg font-medium text-gray-900 mb-2">No recent activities</h3>
-                <p className="text-gray-500">There have been no payments or invoice activities in the last 7 days.</p>
+                <p className="text-gray-500">There have been no payment activities in the last 7 days.</p>
               </div>
             )}
           </div>
@@ -1487,7 +1419,6 @@ export function WholesalerAdminDashboard() {
                     <TableHead>Retailer</TableHead>
                     <TableHead>Area</TableHead>
                     <TableHead>Phone</TableHead>
-                    <TableHead>Outstanding</TableHead>
                     <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -1502,11 +1433,6 @@ export function WholesalerAdminDashboard() {
                         {areas.find(a => a.id === retailer.areaId)?.name || 'Unassigned'}
                       </TableCell>
                       <TableCell>{retailer.phone}</TableCell>
-                      <TableCell>
-                        <div className="text-right">
-                          <div className="font-medium">{formatCurrency(retailer.currentOutstanding)}</div>
-                        </div>
-                      </TableCell>
                       <TableCell>
                         <div className="flex items-center space-x-2">
                           <Button
@@ -1844,16 +1770,33 @@ export function WholesalerAdminDashboard() {
 
   // Transactions Component
   const Transactions = () => {
-    // Filter payments based on status and sort by most recent first
-    const completedPayments = payments
-      .filter(payment => payment.state === 'COMPLETED')
+    // Filter payments based on selected criteria and sort by most recent first
+    const filteredPayments = payments
+      .filter(payment => {
+        // Apply line worker filter
+        if (selectedLineWorker !== "all" && payment.lineWorkerId !== selectedLineWorker) {
+          return false;
+        }
+        
+        // Apply retailer filter
+        if (selectedRetailer !== "all" && payment.retailerId !== selectedRetailer) {
+          return false;
+        }
+        
+        // Apply date range filter
+        const paymentDate = payment.createdAt.toDate();
+        if (paymentDate < dateRange.startDate || paymentDate > dateRange.endDate) {
+          return false;
+        }
+        
+        return true;
+      })
       .sort((a, b) => b.createdAt.toDate().getTime() - a.createdAt.toDate().getTime());
     
-    const pendingCancelledPayments = payments
-      .filter(payment => 
-        ['INITIATED', 'OTP_SENT', 'OTP_VERIFIED', 'CANCELLED', 'EXPIRED'].includes(payment.state)
-      )
-      .sort((a, b) => b.createdAt.toDate().getTime() - a.createdAt.toDate().getTime());
+    const completedPayments = filteredPayments.filter(payment => payment.state === 'COMPLETED');
+    const pendingCancelledPayments = filteredPayments.filter(payment => 
+      ['INITIATED', 'OTP_SENT', 'OTP_VERIFIED', 'CANCELLED', 'EXPIRED'].includes(payment.state)
+    );
 
     return (
       <div className="space-y-6">
@@ -1888,6 +1831,10 @@ export function WholesalerAdminDashboard() {
                   ))}
                 </SelectContent>
               </Select>
+              <DateRangeFilter
+                value={selectedDateRangeOption}
+                onValueChange={handleDateRangeChange}
+              />
             </div>
             <Button
               onClick={handleManualRefresh}
@@ -2122,7 +2069,6 @@ export function WholesalerAdminDashboard() {
         retailers={retailers}
         payments={payments}
         lineWorkers={lineWorkers}
-        invoices={invoices}
         areas={areas}
         onRefresh={handleManualRefresh}
         refreshLoading={mainLoadingState.loadingState.isRefreshing}
@@ -2131,204 +2077,6 @@ export function WholesalerAdminDashboard() {
     </div>
   );
 
-  // Delete Invoice Dialog Component
-  const DeleteInvoiceDialog = () => (
-    <Dialog open={!!deletingInvoice} onOpenChange={(open) => !open && setDeletingInvoice(null)}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>Delete Invoice</DialogTitle>
-          <DialogDescription>
-            This action cannot be undone. This will permanently delete the invoice.
-          </DialogDescription>
-        </DialogHeader>
-        {deletingInvoice && (
-              <div className="space-y-1">
-                <Label className="text-sm font-medium text-gray-700">Retailer</Label>
-                <div className="h-9 px-3 py-2 bg-gray-100 border border-gray-300 rounded-md text-sm">
-                  {getRetailerName(editingInvoice.retailerId)}
-                </div>
-                <p className="text-xs text-gray-500">Retailer cannot be changed</p>
-              </div>
-            </div>
-
-            {/* Line Items */}
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-medium text-gray-900 border-b pb-1">Line Items *</h3>
-                <Button 
-                  type="button" 
-                  variant="outline" 
-                  size="sm" 
-                  onClick={addEditLineItem}
-                  className="h-7 text-xs"
-                >
-                  <Plus className="h-3 w-3 mr-1" />
-                  Add Item
-                </Button>
-              </div>
-
-              {/* Line Items Header */}
-              <div className="grid grid-cols-12 gap-2 px-3 py-2 bg-gray-100 rounded text-xs font-medium text-gray-600">
-                <div className="col-span-5">Item Name</div>
-                <div className="col-span-2 text-center">Qty</div>
-                <div className="col-span-2 text-center">Unit Price</div>
-                <div className="col-span-2 text-center">GST %</div>
-                <div className="col-span-1 text-center">Total</div>
-              </div>
-
-              {/* Line Items List */}
-              <div className="space-y-2 max-h-40 overflow-y-auto">
-                {editingInvoiceLineItems.map((item, index) => (
-                  <div key={index} className="grid grid-cols-12 gap-2 items-center p-3 bg-gray-50 rounded-lg border">
-                    <div className="col-span-5">
-                      <div className="flex items-center space-x-1">
-                        <Package className="h-3 w-3 text-gray-400" />
-                        <Input
-                          placeholder="Item name"
-                          value={item.name}
-                          onChange={(e) => updateEditLineItem(index, 'name', e.target.value)}
-                          className="h-8 text-sm"
-                        />
-                      </div>
-                    </div>
-                    <div className="col-span-2">
-                      <Input
-                        type="number"
-                        min="1"
-                        value={item.qty}
-                        onChange={(e) => updateEditLineItem(index, 'qty', parseInt(e.target.value) || 1)}
-                        className="h-8 text-sm"
-                      />
-                    </div>
-                    <div className="col-span-2">
-                      <Input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={item.unitPrice}
-                        onChange={(e) => updateEditLineItem(index, 'unitPrice', parseFloat(e.target.value) || 0)}
-                        className="h-8 text-sm"
-                      />
-                    </div>
-                    <div className="col-span-2">
-                      <Input
-                        type="number"
-                        min="0"
-                        max="100"
-                        step="0.1"
-                        value={item.gstPercent}
-                        onChange={(e) => updateEditLineItem(index, 'gstPercent', parseFloat(e.target.value) || 0)}
-                        className="h-8 text-sm"
-                        placeholder="0.0"
-                      />
-                    </div>
-                    <div className="col-span-1">
-                      <div className="text-xs font-medium text-gray-900 bg-white px-2 py-1 rounded border text-center">
-                        {editLineItemTotals[index]}
-                      </div>
-                    </div>
-                    <div className="col-span-1">
-                      {editingInvoiceLineItems.length > 1 && (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => removeEditLineItem(index)}
-                          className="h-6 w-6 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Totals Summary */}
-            <div className="space-y-3 p-4 bg-gray-50 rounded-lg border">
-              <div className="flex items-center space-x-2 mb-2">
-                <Calculator className="h-4 w-4 text-gray-600" />
-                <h3 className="text-sm font-medium text-gray-900">Invoice Summary</h3>
-              </div>
-              
-              <div className="space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Subtotal:</span>
-                  <span className="font-medium">{formatCurrency(editInvoiceTotals.subtotal)}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">GST Amount:</span>
-                  <span className="font-medium">{formatCurrency(editInvoiceTotals.gstAmount)}</span>
-                </div>
-                <div className="flex justify-between text-sm font-bold border-t pt-2">
-                  <span className="text-gray-900">Total Amount:</span>
-                  <span className="text-gray-900">{formatCurrency(editInvoiceTotals.totalAmount)}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Action Buttons */}
-            <div className="flex justify-end space-x-2 pt-4 border-t">
-              <Button variant="outline" onClick={() => setEditingInvoice(null)}>
-                Cancel
-              </Button>
-              <Button onClick={handleEditInvoice}>
-                Save Changes
-              </Button>
-            </div>
-          </div>
-        )}
-      </DialogContent>
-    </Dialog>
-  );
-
-  // Delete Invoice Dialog Component
-  const DeleteInvoiceDialog = () => (
-    <Dialog open={!!deletingInvoice} onOpenChange={(open) => !open && setDeletingInvoice(null)}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>Delete Invoice</DialogTitle>
-          <DialogDescription>
-            This action cannot be undone. This will permanently delete the invoice.
-          </DialogDescription>
-        </DialogHeader>
-        {deletingInvoice && (
-          <div className="space-y-4">
-            <Alert className="border-red-200 bg-red-50">
-              <AlertCircle className="h-4 w-4 text-red-600" />
-              <AlertDescription className="text-red-800">
-                <strong>Warning:</strong> Deleting this invoice will permanently remove it from the system and affect all financial calculations. This action cannot be undone.
-              </AlertDescription>
-            </Alert>
-            <div className="bg-gray-50 p-4 rounded-lg">
-              <div className="grid grid-cols-2 gap-2 text-sm">
-                <div className="font-medium">Invoice Number:</div>
-                <div>{deletingInvoice.invoiceNumber}</div>
-                <div className="font-medium">Retailer:</div>
-                <div>{getRetailerName(deletingInvoice.retailerId)}</div>
-                <div className="font-medium">Amount:</div>
-                <div>{formatCurrency(deletingInvoice.totalAmount)}</div>
-                <div className="font-medium">Due Date:</div>
-                <div>{formatTimestamp(deletingInvoice.dueDate)}</div>
-              </div>
-            </div>
-            <div className="flex justify-end space-x-2 pt-4">
-              <Button variant="outline" onClick={() => setDeletingInvoice(null)}>
-                Cancel
-              </Button>
-              <Button 
-                variant="destructive" 
-                onClick={handleDeleteInvoice}
-              >
-                Delete Invoice
-              </Button>
-            </div>
-          </div>
-        )}
-      </DialogContent>
-    </Dialog>
-  );
 
   // View Payment Dialog Component
   const ViewPaymentDialog = () => (
@@ -2592,26 +2340,6 @@ export function WholesalerAdminDashboard() {
     );
   }
 
-  const getFilteredInvoices = () => {
-    const filteredRetailerIds = getFilteredRetailers.map(r => r.id);
-    return invoices.filter(invoice => {
-      // Only include invoices from filtered retailers
-      if (!filteredRetailerIds.includes(invoice.retailerId)) {
-        return false;
-      }
-      
-      // Date range filter - only apply for Overview tab
-      if (activeNav === 'overview' && dateRange) {
-        const invoiceDate = toDate(invoice.issueDate);
-        if (invoiceDate < dateRange.startDate || invoiceDate > dateRange.endDate) {
-          return false;
-        }
-      }
-      
-      return true;
-    });
-  };
-
   const getFilteredPayments = () => {
     const filteredRetailerIds = getFilteredRetailers.map(r => r.id);
     return payments.filter(payment => {
@@ -2638,7 +2366,7 @@ export function WholesalerAdminDashboard() {
       <div className="flex flex-col sm:pt-8  sm:flex-row sm:justify-between sm:items-start gap-4">
         <div>
           <h2 className="text-2xl font-bold text-gray-900">Retailer Details & Logs</h2>
-          <p className="text-gray-600">Complete detailed logs of all retailers including invoices and payments</p>
+          <p className="text-gray-600">Complete detailed logs of all retailers and their payments</p>
         </div>
         <Button
           onClick={handleManualRefresh}
@@ -2747,7 +2475,7 @@ export function WholesalerAdminDashboard() {
             <CardContent>
               <div className="text-2xl font-bold text-gray-900">{getFilteredRetailers.length}</div>
               <p className="text-xs text-gray-500">
-                {getFilteredRetailers.filter(r => r.currentOutstanding > 0).length} with outstanding balance
+                Total retailers in system
               </p>
             </CardContent>
           </Card>
@@ -2779,27 +2507,11 @@ export function WholesalerAdminDashboard() {
               </p>
             </CardContent>
           </Card>
-
-          <Card className="border-l-4 border-l-orange-500">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">Total Outstanding</CardTitle>
-              <AlertCircle className="h-4 w-4 text-orange-600" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-gray-900">
-                {formatCurrency(getFilteredRetailers.reduce((sum, r) => sum + r.currentOutstanding, 0))}
-              </div>
-              <p className="text-xs text-gray-500">
-                Across filtered retailers
-              </p>
-            </CardContent>
-          </Card>
         </div>
 
         {/* Retailers with Detailed Logs */}
         <div className="space-y-6">
           {getFilteredRetailers.map(retailer => {
-            const retailerInvoices = getFilteredInvoices().filter(inv => inv.retailerId === retailer.id);
             const retailerPayments = getFilteredPayments().filter(pay => pay.retailerId === retailer.id);
             // Check for direct assignment first, then fall back to area-based assignment
             const assignedLineWorker = retailer.assignedLineWorkerId 
@@ -2840,10 +2552,6 @@ export function WholesalerAdminDashboard() {
                       </CardDescription>
                     </div>
                     <div className="text-right">
-                      <div className="text-lg font-bold text-red-600">
-                        {formatCurrency(retailer.currentOutstanding)}
-                      </div>
-                      <div className="text-sm text-gray-500">Outstanding</div>
                       <div className="mt-2">
                         <Button
                           variant={retailer.assignedLineWorkerId ? "default" : "outline"}
@@ -2864,20 +2572,10 @@ export function WholesalerAdminDashboard() {
                 </CardHeader>
                 <CardContent className="p-4">
                   {/* Quick Stats */}
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-                    <div className="text-center p-2 bg-blue-50 rounded-lg border border-blue-100">
-                      <div className="text-xl font-bold text-blue-600">{retailerInvoices.length}</div>
-                      <div className="text-xs text-gray-600">Invoices</div>
-                    </div>
+                  <div className="grid grid-cols-2 md:grid-cols-2 gap-3 mb-4">
                     <div className="text-center p-2 bg-green-50 rounded-lg border border-green-100">
                       <div className="text-xl font-bold text-green-600">{retailerPayments.length}</div>
                       <div className="text-xs text-gray-600">Payments</div>
-                    </div>
-                    <div className="text-center p-2 bg-purple-50 rounded-lg border border-purple-100">
-                      <div className="text-lg font-bold text-purple-600">
-                        {formatCurrency(retailerInvoices.reduce((sum, inv) => sum + inv.totalAmount, 0))}
-                      </div>
-                      <div className="text-xs text-gray-600">Billed</div>
                     </div>
                     <div className="text-center p-2 bg-orange-50 rounded-lg border border-orange-100">
                       <div className="text-lg font-bold text-orange-600">
@@ -2915,8 +2613,8 @@ export function WholesalerAdminDashboard() {
                     </div>
                   </div>
 
-                  {/* Tabs for Invoices and Payments */}
-                  <Tabs defaultValue="invoices" className="w-full">
+                  {/* Payments Tab */}
+                  <Tabs defaultValue="payments" className="w-full">
                     <TabsList className="grid w-full grid-cols-1 h-8">
                       <TabsTrigger value="payments" className="text-xs">Payments ({retailerPayments.length})</TabsTrigger>
                     </TabsList>
@@ -3049,7 +2747,7 @@ export function WholesalerAdminDashboard() {
       )}
 
       {/* Main Content */}
-      <main className="flex-1 pt-16 p-3 sm:p-4 lg:p-6 overflow-y-auto pb-20 lg:pb-6">
+      <main className="flex-1 pt-20 sm:pt-16 p-3 sm:p-4 lg:p-6 overflow-y-auto pb-20 lg:pb-6">
         {error && (
           <Alert className="border-red-200 bg-red-50 mb-4 sm:mb-6">
             <AlertCircle className="h-4 w-4 text-red-600" />

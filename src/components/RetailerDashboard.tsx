@@ -352,7 +352,6 @@ export function RetailerDashboard() {
           totalPaid: latestOTP.amount,
           method: 'CASH' as any,
           state: 'OTP_SENT' as any,
-          invoiceAllocations: [],
           evidence: [],
           tenantId: retailerData.tenantId || '',
           timeline: {
@@ -539,23 +538,22 @@ Thank you for your payment!
     <div className="min-h-screen bg-gray-50">
       <StatusBarColor theme="blue" />
       
-      {/* Main Content */}
-      <div className="flex h-screen">
-        {/* Sidebar Navigation */}
-        <DashboardNavigation
-          navItems={navItems}
-          activeNav={activeNav}
-          setActiveNav={setActiveNav}
-          title="Retailer Dashboard"
-          user={user ? { displayName: user.displayName, email: user.email } : undefined}
-          onLogout={logout}
-          notificationCount={notificationCount}
-          notifications={notifications}
-        />
+      {/* Top Navigation */}
+      <DashboardNavigation
+        navItems={navItems}
+        activeNav={activeNav}
+        setActiveNav={setActiveNav}
+        title="Retailer Dashboard"
+        subtitle="Manage your payments and view transaction history"
+        user={user ? { displayName: user.displayName, email: user.email } : undefined}
+        onLogout={logout}
+        notificationCount={notificationCount}
+        notifications={notifications}
+      />
 
-        {/* Main Dashboard Area */}
-        <div className="flex-1 overflow-y-auto pt-16"> {/* Add padding-top for fixed header */}
-          <div className="p-6">
+      {/* Main Content Area */}
+      <div className="pt-20 sm:pt-16 pb-20 lg:pb-0"> {/* Add padding for fixed header and bottom nav */}
+        <div className="p-4 sm:p-6">
             {/* Header */}
             <div className="flex items-center justify-between mb-6">
               <div>
@@ -900,7 +898,6 @@ Thank you for your payment!
             )}
           </div>
         </div>
-      </div>
 
       {/* OTP Verification Popup */}
       <Dialog open={showOTPPopup} onOpenChange={setShowOTPPopup}>

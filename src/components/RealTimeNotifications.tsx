@@ -58,14 +58,6 @@ export function RealTimeNotifications({ payments, lineWorkers, retailers }: Real
     // Add some system notifications
     const systemNotifications: Notification[] = [
       {
-        id: 'high_outstanding',
-        type: 'WARNING' as const,
-        title: 'High Outstanding Balance',
-        message: 'Some retailers have outstanding balances requiring attention',
-        timestamp: new Date(Date.now() - 30 * 60 * 1000),
-        read: true
-      },
-      {
         id: 'daily_summary',
         type: 'INFO' as const,
         title: 'Daily Collection Summary',

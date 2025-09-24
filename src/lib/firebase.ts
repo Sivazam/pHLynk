@@ -44,7 +44,6 @@ export const COLLECTIONS = {
   USERS: 'users',
   AREAS: 'areas',
   RETAILERS: 'retailers',
-  INVOICES: 'invoices',
   PAYMENTS: 'payments',
   PAYMENT_EVENTS: 'paymentEvents',
   SUBSCRIPTIONS: 'subscriptions',
@@ -75,14 +74,6 @@ export const PAYMENT_STATES = {
 export const PAYMENT_METHODS = {
   CASH: 'CASH',
   UPI: 'UPI'
-} as const;
-
-// Invoice statuses
-export const INVOICE_STATUSES = {
-  OPEN: 'OPEN',
-  PARTIAL: 'PARTIAL',
-  PAID: 'PAID',
-  CANCELLED: 'CANCELLED'
 } as const;
 
 // Tenant statuses

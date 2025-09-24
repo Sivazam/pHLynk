@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { retailerService, invoiceService, paymentService } from '@/services/firestore';
+import { retailerService, paymentService } from '@/services/firestore';
 
 export async function GET(request: NextRequest) {
   try {
@@ -19,15 +19,16 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Retailer not found' }, { status: 404 });
     }
 
-    // Get invoices and payments
-    const invoices = await invoiceService.getInvoicesByRetailer(tenantId, retailerId);
+    // Get payments only (invoices removed)
     const payments = await paymentService.getPaymentsByRetailer(tenantId, retailerId);
 
-    // Calculate totals
-    const totalInvoiceAmount = invoices.reduce((sum, inv) => sum + inv.totalAmount, 0);
+    // Calculate totals - only payments matter now
     const totalPaidAmount = payments.filter(p => p.state === 'COMPLETED')
                                  .reduce((sum, p) => sum + p.totalPaid, 0);
-    const currentOutstanding = totalInvoiceAmount - totalPaidAmount;
+    
+    // Since we don't have invoices anymore, outstanding is always 0
+    const currentOutstanding = 0;
+    const totalInvoiceAmount = 0;
 
     const debugData = {
       retailer: {
@@ -43,13 +44,7 @@ export async function GET(request: NextRequest) {
         totalPaidAmount,
         currentOutstanding
       },
-      invoices: invoices.map(inv => ({
-        id: inv.id,
-        invoiceNumber: inv.invoiceNumber,
-        totalAmount: inv.totalAmount,
-        status: inv.status,
-        issueDate: inv.issueDate
-      })),
+      invoices: [], // No invoices anymore
       payments: payments.map(p => ({
         id: p.id,
         totalPaid: p.totalPaid,

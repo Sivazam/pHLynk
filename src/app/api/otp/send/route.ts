@@ -114,6 +114,20 @@ export async function POST(request: NextRequest) {
     // Clean up expired OTPs
     cleanupExpiredOTPs();
 
+    // Update payment state to OTP_SENT
+    try {
+      const paymentRef = doc(db, 'payments', paymentId);
+      await updateDoc(paymentRef, {
+        state: 'OTP_SENT',
+        'timeline.otpSentAt': new Date(),
+        updatedAt: new Date()
+      });
+      console.log('✅ Payment state updated to OTP_SENT');
+    } catch (paymentUpdateError) {
+      console.error('❌ Error updating payment state to OTP_SENT:', paymentUpdateError);
+      // Don't fail the request if payment update fails
+    }
+
     return NextResponse.json({
       success: true,
       message: 'OTP sent successfully',

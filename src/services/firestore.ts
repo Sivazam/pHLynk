@@ -447,44 +447,12 @@ export class RetailerService extends FirestoreService<Retailer> {
     }
   }
 
-  // Update retailer computed fields when invoice is created
-  async updateForInvoice(retailerId: string, tenantId: string, invoice: any): Promise<void> {
-    const retailer = await this.getById(retailerId, tenantId);
-    if (retailer) {
-      const newOutstanding = retailer.currentOutstanding + invoice.totalAmount;
-      const newTotalInvoiceAmount = (retailer.totalInvoiceAmount || 0) + invoice.totalAmount;
-      const newTotalInvoicesCount = (retailer.totalInvoicesCount || 0) + 1;
-      
-      // Update recent invoices (keep last 5)
-      const recentInvoices = retailer.recentInvoices || [];
-      const newInvoiceSummary = {
-        id: invoice.id,
-        invoiceNumber: invoice.invoiceNumber,
-        totalAmount: invoice.totalAmount,
-        issueDate: invoice.issueDate,
-        status: invoice.status
-      };
-      
-      const updatedRecentInvoices = [newInvoiceSummary, ...recentInvoices].slice(0, 5);
-      
-      await this.update(retailerId, {
-        currentOutstanding: newOutstanding,
-        totalInvoiceAmount: newTotalInvoiceAmount,
-        totalInvoicesCount: newTotalInvoicesCount,
-        lastInvoiceDate: invoice.issueDate,
-        recentInvoices: updatedRecentInvoices,
-        computedAt: Timestamp.now()
-      }, tenantId);
-      
-      logger.success(`Updated retailer ${retailerId} for new invoice: +₹${invoice.totalAmount}, outstanding: ₹${newOutstanding}`, { context: 'RetailerService' });
-    }
-  }
-
   // Update retailer computed fields when payment is completed
   async updateForPayment(retailerId: string, tenantId: string, payment: any): Promise<void> {
     const retailer = await this.getById(retailerId, tenantId);
     if (retailer) {
-      const newOutstanding = Math.max(0, retailer.currentOutstanding - payment.totalPaid);
+      // Since we don't have invoices anymore, outstanding is always 0
+      const newOutstanding = 0;
       const newTotalPaidAmount = (retailer.totalPaidAmount || 0) + payment.totalPaid;
       const newTotalPaymentsCount = (retailer.totalPaymentsCount || 0) + 1;
       
@@ -509,7 +477,7 @@ export class RetailerService extends FirestoreService<Retailer> {
         computedAt: Timestamp.now()
       }, tenantId);
       
-      logger.success(`Updated retailer ${retailerId} for payment: -₹${payment.totalPaid}, outstanding: ₹${newOutstanding}`, { context: 'RetailerService' });
+      logger.success(`Updated retailer ${retailerId} for payment: +₹${payment.totalPaid}`, { context: 'RetailerService' });
     }
   }
 
@@ -519,43 +487,26 @@ export class RetailerService extends FirestoreService<Retailer> {
       logger.debug(`Recomputing data for retailer ${retailerId}`, { context: 'RetailerService' });
       
       // Get all related data
-      const invoiceService = new InvoiceService();
       const paymentService = new PaymentService();
       
-      const invoices = await invoiceService.getInvoicesByRetailer(tenantId, retailerId);
       const payments = await paymentService.getPaymentsByRetailer(tenantId, retailerId);
       
-      logger.debug(`Retailer ${retailerId} - Found ${invoices.length} invoices and ${payments.length} payments`, { context: 'RetailerService' });
-      
-      // Log invoice details
-      invoices.forEach((inv, index) => {
-        logger.debug(`Invoice ${index + 1}`, { id: inv.id, amount: inv.totalAmount, status: inv.status }, { context: 'RetailerService' });
-      });
+      logger.debug(`Retailer ${retailerId} - Found ${payments.length} payments`, { context: 'RetailerService' });
       
       // Log payment details
       payments.forEach((p, index) => {
         logger.debug(`Payment ${index + 1}`, { id: p.id, amount: p.totalPaid, state: p.state, date: p.createdAt }, { context: 'RetailerService' });
       });
       
-      // Compute totals
-      const totalInvoiceAmount = invoices.reduce((sum, inv) => sum + inv.totalAmount, 0);
+      // Compute totals - only consider completed payments
       const totalPaidAmount = payments.filter(p => p.state === 'COMPLETED')
                                    .reduce((sum, p) => sum + p.totalPaid, 0);
-      const currentOutstanding = totalInvoiceAmount - totalPaidAmount;
       
-      logger.debug(`Retailer ${retailerId} summary`, { totalInvoices: totalInvoiceAmount, totalPaid: totalPaidAmount, outstanding: currentOutstanding }, { context: 'RetailerService' });
+      // Since we don't have invoices anymore, outstanding is always 0
+      const currentOutstanding = 0;
+      const totalInvoiceAmount = 0;
       
-      // Get recent invoices
-      const recentInvoices = invoices
-        .sort((a, b) => toMillis(b.issueDate) - toMillis(a.issueDate))
-        .slice(0, 5)
-        .map(inv => ({
-          id: inv.id,
-          invoiceNumber: inv.invoiceNumber,
-          totalAmount: inv.totalAmount,
-          issueDate: inv.issueDate,
-          status: inv.status
-        }));
+      logger.debug(`Retailer ${retailerId} summary`, { totalPaid: totalPaidAmount, outstanding: currentOutstanding }, { context: 'RetailerService' });
       
       // Get recent payments
       const recentPayments = payments
@@ -569,11 +520,7 @@ export class RetailerService extends FirestoreService<Retailer> {
           state: p.state
         }));
       
-      // Get last dates
-      const lastInvoiceDate = invoices.length > 0 ? 
-        invoices.reduce((latest, inv) => toMillis(inv.issueDate) > toMillis(latest) ? inv : latest).issueDate : 
-        null;
-      
+      // Get last payment date
       const lastPaymentDate = payments.length > 0 ? 
         payments.reduce((latest, p) => toMillis(p.createdAt) > toMillis(latest) ? p : latest).createdAt : 
         null;
@@ -583,16 +530,16 @@ export class RetailerService extends FirestoreService<Retailer> {
         currentOutstanding,
         totalInvoiceAmount,
         totalPaidAmount,
-        totalInvoicesCount: invoices.length,
-        totalPaymentsCount: payments.length,
-        lastInvoiceDate: lastInvoiceDate || undefined,
+        totalInvoicesCount: 0,
+        totalPaymentsCount: payments.filter(p => p.state === 'COMPLETED').length,
+        lastInvoiceDate: undefined,
         lastPaymentDate: lastPaymentDate || undefined,
-        recentInvoices,
+        recentInvoices: [],
         recentPayments,
         computedAt: Timestamp.now()
       }, tenantId);
       
-      logger.success(`Recomputed data for retailer ${retailerId}: outstanding ₹${currentOutstanding}, invoices ${invoices.length}, payments ${payments.length}`, { context: 'RetailerService' });
+      logger.success(`Recomputed data for retailer ${retailerId}: outstanding ₹${currentOutstanding}, payments ${payments.length}`, { context: 'RetailerService' });
       
     } catch (error) {
       logger.error(`Error recomputing data for retailer ${retailerId}`, error, { context: 'RetailerService' });
@@ -822,164 +769,37 @@ export class RetailerService extends FirestoreService<Retailer> {
 }
 
 export class InvoiceService extends FirestoreService<Invoice> {
+  // InvoiceService disabled - invoices have been removed from the app
   constructor() {
-    super(COLLECTIONS.INVOICES);
+    throw new Error('InvoiceService has been disabled. Invoices are no longer supported in this application.');
   }
 
   async createInvoice(tenantId: string, data: CreateInvoiceForm): Promise<string> {
-    // Calculate totals
-    const subtotal = data.lineItems.reduce((sum, item) => sum + (item.qty * item.unitPrice), 0);
-    const gstAmount = data.lineItems.reduce((sum, item) => {
-      const gstPercent = item.gstPercent || 0;
-      return sum + (item.qty * item.unitPrice * gstPercent / 100);
-    }, 0);
-    const totalAmount = subtotal + gstAmount;
-
-    // Use provided invoice number or generate one
-    const invoiceNumber = data.invoiceNumber || this.generateInvoiceNumber(tenantId);
-
-    // Create the invoice
-    const invoiceId = await this.create({
-      retailerId: data.retailerId,
-      invoiceNumber: invoiceNumber,
-      userInvoiceNumber: data.userInvoiceNumber,
-      issueDate: Timestamp.fromDate(data.issueDate),
-      dueDate: data.dueDate ? Timestamp.fromDate(data.dueDate) : undefined,
-      subtotal,
-      gstAmount,
-      totalAmount,
-      outstandingAmount: totalAmount,
-      status: 'OPEN',
-      lineItems: data.lineItems,
-      version: 1,
-      attachments: []
-    } as unknown as Omit<Invoice, 'id' | 'createdAt' | 'updatedAt'>, tenantId);
-
-    // Update retailer computed fields
-    try {
-      const retailerService = new RetailerService();
-      const invoiceData = {
-        id: invoiceId,
-        invoiceNumber: invoiceNumber,
-        totalAmount: totalAmount,
-        issueDate: Timestamp.fromDate(data.issueDate),
-        status: 'OPEN'
-      };
-      await retailerService.updateForInvoice(data.retailerId, tenantId, invoiceData);
-    } catch (error) {
-      logger.error('Error updating retailer computed fields', error, { context: 'RetailerService' });
-      // Don't throw here - the invoice was created successfully
-    }
-
-    return invoiceId;
+    throw new Error('InvoiceService has been disabled. Invoices are no longer supported in this application.');
   }
 
   private generateInvoiceNumber(tenantId: string): string {
-    const timestamp = Date.now();
-    const random = Math.floor(Math.random() * 1000);
-    return `INV-${tenantId.slice(0, 4).toUpperCase()}-${timestamp}-${random}`;
+    throw new Error('InvoiceService has been disabled. Invoices are no longer supported in this application.');
   }
 
   async getInvoicesByRetailer(tenantId: string, retailerId: string): Promise<Invoice[]> {
-    const invoices = await this.query(tenantId, [
-      where('retailerId', '==', retailerId)
-    ]);
-    // Sort in memory by issueDate (newest first)
-    return invoices.sort((a, b) => 
-      toMillis(b.issueDate) - toMillis(a.issueDate)
-    );
+    throw new Error('InvoiceService has been disabled. Invoices are no longer supported in this application.');
   }
 
   async getOpenInvoices(tenantId: string, retailerId?: string): Promise<Invoice[]> {
-    // Get all invoices first
-    let invoices: Invoice[];
-    
-    if (retailerId) {
-      invoices = await this.query(tenantId, [
-        where('retailerId', '==', retailerId)
-      ]);
-    } else {
-      invoices = await this.getAll(tenantId);
-    }
-    
-    // Filter in memory for open invoices with outstanding amount
-    const openInvoices = invoices.filter(invoice => 
-      (invoice.status === 'OPEN' || invoice.status === 'PARTIAL') && 
-      invoice.outstandingAmount > 0
-    );
-    
-    // Sort in memory by issueDate (oldest first)
-    return openInvoices.sort((a, b) => 
-      toMillis(a.issueDate) - toMillis(b.issueDate)
-    );
+    throw new Error('InvoiceService has been disabled. Invoices are no longer supported in this application.');
   }
 
   async updateInvoiceOutstanding(invoiceId: string, tenantId: string, amount: number): Promise<void> {
-    const invoice = await this.getById(invoiceId, tenantId);
-    if (invoice) {
-      const newOutstanding = Math.max(0, invoice.outstandingAmount - amount);
-      const newStatus = newOutstanding === 0 ? 'PAID' : 'PARTIAL';
-      
-      await this.update(invoiceId, {
-        outstandingAmount: newOutstanding,
-        status: newStatus,
-        version: invoice.version + 1
-      }, tenantId);
-    }
+    throw new Error('InvoiceService has been disabled. Invoices are no longer supported in this application.');
   }
 
   async updateInvoice(tenantId: string, invoiceId: string, data: Partial<Invoice>): Promise<void> {
-    const invoice = await this.getById(invoiceId, tenantId);
-    if (!invoice) {
-      throw new Error('Invoice not found');
-    }
-
-    // Calculate new outstanding amount if total amount changed
-    let newOutstanding = invoice.outstandingAmount;
-    if (data.totalAmount !== undefined && data.totalAmount !== invoice.totalAmount) {
-      const amountDiff = data.totalAmount - invoice.totalAmount;
-      newOutstanding = Math.max(0, invoice.outstandingAmount + amountDiff);
-    }
-
-    // Prepare update data
-    const updateData: any = {
-      ...data,
-      outstandingAmount: newOutstanding,
-      version: invoice.version + 1
-    };
-
-    // Update the invoice
-    await this.update(invoiceId, updateData, tenantId);
-
-    // Update retailer computed fields if relevant fields changed
-    if (data.totalAmount !== undefined || data.issueDate !== undefined || data.status !== undefined) {
-      try {
-        const retailerService = new RetailerService();
-        await retailerService.recomputeRetailerData(invoice.retailerId, tenantId);
-      } catch (error) {
-        logger.error('Error updating retailer computed fields', error, { context: 'RetailerService' });
-        // Don't throw here - the invoice was updated successfully
-      }
-    }
+    throw new Error('InvoiceService has been disabled. Invoices are no longer supported in this application.');
   }
 
   async deleteInvoice(tenantId: string, invoiceId: string): Promise<void> {
-    const invoice = await this.getById(invoiceId, tenantId);
-    if (!invoice) {
-      throw new Error('Invoice not found');
-    }
-
-    // Delete the invoice
-    await this.delete(invoiceId, tenantId);
-
-    // Update retailer computed fields
-    try {
-      const retailerService = new RetailerService();
-      await retailerService.recomputeRetailerData(invoice.retailerId, tenantId);
-    } catch (error) {
-      logger.error('Error updating retailer computed fields', error, { context: 'RetailerService' });
-      // Don't throw here - the invoice was deleted successfully
-    }
+    throw new Error('InvoiceService has been disabled. Invoices are no longer supported in this application.');
   }
 }
 
@@ -989,11 +809,10 @@ export class PaymentService extends FirestoreService<Payment> {
   }
 
   async initiatePayment(tenantId: string, data: InitiatePaymentForm & { lineWorkerId: string }): Promise<string> {
-    return this.create({
+    const paymentData = {
       retailerId: data.retailerId,
       retailerName: data.retailerName,
       lineWorkerId: data.lineWorkerId,
-      invoiceAllocations: data.invoiceAllocations,
       totalPaid: data.totalPaid,
       method: data.method,
       state: 'INITIATED',
@@ -1001,7 +820,14 @@ export class PaymentService extends FirestoreService<Payment> {
       timeline: {
         initiatedAt: Timestamp.now()
       }
-    } as unknown as Omit<Payment, 'id' | 'createdAt' | 'updatedAt'>, tenantId);
+    };
+
+    // Only include invoiceAllocations if it's defined (for backward compatibility)
+    if (data.invoiceAllocations && data.invoiceAllocations.length > 0) {
+      (paymentData as any).invoiceAllocations = data.invoiceAllocations;
+    }
+
+    return this.create(paymentData as unknown as Omit<Payment, 'id' | 'createdAt' | 'updatedAt'>, tenantId);
   }
 
   async getPaymentsByRetailer(tenantId: string, retailerId: string): Promise<Payment[]> {
@@ -1044,14 +870,10 @@ export class PaymentService extends FirestoreService<Payment> {
       ...updates.timeline
     };
 
-    // If payment is being completed, update outstanding amounts
+    // If payment is being completed, update retailer computed fields
     if (state === 'COMPLETED' && payment.state !== 'COMPLETED') {
       try {
-        const invoiceService = new InvoiceService();
         const retailerService = new RetailerService();
-
-        // Update invoice outstanding amount
-        await invoiceService.updateInvoiceOutstanding(paymentId, tenantId, payment.totalPaid);
 
         // Update retailer computed fields
         const paymentData = {
@@ -1063,7 +885,7 @@ export class PaymentService extends FirestoreService<Payment> {
         };
         await retailerService.updateForPayment(payment.retailerId, tenantId, paymentData);
       } catch (error) {
-        logger.error('Error updating outstanding amounts', error, { context: 'RetailerService' });
+        logger.error('Error updating retailer data', error, { context: 'RetailerService' });
         // Don't throw here - we still want to update the payment state
       }
     }
@@ -1528,7 +1350,7 @@ export const tenantService = new TenantService();
 export const userService = new UserService();
 export const areaService = new AreaService();
 export const retailerService = new RetailerService();
-export const invoiceService = new InvoiceService();
+// export const invoiceService = new InvoiceService(); // Disabled - invoices removed
 export const paymentService = new PaymentService();
 export const paymentEventService = new PaymentEventService();
 export const subscriptionService = new SubscriptionService();

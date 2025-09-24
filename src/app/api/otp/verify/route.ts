@@ -213,6 +213,48 @@ export async function POST(request: NextRequest) {
     if (otpData.code === otp) {
       console.log('✅ OTP verification successful!');
       
+      // Update payment state to COMPLETED using PaymentService
+      try {
+        const payment = await getPaymentWithCorrectTenant(paymentId);
+        if (payment) {
+          // Get the correct tenantId
+          let tenantId = payment.tenantId;
+          if (!tenantId || tenantId === 'system') {
+            // If payment doesn't have tenantId or it's 'system', get it from retailer user
+            const retailerUser = await RetailerAuthService.getRetailerUserByRetailerId(payment.retailerId);
+            if (retailerUser && retailerUser.tenantId) {
+              tenantId = retailerUser.tenantId;
+            }
+          }
+          
+          if (tenantId && tenantId !== 'system') {
+            await paymentService.updatePaymentState(paymentId, tenantId, 'COMPLETED', {
+              timeline: {
+                ...payment.timeline,
+                completedAt: Timestamp.now(),
+                verifiedAt: Timestamp.now()
+              }
+            });
+            console.log('✅ Payment state updated to COMPLETED using PaymentService');
+          } else {
+            // Fallback to direct update if no valid tenantId
+            const paymentRef = doc(db, 'payments', paymentId);
+            await updateDoc(paymentRef, {
+              state: 'COMPLETED',
+              'timeline.completedAt': new Date(),
+              'timeline.verifiedAt': new Date(),
+              updatedAt: new Date()
+            });
+            console.log('✅ Payment state updated to COMPLETED (direct fallback)');
+          }
+        } else {
+          console.log('❌ Payment not found, cannot update state');
+        }
+      } catch (paymentUpdateError) {
+        console.error('❌ Error updating payment state:', paymentUpdateError);
+        // Don't fail the verification if payment update fails
+      }
+      
       // Mark OTP as used in retailer document
       try {
         // First, get the payment to find the retailerId and tenantId

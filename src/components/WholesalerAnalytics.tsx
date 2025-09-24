@@ -39,7 +39,6 @@ interface WholesalerAnalyticsProps {
   retailers: Retailer[];
   payments: Payment[];
   lineWorkers: User[];
-  invoices: Invoice[];
   areas: any[];
   onRefresh?: () => void;
   refreshLoading?: boolean;
@@ -47,7 +46,6 @@ interface WholesalerAnalyticsProps {
 
 interface AnalyticsData {
   totalRevenue: number;
-  totalOutstanding: number;
   collectionRate: number;
   avgCollectionPerWorker: number;
   topPerformers: EnhancedWorker[];
@@ -60,7 +58,6 @@ export function WholesalerAnalytics({
   retailers, 
   payments, 
   lineWorkers, 
-  invoices, 
   areas,
   onRefresh,
   refreshLoading = false,
@@ -151,9 +148,8 @@ export function WholesalerAnalytics({
     // Calculate basic metrics
     const completedPayments = payments.filter(p => p.state === 'COMPLETED');
     const totalRevenue = completedPayments.reduce((sum, p) => sum + p.totalPaid, 0);
-    const totalOutstanding = retailers.reduce((sum, r) => sum + r.currentOutstanding, 0);
-    const totalInvoiced = invoices.reduce((sum, i) => sum + i.totalAmount, 0);
-    const collectionRate = totalInvoiced > 0 ? (totalRevenue / totalInvoiced) * 100 : 0;
+    const totalInvoiced = 0; // Invoices have been removed from the application
+    const collectionRate = 0; // Invoices have been removed, so collection rate is not applicable
     const avgCollectionPerWorker = lineWorkers.length > 0 ? totalRevenue / lineWorkers.length : 0;
 
     // Top performers (line workers)
@@ -217,7 +213,7 @@ export function WholesalerAnalytics({
 
     // Retailer insights
     const retailerInsights = retailers
-      .sort((a, b) => b.currentOutstanding - a.currentOutstanding)
+      .sort((a, b) => a.name.localeCompare(b.name)) // Sort by name instead of outstanding
       .slice(0, 10)
       .map(retailer => ({
         ...retailer,
@@ -229,7 +225,6 @@ export function WholesalerAnalytics({
 
     return {
       totalRevenue,
-      totalOutstanding,
       collectionRate,
       avgCollectionPerWorker,
       topPerformers: workerPerformance,
@@ -237,7 +232,7 @@ export function WholesalerAnalytics({
       monthlyTrends,
       retailerInsights
     };
-  }, [retailers, payments, lineWorkers, invoices, areas, monthlyTargets]);
+  }, [retailers, payments, lineWorkers, areas, monthlyTargets]);
 
   // Skeleton components
   const KeyMetricsSkeleton = () => (
@@ -433,22 +428,6 @@ export function WholesalerAnalytics({
               </div>
             </CardContent>
           </Card>
-
-          <Card className="border-l-4 border-l-orange-500">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">Outstanding</CardTitle>
-              <Calendar className="h-4 w-4 text-orange-600" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-gray-900">
-                {formatCurrency(analytics.totalOutstanding)}
-              </div>
-              <div className="flex items-center text-xs text-red-600">
-                <TrendingDown className="h-3 w-3 mr-1" />
-                -5.2% from last month
-              </div>
-            </CardContent>
-          </Card>
         </div>
       )}
 
@@ -546,10 +525,10 @@ export function WholesalerAnalytics({
           <CardHeader>
             <CardTitle className="flex items-center">
               <Store className="h-5 w-5 mr-2" />
-              Retailer Insights - High Outstanding
+              Retailer Insights
             </CardTitle>
             <CardDescription>
-              Retailers requiring immediate attention
+              Overview of all retailers in the system
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -558,7 +537,6 @@ export function WholesalerAnalytics({
                 <TableHeader>
                   <TableRow>
                     <TableHead>Retailer</TableHead>
-                    <TableHead>Outstanding</TableHead>
                     <TableHead>Payments</TableHead>
                     <TableHead>Last Payment</TableHead>
                     <TableHead>Status</TableHead>
@@ -568,9 +546,6 @@ export function WholesalerAnalytics({
                   {analytics.retailerInsights.map((retailer) => (
                     <TableRow key={retailer.id}>
                       <TableCell className="font-medium">{retailer.name}</TableCell>
-                      <TableCell className="font-medium text-red-600">
-                        {formatCurrency(retailer.currentOutstanding)}
-                      </TableCell>
                       <TableCell>{retailer.paymentCount}</TableCell>
                       <TableCell>
                         {retailer.lastPayment 
@@ -579,8 +554,8 @@ export function WholesalerAnalytics({
                         }
                       </TableCell>
                       <TableCell>
-                        <Badge variant={retailer.currentOutstanding > 10000 ? 'destructive' : 'secondary'}>
-                          {retailer.currentOutstanding > 10000 ? 'High Priority' : 'Normal'}
+                        <Badge variant="secondary">
+                          Active
                         </Badge>
                       </TableCell>
                     </TableRow>
