@@ -268,7 +268,7 @@ export function RetailerDashboard() {
     }
     
     // If we have a retailerId but no data is loaded yet, trigger data fetch
-    if (retailerId && !retailer && !mainLoadingState.isLoading) {
+    if (retailerId && !retailer && !mainLoadingState.loadingState.isLoading) {
       console.log('🔄 Backup init: Triggering data fetch for retailerId:', retailerId);
       mainLoadingState.setLoading(true);
       setDataFetchProgress(0);
