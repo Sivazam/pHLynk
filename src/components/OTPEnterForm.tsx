@@ -63,12 +63,26 @@ export const OTPEnterForm: React.FC<OTPEnterFormProps> = ({
     const totalDuration = 420; // 7 minutes in seconds
     const remaining = Math.max(0, totalDuration - elapsedSeconds);
     
+    // Debug logging
+    console.log('🔧 OTP expiration calculation:', {
+      paymentId: payment.id,
+      paymentState: payment.state,
+      otpSentAt: payment.timeline?.otpSentAt?.toDate?.() ? payment.timeline.otpSentAt.toDate().toISOString() : 'NOT SET',
+      createdAt: payment.createdAt?.toDate?.() ? payment.createdAt.toDate().toISOString() : 'NOT SET',
+      fallbackTime: new Date().toISOString(),
+      otpSentTime: otpSentTime.toISOString(),
+      now: now.toISOString(),
+      elapsedSeconds,
+      totalDuration,
+      remaining
+    });
+    
     if (remaining <= 0) {
       setCanResend(true);
     }
     
     return remaining;
-  }, [payment.timeline?.otpSentAt, payment.createdAt]);
+  }, [payment.timeline?.otpSentAt, payment.createdAt, payment.id, payment.state]);
 
   // Initialize time left on component mount
   useEffect(() => {

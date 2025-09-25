@@ -607,10 +607,24 @@ export function LineWorkerDashboard() {
       return true; // Not in OTP state, consider as expired
     }
     
-    const otpCreationTime = payment.createdAt?.toDate?.() || new Date();
+    // Use otpSentAt from timeline if available, otherwise fall back to createdAt
+    const otpSentTime = payment.timeline?.otpSentAt?.toDate?.() || payment.createdAt?.toDate?.() || new Date();
     const now = new Date();
-    const elapsedSeconds = Math.floor((now.getTime() - otpCreationTime.getTime()) / 1000);
+    const elapsedSeconds = Math.floor((now.getTime() - otpSentTime.getTime()) / 1000);
     const otpDuration = 420; // 7 minutes in seconds
+    
+    // Debug logging
+    console.log('🔧 LineWorkerDashboard OTP expiration check:', {
+      paymentId: payment.id,
+      paymentState: payment.state,
+      otpSentAt: payment.timeline?.otpSentAt?.toDate?.() ? payment.timeline.otpSentAt.toDate().toISOString() : 'NOT SET',
+      createdAt: payment.createdAt?.toDate?.() ? payment.createdAt.toDate().toISOString() : 'NOT SET',
+      otpSentTime: otpSentTime.toISOString(),
+      now: now.toISOString(),
+      elapsedSeconds,
+      otpDuration,
+      isExpired: elapsedSeconds > otpDuration
+    });
     
     return elapsedSeconds > otpDuration;
   };
@@ -621,9 +635,10 @@ export function LineWorkerDashboard() {
       return 0;
     }
     
-    const otpCreationTime = payment.createdAt?.toDate?.() || new Date();
+    // Use otpSentAt from timeline if available, otherwise fall back to createdAt
+    const otpSentTime = payment.timeline?.otpSentAt?.toDate?.() || payment.createdAt?.toDate?.() || new Date();
     const now = new Date();
-    const elapsedSeconds = Math.floor((now.getTime() - otpCreationTime.getTime()) / 1000);
+    const elapsedSeconds = Math.floor((now.getTime() - otpSentTime.getTime()) / 1000);
     const otpDuration = 420; // 7 minutes in seconds
     
     return Math.max(0, otpDuration - elapsedSeconds);

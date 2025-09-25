@@ -200,20 +200,33 @@ export function RetailerDashboard() {
   };
 
   useEffect(() => {
+    console.log('🔄 RetailerDashboard useEffect triggered', {
+      hasUser: !!user,
+      userId: user?.uid,
+      retailerId: user?.retailerId,
+      timestamp: new Date().toISOString()
+    });
+    
     // Get retailerId from AuthContext user or fallback to localStorage for backward compatibility
     let retailerId: string | undefined = user?.retailerId;
     if (!retailerId) {
       const storedRetailerId = localStorage.getItem('retailerId');
+      console.log('📝 Using stored retailerId from localStorage:', storedRetailerId);
       if (storedRetailerId) {
         retailerId = storedRetailerId;
       }
     }
+    
+    console.log('🔍 Final retailerId for data fetch:', retailerId);
     
     if (retailerId) {
       // Reset loading state and start fetching data
       mainLoadingState.setLoading(true);
       setDataFetchProgress(0);
       fetchRetailerData(retailerId);
+    } else {
+      console.log('⚠️ No retailerId found, skipping data fetch');
+      mainLoadingState.setLoading(false);
     }
 
     // Cleanup on unmount
@@ -237,6 +250,31 @@ export function RetailerDashboard() {
       }
     };
   }, [user]);
+
+  // Backup initialization for manual browser refresh - runs once on component mount
+  useEffect(() => {
+    console.log('🔄 RetailerDashboard mount useEffect triggered (backup initialization)', {
+      timestamp: new Date().toISOString()
+    });
+    
+    // Check if we already have a retailerId from the main useEffect
+    let retailerId: string | undefined = user?.retailerId;
+    if (!retailerId) {
+      const storedRetailerId = localStorage.getItem('retailerId');
+      console.log('📝 Backup init: Using stored retailerId from localStorage:', storedRetailerId);
+      if (storedRetailerId) {
+        retailerId = storedRetailerId;
+      }
+    }
+    
+    // If we have a retailerId but no data is loaded yet, trigger data fetch
+    if (retailerId && !retailer && !mainLoadingState.isLoading) {
+      console.log('🔄 Backup init: Triggering data fetch for retailerId:', retailerId);
+      mainLoadingState.setLoading(true);
+      setDataFetchProgress(0);
+      fetchRetailerData(retailerId);
+    }
+  }, []); // Empty dependency array - runs only once on mount
 
   // Load additional data when payments change
   useEffect(() => {
@@ -263,6 +301,10 @@ export function RetailerDashboard() {
   }, [activeOTPs]);
 
   const fetchRetailerData = async (retailerId: string) => {
+    console.log('🚀 fetchRetailerData called for retailerId:', retailerId, {
+      timestamp: new Date().toISOString()
+    });
+    
     setError(null);
     setDataFetchProgress(20);
     
@@ -518,11 +560,78 @@ export function RetailerDashboard() {
         }))
       });
       
-      setActiveOTPs(activeOTPsData);
+      // Also check Firestore for any OTPs that might not be in the in-memory store yet
+      try {
+        console.log('🔄 Checking Firestore for OTPs during initial load', {
+          retailerId,
+          timestamp: new Date().toISOString()
+        });
+        const retailerRef = doc(db, 'retailers', retailerId);
+        const retailerDoc = await getDoc(retailerRef);
+        
+        if (retailerDoc.exists()) {
+          const retailerData = retailerDoc.data();
+          const activeOTPsFromFirestore = retailerData.activeOTPs || [];
+          
+          console.log('🔍 Firestore OTP check during initial load:', {
+            activeOTPsFromFirestoreCount: activeOTPsFromFirestore.length,
+            activeOTPsFromFirestore: activeOTPsFromFirestore.map((otp: any) => ({
+              paymentId: otp.paymentId,
+              code: otp.code,
+              amount: otp.amount,
+              expiresAt: otp.expiresAt.toDate(),
+              isUsed: otp.isUsed,
+              isExpired: otp.expiresAt.toDate() <= new Date()
+            }))
+          });
+          
+          // Check if there are new OTPs that aren't in our current activeOTPs state
+          const currentPaymentIds = new Set(activeOTPsData.map(otp => otp.paymentId));
+          const newOTPsFromFirestore = activeOTPsFromFirestore.filter((otp: any) => {
+            // Check if OTP is not expired and not already in our state
+            const expiresAt = otp.expiresAt.toDate();
+            const isExpired = expiresAt <= new Date();
+            return !isExpired && !currentPaymentIds.has(otp.paymentId) && !otp.isUsed;
+          });
+          
+          if (newOTPsFromFirestore.length > 0) {
+            console.log('🆕 New OTPs found during initial load:', newOTPsFromFirestore.length);
+            
+            // Add new OTPs to our in-memory store for display
+            newOTPsFromFirestore.forEach((otp: any) => {
+              addActiveOTP({
+                code: otp.code,
+                retailerId: retailerId,
+                amount: otp.amount,
+                paymentId: otp.paymentId,
+                lineWorkerName: otp.lineWorkerName,
+                expiresAt: otp.expiresAt.toDate(),
+                createdAt: otp.createdAt.toDate()
+              });
+            });
+            
+            // Refresh the active OTPs data after adding new ones
+            const updatedActiveOTPsData = getActiveOTPsForRetailer(retailerId);
+            console.log('📊 Updated active OTPs count after Firestore sync:', updatedActiveOTPsData.length);
+            setActiveOTPs(updatedActiveOTPsData);
+          } else {
+            console.log('📝 No new OTPs found in Firestore, using in-memory store data');
+            setActiveOTPs(activeOTPsData);
+          }
+        } else {
+          console.log('⚠️ Retailer document not found in Firestore, using in-memory store data');
+          setActiveOTPs(activeOTPsData);
+        }
+      } catch (error) {
+        console.error('❌ Error checking Firestore for OTPs during initial load:', error);
+        console.log('📝 Falling back to in-memory store data due to error');
+        setActiveOTPs(activeOTPsData);
+      }
       setCompletedPayments(completedPaymentsData);
       
-      // Check for new OTPs and show popup
-      const newOTPs = activeOTPsData.filter(otp => !shownOTPpopups.has(otp.paymentId));
+      // Check for new OTPs and show popup (use the updated activeOTPs state)
+      const finalActiveOTPs = getActiveOTPsForRetailer(retailerId);
+      const newOTPs = finalActiveOTPs.filter(otp => !shownOTPpopups.has(otp.paymentId));
       if (newOTPs.length > 0) {
         const latestOTP = newOTPs[newOTPs.length - 1];
         setNewPayment({
