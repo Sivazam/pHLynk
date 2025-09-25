@@ -17,9 +17,9 @@ import { notificationService } from '@/services/notification-service';
 import { RetailerAuthService } from '@/services/retailer-auth';
 import { Retailer, Payment } from '@/types';
 import { formatTimestamp, formatTimestampWithTime, formatCurrency } from '@/lib/timestamp-utils';
-import { getActiveOTPsForRetailer, getCompletedPaymentsForRetailer, removeCompletedPayment, addActiveOTP } from '@/lib/otp-store';
+import { getActiveOTPsForRetailer, getCompletedPaymentsForRetailer, removeCompletedPayment, addActiveOTP, removeActiveOTP } from '@/lib/otp-store';
 import { db } from '@/lib/firebase';
-import { doc, getDoc, onSnapshot } from 'firebase/firestore';
+import { doc, getDoc, onSnapshot, collection, query, where } from 'firebase/firestore';
 import { logger } from '@/lib/logger';
 import { DateRangeFilter, DateRangeOption } from '@/components/ui/DateRangeFilter';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -369,6 +369,68 @@ export function RetailerDashboard() {
       
       setOtpUnsubscribe(() => otpUnsubscribeFunc);
       console.log('🔔 Real-time OTP listener setup complete');
+      
+      // Set up real-time payment completion listener
+      const paymentsRef = collection(db, 'payments');
+      const paymentQuery = query(paymentsRef, where('retailerId', '==', retailerId), where('state', '==', 'COMPLETED'));
+      const paymentUnsubscribeFunc = onSnapshot(paymentQuery, (snapshot) => {
+        snapshot.docChanges().forEach((change) => {
+          if (change.type === 'modified' || change.type === 'added') {
+            const paymentData = change.doc.data();
+            const paymentId = change.doc.id;
+            
+            console.log('💰 Payment completion detected:', paymentId, 'State:', paymentData.state);
+            
+            // Check if this payment was recently completed (within last 10 seconds)
+            const completedAt = paymentData.timeline?.completedAt?.toDate();
+            if (completedAt) {
+              const now = new Date();
+              const timeSinceCompletion = now.getTime() - completedAt.getTime();
+              const tenSecondsInMs = 10 * 1000;
+              
+              if (timeSinceCompletion < tenSecondsInMs) {
+                console.log('🎉 Recent payment completion detected, closing OTP popup and showing success');
+                
+                // Close OTP popup if it's open
+                setShowOTPPopup(false);
+                
+                // Remove the OTP from active display
+                removeActiveOTP(paymentId);
+                const updatedActiveOTPs = getActiveOTPsForRetailer(retailerId);
+                setActiveOTPs(updatedActiveOTPs);
+                
+                // Show success popup with confetti
+                setNewCompletedPayment({
+                  amount: paymentData.totalPaid,
+                  paymentId: paymentId,
+                  lineWorkerName: paymentData.lineWorkerName || 'Line Worker',
+                  completedAt: completedAt
+                });
+                setShowSettlementPopup(true);
+                
+                // Play success sound if available
+                try {
+                  const audio = new Audio('/success-sound.mp3');
+                  audio.play().catch(() => {
+                    console.log('🔇 Could not play success sound');
+                  });
+                } catch (error) {
+                  console.log('🔇 Could not play success sound:', error);
+                }
+              }
+            }
+          }
+        });
+      }, (error) => {
+        console.error('Error listening to payment completions:', error);
+      });
+      
+      // Store payment unsubscribe function
+      setOtpUnsubscribe(() => {
+        otpUnsubscribeFunc();
+        paymentUnsubscribeFunc();
+      });
+      console.log('🔔 Real-time payment completion listener setup complete');
       
       // Try to get retailer details from retailers collection first
       setDataFetchProgress(60);
@@ -789,6 +851,97 @@ Thank you for your payment!
                         </CardContent>
                       </Card>
                     </div>
+
+                    {/* Active OTP Cards - Clickable to reopen popup */}
+                    {activeOTPs.length > 0 && (
+                      <Card>
+                        <CardHeader>
+                          <CardTitle className="flex items-center gap-2">
+                            <Bell className="h-5 w-5 text-orange-600" />
+                            Active OTP Requests
+                            <Badge variant="secondary" className="ml-2">{activeOTPs.length}</Badge>
+                          </CardTitle>
+                          <CardDescription>
+                            Click on any OTP card to view the verification details
+                          </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {activeOTPs.map((otp) => {
+                              const timeLeft = otpCountdowns.get(otp.paymentId) || 0;
+                              const isExpired = timeLeft <= 0;
+                              
+                              return (
+                                <div 
+                                  key={otp.paymentId}
+                                  className={`p-4 border rounded-lg cursor-pointer transition-all hover:shadow-md ${
+                                    isExpired 
+                                      ? 'border-gray-300 bg-gray-50' 
+                                      : 'border-orange-200 bg-orange-50 hover:border-orange-300'
+                                  }`}
+                                  onClick={() => {
+                                    // Reopen the OTP popup for this specific OTP
+                                    setNewPayment({
+                                      ...otp,
+                                      id: otp.paymentId,
+                                      retailerId: retailer?.id || '',
+                                      retailerName: retailer?.name || '',
+                                      lineWorkerId: '',
+                                      totalPaid: otp.amount,
+                                      method: 'CASH' as any,
+                                      state: 'OTP_SENT' as any,
+                                      evidence: [],
+                                      tenantId: tenantId || '',
+                                      timeline: {
+                                        initiatedAt: { toDate: () => otp.createdAt } as any,
+                                        otpSentAt: { toDate: () => otp.createdAt } as any,
+                                      },
+                                      createdAt: { toDate: () => otp.createdAt } as any,
+                                      updatedAt: { toDate: () => otp.createdAt } as any,
+                                    });
+                                    setShowOTPPopup(true);
+                                  }}
+                                >
+                                  <div className="space-y-3">
+                                    <div className="flex justify-between items-start">
+                                      <div>
+                                        <div className="font-medium text-gray-900">Amount</div>
+                                        <div className="text-lg font-bold text-green-600">{formatCurrency(otp.amount)}</div>
+                                      </div>
+                                      <div className={`px-2 py-1 rounded text-xs font-medium ${
+                                        isExpired 
+                                          ? 'bg-gray-200 text-gray-700' 
+                                          : 'bg-orange-200 text-orange-800'
+                                      }`}>
+                                        {isExpired ? 'EXPIRED' : 'ACTIVE'}
+                                      </div>
+                                    </div>
+                                    
+                                    <div>
+                                      <div className="text-sm text-gray-600">Line Worker</div>
+                                      <div className="font-medium">{otp.lineWorkerName}</div>
+                                    </div>
+                                    
+                                    <div>
+                                      <div className="text-sm text-gray-600">Time Remaining</div>
+                                      <div className={`font-mono text-sm ${
+                                        timeLeft < 60 ? 'text-red-600' : 'text-orange-600'
+                                      }`}>
+                                        {isExpired ? 'Expired' : formatCountdown(timeLeft)}
+                                      </div>
+                                    </div>
+                                    
+                                    <div className="text-xs text-gray-500">
+                                      Click to view OTP details
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )}
 
                     {/* Retailer Information */}
                     <Card>

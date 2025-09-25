@@ -259,13 +259,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Verify OTP
+    // Verify OTP (case-insensitive comparison)
     console.log('🔍 Comparing OTP codes:');
     console.log('  Provided OTP:', otp);
     console.log('  Stored OTP:', otpData.code);
-    console.log('  Match:', otpData.code === otp);
+    console.log('  Provided (uppercase):', otp.toUpperCase());
+    console.log('  Stored (uppercase):', otpData.code.toUpperCase());
+    console.log('  Match:', otpData.code.toUpperCase() === otp.toUpperCase());
     
-    if (otpData.code === otp) {
+    if (otpData.code.toUpperCase() === otp.toUpperCase()) {
       console.log('✅ OTP verification successful!');
       
       // Use Cloud Function to verify OTP (more secure) - if available
