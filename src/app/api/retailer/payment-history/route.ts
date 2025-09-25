@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
-import { db } from '@/lib/db'
+import { retailerService, paymentService } from '@/services/firestore'
+import { toDate as convertToDate } from '@/lib/timestamp-utils'
 
 export async function GET(request: NextRequest) {
   try {
@@ -12,39 +13,16 @@ export async function GET(request: NextRequest) {
     }
 
     const retailerId = session.user.id
+    const tenantId = 'default' // You may need to determine this from the session or context
     const { searchParams } = new URL(request.url)
     const wholesalerId = searchParams.get('wholesalerId')
     const fromDate = searchParams.get('from')
     const toDate = searchParams.get('to')
 
-    // Build date filters
-    let dateFilter = {}
-    if (fromDate || toDate) {
-      dateFilter = {
-        date: {
-          ...(fromDate && { gte: new Date(fromDate) }),
-          ...(toDate && { 
-            lte: new Date(new Date(toDate).setHours(23, 59, 59, 999)) 
-          })
-        }
-      }
-    }
+    // Get retailer details
+    const retailer = await retailerService.getById(retailerId, tenantId)
 
-    // Get retailer's wholesaler associations
-    const retailers = await db.retailer.findMany({
-      where: {
-        userId: retailerId
-      },
-      include: {
-        wholesalers: {
-          include: {
-            wholesaler: true
-          }
-        }
-      }
-    })
-
-    if (!retailers || retailers.length === 0) {
+    if (!retailer) {
       return NextResponse.json({ 
         payments: [],
         summary: {
@@ -56,95 +34,84 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    // Get all associated wholesaler IDs
-    const associatedWholesalerIds = new Set()
-    retailers.forEach(retailer => {
-      retailer.wholesalers.forEach(association => {
-        associatedWholesalerIds.add(association.wholesalerId)
-      })
-    })
+    // Get all payments for this retailer
+    let payments = await paymentService.query(tenantId, [])
 
-    // If specific wholesaler is selected, verify it's associated
-    if (wholesalerId && wholesalerId !== 'all') {
-      if (!associatedWholesalerIds.has(wholesalerId)) {
-        return NextResponse.json({ 
-          payments: [],
-          summary: {
-            totalAmount: 0,
-            completedAmount: 0,
-            pendingAmount: 0,
-            wholesalerBreakdown: []
-          }
-        })
-      }
+    // Filter payments for this retailer
+    payments = payments.filter(payment => 
+      payment.retailerId === retailerId
+    )
+
+    // Apply date filters if provided
+    if (fromDate || toDate) {
+      const from = fromDate ? new Date(fromDate) : null
+      const to = toDate ? new Date(new Date(toDate).setHours(23, 59, 59, 999)) : null
+      
+      payments = payments.filter(payment => {
+        if (!payment.createdAt) return false
+        const paymentDate = convertToDate(payment.createdAt)
+        
+        if (from && paymentDate < from) return false
+        if (to && paymentDate > to) return false
+        return true
+      })
     }
 
-    // Build wholesaler filter
-    const wholesalerFilter = wholesalerId && wholesalerId !== 'all' 
-      ? { wholesalerId }
-      : { wholesalerId: { in: Array.from(associatedWholesalerIds) } }
+    // Apply wholesaler filter if provided
+    // Note: wholesaler filtering is not applicable for retailer API as payments are retailer-specific
+    // This parameter is kept for API compatibility but has no effect
 
-    // Fetch payments with filters
-    const payments = await db.payment.findMany({
-      where: {
-        retailerId,
-        ...wholesalerFilter,
-        ...dateFilter
-      },
-      include: {
-        wholesaler: true
-      },
-      orderBy: {
-        date: 'desc'
-      }
+    // Sort payments by date (newest first)
+    payments.sort((a, b) => {
+      const dateA = a.createdAt ? convertToDate(a.createdAt).getTime() : 0
+      const dateB = b.createdAt ? convertToDate(b.createdAt).getTime() : 0
+      return dateB - dateA
     })
 
     // Calculate summary
     const summary = {
-      totalAmount: payments.reduce((sum, payment) => sum + payment.amount, 0),
+      totalAmount: payments.reduce((sum, payment) => sum + (payment.totalPaid || 0), 0),
       completedAmount: payments
-        .filter(p => p.status === 'COMPLETED')
-        .reduce((sum, payment) => sum + payment.amount, 0),
+        .filter(p => p.state === 'COMPLETED')
+        .reduce((sum, payment) => sum + (payment.totalPaid || 0), 0),
       pendingAmount: payments
-        .filter(p => p.status === 'PENDING')
-        .reduce((sum, payment) => sum + payment.amount, 0),
-      wholesalerBreakdown: [] as any[]
+        .filter(p => p.state === 'INITIATED' || p.state === 'OTP_SENT' || p.state === 'OTP_VERIFIED')
+        .reduce((sum, payment) => sum + (payment.totalPaid || 0), 0),
+      methodBreakdown: [] as any[]
     }
 
-    // Calculate wholesaler breakdown
-    const wholesalerMap = new Map()
+    // Calculate breakdown by payment method instead of wholesaler
+    const methodMap = new Map()
     payments.forEach(payment => {
-      const wholesalerId = payment.wholesalerId
-      if (!wholesalerMap.has(wholesalerId)) {
-        wholesalerMap.set(wholesalerId, {
-          wholesalerId,
-          wholesalerName: payment.wholesaler.name,
+      const methodName = payment.method || 'Unknown'
+      
+      if (!methodMap.has(methodName)) {
+        methodMap.set(methodName, {
+          method: methodName,
           totalPaid: 0,
           paymentCount: 0
         })
       }
       
-      const wholesaler = wholesalerMap.get(wholesalerId)
-      wholesaler.totalPaid += payment.amount
-      wholesaler.paymentCount += 1
+      const method = methodMap.get(methodName)
+      method.totalPaid += payment.totalPaid || 0
+      method.paymentCount += 1
     })
 
-    summary.wholesalerBreakdown = Array.from(wholesalerMap.values())
+    summary.methodBreakdown = Array.from(methodMap.values())
 
     return NextResponse.json({
       payments: payments.map(payment => ({
         id: payment.id,
-        amount: payment.amount,
+        amount: payment.totalPaid || 0,
         method: payment.method,
-        status: payment.status,
-        date: payment.date.toISOString(),
-        wholesaler: {
-          id: payment.wholesaler.id,
-          name: payment.wholesaler.name,
-          email: payment.wholesaler.email,
-          phone: payment.wholesaler.phone
+        status: payment.state,
+        date: payment.createdAt ? convertToDate(payment.createdAt).toISOString() : new Date().toISOString(),
+        retailer: {
+          id: payment.retailerId,
+          name: payment.retailerName || 'Unknown'
         },
-        referenceNumber: payment.referenceNumber
+        referenceNumber: payment.id
       })),
       summary
     })

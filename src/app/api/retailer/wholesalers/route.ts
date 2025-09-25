@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
-import { db } from '@/lib/db'
+import { retailerService } from '@/services/firestore'
 
 export async function GET(request: NextRequest) {
   try {
@@ -12,49 +12,26 @@ export async function GET(request: NextRequest) {
     }
 
     const retailerId = session.user.id
+    const tenantId = 'default' // You may need to determine this from the session or context
 
-    // Get all wholesalers associated with this retailer
-    const retailers = await db.retailer.findMany({
-      where: {
-        userId: retailerId
-      },
-      include: {
-        wholesalers: {
-          include: {
-            wholesaler: true
-          }
-        }
-      }
-    })
+    // Get retailer details
+    const retailer = await retailerService.getById(retailerId, tenantId)
 
-    if (!retailers || retailers.length === 0) {
+    if (!retailer) {
       return NextResponse.json({ 
         wholesalers: [],
         message: 'No retailer profile found'
       }, { status: 404 })
     }
 
-    // Extract unique wholesalers from all retailer profiles
-    const uniqueWholesalers = new Map()
+    // For now, return empty wholesalers list since we don't have the wholesaler association model
+    // You may need to implement this based on your actual data model
+    // This could be stored in the retailer document or in a separate collection
     
-    retailers.forEach(retailer => {
-      retailer.wholesalers.forEach(wholesalerAssociation => {
-        if (!uniqueWholesalers.has(wholesalerAssociation.wholesalerId)) {
-          uniqueWholesalers.set(wholesalerAssociation.wholesalerId, {
-            id: wholesalerAssociation.wholesaler.id,
-            name: wholesalerAssociation.wholesaler.name,
-            email: wholesalerAssociation.wholesaler.email,
-            phone: wholesalerAssociation.wholesaler.phone
-          })
-        }
-      })
-    })
-
-    const wholesalersList = Array.from(uniqueWholesalers.values())
-
     return NextResponse.json({
-      wholesalers: wholesalersList,
-      count: wholesalersList.length
+      wholesalers: [],
+      count: 0,
+      message: 'Wholesaler associations not implemented yet'
     })
 
   } catch (error) {

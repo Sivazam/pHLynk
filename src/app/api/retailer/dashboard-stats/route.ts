@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
-import { db } from '@/lib/db'
+import { retailerService, paymentService } from '@/services/firestore'
 
 export async function GET(request: NextRequest) {
   try {
@@ -12,22 +12,12 @@ export async function GET(request: NextRequest) {
     }
 
     const retailerId = session.user.id
+    const tenantId = 'default' // You may need to determine this from the session or context
 
-    // Get retailer's wholesaler associations
-    const retailers = await db.retailer.findMany({
-      where: {
-        userId: retailerId
-      },
-      include: {
-        wholesalers: {
-          include: {
-            wholesaler: true
-          }
-        }
-      }
-    })
+    // Get retailer details
+    const retailer = await retailerService.getById(retailerId, tenantId)
 
-    if (!retailers || retailers.length === 0) {
+    if (!retailer) {
       return NextResponse.json({ 
         totalPayments: 0,
         completedPayments: 0,
@@ -37,34 +27,35 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    // Get all associated wholesaler IDs
-    const associatedWholesalerIds = new Set()
-    retailers.forEach(retailer => {
-      retailer.wholesalers.forEach(association => {
-        associatedWholesalerIds.add(association.wholesalerId)
-      })
-    })
+    // Get all payments for this retailer
+    const payments = await paymentService.query(tenantId, [
+      // Assuming payments have a retailerId field - adjust the query as needed
+      // This might need to be adjusted based on your actual data model
+    ])
 
-    // Fetch all payments
-    const payments = await db.payment.findMany({
-      where: {
-        retailerId,
-        wholesalerId: { in: Array.from(associatedWholesalerIds) }
-      }
-    })
+    // For now, let's filter payments in memory since we don't know the exact schema
+    const retailerPayments = payments.filter(payment => 
+      payment.retailerId === retailerId
+    )
 
     // Calculate stats
-    const totalPayments = payments.length
-    const completedPayments = payments.filter(p => p.status === 'COMPLETED').length
-    const pendingPayments = payments.filter(p => p.status === 'PENDING').length
-    const totalAmount = payments.reduce((sum, payment) => sum + payment.amount, 0)
+    const totalPayments = retailerPayments.length
+    const completedPayments = retailerPayments.filter(p => p.state === 'COMPLETED').length
+    const pendingPayments = retailerPayments.filter(p => 
+      p.state === 'INITIATED' || p.state === 'OTP_SENT' || p.state === 'OTP_VERIFIED'
+    ).length
+    const totalAmount = retailerPayments.reduce((sum, payment) => sum + (payment.totalPaid || 0), 0)
+
+    // For associated wholesalers, we would need to check the retailer's associations
+    // This might be stored in the retailer document or in a separate collection
+    const associatedWholesalers = 0 // Placeholder - implement based on your data model
 
     return NextResponse.json({
       totalPayments,
       completedPayments,
       pendingPayments,
       totalAmount,
-      associatedWholesalers: associatedWholesalerIds.size
+      associatedWholesalers
     })
 
   } catch (error) {

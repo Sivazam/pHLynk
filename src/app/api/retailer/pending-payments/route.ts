@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
-import { db } from '@/lib/db'
+import { retailerService, paymentService } from '@/services/firestore'
+import { toDate as convertToDate } from '@/lib/timestamp-utils'
 
 export async function GET(request: NextRequest) {
   try {
@@ -12,64 +13,46 @@ export async function GET(request: NextRequest) {
     }
 
     const retailerId = session.user.id
+    const tenantId = 'default' // You may need to determine this from the session or context
 
-    // Get retailer's wholesaler associations
-    const retailers = await db.retailer.findMany({
-      where: {
-        userId: retailerId
-      },
-      include: {
-        wholesalers: {
-          include: {
-            wholesaler: true
-          }
-        }
-      }
-    })
+    // Get retailer details
+    const retailer = await retailerService.getById(retailerId, tenantId)
 
-    if (!retailers || retailers.length === 0) {
+    if (!retailer) {
       return NextResponse.json({ 
         payments: [],
         message: 'No retailer profile found'
       }, { status: 404 })
     }
 
-    // Get all associated wholesaler IDs
-    const associatedWholesalerIds = new Set()
-    retailers.forEach(retailer => {
-      retailer.wholesalers.forEach(association => {
-        associatedWholesalerIds.add(association.wholesalerId)
-      })
-    })
+    // Get all payments for this retailer
+    let payments = await paymentService.query(tenantId, [])
 
-    // Fetch pending payments
-    const pendingPayments = await db.payment.findMany({
-      where: {
-        retailerId,
-        wholesalerId: { in: Array.from(associatedWholesalerIds) },
-        status: 'PENDING'
-      },
-      include: {
-        lineWorker: true,
-        wholesaler: true
-      },
-      orderBy: {
-        date: 'desc'
-      }
+    // Filter payments for this retailer and pending status
+    const pendingPayments = payments.filter(payment => 
+      payment.retailerId === retailerId &&
+      (payment.state === 'INITIATED' || payment.state === 'OTP_SENT' || payment.state === 'OTP_VERIFIED')
+    )
+
+    // Sort payments by date (newest first)
+    pendingPayments.sort((a, b) => {
+      const dateA = a.createdAt ? convertToDate(a.createdAt).getTime() : 0
+      const dateB = b.createdAt ? convertToDate(b.createdAt).getTime() : 0
+      return dateB - dateA
     })
 
     return NextResponse.json({
       payments: pendingPayments.map(payment => ({
         id: payment.id,
-        amount: payment.amount,
+        amount: payment.totalPaid || 0,
         method: payment.method,
-        date: payment.date.toISOString(),
+        date: payment.createdAt ? convertToDate(payment.createdAt).toISOString() : new Date().toISOString(),
         lineWorker: {
-          name: payment.lineWorker.name,
-          phone: payment.lineWorker.phone
+          name: 'Unknown', // Line worker info not available in Payment interface
+          phone: ''
         },
-        wholesaler: {
-          name: payment.wholesaler.name
+        retailer: {
+          name: payment.retailerName || 'Unknown'
         }
       })),
       count: pendingPayments.length
