@@ -381,12 +381,79 @@ export function RetailerDashboard() {
         if (!mainLoadingState.loadingState.isLoading && retailer.id) {
           console.log('⏰ Periodic OTP refresh check');
           refreshOTPData();
+          
+          // Also check for completed payments that should close OTP popup
+          checkCompletedPayments();
         }
       }, 5000); // Check every 5 seconds as a fallback
 
       return () => clearInterval(refreshInterval);
     }
   }, [retailer, tenantId, mainLoadingState.loadingState.isLoading]);
+
+  // Check for completed payments and close OTP popup if needed
+  const checkCompletedPayments = async () => {
+    if (!retailer || !tenantId || !showOTPPopup) return;
+    
+    try {
+      // Check for recently completed payments
+      const paymentsRef = collection(db, 'payments');
+      const paymentQuery = query(paymentsRef, where('retailerId', '==', retailer.id), where('state', '==', 'COMPLETED'));
+      const paymentSnapshot = await getDocs(paymentQuery);
+      
+      const recentCompletedPayments = paymentSnapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          ...data,
+          completedAt: data.timeline?.completedAt?.toDate()
+        };
+      }).filter(payment => {
+        if (!payment.completedAt) return false;
+        const now = new Date();
+        const timeSinceCompletion = now.getTime() - payment.completedAt.getTime();
+        return timeSinceCompletion < 60000; // Within last minute
+      });
+      
+      if (recentCompletedPayments.length > 0) {
+        console.log('🔍 Found recent completed payments:', recentCompletedPayments.length);
+        
+        // Close OTP popup if it's open
+        setShowOTPPopup(false);
+        
+        // Remove OTPs from active display for completed payments
+        recentCompletedPayments.forEach(payment => {
+          removeActiveOTP(payment.id);
+        });
+        
+        const updatedActiveOTPs = getActiveOTPsForRetailer(retailer.id);
+        setActiveOTPs(updatedActiveOTPs);
+        
+        // Show success popup for the most recent completion
+        const latestPayment = recentCompletedPayments[recentCompletedPayments.length - 1];
+        if (!shownOTPpopups.has(latestPayment.id)) {
+          setNewCompletedPayment({
+            amount: latestPayment.totalPaid,
+            paymentId: latestPayment.id,
+            lineWorkerName: latestPayment.lineWorkerName || 'Line Worker',
+            completedAt: latestPayment.completedAt
+          });
+          setShowSettlementPopup(true);
+          setTriggerConfetti(true);
+          
+          // Add to shown popups
+          setShownOTPpopups(prev => new Set(prev).add(latestPayment.id));
+          
+          // Hide confetti after 5 seconds
+          setTimeout(() => {
+            setTriggerConfetti(false);
+          }, 5000);
+        }
+      }
+    } catch (error) {
+      console.error('❌ Error checking completed payments:', error);
+    }
+  };
 
   // Load additional data when payments change
   useEffect(() => {
@@ -556,57 +623,65 @@ export function RetailerDashboard() {
       
       // Set up real-time payment completion listener
       const paymentsRef = collection(db, 'payments');
-      const paymentQuery = query(paymentsRef, where('retailerId', '==', retailerId), where('state', '==', 'COMPLETED'));
+      const paymentQuery = query(paymentsRef, where('retailerId', '==', retailerId));
       const paymentUnsubscribeFunc = onSnapshot(paymentQuery, (snapshot) => {
         snapshot.docChanges().forEach((change) => {
-          if (change.type === 'modified' || change.type === 'added') {
+          if (change.type === 'modified') {
             const paymentData = change.doc.data();
             const paymentId = change.doc.id;
             
-            console.log('💰 Payment completion detected:', paymentId, 'State:', paymentData.state);
+            console.log('💰 Payment change detected:', paymentId, 'State:', paymentData.state);
             
-            // Check if this payment was recently completed (within last 10 seconds)
-            const completedAt = paymentData.timeline?.completedAt?.toDate();
-            if (completedAt) {
-              const now = new Date();
-              const timeSinceCompletion = now.getTime() - completedAt.getTime();
-              const tenSecondsInMs = 10 * 1000;
-              
-              if (timeSinceCompletion < tenSecondsInMs) {
-                console.log('🎉 Recent payment completion detected, closing OTP popup and showing success');
+            // Check if this payment was just completed
+            if (paymentData.state === 'COMPLETED') {
+              const completedAt = paymentData.timeline?.completedAt?.toDate();
+              if (completedAt) {
+                const now = new Date();
+                const timeSinceCompletion = now.getTime() - completedAt.getTime();
+                const thirtySecondsInMs = 30 * 1000; // Extended window to 30 seconds
                 
-                // Close OTP popup if it's open
-                setShowOTPPopup(false);
-                
-                // Remove the OTP from active display
-                removeActiveOTP(paymentId);
-                const updatedActiveOTPs = getActiveOTPsForRetailer(retailerId);
-                setActiveOTPs(updatedActiveOTPs);
-                
-                // Show success popup with confetti
-                setNewCompletedPayment({
-                  amount: paymentData.totalPaid,
-                  paymentId: paymentId,
-                  lineWorkerName: paymentData.lineWorkerName || 'Line Worker',
-                  completedAt: completedAt
+                console.log('🎉 Payment completion detected:', {
+                  paymentId,
+                  timeSinceCompletion,
+                  withinWindow: timeSinceCompletion < thirtySecondsInMs
                 });
-                setShowSettlementPopup(true);
-                setTriggerConfetti(true);
                 
-                // Play success sound if available
-                try {
-                  const audio = new Audio('/success-sound.mp3');
-                  audio.play().catch(() => {
-                    console.log('🔇 Could not play success sound');
+                if (timeSinceCompletion < thirtySecondsInMs) {
+                  console.log('🎉 Recent payment completion detected, closing OTP popup and showing success');
+                  
+                  // Close OTP popup if it's open
+                  setShowOTPPopup(false);
+                  
+                  // Remove the OTP from active display
+                  removeActiveOTP(paymentId);
+                  const updatedActiveOTPs = getActiveOTPsForRetailer(retailerId);
+                  setActiveOTPs(updatedActiveOTPs);
+                  
+                  // Show success popup with confetti
+                  setNewCompletedPayment({
+                    amount: paymentData.totalPaid,
+                    paymentId: paymentId,
+                    lineWorkerName: paymentData.lineWorkerName || 'Line Worker',
+                    completedAt: completedAt
                   });
-                } catch (error) {
-                  console.log('🔇 Could not play success sound:', error);
+                  setShowSettlementPopup(true);
+                  setTriggerConfetti(true);
+                  
+                  // Play success sound if available
+                  try {
+                    const audio = new Audio('/success-sound.mp3');
+                    audio.play().catch(() => {
+                      console.log('🔇 Could not play success sound');
+                    });
+                  } catch (error) {
+                    console.log('🔇 Could not play success sound:', error);
+                  }
+                  
+                  // Hide confetti after 5 seconds
+                  setTimeout(() => {
+                    setTriggerConfetti(false);
+                  }, 5000);
                 }
-                
-                // Hide confetti after 5 seconds
-                setTimeout(() => {
-                  setTriggerConfetti(false);
-                }, 5000);
               }
             }
           }
