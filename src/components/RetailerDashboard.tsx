@@ -50,6 +50,7 @@ import {
   Heart
 } from 'lucide-react';
 import { StatusBarColor } from './ui/StatusBarColor';
+import { Confetti } from './ui/Confetti';
 
 export function RetailerDashboard() {
   const { user, logout } = useAuth();
@@ -95,6 +96,102 @@ export function RetailerDashboard() {
   });
   const [notificationTenantId, setNotificationTenantId] = useState<string | null>(null);
   const [otpUnsubscribe, setOtpUnsubscribe] = useState<(() => void) | null>(null);
+  
+  // Success celebration state
+  const [triggerConfetti, setTriggerConfetti] = useState(false);
+  
+  // Manual refresh function for OTP data
+  const refreshOTPData = async () => {
+    if (!retailer || !tenantId) return;
+    
+    try {
+      console.log('🔄 Manual OTP refresh triggered', {
+        retailerId: retailer.id,
+        timestamp: new Date().toISOString()
+      });
+      
+      const retailerRef = doc(db, 'retailers', retailer.id);
+      const retailerDoc = await getDoc(retailerRef);
+      
+      if (retailerDoc.exists()) {
+        const retailerData = retailerDoc.data();
+        const activeOTPsFromFirestore = retailerData.activeOTPs || [];
+        
+        console.log('🔄 OTP refresh data from Firestore:', {
+          activeOTPsFromFirestoreCount: activeOTPsFromFirestore.length
+        });
+        
+        // Filter valid OTPs
+        const validOTPsFromFirestore = activeOTPsFromFirestore.filter((otp: any) => {
+          const expiresAt = otp.expiresAt.toDate();
+          const isExpired = expiresAt <= new Date();
+          return !isExpired && !otp.isUsed;
+        });
+        
+        // Get current active OTPs to compare
+        const currentActiveOTPs = getActiveOTPsForRetailer(retailer.id);
+        const currentPaymentIds = new Set(currentActiveOTPs.map(otp => otp.paymentId));
+        
+        // Only add OTPs that we don't already have
+        const newOTPs = validOTPsFromFirestore.filter((otp: any) => 
+          !currentPaymentIds.has(otp.paymentId)
+        );
+        
+        if (newOTPs.length > 0) {
+          console.log('🆕 Adding new OTPs from manual refresh:', newOTPs.length);
+          
+          // Add new OTPs to our in-memory store for display
+          newOTPs.forEach((otp: any) => {
+            addActiveOTP({
+              code: otp.code,
+              retailerId: retailer.id,
+              amount: otp.amount,
+              paymentId: otp.paymentId,
+              lineWorkerName: otp.lineWorkerName,
+              expiresAt: otp.expiresAt.toDate(),
+              createdAt: otp.createdAt.toDate()
+            });
+          });
+          
+          // Refresh the active OTPs state
+          const updatedActiveOTPs = getActiveOTPsForRetailer(retailer.id);
+          setActiveOTPs(updatedActiveOTPs);
+          
+          // Show popup for the latest OTP if not already shown
+          const latestOTP = newOTPs[newOTPs.length - 1];
+          if (!shownOTPpopups.has(latestOTP.paymentId)) {
+            console.log('🆕 Showing popup for new OTP from manual refresh:', latestOTP.paymentId);
+            setNewPayment({
+              ...latestOTP,
+              id: latestOTP.paymentId,
+              retailerId: retailer.id,
+              retailerName: retailer.name || retailerUser?.name,
+              lineWorkerId: '',
+              totalPaid: latestOTP.amount,
+              method: 'CASH' as any,
+              state: 'OTP_SENT' as any,
+              evidence: [],
+              tenantId: tenantId,
+              timeline: {
+                initiatedAt: { toDate: () => latestOTP.createdAt } as any,
+                otpSentAt: { toDate: () => latestOTP.createdAt } as any,
+              },
+              createdAt: { toDate: () => latestOTP.createdAt } as any,
+              updatedAt: { toDate: () => latestOTP.createdAt } as any,
+            });
+            setShowOTPPopup(true);
+            
+            // Add to shown popups
+            setShownOTPpopups(prev => new Set(prev).add(latestOTP.paymentId));
+          }
+        } else {
+          console.log('📝 No new OTPs found during manual refresh');
+        }
+      }
+    } catch (error) {
+      console.error('❌ Error during manual OTP refresh:', error);
+    }
+  };
   
   // Standardized loading state management
   const mainLoadingState = useLoadingState();
@@ -276,6 +373,21 @@ export function RetailerDashboard() {
     }
   }, []); // Empty dependency array - runs only once on mount
 
+  // Periodic refresh for OTP data - ensures we don't miss any real-time updates
+  useEffect(() => {
+    if (retailer && tenantId) {
+      const refreshInterval = setInterval(() => {
+        // Only refresh if we're not already loading and we have a valid retailer
+        if (!mainLoadingState.loadingState.isLoading && retailer.id) {
+          console.log('⏰ Periodic OTP refresh check');
+          refreshOTPData();
+        }
+      }, 5000); // Check every 5 seconds as a fallback
+
+      return () => clearInterval(refreshInterval);
+    }
+  }, [retailer, tenantId, mainLoadingState.loadingState.isLoading]);
+
   // Load additional data when payments change
   useEffect(() => {
     if (payments.length > 0) {
@@ -374,19 +486,31 @@ export function RetailerDashboard() {
           
           console.log('🔍 Valid OTPs from Firestore:', validOTPsFromFirestore.length);
           
-          // Clear existing active OTPs and reload from Firestore
-          // This ensures we always have the most up-to-date data
-          validOTPsFromFirestore.forEach((otp: any) => {
-            addActiveOTP({
-              code: otp.code,
-              retailerId: retailerId,
-              amount: otp.amount,
-              paymentId: otp.paymentId,
-              lineWorkerName: otp.lineWorkerName,
-              expiresAt: otp.expiresAt.toDate(),
-              createdAt: otp.createdAt.toDate()
+          // Get current active OTPs to compare
+          const currentActiveOTPs = getActiveOTPsForRetailer(retailerId);
+          const currentPaymentIds = new Set(currentActiveOTPs.map(otp => otp.paymentId));
+          
+          // Only add OTPs that we don't already have
+          const newOTPs = validOTPsFromFirestore.filter((otp: any) => 
+            !currentPaymentIds.has(otp.paymentId)
+          );
+          
+          if (newOTPs.length > 0) {
+            console.log('🆕 Adding new OTPs from real-time update:', newOTPs.length);
+            
+            // Add new OTPs to our in-memory store for display
+            newOTPs.forEach((otp: any) => {
+              addActiveOTP({
+                code: otp.code,
+                retailerId: retailerId,
+                amount: otp.amount,
+                paymentId: otp.paymentId,
+                lineWorkerName: otp.lineWorkerName,
+                expiresAt: otp.expiresAt.toDate(),
+                createdAt: otp.createdAt.toDate()
+              });
             });
-          });
+          }
           
           // Refresh the active OTPs state
           const updatedActiveOTPs = getActiveOTPsForRetailer(retailerId);
@@ -467,6 +591,7 @@ export function RetailerDashboard() {
                   completedAt: completedAt
                 });
                 setShowSettlementPopup(true);
+                setTriggerConfetti(true);
                 
                 // Play success sound if available
                 try {
@@ -477,6 +602,11 @@ export function RetailerDashboard() {
                 } catch (error) {
                   console.log('🔇 Could not play success sound:', error);
                 }
+                
+                // Hide confetti after 5 seconds
+                setTimeout(() => {
+                  setTriggerConfetti(false);
+                }, 5000);
               }
             }
           }
@@ -671,9 +801,15 @@ export function RetailerDashboard() {
         const latestCompleted = newCompleted[newCompleted.length - 1];
         setNewCompletedPayment(latestCompleted);
         setShowSettlementPopup(true);
+        setTriggerConfetti(true);
         
         // Add to shown popups
         setShownOTPpopups(prev => new Set(prev).add(latestCompleted.paymentId));
+        
+        // Hide confetti after 5 seconds
+        setTimeout(() => {
+          setTriggerConfetti(false);
+        }, 5000);
       }
       
       setDataFetchProgress(100);
@@ -889,6 +1025,7 @@ Thank you for your payment!
   return (
     <div className="min-h-screen bg-gray-50">
       <StatusBarColor theme="blue" />
+      <Confetti trigger={triggerConfetti} />
       
       {/* Top Navigation */}
       <DashboardNavigation

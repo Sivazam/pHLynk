@@ -34,7 +34,6 @@ import { doc, getDoc, onSnapshot, collection, query, where } from 'firebase/fire
 import { exportToCSV, exportToJSON, preparePaymentDataForExport, formatDateForExport, formatCurrencyForExport } from '@/lib/export-utils';
 import { CollectPaymentForm } from './CollectPaymentForm';
 import { OTPEnterForm } from './OTPEnterForm';
-import { Confetti } from '@/components/ui/Confetti';
 import { 
   Store, 
   DollarSign, 
@@ -94,10 +93,6 @@ export function LineWorkerDashboard() {
     return { startDate: startOfDay, endDate: endOfDay };
   });
   const [paymentUnsubscribe, setPaymentUnsubscribe] = useState<(() => void) | null>(null);
-  
-  // Success celebration state
-  const [triggerConfetti, setTriggerConfetti] = useState(false);
-  const [showPaymentSuccess, setShowPaymentSuccess] = useState(false);
   
   // Standardized loading state management
   const mainLoadingState = useLoadingState();
@@ -547,25 +542,15 @@ export function LineWorkerDashboard() {
 
   // Function to handle OTP verification success
   const handleOTPSuccess = async () => {
-    console.log('🎉 OTP verification successful, closing dialog and showing success');
+    console.log('🎉 OTP verification successful, closing dialog');
     
     // Close the OTP dialog
     setShowOTPEnterDialog(false);
     setSelectedPaymentForOTP(null);
     setSelectedRetailerForOTP(null);
     
-    // Show success celebration with confetti
-    setTriggerConfetti(true);
-    setShowPaymentSuccess(true);
-    
     // Refresh data to show completed payment
     await fetchLineWorkerData();
-    
-    // Hide success message after 5 seconds
-    setTimeout(() => {
-      setShowPaymentSuccess(false);
-      setTriggerConfetti(false);
-    }, 5000);
   };
 
   // Function to handle OTP resend
@@ -655,6 +640,17 @@ export function LineWorkerDashboard() {
       otpDuration,
       isExpired: elapsedSeconds > otpDuration
     });
+    
+    // Special case: If OTP was just sent (within last 30 seconds) and shows as expired, 
+    // it's likely a timing issue with the real-time update. Give it more time.
+    if (elapsedSeconds < 30 && payment.state === 'OTP_SENT') {
+      console.log('⚠️ OTP shows as expired but was just sent, giving more time:', {
+        paymentId: payment.id,
+        elapsedSeconds,
+        paymentState: payment.state
+      });
+      return false; // Don't consider as expired if it was just sent
+    }
     
     return elapsedSeconds > otpDuration;
   };
@@ -1194,23 +1190,6 @@ Thank you for your payment!
   return (
     <div className="min-h-screen bg-gray-50">
       <StatusBarColor theme="blue" />
-      
-      {/* Success Celebration Overlay */}
-      <Confetti trigger={triggerConfetti} />
-      
-      {/* Payment Success Message */}
-      {showPaymentSuccess && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-          <div className="bg-white rounded-lg p-8 max-w-md mx-4 text-center shadow-xl">
-            <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
-            <h3 className="text-2xl font-bold text-green-700 mb-2">Payment Completed Successfully!</h3>
-            <p className="text-gray-600 mb-4">The OTP has been verified and the payment has been processed successfully.</p>
-            <div className="text-sm text-gray-500">
-              This message will disappear automatically...
-            </div>
-          </div>
-        </div>
-      )}
       
       {/* Top Navigation */}
       <DashboardNavigation
