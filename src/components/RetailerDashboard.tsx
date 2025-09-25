@@ -325,7 +325,9 @@ export function RetailerDashboard() {
                 retailerId: retailerId,
                 amount: otp.amount,
                 paymentId: otp.paymentId,
-                lineWorkerName: otp.lineWorkerName
+                lineWorkerName: otp.lineWorkerName,
+                expiresAt: otp.expiresAt.toDate(),
+                createdAt: otp.createdAt.toDate()
               });
             });
             
@@ -523,7 +525,9 @@ export function RetailerDashboard() {
                     retailerId: retailer.id,
                     amount: otp.amount,
                     paymentId: otp.paymentId,
-                    lineWorkerName: otp.lineWorkerName
+                    lineWorkerName: otp.lineWorkerName,
+                    expiresAt: otp.expiresAt.toDate(),
+                    createdAt: otp.createdAt.toDate()
                   });
                 });
                 
@@ -566,51 +570,6 @@ export function RetailerDashboard() {
       }
     } finally {
       mainLoadingState.setRefreshing(false);
-    }
-  };
-
-  // Handle OTP verification
-  const handleVerifyOTP = async (otp: string, paymentId: string) => {
-    if (!tenantId || !retailer?.id) return;
-
-    try {
-      // For now, we'll implement a simple OTP verification
-      // In a real implementation, this would validate against the OTP service
-      const otpData = activeOTPs.find(o => o.paymentId === paymentId && o.code === otp);
-      
-      if (otpData) {
-        // Remove from active OTPs and add to completed payments
-        setActiveOTPs(prev => prev.filter(o => o.paymentId !== paymentId));
-        setCompletedPayments(prev => [...prev, {
-          amount: otpData.amount,
-          paymentId: otpData.paymentId,
-          lineWorkerName: otpData.lineWorkerName,
-          completedAt: new Date()
-        }]);
-        
-        // Update payment state to OTP_VERIFIED
-        await paymentService.updatePaymentState(paymentId, tenantId, 'OTP_VERIFIED');
-        
-        // Show settlement popup
-        setNewCompletedPayment({
-          amount: otpData.amount,
-          paymentId: otpData.paymentId,
-          lineWorkerName: otpData.lineWorkerName,
-          completedAt: new Date()
-        });
-        setShowSettlementPopup(true);
-        
-        // Refresh data
-        await fetchRetailerData(retailer.id);
-      } else {
-        alert('Invalid OTP. Please try again.');
-      }
-      
-      setShowOTPPopup(false);
-      setNewPayment(null);
-    } catch (error) {
-      console.error('Error verifying OTP:', error);
-      alert('Failed to verify OTP. Please try again.');
     }
   };
 
@@ -1121,7 +1080,7 @@ Thank you for your payment!
                   {activeOTPs.find(otp => otp.paymentId === newPayment.id)?.code}
                 </div>
                 <div className="text-xs text-gray-500 mt-2">
-                  Do not share this OTP with anyone
+                  Inform OTP to line worker only after verifying the paying amount is correct
                 </div>
               </div>
               
@@ -1137,25 +1096,14 @@ Thank you for your payment!
                 </div>
               </div>
               
-              {/* Action Buttons */}
+              {/* Action Buttons - Only Close button for retailer */}
               <div className="flex space-x-2">
                 <Button
                   variant="outline"
                   onClick={() => setShowOTPPopup(false)}
                   className="flex-1"
                 >
-                  Cancel
-                </Button>
-                <Button
-                  onClick={() => {
-                    const otp = activeOTPs.find(otp => otp.paymentId === newPayment.id)?.code;
-                    if (otp) {
-                      handleVerifyOTP(otp, newPayment.id);
-                    }
-                  }}
-                  className="flex-1 bg-blue-600 hover:bg-blue-700"
-                >
-                  Verify & Confirm Payment
+                  Close
                 </Button>
               </div>
             </div>

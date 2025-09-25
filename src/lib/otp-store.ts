@@ -250,9 +250,11 @@ export function addActiveOTP(otpData: {
   amount: number;
   paymentId: string;
   lineWorkerName: string;
+  expiresAt?: Date; // Optional: if not provided, will create new one
+  createdAt?: Date; // Optional: if not provided, will create new one
 }) {
-  const expiresAt = new Date(Date.now() + 7 * 60 * 1000); // 7 minutes as requested
-  const createdAt = new Date();
+  const expiresAt = otpData.expiresAt || new Date(Date.now() + 7 * 60 * 1000); // Use provided or create new one
+  const createdAt = otpData.createdAt || new Date(); // Use provided or create new one
   
   activeOTPs.set(otpData.paymentId, {
     ...otpData,

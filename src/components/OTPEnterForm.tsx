@@ -129,9 +129,13 @@ export const OTPEnterForm: React.FC<OTPEnterFormProps> = ({
           if (status.inCooldown && status.cooldownTime) {
             setCooldownTimeLeft(status.cooldownTime);
           }
+        } else {
+          // Don't set error for failed security status checks, just log them
+          console.warn('Security status check failed:', response.status);
         }
       } catch (error) {
-        console.error('Error fetching security status:', error);
+        // Don't set error for failed security status checks, just log them
+        console.warn('Error fetching security status:', error);
       }
     };
 
@@ -142,6 +146,15 @@ export const OTPEnterForm: React.FC<OTPEnterFormProps> = ({
     const interval = setInterval(fetchSecurityStatus, 2000);
     
     return () => clearInterval(interval);
+  }, [payment.id]);
+
+  // Debug logging for component lifecycle
+  useEffect(() => {
+    console.log('🔧 OTPEnterForm mounted for payment:', payment.id);
+    
+    return () => {
+      console.log('🔧 OTPEnterForm unmounting for payment:', payment.id);
+    };
   }, [payment.id]);
 
   // Cooldown timer
@@ -285,6 +298,7 @@ export const OTPEnterForm: React.FC<OTPEnterFormProps> = ({
       }
     } catch (error: any) {
       console.error('❌ Error verifying OTP:', error);
+      // Don't automatically close the dialog on error, let the user try again
       setError(error.message || 'Failed to verify OTP. Please try again.');
     }
   }, [otp, payment.id, onVerifySuccess, securityStatus, remainingAttempts, timeLeft]);
@@ -303,7 +317,9 @@ export const OTPEnterForm: React.FC<OTPEnterFormProps> = ({
         setSecurityStatus(null); // Reset security status
         setCooldownTimeLeft(0); // Reset cooldown timer
       } catch (error: any) {
+        console.warn('Failed to resend OTP:', error);
         setError(error.message || 'Failed to resend OTP');
+        // Don't close the dialog on resend failure
       }
     }
   };

@@ -1453,6 +1453,7 @@ Thank you for your payment!
 
       {/* OTP Entry Dialog */}
       <Dialog open={showOTPEnterDialog} onOpenChange={(open) => {
+        console.log('🔄 OTP Dialog state changing from', showOTPEnterDialog, 'to', open);
         setShowOTPEnterDialog(open);
         if (!open) {
           setSelectedPaymentForOTP(null);
