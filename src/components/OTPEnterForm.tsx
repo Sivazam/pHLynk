@@ -43,7 +43,7 @@ export const OTPEnterForm: React.FC<OTPEnterFormProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [showSuccess, setShowSuccess] = useState(false);
   const [triggerConfetti, setTriggerConfetti] = useState(false);
-  const [timeLeft, setTimeLeft] = useState<number>(420); // 7 minutes in seconds (420 seconds)
+  const [timeLeft, setTimeLeft] = useState<number>(0); // Will be calculated based on OTP creation time
   const [canResend, setCanResend] = useState(false);
   const [remainingAttempts, setRemainingAttempts] = useState<number>(3);
   const [securityStatus, setSecurityStatus] = useState<{
@@ -55,10 +55,41 @@ export const OTPEnterForm: React.FC<OTPEnterFormProps> = ({
   } | null>(null);
   const [cooldownTimeLeft, setCooldownTimeLeft] = useState<number>(0);
 
+  // Calculate time left based on OTP creation time
+  const calculateTimeLeft = useCallback(() => {
+    const otpCreationTime = payment.createdAt?.toDate?.() || new Date();
+    const now = new Date();
+    const elapsedSeconds = Math.floor((now.getTime() - otpCreationTime.getTime()) / 1000);
+    const totalDuration = 420; // 7 minutes in seconds
+    const remaining = Math.max(0, totalDuration - elapsedSeconds);
+    
+    if (remaining <= 0) {
+      setCanResend(true);
+    }
+    
+    return remaining;
+  }, [payment.createdAt]);
+
+  // Initialize time left on component mount
+  useEffect(() => {
+    const initialTimeLeft = calculateTimeLeft();
+    setTimeLeft(initialTimeLeft);
+    setCanResend(initialTimeLeft <= 0);
+    
+    // If OTP is already expired when component mounts, notify parent
+    if (initialTimeLeft <= 0) {
+      setError('This OTP has expired. Please request a new one.');
+    }
+  }, [calculateTimeLeft]);
+
   // Countdown timer for OTP expiration
   useEffect(() => {
     if (timeLeft <= 0) {
       setCanResend(true);
+      // Set error message when OTP expires
+      if (!error) {
+        setError('OTP has expired. Please request a new one.');
+      }
       return;
     }
 
@@ -67,6 +98,8 @@ export const OTPEnterForm: React.FC<OTPEnterFormProps> = ({
         if (prev <= 1) {
           clearInterval(timer);
           setCanResend(true);
+          // Set error message when OTP expires
+          setError('OTP has expired. Please request a new one.');
           return 0;
         }
         return prev - 1;
@@ -74,7 +107,7 @@ export const OTPEnterForm: React.FC<OTPEnterFormProps> = ({
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [timeLeft]);
+  }, [timeLeft, error]);
 
   // Fetch security status on component mount and periodically
   useEffect(() => {
@@ -170,6 +203,12 @@ export const OTPEnterForm: React.FC<OTPEnterFormProps> = ({
       return;
     }
 
+    // Check if OTP is expired
+    if (timeLeft <= 0) {
+      setError('OTP has expired. Please request a new one.');
+      return;
+    }
+
     // Check if in cooldown
     if (securityStatus?.inCooldown) {
       const cooldownMinutes = Math.floor((securityStatus.cooldownTime || 0) / 60);
@@ -248,14 +287,16 @@ export const OTPEnterForm: React.FC<OTPEnterFormProps> = ({
       console.error('❌ Error verifying OTP:', error);
       setError(error.message || 'Failed to verify OTP. Please try again.');
     }
-  }, [otp, payment.id, onVerifySuccess, securityStatus, remainingAttempts]);
+  }, [otp, payment.id, onVerifySuccess, securityStatus, remainingAttempts, timeLeft]);
 
   const handleResendOTP = async () => {
     if (onResendOTP) {
       try {
         await onResendOTP();
-        setTimeLeft(420); // Reset timer to 7 minutes (420 seconds)
-        setCanResend(false);
+        // Recalculate time left based on new OTP creation time
+        const newTimeLeft = calculateTimeLeft();
+        setTimeLeft(newTimeLeft);
+        setCanResend(newTimeLeft <= 0);
         setError(null);
         setOTP('');
         setRemainingAttempts(3); // Reset attempts on resend
@@ -301,39 +342,39 @@ export const OTPEnterForm: React.FC<OTPEnterFormProps> = ({
           <CardDescription>Review the payment information before entering OTP</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-3">
               <div className="flex items-center gap-2">
-                <Store className="h-4 w-4 text-gray-400" />
+                <Store className="h-4 w-4 text-gray-400 flex-shrink-0" />
                 <span className="text-sm text-gray-600">Retailer:</span>
-                <span className="font-medium text-gray-900">{retailer.name}</span>
+                <span className="font-medium text-gray-900 truncate">{retailer.name}</span>
               </div>
               {retailer.phone && (
                 <div className="flex items-center gap-2">
-                  <Phone className="h-4 w-4 text-gray-400" />
+                  <Phone className="h-4 w-4 text-gray-400 flex-shrink-0" />
                   <span className="text-sm text-gray-600">Phone:</span>
                   <span className="font-medium text-gray-900">{retailer.phone}</span>
                 </div>
               )}
               <div className="flex items-center gap-2">
-                <Clock className="h-4 w-4 text-gray-400" />
+                <Clock className="h-4 w-4 text-gray-400 flex-shrink-0" />
                 <span className="text-sm text-gray-600">Initiated:</span>
-                <span className="font-medium text-gray-900">{formatTimestampWithTime(payment.createdAt)}</span>
+                <span className="font-medium text-gray-900 text-sm">{formatTimestampWithTime(payment.createdAt)}</span>
               </div>
             </div>
             <div className="space-y-3">
               <div className="flex items-center gap-2">
-                <DollarSign className="h-4 w-4 text-gray-400" />
+                <DollarSign className="h-4 w-4 text-gray-400 flex-shrink-0" />
                 <span className="text-sm text-gray-600">Amount:</span>
                 <span className="font-medium text-green-600">{formatCurrency(payment.totalPaid)}</span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-sm text-gray-600">Method:</span>
-                <Badge variant="secondary">{payment.method}</Badge>
+                <Badge variant="secondary" className="text-xs">{payment.method}</Badge>
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-sm text-gray-600">Status:</span>
-                <Badge className="bg-yellow-100 text-yellow-800">{payment.state}</Badge>
+                <Badge className="bg-yellow-100 text-yellow-800 text-xs">{payment.state}</Badge>
               </div>
             </div>
           </div>
@@ -352,9 +393,9 @@ export const OTPEnterForm: React.FC<OTPEnterFormProps> = ({
           {/* Timer and Attempts */}
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div className="flex items-center gap-2">
-              <Clock className="h-4 w-4 text-gray-400" />
+              <Clock className="h-4 w-4 text-gray-400 flex-shrink-0" />
               <span className="text-sm text-gray-600">OTP expires in:</span>
-              <Badge variant={timeLeft > 60 ? "secondary" : "destructive"}>
+              <Badge variant={timeLeft > 60 ? "secondary" : "destructive"} className="text-xs">
                 {formatTime(timeLeft)}
               </Badge>
             </div>
@@ -362,7 +403,7 @@ export const OTPEnterForm: React.FC<OTPEnterFormProps> = ({
             {/* Attempts Counter */}
             <div className="flex items-center gap-2">
               <span className="text-sm text-gray-600">Attempts remaining:</span>
-              <Badge variant={remainingAttempts > 1 ? "secondary" : remainingAttempts === 1 ? "outline" : "destructive"}>
+              <Badge variant={remainingAttempts > 1 ? "secondary" : remainingAttempts === 1 ? "outline" : "destructive"} className="text-xs">
                 {remainingAttempts}/3
               </Badge>
             </div>
@@ -372,7 +413,7 @@ export const OTPEnterForm: React.FC<OTPEnterFormProps> = ({
                 variant="outline"
                 size="sm"
                 onClick={handleResendOTP}
-                className="text-sm"
+                className="text-xs h-8"
               >
                 <RefreshCw className="h-3 w-3 mr-1" />
                 Resend OTP
@@ -442,7 +483,7 @@ export const OTPEnterForm: React.FC<OTPEnterFormProps> = ({
             </Button>
             <Button
               onClick={handleVerifyOTP}
-              disabled={otp.length !== 6 || verifyingOTP || cooldownTimeLeft > 0 || remainingAttempts <= 0}
+              disabled={otp.length !== 6 || verifyingOTP || cooldownTimeLeft > 0 || remainingAttempts <= 0 || timeLeft <= 0}
               className="h-10 px-6 min-w-[120px]"
             >
               {verifyingOTP ? (

@@ -523,12 +523,47 @@ export function LineWorkerDashboard() {
 
   // Function to open OTP entry dialog for pending payments
   const handleEnterOTP = (payment: Payment) => {
+    // Check if OTP is expired before opening dialog
+    if (isOTPExpired(payment)) {
+      // Show error message instead of opening dialog
+      setError('This OTP has expired. Please initiate a new payment.');
+      return;
+    }
+    
     const retailer = retailers.find(r => r.id === payment.retailerId);
     if (retailer) {
       setSelectedPaymentForOTP(payment);
       setSelectedRetailerForOTP(retailer);
       setShowOTPEnterDialog(true);
     }
+  };
+
+  // Function to check if OTP is expired
+  const isOTPExpired = (payment: Payment): boolean => {
+    if (payment.state !== 'OTP_SENT' && payment.state !== 'INITIATED') {
+      return true; // Not in OTP state, consider as expired
+    }
+    
+    const otpCreationTime = payment.createdAt?.toDate?.() || new Date();
+    const now = new Date();
+    const elapsedSeconds = Math.floor((now.getTime() - otpCreationTime.getTime()) / 1000);
+    const otpDuration = 420; // 7 minutes in seconds
+    
+    return elapsedSeconds > otpDuration;
+  };
+
+  // Function to get OTP time remaining
+  const getOTPTimeRemaining = (payment: Payment): number => {
+    if (payment.state !== 'OTP_SENT' && payment.state !== 'INITIATED') {
+      return 0;
+    }
+    
+    const otpCreationTime = payment.createdAt?.toDate?.() || new Date();
+    const now = new Date();
+    const elapsedSeconds = Math.floor((now.getTime() - otpCreationTime.getTime()) / 1000);
+    const otpDuration = 420; // 7 minutes in seconds
+    
+    return Math.max(0, otpDuration - elapsedSeconds);
   };
 
   const handleViewRetailerDetails = async (retailer: Retailer) => {
@@ -986,14 +1021,27 @@ Thank you for your payment!
               <TableCell>
                 <div className="flex space-x-1">
                   {(payment.state === 'INITIATED' || payment.state === 'OTP_SENT') && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleEnterOTP(payment)}
-                      className="h-7 px-2 text-xs bg-yellow-50 border-yellow-200 text-yellow-800 hover:bg-yellow-100"
-                    >
-                      Enter OTP
-                    </Button>
+                    <>
+                      {isOTPExpired(payment) ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled
+                          className="h-7 px-2 text-xs bg-gray-100 border-gray-300 text-gray-500 cursor-not-allowed"
+                        >
+                          Expired
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleEnterOTP(payment)}
+                          className="h-7 px-2 text-xs bg-yellow-50 border-yellow-200 text-yellow-800 hover:bg-yellow-100"
+                        >
+                          Enter OTP
+                        </Button>
+                      )}
+                    </>
                   )}
                   <Button
                     variant="outline"
@@ -1409,12 +1457,13 @@ Thank you for your payment!
         if (!open) {
           setSelectedPaymentForOTP(null);
           setSelectedRetailerForOTP(null);
+          setError(null); // Clear any error messages when closing
         }
       }}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-2xl max-w-[95vw] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Enter OTP for Payment Verification</DialogTitle>
-            <DialogDescription>
+            <DialogTitle className="text-xl font-semibold">Enter OTP for Payment Verification</DialogTitle>
+            <DialogDescription className="text-sm text-gray-600">
               Enter the OTP sent to the retailer to complete the payment
             </DialogDescription>
           </DialogHeader>
@@ -1423,7 +1472,12 @@ Thank you for your payment!
               payment={selectedPaymentForOTP}
               retailer={selectedRetailerForOTP}
               onVerifySuccess={handleOTPSuccess}
-              onBack={() => setShowOTPEnterDialog(false)}
+              onBack={() => {
+                setShowOTPEnterDialog(false);
+                setSelectedPaymentForOTP(null);
+                setSelectedRetailerForOTP(null);
+                setError(null); // Clear error when going back
+              }}
               onResendOTP={handleResendOTP}
               verifyingOTP={verifyingOTP}
             />
