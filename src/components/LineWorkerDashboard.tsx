@@ -34,6 +34,7 @@ import { doc, getDoc, onSnapshot, collection, query, where } from 'firebase/fire
 import { exportToCSV, exportToJSON, preparePaymentDataForExport, formatDateForExport, formatCurrencyForExport } from '@/lib/export-utils';
 import { CollectPaymentForm } from './CollectPaymentForm';
 import { OTPEnterForm } from './OTPEnterForm';
+import { Confetti } from '@/components/ui/Confetti';
 import { 
   Store, 
   DollarSign, 
@@ -93,6 +94,10 @@ export function LineWorkerDashboard() {
     return { startDate: startOfDay, endDate: endOfDay };
   });
   const [paymentUnsubscribe, setPaymentUnsubscribe] = useState<(() => void) | null>(null);
+  
+  // Success celebration state
+  const [triggerConfetti, setTriggerConfetti] = useState(false);
+  const [showPaymentSuccess, setShowPaymentSuccess] = useState(false);
   
   // Standardized loading state management
   const mainLoadingState = useLoadingState();
@@ -386,7 +391,10 @@ export function LineWorkerDashboard() {
               paymentId,
               type: change.type,
               state: paymentData.state,
-              retailerId: paymentData.retailerId
+              retailerId: paymentData.retailerId,
+              timeline: paymentData.timeline,
+              otpSentAt: paymentData.timeline?.otpSentAt?.toDate?.() ? paymentData.timeline.otpSentAt.toDate().toISOString() : 'NOT SET',
+              createdAt: paymentData.createdAt?.toDate?.() ? paymentData.createdAt.toDate().toISOString() : 'NOT SET'
             });
             
             if (change.type === 'modified' || change.type === 'added') {
@@ -403,6 +411,15 @@ export function LineWorkerDashboard() {
                   const newPayments = [...prevPayments];
                   newPayments[existingIndex] = updatedPayment;
                   console.log('📝 Updated payment in state:', paymentId, 'New state:', paymentData.state);
+                  
+                  // Special logging for OTP_SENT state changes
+                  if (paymentData.state === 'OTP_SENT') {
+                    console.log('🔐 OTP_SENT state detected!', {
+                      paymentId,
+                      otpSentAt: paymentData.timeline?.otpSentAt?.toDate?.() ? paymentData.timeline.otpSentAt.toDate().toISOString() : 'NOT SET',
+                      fullTimeline: paymentData.timeline
+                    });
+                  }
                   return newPayments;
                 } else {
                   // Add new payment
@@ -530,12 +547,25 @@ export function LineWorkerDashboard() {
 
   // Function to handle OTP verification success
   const handleOTPSuccess = async () => {
+    console.log('🎉 OTP verification successful, closing dialog and showing success');
+    
+    // Close the OTP dialog
     setShowOTPEnterDialog(false);
     setSelectedPaymentForOTP(null);
     setSelectedRetailerForOTP(null);
     
+    // Show success celebration with confetti
+    setTriggerConfetti(true);
+    setShowPaymentSuccess(true);
+    
     // Refresh data to show completed payment
     await fetchLineWorkerData();
+    
+    // Hide success message after 5 seconds
+    setTimeout(() => {
+      setShowPaymentSuccess(false);
+      setTriggerConfetti(false);
+    }, 5000);
   };
 
   // Function to handle OTP resend
@@ -1164,6 +1194,23 @@ Thank you for your payment!
   return (
     <div className="min-h-screen bg-gray-50">
       <StatusBarColor theme="blue" />
+      
+      {/* Success Celebration Overlay */}
+      <Confetti trigger={triggerConfetti} />
+      
+      {/* Payment Success Message */}
+      {showPaymentSuccess && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="bg-white rounded-lg p-8 max-w-md mx-4 text-center shadow-xl">
+            <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
+            <h3 className="text-2xl font-bold text-green-700 mb-2">Payment Completed Successfully!</h3>
+            <p className="text-gray-600 mb-4">The OTP has been verified and the payment has been processed successfully.</p>
+            <div className="text-sm text-gray-500">
+              This message will disappear automatically...
+            </div>
+          </div>
+        </div>
+      )}
       
       {/* Top Navigation */}
       <DashboardNavigation

@@ -54,10 +54,15 @@ export const OTPEnterForm: React.FC<OTPEnterFormProps> = ({
     cooldownTime?: number;
   } | null>(null);
   const [cooldownTimeLeft, setCooldownTimeLeft] = useState<number>(0);
+  const [isVerifying, setIsVerifying] = useState(false); // Local loading state for verification
 
   // Calculate time left based on OTP sent time from payment timeline
   const calculateTimeLeft = useCallback(() => {
-    const otpSentTime = payment.timeline?.otpSentAt?.toDate?.() || payment.createdAt?.toDate?.() || new Date();
+    // Try to get otpSentAt from timeline, but fall back to createdAt if not available
+    const otpSentTime = payment.timeline?.otpSentAt?.toDate?.() || 
+                       payment.createdAt?.toDate?.() || 
+                       new Date();
+    
     const now = new Date();
     const elapsedSeconds = Math.floor((now.getTime() - otpSentTime.getTime()) / 1000);
     const totalDuration = 420; // 7 minutes in seconds
@@ -74,8 +79,19 @@ export const OTPEnterForm: React.FC<OTPEnterFormProps> = ({
       now: now.toISOString(),
       elapsedSeconds,
       totalDuration,
-      remaining
+      remaining,
+      isExpired: remaining <= 0
     });
+    
+    // Special case: If OTP was just sent (within last 10 seconds) and shows as expired, 
+    // it's likely a timing issue with the real-time update. Give it more time.
+    if (remaining <= 0 && elapsedSeconds < 30 && payment.state === 'OTP_SENT') {
+      console.log('⚠️ OTP shows as expired but was just sent, giving more time:', {
+        elapsedSeconds,
+        paymentState: payment.state
+      });
+      return totalDuration; // Give full time if it was just sent
+    }
     
     if (remaining <= 0) {
       setCanResend(true);
@@ -258,6 +274,7 @@ export const OTPEnterForm: React.FC<OTPEnterFormProps> = ({
 
     try {
       setError(null);
+      setIsVerifying(true); // Start loading
       console.log('🔍 Verifying OTP for payment:', payment.id);
 
       const response = await fetch('/api/otp/verify', {
@@ -314,6 +331,8 @@ export const OTPEnterForm: React.FC<OTPEnterFormProps> = ({
       console.error('❌ Error verifying OTP:', error);
       // Don't automatically close the dialog on error, let the user try again
       setError(error.message || 'Failed to verify OTP. Please try again.');
+    } finally {
+      setIsVerifying(false); // Stop loading
     }
   }, [otp, payment.id, onVerifySuccess, securityStatus, remainingAttempts, timeLeft]);
 
@@ -505,7 +524,7 @@ export const OTPEnterForm: React.FC<OTPEnterFormProps> = ({
             <Button
               variant="outline"
               onClick={onBack}
-              disabled={verifyingOTP}
+              disabled={isVerifying || verifyingOTP}
               className="h-10 px-6"
             >
               <ArrowLeft className="h-4 w-4 mr-2" />
@@ -513,10 +532,10 @@ export const OTPEnterForm: React.FC<OTPEnterFormProps> = ({
             </Button>
             <Button
               onClick={handleVerifyOTP}
-              disabled={otp.length !== 6 || verifyingOTP || cooldownTimeLeft > 0 || remainingAttempts <= 0 || timeLeft <= 0}
+              disabled={otp.length !== 6 || isVerifying || verifyingOTP || cooldownTimeLeft > 0 || remainingAttempts <= 0 || timeLeft <= 0}
               className="h-10 px-6 min-w-[120px]"
             >
-              {verifyingOTP ? (
+              {isVerifying || verifyingOTP ? (
                 <div className="flex items-center">
                   <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
                   Verifying...

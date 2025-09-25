@@ -342,6 +342,12 @@ export function RetailerDashboard() {
       // Set up real-time OTP listener for retailer document
       const retailerRef = doc(db, 'retailers', retailerId);
       const otpUnsubscribeFunc = onSnapshot(retailerRef, (snapshot) => {
+        console.log('🔔 Real-time retailer document update detected:', {
+          retailerId,
+          exists: snapshot.exists(),
+          timestamp: new Date().toISOString()
+        });
+        
         if (snapshot.exists()) {
           const retailerData = snapshot.data();
           const activeOTPsFromFirestore = retailerData.activeOTPs || [];
@@ -359,38 +365,39 @@ export function RetailerDashboard() {
             }))
           });
           
-          // Check if there are new OTPs that aren't in our current activeOTPs state
-          const currentPaymentIds = new Set(activeOTPs.map(otp => otp.paymentId));
-          const newOTPsFromFirestore = activeOTPsFromFirestore.filter((otp: any) => {
-            // Check if OTP is not expired and not already in our state
+          // Always sync all active OTPs from Firestore to ensure we have the latest data
+          const validOTPsFromFirestore = activeOTPsFromFirestore.filter((otp: any) => {
             const expiresAt = otp.expiresAt.toDate();
             const isExpired = expiresAt <= new Date();
-            return !isExpired && !currentPaymentIds.has(otp.paymentId) && !otp.isUsed;
+            return !isExpired && !otp.isUsed;
           });
           
-          if (newOTPsFromFirestore.length > 0) {
-            console.log('🆕 New OTPs detected from Firestore:', newOTPsFromFirestore.length);
-            
-            // Add new OTPs to our in-memory store for display
-            newOTPsFromFirestore.forEach((otp: any) => {
-              addActiveOTP({
-                code: otp.code,
-                retailerId: retailerId,
-                amount: otp.amount,
-                paymentId: otp.paymentId,
-                lineWorkerName: otp.lineWorkerName,
-                expiresAt: otp.expiresAt.toDate(),
-                createdAt: otp.createdAt.toDate()
-              });
+          console.log('🔍 Valid OTPs from Firestore:', validOTPsFromFirestore.length);
+          
+          // Clear existing active OTPs and reload from Firestore
+          // This ensures we always have the most up-to-date data
+          validOTPsFromFirestore.forEach((otp: any) => {
+            addActiveOTP({
+              code: otp.code,
+              retailerId: retailerId,
+              amount: otp.amount,
+              paymentId: otp.paymentId,
+              lineWorkerName: otp.lineWorkerName,
+              expiresAt: otp.expiresAt.toDate(),
+              createdAt: otp.createdAt.toDate()
             });
-            
-            // Refresh the active OTPs state
-            const updatedActiveOTPs = getActiveOTPsForRetailer(retailerId);
-            setActiveOTPs(updatedActiveOTPs);
-            
-            // Show popup for the latest OTP
-            const latestOTP = newOTPsFromFirestore[newOTPsFromFirestore.length - 1];
+          });
+          
+          // Refresh the active OTPs state
+          const updatedActiveOTPs = getActiveOTPsForRetailer(retailerId);
+          console.log('📊 Updated active OTPs count after real-time sync:', updatedActiveOTPs.length);
+          setActiveOTPs(updatedActiveOTPs);
+          
+          // Show popup for the latest OTP if not already shown
+          if (validOTPsFromFirestore.length > 0) {
+            const latestOTP = validOTPsFromFirestore[validOTPsFromFirestore.length - 1];
             if (!shownOTPpopups.has(latestOTP.paymentId)) {
+              console.log('🆕 Showing popup for new OTP:', latestOTP.paymentId);
               setNewPayment({
                 ...latestOTP,
                 id: latestOTP.paymentId,
