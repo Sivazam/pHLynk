@@ -19,7 +19,7 @@ import { Retailer, Payment } from '@/types';
 import { formatTimestamp, formatTimestampWithTime, formatCurrency } from '@/lib/timestamp-utils';
 import { getActiveOTPsForRetailer, getCompletedPaymentsForRetailer, removeCompletedPayment, addActiveOTP, removeActiveOTP } from '@/lib/otp-store';
 import { db } from '@/lib/firebase';
-import { doc, getDoc, onSnapshot, collection, query, where } from 'firebase/firestore';
+import { doc, getDoc, getDocs, onSnapshot, collection, query, where } from 'firebase/firestore';
 import { logger } from '@/lib/logger';
 import { DateRangeFilter, DateRangeOption } from '@/components/ui/DateRangeFilter';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -407,7 +407,7 @@ export function RetailerDashboard() {
           id: doc.id,
           ...data,
           completedAt: data.timeline?.completedAt?.toDate()
-        };
+        } as Payment & { completedAt: Date };
       }).filter(payment => {
         if (!payment.completedAt) return false;
         const now = new Date();
@@ -433,9 +433,9 @@ export function RetailerDashboard() {
         const latestPayment = recentCompletedPayments[recentCompletedPayments.length - 1];
         if (!shownOTPpopups.has(latestPayment.id)) {
           setNewCompletedPayment({
-            amount: latestPayment.totalPaid,
+            amount: latestPayment.totalPaid || 0,
             paymentId: latestPayment.id,
-            lineWorkerName: latestPayment.lineWorkerName || 'Line Worker',
+            lineWorkerName: 'Line Worker', // We'll fetch this separately if needed
             completedAt: latestPayment.completedAt
           });
           setShowSettlementPopup(true);
