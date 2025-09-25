@@ -304,7 +304,18 @@ export function RetailerDashboard() {
           const retailerData = snapshot.data();
           const activeOTPsFromFirestore = retailerData.activeOTPs || [];
           
-          console.log('🔔 Real-time OTP update detected:', activeOTPsFromFirestore.length, 'OTPs in retailer document');
+          console.log('🔔 Real-time OTP update detected:', {
+            retailerId,
+            activeOTPsFromFirestoreCount: activeOTPsFromFirestore.length,
+            activeOTPsFromFirestore: activeOTPsFromFirestore.map((otp: any) => ({
+              paymentId: otp.paymentId,
+              code: otp.code,
+              amount: otp.amount,
+              expiresAt: otp.expiresAt.toDate(),
+              isUsed: otp.isUsed,
+              isExpired: otp.expiresAt.toDate() <= new Date()
+            }))
+          });
           
           // Check if there are new OTPs that aren't in our current activeOTPs state
           const currentPaymentIds = new Set(activeOTPs.map(otp => otp.paymentId));
@@ -496,6 +507,17 @@ export function RetailerDashboard() {
       const activeOTPsData = getActiveOTPsForRetailer(retailerId);
       const completedPaymentsData = getCompletedPaymentsForRetailer(retailerId);
       
+      console.log('🔍 Loaded data from in-memory store:', {
+        activeOTPsCount: activeOTPsData.length,
+        completedPaymentsCount: completedPaymentsData.length,
+        activeOTPs: activeOTPsData.map(otp => ({
+          paymentId: otp.paymentId,
+          code: otp.code,
+          amount: otp.amount,
+          expiresAt: otp.expiresAt.toISOString()
+        }))
+      });
+      
       setActiveOTPs(activeOTPsData);
       setCompletedPayments(completedPaymentsData);
       
@@ -566,7 +588,17 @@ export function RetailerDashboard() {
               const retailerData = retailerDoc.data();
               const activeOTPsFromFirestore = retailerData.activeOTPs || [];
               
-              console.log('🔍 Manual OTP check found:', activeOTPsFromFirestore.length, 'OTPs in retailer document');
+              console.log('🔍 Manual OTP check found:', {
+                activeOTPsFromFirestoreCount: activeOTPsFromFirestore.length,
+                activeOTPsFromFirestore: activeOTPsFromFirestore.map((otp: any) => ({
+                  paymentId: otp.paymentId,
+                  code: otp.code,
+                  amount: otp.amount,
+                  expiresAt: otp.expiresAt.toDate(),
+                  isUsed: otp.isUsed,
+                  isExpired: otp.expiresAt.toDate() <= new Date()
+                }))
+              });
               
               // Check if there are new OTPs that aren't in our current activeOTPs state
               const currentPaymentIds = new Set(activeOTPs.map(otp => otp.paymentId));

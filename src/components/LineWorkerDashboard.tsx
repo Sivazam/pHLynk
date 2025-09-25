@@ -29,6 +29,8 @@ import { realtimeNotificationService } from '@/services/realtime-notifications';
 import { notificationService } from '@/services/notification-service';
 import { Retailer, Payment, Area } from '@/types';
 import { formatTimestamp, formatTimestampWithTime, formatCurrency } from '@/lib/timestamp-utils';
+import { db } from '@/lib/firebase';
+import { doc, getDoc, onSnapshot, collection, query, where } from 'firebase/firestore';
 import { exportToCSV, exportToJSON, preparePaymentDataForExport, formatDateForExport, formatCurrencyForExport } from '@/lib/export-utils';
 import { CollectPaymentForm } from './CollectPaymentForm';
 import { OTPEnterForm } from './OTPEnterForm';
@@ -90,6 +92,7 @@ export function LineWorkerDashboard() {
     const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
     return { startDate: startOfDay, endDate: endOfDay };
   });
+  const [paymentUnsubscribe, setPaymentUnsubscribe] = useState<(() => void) | null>(null);
   
   // Standardized loading state management
   const mainLoadingState = useLoadingState();
@@ -181,6 +184,12 @@ export function LineWorkerDashboard() {
     return () => {
       if (user?.uid) {
         realtimeNotificationService.stopListening(user.uid);
+      }
+      
+      // Clean up payment listener
+      if (paymentUnsubscribe) {
+        paymentUnsubscribe();
+        setPaymentUnsubscribe(null);
       }
     };
   }, [isLineWorker, user]);
@@ -360,6 +369,60 @@ export function LineWorkerDashboard() {
       setAreas(allAreas);
       setDataFetchProgress(100);
       mainLoadingState.setLoading(false);
+      
+      // Set up real-time payment listener for line worker's payments
+      if (user?.uid && currentTenantId) {
+        console.log('🔧 Setting up real-time payment listener for line worker:', user.uid);
+        
+        const paymentsRef = collection(db, 'payments');
+        const paymentQuery = query(paymentsRef, where('lineWorkerId', '==', user.uid));
+        
+        const unsubscribeFunc = onSnapshot(paymentQuery, (snapshot) => {
+          snapshot.docChanges().forEach((change) => {
+            const paymentData = change.doc.data();
+            const paymentId = change.doc.id;
+            
+            console.log('🔄 Payment change detected:', {
+              paymentId,
+              type: change.type,
+              state: paymentData.state,
+              retailerId: paymentData.retailerId
+            });
+            
+            if (change.type === 'modified' || change.type === 'added') {
+              // Update the payment in the payments array
+              setPayments(prevPayments => {
+                const existingIndex = prevPayments.findIndex(p => p.id === paymentId);
+                const updatedPayment = {
+                  id: paymentId,
+                  ...paymentData
+                } as Payment;
+                
+                if (existingIndex >= 0) {
+                  // Update existing payment
+                  const newPayments = [...prevPayments];
+                  newPayments[existingIndex] = updatedPayment;
+                  console.log('📝 Updated payment in state:', paymentId, 'New state:', paymentData.state);
+                  return newPayments;
+                } else {
+                  // Add new payment
+                  console.log('➕ Added new payment to state:', paymentId, 'State:', paymentData.state);
+                  return [...prevPayments, updatedPayment];
+                }
+              });
+            } else if (change.type === 'removed') {
+              // Remove payment from array
+              setPayments(prevPayments => prevPayments.filter(p => p.id !== paymentId));
+              console.log('🗑️ Removed payment from state:', paymentId);
+            }
+          });
+        }, (error) => {
+          console.error('Error listening to payment changes:', error);
+        });
+        
+        setPaymentUnsubscribe(() => unsubscribeFunc);
+        console.log('✅ Real-time payment listener setup complete');
+      }
       
       console.log('✅ Line worker data loaded successfully');
     } catch (err: any) {

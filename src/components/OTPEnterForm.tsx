@@ -55,11 +55,11 @@ export const OTPEnterForm: React.FC<OTPEnterFormProps> = ({
   } | null>(null);
   const [cooldownTimeLeft, setCooldownTimeLeft] = useState<number>(0);
 
-  // Calculate time left based on OTP creation time
+  // Calculate time left based on OTP sent time from payment timeline
   const calculateTimeLeft = useCallback(() => {
-    const otpCreationTime = payment.createdAt?.toDate?.() || new Date();
+    const otpSentTime = payment.timeline?.otpSentAt?.toDate?.() || payment.createdAt?.toDate?.() || new Date();
     const now = new Date();
-    const elapsedSeconds = Math.floor((now.getTime() - otpCreationTime.getTime()) / 1000);
+    const elapsedSeconds = Math.floor((now.getTime() - otpSentTime.getTime()) / 1000);
     const totalDuration = 420; // 7 minutes in seconds
     const remaining = Math.max(0, totalDuration - elapsedSeconds);
     
@@ -68,7 +68,7 @@ export const OTPEnterForm: React.FC<OTPEnterFormProps> = ({
     }
     
     return remaining;
-  }, [payment.createdAt]);
+  }, [payment.timeline?.otpSentAt, payment.createdAt]);
 
   // Initialize time left on component mount
   useEffect(() => {
