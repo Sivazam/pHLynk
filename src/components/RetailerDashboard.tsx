@@ -393,7 +393,7 @@ export function RetailerDashboard() {
 
   // Check for completed payments and close OTP popup if needed
   const checkCompletedPayments = async () => {
-    if (!retailer || !tenantId || !showOTPPopup) return;
+    if (!retailer || !tenantId) return; // Removed !showOTPPopup condition
     
     try {
       // Check for recently completed payments

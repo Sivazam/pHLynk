@@ -83,9 +83,9 @@ export const OTPEnterForm: React.FC<OTPEnterFormProps> = ({
       isExpired: remaining <= 0
     });
     
-    // Special case: If OTP was just sent (within last 10 seconds) and shows as expired, 
+    // Special case: If OTP was just sent (within last 60 seconds) and shows as expired, 
     // it's likely a timing issue with the real-time update. Give it more time.
-    if (remaining <= 0 && elapsedSeconds < 30 && payment.state === 'OTP_SENT') {
+    if (remaining <= 0 && elapsedSeconds < 60 && payment.state === 'OTP_SENT') {
       console.log('⚠️ OTP shows as expired but was just sent, giving more time:', {
         elapsedSeconds,
         paymentState: payment.state
@@ -108,7 +108,11 @@ export const OTPEnterForm: React.FC<OTPEnterFormProps> = ({
     
     // If OTP is already expired when component mounts, notify parent
     if (initialTimeLeft <= 0) {
-      setError('This OTP has expired. Please request a new one.');
+      // Only show expired message if it's genuinely expired, not just sent
+      const elapsedSeconds = Math.floor((new Date().getTime() - (payment.timeline?.otpSentAt?.toDate?.() || payment.createdAt?.toDate?.() || new Date()).getTime()) / 1000);
+      if (elapsedSeconds > 60) { // Only show expired if more than 60 seconds have passed
+        setError('This OTP has expired. Please request a new one.');
+      }
     }
   }, [calculateTimeLeft]);
 
@@ -116,8 +120,9 @@ export const OTPEnterForm: React.FC<OTPEnterFormProps> = ({
   useEffect(() => {
     if (timeLeft <= 0) {
       setCanResend(true);
-      // Set error message when OTP expires
-      if (!error) {
+      // Set error message when OTP expires - but only if it's genuinely expired
+      const elapsedSeconds = Math.floor((new Date().getTime() - (payment.timeline?.otpSentAt?.toDate?.() || payment.createdAt?.toDate?.() || new Date()).getTime()) / 1000);
+      if (!error && elapsedSeconds > 60) {
         setError('OTP has expired. Please request a new one.');
       }
       return;
@@ -128,8 +133,11 @@ export const OTPEnterForm: React.FC<OTPEnterFormProps> = ({
         if (prev <= 1) {
           clearInterval(timer);
           setCanResend(true);
-          // Set error message when OTP expires
-          setError('OTP has expired. Please request a new one.');
+          // Set error message when OTP expires - but only if it's genuinely expired
+          const elapsedSeconds = Math.floor((new Date().getTime() - (payment.timeline?.otpSentAt?.toDate?.() || payment.createdAt?.toDate?.() || new Date()).getTime()) / 1000);
+          if (elapsedSeconds > 60) {
+            setError('OTP has expired. Please request a new one.');
+          }
           return 0;
         }
         return prev - 1;
@@ -246,10 +254,15 @@ export const OTPEnterForm: React.FC<OTPEnterFormProps> = ({
       return;
     }
 
-    // Check if OTP is expired
+    // Check if OTP is expired - but be lenient for recently sent OTPs
     if (timeLeft <= 0) {
-      setError('OTP has expired. Please request a new one.');
-      return;
+      const elapsedSeconds = Math.floor((new Date().getTime() - (payment.timeline?.otpSentAt?.toDate?.() || payment.createdAt?.toDate?.() || new Date()).getTime()) / 1000);
+      if (elapsedSeconds > 60) {
+        setError('OTP has expired. Please request a new one.');
+        return;
+      }
+      // If less than 60 seconds have passed, allow verification even if timeLeft shows 0
+      console.log('⚠️ OTP shows as expired but was recently sent, allowing verification attempt');
     }
 
     // Check if in cooldown
