@@ -454,7 +454,7 @@ export function NetflixRoleSelection({ onRoleSelect, onBack }: NetflixRoleSelect
                   About Us
                 </p>
                 <div>
-                  <p className="text-white-500 text-sm sm:text-base mb-4">
+                  <p className="text-white-500 text-sm sm:text-base mb-4" style={{color:'white'}}>
                     SAANVI SYSTEMS is a technology company specializing in software solutions for the pharmaceutical supply chain. Our flagship product, PharmaLync, is designed to streamline operations for wholesalers, line workers, and retailers, enhancing efficiency and transparency across the supply chain.
                   </p>
                 </div>
