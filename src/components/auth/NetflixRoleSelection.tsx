@@ -271,7 +271,7 @@ export function NetflixRoleSelection({ onRoleSelect, onBack }: NetflixRoleSelect
                   textShadow: "0px 1px 2px rgba(0,0,0,0.25)",
                 }}>
                   PharmaLync
-                  <p style={{fontSize:'1rem',color:'gray'}}>Powered By SAANVI SYSTEMS</p>
+                  {/* <p style={{fontSize:'0.5rem',color:'gray'}}>Powered By SAANVI SYSTEMS</p> */}
                 </span>
               </div>
             </div>
@@ -451,13 +451,8 @@ export function NetflixRoleSelection({ onRoleSelect, onBack }: NetflixRoleSelect
               {/* Questions? Contact */}
               <div className="text-center mb-8 sm:mb-12">
                 <p className="text-gray-500 text-sm sm:text-base mb-4">
-                  About Us
+                  Questions? Contact us 24/7 for support
                 </p>
-                <div>
-                  <p className="text-white-500 text-sm sm:text-base mb-4" style={{color:'white'}}>
-                    SAANVI SYSTEMS is a technology company specializing in software solutions for the pharmaceutical supply chain. Our flagship product, PharmaLync, is designed to streamline operations for wholesalers, line workers, and retailers, enhancing efficiency and transparency across the supply chain.
-                  </p>
-                </div>
                 <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
                   <a 
                     href="tel:9014882779" 
@@ -589,8 +584,7 @@ export function NetflixRoleSelection({ onRoleSelect, onBack }: NetflixRoleSelect
                   </select>
                 </div>
                 <div className="text-gray-500 text-xs sm:text-sm">
-                  Powered by SAANVI SYSTEMS - GSTIN - 37AJEPG2004R1Z6
-                  {/* Made with ❤️ for pharmaceutical supply chain */}
+                  Made with ❤️ for pharmaceutical supply chain
                 </div>
               </div>
             </div>
