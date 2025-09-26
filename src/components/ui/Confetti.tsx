@@ -53,12 +53,12 @@ export function Confetti({
     const startY = canvas.height;
 
     for (let i = 0; i < particleCount; i++) {
-      const angle = (Math.PI / 3) + (Math.random() - 0.5) * (Math.PI / 2); // 60° ± 45°
-      const speed = 5 + Math.random() * 10;
+      const angle = (Math.PI / 2) + (Math.random() - 0.5) * (Math.PI / 4); // 90° ± 22.5° (more vertical)
+      const speed = 8 + Math.random() * 12; // Increased speed for better upward movement
       
       newParticles.push({
         x: centerX + (Math.random() - 0.5) * 100, // Spread from center
-        y: startY,
+        y: startY - 100, // Start 100px above the bottom
         vx: Math.cos(angle) * speed,
         vy: -Math.sin(angle) * speed - Math.random() * 5, // Upward velocity
         color: colors[Math.floor(Math.random() * colors.length)],
@@ -183,7 +183,7 @@ export function Confetti({
   return (
     <canvas
       ref={canvasRef}
-      className="fixed inset-0 pointer-events-none z-[9999]"
+      className="fixed inset-0 pointer-events-none z-[99999]"
       style={{ display: particles.length > 0 ? 'block' : 'none' }}
     />
   );

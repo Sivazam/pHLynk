@@ -84,6 +84,7 @@ export function RetailerDashboard() {
     completedAt: Date;
   } | null>(null);
   const [shownOTPpopups, setShownOTPpopups] = useState<Set<string>>(new Set());
+  const [shownCompletedPaymentPopups, setShownCompletedPaymentPopups] = useState<Set<string>>(new Set());
   const [notificationCount, setNotificationCount] = useState(0);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [paymentTab, setPaymentTab] = useState('completed');
@@ -431,7 +432,7 @@ export function RetailerDashboard() {
         
         // Show success popup for the most recent completion
         const latestPayment = recentCompletedPayments[recentCompletedPayments.length - 1];
-        if (!shownOTPpopups.has(latestPayment.id)) {
+        if (!shownCompletedPaymentPopups.has(latestPayment.id)) {
           setNewCompletedPayment({
             amount: latestPayment.totalPaid || 0,
             paymentId: latestPayment.id,
@@ -441,8 +442,11 @@ export function RetailerDashboard() {
           setShowSettlementPopup(true);
           setTriggerConfetti(true);
           
-          // Add to shown popups
+          // Add to shown OTP popups
           setShownOTPpopups(prev => new Set(prev).add(latestPayment.id));
+          
+          // Add to shown completed payment popups
+          setShownCompletedPaymentPopups(prev => new Set(prev).add(latestPayment.id));
           
           // Hide confetti after 5 seconds
           setTimeout(() => {
@@ -667,6 +671,12 @@ export function RetailerDashboard() {
                   setShowSettlementPopup(true);
                   setTriggerConfetti(true);
                   
+                  // Add to shown OTP popups
+                  setShownOTPpopups(prev => new Set(prev).add(paymentId));
+                  
+                  // Add to shown completed payment popups
+                  setShownCompletedPaymentPopups(prev => new Set(prev).add(paymentId));
+                  
                   // Play success sound if available
                   try {
                     const audio = new Audio('/success-sound.mp3');
@@ -871,15 +881,15 @@ export function RetailerDashboard() {
       }
       
       // Check for new completed payments and show settlement popup
-      const newCompleted = completedPaymentsData.filter(cp => !shownOTPpopups.has(cp.paymentId));
+      const newCompleted = completedPaymentsData.filter(cp => !shownCompletedPaymentPopups.has(cp.paymentId));
       if (newCompleted.length > 0) {
         const latestCompleted = newCompleted[newCompleted.length - 1];
         setNewCompletedPayment(latestCompleted);
         setShowSettlementPopup(true);
         setTriggerConfetti(true);
         
-        // Add to shown popups
-        setShownOTPpopups(prev => new Set(prev).add(latestCompleted.paymentId));
+        // Add to shown completed payment popups
+        setShownCompletedPaymentPopups(prev => new Set(prev).add(latestCompleted.paymentId));
         
         // Hide confetti after 5 seconds
         setTimeout(() => {
