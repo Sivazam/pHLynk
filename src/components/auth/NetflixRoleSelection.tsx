@@ -271,8 +271,9 @@ export function NetflixRoleSelection({ onRoleSelect, onBack }: NetflixRoleSelect
                   textShadow: "0px 1px 2px rgba(0,0,0,0.25)",
                 }}>
                   PharmaLync
+                  <p style={{color:'gray', fontSize:'0.8rem'}}>Powered by SAANVI SYSTEMS</p>
                 </span>
-                <p style={{color:'gray', fontSize:'0.8rem'}}>Powered by SAANVI SYSTEMS</p>
+               
               </div>
             </div>
 
