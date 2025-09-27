@@ -587,7 +587,8 @@ export function NetflixRoleSelection({ onRoleSelect, onBack }: NetflixRoleSelect
                   </select>
                 </div>
                 <div className="text-gray-500 text-xs sm:text-sm">
-                  Made with ❤️ for pharmaceutical supply chain
+                  {/* Made with ❤️ for pharmaceutical supply chain */}
+                  Powered By SAANVI SYSTEMS.
                 </div>
               </div>
             </div>
