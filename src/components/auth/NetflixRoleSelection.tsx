@@ -478,7 +478,7 @@ export function NetflixRoleSelection({ onRoleSelect, onBack }: NetflixRoleSelect
               {/* Footer Links Grid */}
               <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-6 sm:gap-8 mb-8 sm:mb-12">
                 {/* Company */}
-                <div className="space-y-3 sm:space-y-4">
+                {/* <div className="space-y-3 sm:space-y-4">
                   <h3 className="text-gray-300 text-sm font-semibold uppercase tracking-wider">Company</h3>
                   <ul className="space-y-2">
                     <li>
@@ -497,7 +497,7 @@ export function NetflixRoleSelection({ onRoleSelect, onBack }: NetflixRoleSelect
                       </Link>
                     </li>
                   </ul>
-                </div>
+                </div> */}
 
                 {/* Support */}
                 <div className="space-y-3 sm:space-y-4">
@@ -513,11 +513,11 @@ export function NetflixRoleSelection({ onRoleSelect, onBack }: NetflixRoleSelect
                         FAQ
                       </Link>
                     </li>
-                    <li>
+                    {/* <li>
                       <Link href="/contact" className="text-gray-500 text-sm hover:text-gray-300 transition-colors">
                         Contact Us
                       </Link>
-                    </li>
+                    </li> */}
                   </ul>
                 </div>
 
@@ -535,16 +535,16 @@ export function NetflixRoleSelection({ onRoleSelect, onBack }: NetflixRoleSelect
                         Terms of Use
                       </Link>
                     </li>
-                    <li>
+                    {/* <li>
                       <Link href="/cookies" className="text-gray-500 text-sm hover:text-gray-300 transition-colors">
                         Cookie Preferences
                       </Link>
-                    </li>
+                    </li> */}
                   </ul>
                 </div>
 
                 {/* Resources */}
-                <div className="space-y-3 sm:space-y-4">
+                {/* <div className="space-y-3 sm:space-y-4">
                   <h3 className="text-gray-300 text-sm font-semibold uppercase tracking-wider">Resources</h3>
                   <ul className="space-y-2">
                     <li>
@@ -563,7 +563,7 @@ export function NetflixRoleSelection({ onRoleSelect, onBack }: NetflixRoleSelect
                       </Link>
                     </li>
                   </ul>
-                </div>
+                </div> */}
               </div>
 
               {/* Copyright */}
