@@ -42,30 +42,50 @@ export const storage = getStorage(app);
 
 // Initialize Firebase Functions and get a reference to the service (optional)
 // Only initialize if the functions module is available
-try {
-  // Use dynamic import to avoid require() and make it optional
-  import('firebase/functions').then(functionsModule => {
-    if (functionsModule.getFunctions) {
-      functions = functionsModule.getFunctions(app);
-      
-      // Connect to emulator in development (optional - remove for production)
-      if (process.env.NODE_ENV === 'development' && functionsModule.connectFunctionsEmulator) {
-        try {
-          functionsModule.connectFunctionsEmulator(functions, 'localhost', 5001);
-          console.log('🔧 Connected to Firebase Functions emulator');
-        } catch (error) {
-          console.log('⚠️ Could not connect to Functions emulator, using production functions');
+let functionsInitialized = false;
+let functionsInitPromise: Promise<any> | null = null;
+
+export async function initializeFirebaseFunctions(): Promise<any> {
+  if (functionsInitialized && functions) {
+    return functions;
+  }
+  
+  if (!functionsInitPromise) {
+    functionsInitPromise = import('firebase/functions').then(async functionsModule => {
+      if (functionsModule.getFunctions) {
+        functions = functionsModule.getFunctions(app);
+        
+        // Connect to emulator in development (optional - remove for production)
+        if (process.env.NODE_ENV === 'development' && functionsModule.connectFunctionsEmulator) {
+          try {
+            functionsModule.connectFunctionsEmulator(functions, 'localhost', 5001);
+            console.log('🔧 Connected to Firebase Functions emulator');
+          } catch (error) {
+            console.log('⚠️ Could not connect to Functions emulator, using production functions');
+          }
         }
+        functionsInitialized = true;
+        console.log('✅ Firebase Functions initialized successfully');
+        return functions;
+      } else {
+        console.log('⚠️ Firebase Functions module not available');
+        functions = null;
+        return null;
       }
-    }
-  }).catch(error => {
-    console.log('⚠️ Firebase Functions module not available, using fallback mode');
-    functions = null;
-  });
-} catch (error) {
-  console.log('⚠️ Firebase Functions module not available, using fallback mode');
-  functions = null;
+    }).catch(error => {
+      console.log('⚠️ Firebase Functions module not available, using fallback mode:', error);
+      functions = null;
+      return null;
+    });
+  }
+  
+  return functionsInitPromise;
 }
+
+// Auto-initialize functions in the background
+initializeFirebaseFunctions().catch(error => {
+  console.log('⚠️ Background Firebase Functions initialization failed:', error);
+});
 
 export { functions };
 

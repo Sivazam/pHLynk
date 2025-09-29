@@ -8,19 +8,22 @@ import { fast2SMSService, Fast2SMSService } from '@/services/fast2sms-service';
 import { pushNotificationService } from '@/services/push-notification-service';
 import { Retailer } from '@/types';
 import { logger } from '@/lib/logger';
-import { functions } from '@/lib/firebase';
+import { functions, initializeFirebaseFunctions } from '@/lib/firebase';
 
 // Helper function to get httpsCallable if functions are available
 async function getHttpsCallable(functionName: string) {
-  if (!functions) {
-    return null;
-  }
-  
   try {
+    // Ensure Firebase Functions are initialized
+    const functionsInstance = await initializeFirebaseFunctions();
+    if (!functionsInstance) {
+      console.log('⚠️ Firebase Functions not available, using fallback mode');
+      return null;
+    }
+    
     const functionsModule = await import('firebase/functions');
-    return functionsModule.httpsCallable(functions, functionName);
+    return functionsModule.httpsCallable(functionsInstance, functionName);
   } catch (error) {
-    console.log('⚠️ Firebase Functions not available, using fallback mode');
+    console.log('⚠️ Firebase Functions not available, using fallback mode:', error);
     return null;
   }
 }
@@ -557,9 +560,23 @@ export async function POST(request: NextRequest) {
               const collectionDate = Fast2SMSService.formatDateForSMS(new Date());
               
               // Send SMS to retailer using Firebase Function
+              console.log('🚀 Attempting to send retailer SMS via Firebase Function...');
               try {
                 const sendRetailerSMSFunction = await getHttpsCallable('sendRetailerPaymentSMS');
+                console.log('📞 Firebase Function result:', sendRetailerSMSFunction ? 'AVAILABLE' : 'NOT AVAILABLE');
+                
                 if (sendRetailerSMSFunction && retailerUser.phone) {
+                  console.log('📤 Calling sendRetailerPaymentSMS Firebase Function with data:', {
+                    retailerId: payment.retailerId,
+                    paymentId: paymentId,
+                    amount: payment.totalPaid,
+                    lineWorkerName,
+                    retailerName: retailerUser.name || 'Retailer',
+                    retailerArea,
+                    wholesalerName,
+                    collectionDate
+                  });
+                  
                   const retailerSMSResult = await sendRetailerSMSFunction({
                     retailerId: payment.retailerId,
                     paymentId: paymentId,
@@ -573,7 +590,9 @@ export async function POST(request: NextRequest) {
                   
                   console.log('📱 Retailer confirmation SMS result via Firebase Function:', retailerSMSResult.data);
                 } else {
-                  console.log('⚠️ Firebase Function not available, falling back to local service for retailer SMS');
+                  console.log('⚠️ Firebase Function not available or retailer phone missing, falling back to local service for retailer SMS');
+                  console.log('  - Function available:', !!sendRetailerSMSFunction);
+                  console.log('  - Retailer phone:', retailerUser.phone);
                   // Fallback to local service if Firebase Function not available
                   if (retailerUser.phone) {
                     const retailerSMSResult = await fast2SMSService.sendPaymentConfirmationSMS(
@@ -616,8 +635,11 @@ export async function POST(request: NextRequest) {
               }
               
               // Send SMS to wholesaler using Firebase Function
+              console.log('🚀 Attempting to send wholesaler SMS via Firebase Function...');
               try {
                 const sendWholesalerSMSFunction = await getHttpsCallable('sendWholesalerPaymentSMS');
+                console.log('📞 Wholesaler Firebase Function result:', sendWholesalerSMSFunction ? 'AVAILABLE' : 'NOT AVAILABLE');
+                
                 if (sendWholesalerSMSFunction && lineWorkerData.wholesalerId) {
                   const wholesalerRef = doc(db, 'users', lineWorkerData.wholesalerId);
                   const wholesalerDoc = await getDoc(wholesalerRef);
@@ -625,6 +647,17 @@ export async function POST(request: NextRequest) {
                   if (wholesalerDoc.exists()) {
                     const wholesalerData = wholesalerDoc.data();
                     if (wholesalerData.phone) {
+                      console.log('📤 Calling sendWholesalerPaymentSMS Firebase Function with data:', {
+                        retailerId: payment.retailerId,
+                        paymentId: paymentId,
+                        amount: payment.totalPaid,
+                        lineWorkerName,
+                        retailerName: retailerUser.name || 'Retailer',
+                        retailerArea,
+                        wholesalerName: wholesalerData.displayName || wholesalerData.name || 'Wholesaler',
+                        collectionDate
+                      });
+                      
                       const wholesalerSMSResult = await sendWholesalerSMSFunction({
                         retailerId: payment.retailerId,
                         paymentId: paymentId,
@@ -637,10 +670,16 @@ export async function POST(request: NextRequest) {
                       });
                       
                       console.log('📱 Wholesaler confirmation SMS result via Firebase Function:', wholesalerSMSResult.data);
+                    } else {
+                      console.log('⚠️ Wholesaler phone not found, skipping SMS');
                     }
+                  } else {
+                    console.log('⚠️ Wholesaler document not found, skipping SMS');
                   }
                 } else {
-                  console.log('⚠️ Firebase Function not available, falling back to local service for wholesaler SMS');
+                  console.log('⚠️ Firebase Function not available or wholesaler ID missing, falling back to local service for wholesaler SMS');
+                  console.log('  - Function available:', !!sendWholesalerSMSFunction);
+                  console.log('  - Wholesaler ID:', lineWorkerData.wholesalerId);
                   // Fallback to local service if Firebase Function not available
                   if (lineWorkerData.wholesalerId) {
                     const wholesalerRef = doc(db, 'users', lineWorkerData.wholesalerId);
