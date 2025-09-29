@@ -591,6 +591,7 @@ export async function POST(request: NextRequest) {
       await comprehensiveOTPCleanup(paymentId);
       
       // Send payment confirmation SMS to both retailer and wholesaler using Firebase Functions
+      console.log('🚀 PAYMENT SUCCESSFUL - Sending SMS notifications to both retailer and wholesaler...');
       try {
         const payment = await getPaymentWithCorrectTenant(paymentId);
         if (payment) {
@@ -604,7 +605,9 @@ export async function POST(request: NextRequest) {
             
             if (lineWorkerDoc.exists()) {
               const lineWorkerData = lineWorkerDoc.data();
-              const lineWorkerName = lineWorkerData.name || 'Line Worker';
+              console.log('🔍 Debug - lineWorkerData:', lineWorkerData);
+              const lineWorkerName = lineWorkerData.name || lineWorkerData.displayName || 'Line Worker';
+              console.log('🔍 Debug - lineWorkerName:', lineWorkerName);
               
               // Get retailer details for area information
               const retailerRef = doc(db, 'retailers', payment.retailerId);
@@ -613,26 +616,35 @@ export async function POST(request: NextRequest) {
               let retailerArea = 'Unknown Area';
               if (retailerDoc.exists()) {
                 const retailerData = retailerDoc.data();
+                console.log('🔍 Debug - retailerData:', retailerData);
                 retailerArea = retailerData.areaName || 'Unknown Area';
               }
+              console.log('🔍 Debug - retailerArea:', retailerArea);
               
               // Get wholesaler name from wholesaler document
               let wholesalerName = 'Wholesaler';
+              console.log('🔍 Debug - lineWorkerData.wholesalerId:', lineWorkerData.wholesalerId);
               if (lineWorkerData.wholesalerId) {
                 const wholesalerRef = doc(db, 'users', lineWorkerData.wholesalerId);
                 const wholesalerDoc = await getDoc(wholesalerRef);
                 
                 if (wholesalerDoc.exists()) {
                   const wholesalerData = wholesalerDoc.data();
+                  console.log('🔍 Debug - wholesalerData:', wholesalerData);
                   wholesalerName = wholesalerData.displayName || wholesalerData.name || 'Wholesaler';
+                } else {
+                  console.log('🔍 Debug - wholesalerDoc does not exist');
                 }
+              } else {
+                console.log('🔍 Debug - lineWorkerData has no wholesalerId');
               }
+              console.log('🔍 Debug - final wholesalerName:', wholesalerName);
               
               // Format collection date
               const collectionDate = Fast2SMSService.formatDateForSMS(new Date());
               
               // Send SMS to retailer using Firebase Function
-              console.log('🚀 Attempting to send retailer SMS via Firebase Function...');
+              console.log('🚀 INITIATING RETAILER SMS - Sending payment confirmation to retailer...');
               let retailerSMSSuccess = false;
               try {
                 const sendRetailerSMSFunction = await getHttpsCallable('sendRetailerPaymentSMS');
@@ -724,7 +736,7 @@ export async function POST(request: NextRequest) {
               }
               
               // Send SMS to wholesaler using Firebase Function (independent of retailer SMS result)
-              console.log('🚀 REACHED WHOLESALER SMS SECTION - About to attempt sending wholesaler SMS...');
+              console.log('🚀 INITIATING WHOLESALER SMS - Sending payment notification to wholesaler...');
               console.log('🔍 Debug - lineWorkerData:', lineWorkerData ? 'EXISTS' : 'MISSING');
               console.log('🔍 Debug - lineWorkerData.wholesalerId:', lineWorkerData?.wholesalerId || 'MISSING');
               try {
@@ -841,6 +853,7 @@ export async function POST(request: NextRequest) {
                 wholesalerId: lineWorkerData.wholesalerId,
                 wholesalerPhone: lineWorkerData.wholesalerId ? 'exists' : 'missing'
               });
+              console.log('✅ PAYMENT VERIFICATION COMPLETE - SMS notifications processed for both retailer and wholesaler');
             }
           }
         }

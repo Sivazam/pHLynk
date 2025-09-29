@@ -72,11 +72,19 @@ exports.sendRetailerPaymentSMS = functions.https.onCall(async (data, context) =>
         const variablesValues = [
             data.amount.toString(), // {#var#} - payment amount
             retailerUser.name || data.retailerName, // {#var#} - retailer name
-            retailerUser.address || data.retailerArea, // {#var#} - retailer area
+            data.retailerArea || retailerUser.address, // {#var#} - retailer area (use passed data first, fallback to retailerUser.address)
             data.wholesalerName, // {#var#} - wholesaler name (goods supplied by)
             data.lineWorkerName, // {#var#} - line worker name
             data.collectionDate // {#var#} - collection date
         ];
+        console.log('🔧 CLOUD FUNCTION - SMS Variables being used:', {
+            amount: variablesValues[0],
+            retailerName: variablesValues[1],
+            retailerArea: variablesValues[2],
+            wholesalerName: variablesValues[3],
+            lineWorkerName: variablesValues[4],
+            collectionDate: variablesValues[5]
+        });
         const formattedVariables = variablesValues.join('%7C'); // URL-encoded pipe character
         // Get Fast2SMS configuration from Firebase Functions config
         const fast2smsConfig = functions.config().fast2sms;
@@ -192,6 +200,14 @@ exports.sendWholesalerPaymentSMS = functions.https.onCall(async (data, context) 
             data.wholesalerName, // {#var#} - wholesaler name (on behalf of)
             data.collectionDate // {#var#} - collection date
         ];
+        console.log('🔧 CLOUD FUNCTION - WHOLESALER SMS Variables being used:', {
+            amount: variablesValues[0],
+            retailerName: variablesValues[1],
+            retailerArea: variablesValues[2],
+            lineWorkerName: variablesValues[3],
+            wholesalerName: variablesValues[4],
+            collectionDate: variablesValues[5]
+        });
         const formattedVariables = variablesValues.join('%7C'); // URL-encoded pipe character
         // Get Fast2SMS configuration from Firebase Functions config
         const fast2smsConfig = functions.config().fast2sms;
