@@ -10,6 +10,19 @@ import { Retailer } from '@/types';
 import { logger } from '@/lib/logger';
 import { functions, initializeFirebaseFunctions } from '@/lib/firebase';
 
+// Type definitions for Firebase Function results
+interface SMSFunctionResult {
+  success: boolean;
+  messageId?: string;
+  phone?: string;
+  status?: string;
+  error?: string;
+}
+
+interface FirebaseFunctionResponse {
+  data: SMSFunctionResult;
+}
+
 // Helper function to get httpsCallable if functions are available
 async function getHttpsCallable(functionName: string) {
   try {
@@ -624,12 +637,18 @@ export async function POST(request: NextRequest) {
                     console.log('📱 Retailer confirmation SMS result via Firebase Function:', retailerSMSResult.data);
                     
                     // Check if the SMS was sent successfully
-                    if (retailerSMSResult.data && retailerSMSResult.data.success) {
+                    const resultData = retailerSMSResult.data as SMSFunctionResult;
+                    if (resultData && resultData.success) {
                       console.log('✅ Retailer SMS sent successfully via Firebase Function');
+                      console.log('📋 SMS Details:', {
+                        messageId: resultData.messageId,
+                        phone: resultData.phone,
+                        status: resultData.status
+                      });
                     } else {
-                      console.warn('⚠️ Retailer SMS Firebase Function returned unsuccessful result:', retailerSMSResult.data);
+                      console.warn('⚠️ Retailer SMS Firebase Function returned unsuccessful result:', resultData);
                       // Fallback to local service
-                      throw new Error('Firebase Function returned unsuccessful result');
+                      throw new Error(resultData?.error || 'Firebase Function returned unsuccessful result');
                     }
                   } catch (functionCallError) {
                     console.error('❌ Error calling retailer SMS Firebase Function:', functionCallError);
@@ -719,12 +738,18 @@ export async function POST(request: NextRequest) {
                         console.log('📱 Wholesaler confirmation SMS result via Firebase Function:', wholesalerSMSResult.data);
                         
                         // Check if the SMS was sent successfully
-                        if (wholesalerSMSResult.data && wholesalerSMSResult.data.success) {
+                        const wholesalerResultData = wholesalerSMSResult.data as SMSFunctionResult;
+                        if (wholesalerResultData && wholesalerResultData.success) {
                           console.log('✅ Wholesaler SMS sent successfully via Firebase Function');
+                          console.log('📋 SMS Details:', {
+                            messageId: wholesalerResultData.messageId,
+                            phone: wholesalerResultData.phone,
+                            status: wholesalerResultData.status
+                          });
                         } else {
-                          console.warn('⚠️ Wholesaler SMS Firebase Function returned unsuccessful result:', wholesalerSMSResult.data);
+                          console.warn('⚠️ Wholesaler SMS Firebase Function returned unsuccessful result:', wholesalerResultData);
                           // Fallback to local service
-                          throw new Error('Firebase Function returned unsuccessful result');
+                          throw new Error(wholesalerResultData?.error || 'Firebase Function returned unsuccessful result');
                         }
                       } catch (functionCallError) {
                         console.error('❌ Error calling wholesaler SMS Firebase Function:', functionCallError);
