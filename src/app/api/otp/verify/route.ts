@@ -611,6 +611,7 @@ export async function POST(request: NextRequest) {
                 console.log('📞 Firebase Function result:', sendRetailerSMSFunction ? 'AVAILABLE' : 'NOT AVAILABLE');
                 
                 if (sendRetailerSMSFunction && retailerUser.phone) {
+                  console.log('🚀 ABOUT TO CALL FIREBASE FUNCTION - sendRetailerPaymentSMS');
                   console.log('📤 Calling sendRetailerPaymentSMS Firebase Function with data:', {
                     retailerId: payment.retailerId,
                     paymentId: paymentId,
@@ -651,7 +652,12 @@ export async function POST(request: NextRequest) {
                       throw new Error(resultData?.error || 'Firebase Function returned unsuccessful result');
                     }
                   } catch (functionCallError) {
-                    console.error('❌ Error calling retailer SMS Firebase Function:', functionCallError);
+                    console.error('❌ DETAILED ERROR calling retailer SMS Firebase Function:', {
+                    error: functionCallError,
+                    message: functionCallError.message,
+                    stack: functionCallError.stack,
+                    code: functionCallError.code
+                  });
                     throw functionCallError; // Re-throw to trigger fallback
                   }
                 } else {

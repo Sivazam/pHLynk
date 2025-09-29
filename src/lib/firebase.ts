@@ -54,21 +54,21 @@ export async function initializeFirebaseFunctions(): Promise<any> {
     functionsInitPromise = import('firebase/functions').then(async functionsModule => {
       if (functionsModule.getFunctions) {
         try {
-          functions = functionsModule.getFunctions(app);
+          // Initialize Firebase Functions with proper configuration
+          functions = functionsModule.getFunctions(undefined, 'us-central1');
           
-          // Connect to emulator in development (optional - remove for production)
+          // For development, connect to emulator if available
           if (process.env.NODE_ENV === 'development' && functionsModule.connectFunctionsEmulator) {
             try {
               functionsModule.connectFunctionsEmulator(functions, 'localhost', 5001);
               console.log('🔧 Connected to Firebase Functions emulator');
             } catch (error) {
               console.log('⚠️ Could not connect to Functions emulator, using production functions:', error);
-              // Don't fail here - continue with production functions
             }
           }
           
           functionsInitialized = true;
-          console.log('✅ Firebase Functions initialized successfully');
+          console.log('✅ Firebase Functions initialized successfully with region: us-central1');
           return functions;
         } catch (error) {
           console.error('❌ Error initializing Firebase Functions:', error);
