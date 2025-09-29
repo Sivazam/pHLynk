@@ -17,6 +17,15 @@ export class PushNotificationService {
   }
 
   private async checkSupport() {
+    // Check if we're in a browser environment
+    const isBrowser = typeof window !== 'undefined' && typeof navigator !== 'undefined';
+    
+    if (!isBrowser) {
+      this.isSupported = false;
+      console.warn('⚠️ Push notifications not supported in server environment');
+      return;
+    }
+    
     this.isSupported = 'serviceWorker' in navigator && 'PushManager' in window;
     
     if (this.isSupported) {
@@ -82,6 +91,12 @@ export class PushNotificationService {
       return false;
     }
 
+    // Check if we're in a browser environment
+    if (typeof window === 'undefined' || typeof Notification === 'undefined') {
+      console.warn('⚠️ Notification API not available in this environment');
+      return false;
+    }
+
     try {
       const permission = await Notification.requestPermission();
       return permission === 'granted';
@@ -100,6 +115,12 @@ export class PushNotificationService {
   }): Promise<boolean> {
     if (!this.isSupported) {
       console.warn('⚠️ Push notifications not supported');
+      return false;
+    }
+
+    // Check if we're in a browser environment
+    if (typeof window === 'undefined' || typeof Notification === 'undefined') {
+      console.warn('⚠️ Notification API not available in this environment');
       return false;
     }
 
@@ -132,7 +153,9 @@ export class PushNotificationService {
 
       // Handle notification click
       notification.onclick = () => {
-        window.focus();
+        if (typeof window !== 'undefined') {
+          window.focus();
+        }
         notification.close();
       };
 
@@ -152,6 +175,12 @@ export class PushNotificationService {
   }): Promise<boolean> {
     if (!this.isSupported) {
       console.warn('⚠️ Push notifications not supported');
+      return false;
+    }
+
+    // Check if we're in a browser environment
+    if (typeof window === 'undefined' || typeof Notification === 'undefined') {
+      console.warn('⚠️ Notification API not available in this environment');
       return false;
     }
 
@@ -178,6 +207,12 @@ export class PushNotificationService {
   async sendTestNotification(): Promise<boolean> {
     if (!this.isSupported) {
       console.warn('⚠️ Push notifications not supported');
+      return false;
+    }
+
+    // Check if we're in a browser environment
+    if (typeof window === 'undefined' || typeof Notification === 'undefined') {
+      console.warn('⚠️ Notification API not available in this environment');
       return false;
     }
 
@@ -209,6 +244,11 @@ export class PushNotificationService {
   }
 
   hasPermission(): boolean {
+    // Check if we're in a browser environment
+    if (typeof window === 'undefined' || typeof Notification === 'undefined') {
+      return false;
+    }
+    
     return Notification.permission === 'granted';
   }
 
