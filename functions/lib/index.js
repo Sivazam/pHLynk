@@ -1,9 +1,31 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || function (mod) {
+    if (mod && mod.__esModule) return mod;
+    var result = {};
+    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+    __setModuleDefault(result, mod);
+    return result;
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.processSMSResponse = exports.sendWholesalerPaymentSMS = exports.sendRetailerPaymentSMS = void 0;
-const functions = require("firebase-functions");
-const admin = require("firebase-admin");
-require("dotenv/config");
+const functions = __importStar(require("firebase-functions"));
+const admin = __importStar(require("firebase-admin"));
 // Initialize Firebase Admin
 admin.initializeApp();
 // SMS Notification Functions
@@ -45,11 +67,12 @@ exports.sendRetailerPaymentSMS = functions.https.onCall(async (data, context) =>
             data.collectionDate
         ];
         const formattedVariables = variablesValues.join('%7C'); // URL-encoded pipe character
-        // Get Fast2SMS configuration from environment variables
-        const fast2smsApiKey = process.env.FAST2SMS_API_KEY;
-        const senderId = 'SNSYST';
+        // Get Fast2SMS configuration from Firebase Functions config
+        const fast2smsConfig = functions.config().fast2sms;
+        const fast2smsApiKey = fast2smsConfig === null || fast2smsConfig === void 0 ? void 0 : fast2smsConfig.api_key;
+        const senderId = (fast2smsConfig === null || fast2smsConfig === void 0 ? void 0 : fast2smsConfig.sender_id) || 'SNSYST';
+        const entityId = fast2smsConfig === null || fast2smsConfig === void 0 ? void 0 : fast2smsConfig.entity_id;
         const messageId = '199054'; // RetailerNotify template ID
-        const entityId = '1707175912558362799'; // Entity ID from DLT
         if (!fast2smsApiKey) {
             throw new functions.https.HttpsError('failed-precondition', 'Fast2SMS API key not configured in environment variables');
         }
@@ -158,11 +181,12 @@ exports.sendWholesalerPaymentSMS = functions.https.onCall(async (data, context) 
             data.collectionDate
         ];
         const formattedVariables = variablesValues.join('%7C'); // URL-encoded pipe character
-        // Get Fast2SMS configuration from environment variables
-        const fast2smsApiKey = process.env.FAST2SMS_API_KEY;
-        const senderId = 'SNSYST';
+        // Get Fast2SMS configuration from Firebase Functions config
+        const fast2smsConfig = functions.config().fast2sms;
+        const fast2smsApiKey = fast2smsConfig === null || fast2smsConfig === void 0 ? void 0 : fast2smsConfig.api_key;
+        const senderId = (fast2smsConfig === null || fast2smsConfig === void 0 ? void 0 : fast2smsConfig.sender_id) || 'SNSYST';
+        const entityId = fast2smsConfig === null || fast2smsConfig === void 0 ? void 0 : fast2smsConfig.entity_id;
         const messageId = '199055'; // WholeSalerNotify template ID
-        const entityId = '1707175912581282302'; // Entity ID from DLT
         if (!fast2smsApiKey) {
             throw new functions.https.HttpsError('failed-precondition', 'Fast2SMS API key not configured in environment variables');
         }

@@ -26,7 +26,9 @@ const nextConfig: NextConfig = {
     'http://0.0.0.0:3000',
     'https://0.0.0.0:3000',
     'https://*.space.z.ai',
-    'https://preview-chat-d8008d24-a972-4c96-bc70-5e063c8e7ca6.space.z.ai'
+    'https://preview-chat-d8008d24-a972-4c96-bc70-5e063c8e7ca6.space.z.ai',
+    'https://*.z.ai',
+    'https://z.ai'
   ],
   async headers() {
     return [

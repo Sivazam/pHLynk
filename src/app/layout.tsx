@@ -44,6 +44,17 @@ export const metadata: Metadata = {
     title: "PharmaLync - Verify. Collect. Track",
     description: "Comprehensive pharmacy management system with modern web technologies",
   },
+  icons: {
+    icon: [
+      { url: '/favicon.ico', sizes: 'any' },
+      { url: '/icon-192x192.png', sizes: '192x192', type: 'image/png' },
+      { url: '/icon-512x512.png', sizes: '512x512', type: 'image/png' },
+    ],
+    apple: [
+      { url: '/icon-192x192.png', sizes: '192x192', type: 'image/png' },
+      { url: '/icon-512x512.png', sizes: '512x512', type: 'image/png' },
+    ],
+  },
   manifest: "/manifest.json",
   other: {
     "apple-mobile-web-app-capable": "yes",

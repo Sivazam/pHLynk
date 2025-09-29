@@ -260,6 +260,7 @@ export interface AuthUser {
   displayName?: string;
   photoURL?: string;
   tenantId?: string;
+  tenantStatus?: string;
   roles: (keyof typeof ROLES)[];
   assignedAreas?: string[];
   assignedZips?: string[];

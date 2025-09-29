@@ -28,9 +28,11 @@ export class Fast2SMSService {
 
   private getConfig(): Fast2SMSConfig {
     return {
-      apiKey: process.env.fast2sms_api_key || process.env.FAST2SMS_API_KEY,
-      senderId: process.env.FAST2SMS_SENDER_ID || 'SNSYST',
-      entityId: process.env.entityid || process.env.ENTITY_ID
+      // Note: API key should not be stored in frontend for security
+      // This service is designed to work with Firebase Functions which have secure config
+      apiKey: process.env.NODE_ENV === 'development' ? process.env.fast2sms_api_key : undefined,
+      senderId: 'SNSYST',
+      entityId: process.env.entityid
     };
   }
 

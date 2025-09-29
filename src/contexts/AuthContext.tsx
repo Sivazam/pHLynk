@@ -105,7 +105,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 console.error('Tenant account is not active:', userData.tenantId, 'Status:', tenantData.status);
                 updateProgress(90, 'Account pending approval...');
                 await new Promise(resolve => setTimeout(resolve, 150));
-                setUser(null);
+                
+                // Create user object with tenant status instead of setting to null
+                const authUser: AuthUser = {
+                  uid: firebaseUser.uid,
+                  email: firebaseUser.email!,
+                  displayName: firebaseUser.displayName || userData.displayName,
+                  photoURL: firebaseUser.photoURL || undefined,
+                  tenantId: userData.tenantId,
+                  tenantStatus: tenantData.status,
+                  roles: userData.roles,
+                  assignedAreas: userData.assignedAreas,
+                  assignedZips: userData.assignedZips
+                };
+                
+                updateProgress(95, 'Almost ready...');
+                await new Promise(resolve => setTimeout(resolve, 150));
+                updateProgress(100, 'Complete');
+                setUser(authUser);
                 return;
               }
             }
@@ -118,6 +135,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               displayName: firebaseUser.displayName || userData.displayName,
               photoURL: firebaseUser.photoURL || undefined,
               tenantId: userData.tenantId,
+              tenantStatus: 'ACTIVE',
               roles: userData.roles,
               assignedAreas: userData.assignedAreas,
               assignedZips: userData.assignedZips

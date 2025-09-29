@@ -1,6 +1,5 @@
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
-import 'dotenv/config';
 
 // Initialize Firebase Admin
 admin.initializeApp();
@@ -71,11 +70,12 @@ export const sendRetailerPaymentSMS = functions.https.onCall(async (data: {
     
     const formattedVariables = variablesValues.join('%7C'); // URL-encoded pipe character
 
-    // Get Fast2SMS configuration from environment variables
-    const fast2smsApiKey = process.env.FAST2SMS_API_KEY;
-    const senderId = 'SNSYST';
+    // Get Fast2SMS configuration from Firebase Functions config
+    const fast2smsConfig = functions.config().fast2sms;
+    const fast2smsApiKey = fast2smsConfig?.api_key;
+    const senderId = fast2smsConfig?.sender_id || 'SNSYST';
+    const entityId = fast2smsConfig?.entity_id;
     const messageId = '199054'; // RetailerNotify template ID
-    const entityId = '1707175912558362799'; // Entity ID from DLT
     
     if (!fast2smsApiKey) {
       throw new functions.https.HttpsError(
@@ -251,11 +251,12 @@ export const sendWholesalerPaymentSMS = functions.https.onCall(async (data: {
     
     const formattedVariables = variablesValues.join('%7C'); // URL-encoded pipe character
 
-    // Get Fast2SMS configuration from environment variables
-    const fast2smsApiKey = process.env.FAST2SMS_API_KEY;
-    const senderId = 'SNSYST';
+    // Get Fast2SMS configuration from Firebase Functions config
+    const fast2smsConfig = functions.config().fast2sms;
+    const fast2smsApiKey = fast2smsConfig?.api_key;
+    const senderId = fast2smsConfig?.sender_id || 'SNSYST';
+    const entityId = fast2smsConfig?.entity_id;
     const messageId = '199055'; // WholeSalerNotify template ID
-    const entityId = '1707175912581282302'; // Entity ID from DLT
     
     if (!fast2smsApiKey) {
       throw new functions.https.HttpsError(

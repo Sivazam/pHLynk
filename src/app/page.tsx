@@ -11,6 +11,7 @@ import { AppIntroCarousel } from '@/components/AppIntroCarousel';
 import { Skeleton } from '@/components/ui/skeleton';
 import { AppLoadingScreen } from '@/components/AppLoadingScreen';
 import { TenantStatusGuard } from '@/components/TenantStatusGuard';
+import { TenantStatusScreen } from '@/components/TenantStatusScreen';
 import { useRouteProtection } from '@/hooks/use-route-protection';
 import { useState, useEffect } from 'react';
 import { hasSeenIntroCarousel, resetIntroCarousel } from '@/lib/intro-carousel';
@@ -143,6 +144,11 @@ export default function Home() {
   }
 
   if (hasRole('WHOLESALER_ADMIN')) {
+    // Check if tenant is active
+    if (user?.tenantStatus && user.tenantStatus !== 'ACTIVE') {
+      return <TenantStatusScreen tenantId={user.tenantId!} initialStatus={user.tenantStatus} />;
+    }
+    
     return (
       <TenantStatusGuard>
         <WholesalerAdminDashboard />
@@ -151,6 +157,11 @@ export default function Home() {
   }
 
   if (hasRole('LINE_WORKER')) {
+    // Check if tenant is active
+    if (user?.tenantStatus && user.tenantStatus !== 'ACTIVE') {
+      return <TenantStatusScreen tenantId={user.tenantId!} initialStatus={user.tenantStatus} />;
+    }
+    
     return (
       <TenantStatusGuard>
         <LineWorkerDashboard />
