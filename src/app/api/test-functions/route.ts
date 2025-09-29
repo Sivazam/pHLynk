@@ -1,58 +1,50 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { initializeFirebaseFunctions } from '@/lib/firebase';
+import { callFirebaseFunction } from '@/lib/firebase';
 
-export async function GET(request: NextRequest) {
+export async function POST(request: NextRequest) {
   try {
     console.log('🧪 Testing Firebase Functions integration...');
     
-    // Test Firebase Functions initialization
-    const functionsInstance = await initializeFirebaseFunctions();
-    console.log('📋 Functions instance:', functionsInstance ? 'AVAILABLE' : 'NOT AVAILABLE');
+    // Test calling the sendRetailerPaymentSMS function
+    console.log('🚀 Testing sendRetailerPaymentSMS function...');
     
-    if (!functionsInstance) {
-      return NextResponse.json({
-        success: false,
-        message: 'Firebase Functions not available',
-        environment: process.env.NODE_ENV,
-        functionsEmulator: process.env.FUNCTIONS_EMULATOR
-      });
-    }
+    const testData = {
+      retailerId: 'test-retailer-id',
+      paymentId: 'test-payment-id',
+      amount: 100,
+      lineWorkerName: 'Test Line Worker',
+      retailerName: 'Test Retailer',
+      retailerArea: 'Test Area',
+      wholesalerName: 'Test Wholesaler',
+      collectionDate: '2025-09-30'
+    };
     
-    // Try to import the functions module
-    const functionsModule = await import('firebase/functions');
-    console.log('📦 Functions module imported successfully');
-    
-    // Test creating a callable function
     try {
-      const testFunction = functionsModule.httpsCallable(functionsInstance, 'sendRetailerPaymentSMS');
-      console.log('✅ Successfully created callable function');
+      const result = await callFirebaseFunction('sendRetailerPaymentSMS', testData);
+      console.log('✅ Firebase Function test result:', result);
       
       return NextResponse.json({
         success: true,
-        message: 'Firebase Functions integration working',
-        environment: process.env.NODE_ENV,
-        functionsEmulator: process.env.FUNCTIONS_EMULATOR,
-        functionAvailable: true
+        message: 'Firebase Function test completed successfully',
+        result: result
       });
-    } catch (error) {
-      console.error('❌ Error creating callable function:', error);
+    } catch (functionError) {
+      console.error('❌ Firebase Function test failed:', functionError);
+      
       return NextResponse.json({
         success: false,
-        message: 'Error creating callable function',
-        error: error instanceof Error ? error.message : 'Unknown error',
-        environment: process.env.NODE_ENV,
-        functionsEmulator: process.env.FUNCTIONS_EMULATOR
-      });
+        message: 'Firebase Function test failed',
+        error: functionError instanceof Error ? functionError.message : 'Unknown error',
+        details: functionError
+      }, { status: 500 });
     }
     
   } catch (error) {
-    console.error('❌ Error testing Firebase Functions:', error);
+    console.error('❌ Test endpoint error:', error);
     return NextResponse.json({
       success: false,
-      message: 'Error testing Firebase Functions',
-      error: error instanceof Error ? error.message : 'Unknown error',
-      environment: process.env.NODE_ENV,
-      functionsEmulator: process.env.FUNCTIONS_EMULATOR
-    });
+      message: 'Test endpoint failed',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    }, { status: 500 });
   }
 }

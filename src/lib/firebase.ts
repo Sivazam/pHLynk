@@ -86,6 +86,7 @@ export async function initializeFirebaseFunctions(): Promise<any> {
 export async function callFirebaseFunction(functionName: string, data: any): Promise<any> {
   try {
     console.log(`🌐 Calling Firebase Function via HTTP: ${functionName}`);
+    console.log(`📤 Function data:`, JSON.stringify(data, null, 2));
     
     // Get the Firebase project ID from the config
     const firebaseConfig = {
@@ -96,6 +97,10 @@ export async function callFirebaseFunction(functionName: string, data: any): Pro
     const functionUrl = `https://us-central1-${firebaseConfig.projectId}.cloudfunctions.net/${functionName}`;
     
     console.log(`📤 Making HTTP request to: ${functionUrl}`);
+    console.log(`📤 Request headers:`, {
+      'Content-Type': 'application/json',
+    });
+    console.log(`📤 Request body:`, JSON.stringify(data, null, 2));
     
     // Make the HTTP request
     const response = await fetch(functionUrl, {
@@ -106,8 +111,13 @@ export async function callFirebaseFunction(functionName: string, data: any): Pro
       body: JSON.stringify(data),
     });
     
+    console.log(`📤 Response status:`, response.status);
+    console.log(`📤 Response headers:`, Object.fromEntries(response.headers.entries()));
+    
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      const errorText = await response.text();
+      console.error(`❌ HTTP error! status: ${response.status}, response:`, errorText);
+      throw new Error(`HTTP error! status: ${response.status}, response: ${errorText}`);
     }
     
     const result = await response.json();
@@ -116,6 +126,11 @@ export async function callFirebaseFunction(functionName: string, data: any): Pro
     return result;
   } catch (error) {
     console.error(`❌ Error calling Firebase Function ${functionName}:`, error);
+    console.error(`❌ Error details:`, {
+      message: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined,
+      code: error && typeof error === 'object' && 'code' in error ? error.code : undefined
+    });
     throw error;
   }
 }

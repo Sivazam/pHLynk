@@ -35,7 +35,9 @@ async function getHttpsCallable(functionName: string) {
       console.log(`🖥️ Server environment - using HTTP calls for ${functionName}`);
       return async (data: any) => {
         try {
+          console.log(`🌐 Calling Firebase Function via HTTP: ${functionName}`);
           const result = await callFirebaseFunction(functionName, data);
+          console.log(`✅ Firebase Function ${functionName} called successfully via HTTP`);
           return { data: result };
         } catch (error) {
           console.error(`❌ HTTP call to ${functionName} failed:`, error);
@@ -52,7 +54,9 @@ async function getHttpsCallable(functionName: string) {
       console.log(`⚠️ Firebase Functions not available for ${functionName}, falling back to HTTP calls`);
       return async (data: any) => {
         try {
+          console.log(`🌐 Calling Firebase Function via HTTP (fallback): ${functionName}`);
           const result = await callFirebaseFunction(functionName, data);
+          console.log(`✅ Firebase Function ${functionName} called successfully via HTTP fallback`);
           return { data: result };
         } catch (error) {
           console.error(`❌ Fallback HTTP call to ${functionName} failed:`, error);
@@ -71,7 +75,18 @@ async function getHttpsCallable(functionName: string) {
   } catch (error) {
     console.error(`❌ Error getting Firebase Function ${functionName}:`, error);
     console.log(`⚠️ Firebase Functions not available for ${functionName}, using fallback mode`);
-    return null;
+    // Always return a fallback function instead of null
+    return async (data: any) => {
+      try {
+        console.log(`🌐 Calling Firebase Function via HTTP (error fallback): ${functionName}`);
+        const result = await callFirebaseFunction(functionName, data);
+        console.log(`✅ Firebase Function ${functionName} called successfully via HTTP error fallback`);
+        return { data: result };
+      } catch (error) {
+        console.error(`❌ Error fallback HTTP call to ${functionName} failed:`, error);
+        throw error;
+      }
+    };
   }
 }
 
@@ -622,7 +637,7 @@ export async function POST(request: NextRequest) {
                 const sendRetailerSMSFunction = await getHttpsCallable('sendRetailerPaymentSMS');
                 console.log('📞 Firebase Function result:', sendRetailerSMSFunction ? 'AVAILABLE' : 'NOT AVAILABLE');
                 
-                if (sendRetailerSMSFunction && retailerUser.phone) {
+                if (retailerUser.phone) {
                   console.log('🚀 ABOUT TO CALL FIREBASE FUNCTION - sendRetailerPaymentSMS');
                   console.log('📤 Calling sendRetailerPaymentSMS Firebase Function with data:', {
                     retailerId: payment.retailerId,
@@ -673,25 +688,7 @@ export async function POST(request: NextRequest) {
                     throw functionCallError; // Re-throw to trigger fallback
                   }
                 } else {
-                  console.log('⚠️ Firebase Function not available or retailer phone missing, falling back to local service for retailer SMS');
-                  console.log('  - Function available:', !!sendRetailerSMSFunction);
-                  console.log('  - Retailer phone:', retailerUser.phone);
-                  // Fallback to local service if Firebase Function not available
-                  if (retailerUser.phone) {
-                    const retailerSMSResult = await fast2SMSService.sendPaymentConfirmationSMS(
-                      retailerUser.phone,
-                      'retailer',
-                      {
-                        amount: payment.totalPaid.toString(),
-                        lineWorkerName,
-                        retailerName: retailerUser.name || 'Retailer',
-                        retailerArea,
-                        collectionDate,
-                        wholesalerName
-                      }
-                    );
-                    console.log('📱 Retailer confirmation SMS result (fallback):', retailerSMSResult);
-                  }
+                  console.log('⚠️ Retailer phone missing, skipping SMS');
                 }
               } catch (retailerSMSError) {
                 console.error('❌ Error sending retailer SMS via Firebase Function:', retailerSMSError);
@@ -723,7 +720,7 @@ export async function POST(request: NextRequest) {
                 const sendWholesalerSMSFunction = await getHttpsCallable('sendWholesalerPaymentSMS');
                 console.log('📞 Wholesaler Firebase Function result:', sendWholesalerSMSFunction ? 'AVAILABLE' : 'NOT AVAILABLE');
                 
-                if (sendWholesalerSMSFunction && lineWorkerData.wholesalerId) {
+                if (lineWorkerData.wholesalerId) {
                   const wholesalerRef = doc(db, 'users', lineWorkerData.wholesalerId);
                   const wholesalerDoc = await getDoc(wholesalerRef);
                   
@@ -780,33 +777,7 @@ export async function POST(request: NextRequest) {
                     console.log('⚠️ Wholesaler document not found, skipping SMS');
                   }
                 } else {
-                  console.log('⚠️ Firebase Function not available or wholesaler ID missing, falling back to local service for wholesaler SMS');
-                  console.log('  - Function available:', !!sendWholesalerSMSFunction);
-                  console.log('  - Wholesaler ID:', lineWorkerData.wholesalerId);
-                  // Fallback to local service if Firebase Function not available
-                  if (lineWorkerData.wholesalerId) {
-                    const wholesalerRef = doc(db, 'users', lineWorkerData.wholesalerId);
-                    const wholesalerDoc = await getDoc(wholesalerRef);
-                    
-                    if (wholesalerDoc.exists()) {
-                      const wholesalerData = wholesalerDoc.data();
-                      if (wholesalerData.phone) {
-                        const wholesalerSMSResult = await fast2SMSService.sendPaymentConfirmationSMS(
-                          wholesalerData.phone,
-                          'wholesaler',
-                          {
-                            amount: payment.totalPaid.toString(),
-                            lineWorkerName,
-                            retailerName: retailerUser.name || 'Retailer',
-                            retailerArea,
-                            collectionDate,
-                            wholesalerName: wholesalerData.displayName || wholesalerData.name || 'Wholesaler'
-                          }
-                        );
-                        console.log('📱 Wholesaler confirmation SMS result (fallback):', wholesalerSMSResult);
-                      }
-                    }
-                  }
+                  console.log('⚠️ Wholesaler ID missing, skipping SMS');
                 }
               } catch (wholesalerSMSError) {
                 console.error('❌ Error sending wholesaler SMS via Firebase Function:', wholesalerSMSError);
@@ -831,7 +802,7 @@ export async function POST(request: NextRequest) {
                             wholesalerName: wholesalerData.displayName || wholesalerData.name || 'Wholesaler'
                           }
                         );
-                        console.log('📱 Wholesaler confirmation SMS result (fallback after error):', wholesalerSMSResult);
+                        console.log('📱 Wholesaler confirmation SMS result (fallback):', wholesalerSMSResult);
                       }
                     }
                   }
