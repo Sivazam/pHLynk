@@ -8,7 +8,7 @@ import { fast2SMSService, Fast2SMSService } from '@/services/fast2sms-service';
 import { pushNotificationService } from '@/services/push-notification-service';
 import { Retailer } from '@/types';
 import { logger } from '@/lib/logger';
-import { functions, initializeFirebaseFunctions } from '@/lib/firebase';
+import { functions, initializeFirebaseFunctions, callFirebaseFunction } from '@/lib/firebase';
 
 // Type definitions for Firebase Function results
 interface SMSFunctionResult {
@@ -30,26 +30,35 @@ async function getHttpsCallable(functionName: string) {
     console.log(`🌍 Environment: ${process.env.NODE_ENV}`);
     console.log(`🔧 Functions Emulator: ${process.env.FUNCTIONS_EMULATOR}`);
     
-    // Ensure Firebase Functions are initialized
+    // For server-side, use HTTP calls directly
+    if (typeof window === 'undefined') {
+      console.log(`🖥️ Server environment - using HTTP calls for ${functionName}`);
+      return async (data: any) => {
+        try {
+          const result = await callFirebaseFunction(functionName, data);
+          return { data: result };
+        } catch (error) {
+          console.error(`❌ HTTP call to ${functionName} failed:`, error);
+          throw error;
+        }
+      };
+    }
+    
+    // For client-side, try to use Firebase Functions SDK
     let functionsInstance = await initializeFirebaseFunctions();
     console.log(`📋 Firebase Functions instance result:`, functionsInstance ? 'AVAILABLE' : 'NOT AVAILABLE');
     
     if (!functionsInstance) {
-      console.log(`⚠️ Firebase Functions not available for ${functionName}, attempting to reinitialize...`);
-      
-      // Try to reinitialize Firebase Functions
-      try {
-        const retryInstance = await initializeFirebaseFunctions();
-        if (!retryInstance) {
-          console.log(`❌ Firebase Functions reinitialization failed for ${functionName}`);
-          return null;
+      console.log(`⚠️ Firebase Functions not available for ${functionName}, falling back to HTTP calls`);
+      return async (data: any) => {
+        try {
+          const result = await callFirebaseFunction(functionName, data);
+          return { data: result };
+        } catch (error) {
+          console.error(`❌ Fallback HTTP call to ${functionName} failed:`, error);
+          throw error;
         }
-        console.log(`✅ Firebase Functions reinitialization successful for ${functionName}`);
-        functionsInstance = retryInstance;
-      } catch (retryError) {
-        console.error(`❌ Error during Firebase Functions reinitialization for ${functionName}:`, retryError);
-        return null;
-      }
+      };
     }
     
     const functionsModule = await import('firebase/functions');

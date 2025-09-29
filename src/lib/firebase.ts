@@ -46,54 +46,78 @@ let functionsInitialized = false;
 let functionsInitPromise: Promise<any> | null = null;
 
 export async function initializeFirebaseFunctions(): Promise<any> {
+  // For server-side environments, we'll use HTTP calls instead of Firebase Functions SDK
+  if (typeof window === 'undefined') {
+    console.log('🖥️ Server environment detected - using HTTP calls for Firebase Functions');
+    return null; // We'll handle this differently in the API routes
+  }
+  
   if (functionsInitialized && functions) {
     return functions;
   }
   
   if (!functionsInitPromise) {
-    functionsInitPromise = import('firebase/functions').then(async functionsModule => {
-      if (functionsModule.getFunctions) {
-        try {
-          // Initialize Firebase Functions with proper configuration
-          // For production deployment, don't use emulator
-          if (process.env.NODE_ENV === 'development' && process.env.FUNCTIONS_EMULATOR === 'true') {
-            // Only connect to emulator if explicitly enabled
-            functions = functionsModule.getFunctions(undefined, 'us-central1');
-            if (functionsModule.connectFunctionsEmulator) {
-              try {
-                functionsModule.connectFunctionsEmulator(functions, 'localhost', 5001);
-                console.log('🔧 Connected to Firebase Functions emulator');
-              } catch (error) {
-                console.log('⚠️ Could not connect to Functions emulator, using production functions:', error);
-              }
-            }
-          } else {
-            // For production or when emulator is not explicitly enabled
-            functions = functionsModule.getFunctions(undefined, 'us-central1');
-            console.log('🚀 Using production Firebase Functions');
-          }
-          
+    functionsInitPromise = (async () => {
+      try {
+        console.log('🌐 Browser environment - using Firebase Functions SDK');
+        const functionsModule = await import('firebase/functions');
+        console.log('📦 Firebase Functions module loaded:', Object.keys(functionsModule));
+        
+        if (functionsModule.getFunctions) {
+          functions = functionsModule.getFunctions(undefined, 'us-central1');
           functionsInitialized = true;
-          console.log('✅ Firebase Functions initialized successfully with region: us-central1');
+          console.log('✅ Firebase Functions initialized successfully');
           return functions;
-        } catch (error) {
-          console.error('❌ Error initializing Firebase Functions:', error);
-          functions = null;
+        } else {
+          console.error('❌ getFunctions not available in browser');
           return null;
         }
-      } else {
-        console.error('❌ Firebase Functions module not available - getFunctions function missing');
-        functions = null;
+      } catch (error) {
+        console.error('❌ Error importing Firebase Functions:', error);
         return null;
       }
-    }).catch(error => {
-      console.error('❌ Failed to import Firebase Functions module:', error);
-      functions = null;
-      return null;
-    });
+    })();
   }
   
   return functionsInitPromise;
+}
+
+// Helper function to call Firebase Functions via HTTP
+export async function callFirebaseFunction(functionName: string, data: any): Promise<any> {
+  try {
+    console.log(`🌐 Calling Firebase Function via HTTP: ${functionName}`);
+    
+    // Get the Firebase project ID from the config
+    const firebaseConfig = {
+      projectId: "pharmalynkk"
+    };
+    
+    // Construct the function URL
+    const functionUrl = `https://us-central1-${firebaseConfig.projectId}.cloudfunctions.net/${functionName}`;
+    
+    console.log(`📤 Making HTTP request to: ${functionUrl}`);
+    
+    // Make the HTTP request
+    const response = await fetch(functionUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(data),
+    });
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    
+    const result = await response.json();
+    console.log(`✅ Firebase Function ${functionName} called successfully:`, result);
+    
+    return result;
+  } catch (error) {
+    console.error(`❌ Error calling Firebase Function ${functionName}:`, error);
+    throw error;
+  }
 }
 
 // Auto-initialize functions in the background with retry mechanism
