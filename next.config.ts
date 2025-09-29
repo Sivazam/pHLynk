@@ -120,6 +120,12 @@ const nextConfig: NextConfig = {
       use: 'ignore-loader'
     });
     
+    // Also exclude any Firebase Functions imports
+    config.externals = config.externals || [];
+    config.externals.push({
+      'firebase-functions': 'firebase-functions'
+    });
+    
     return config;
   },
   // Experimental features for better PWA support

@@ -39,6 +39,35 @@ export const authOptions = {
               return null
             }
             
+            // Check if user is active
+            if (!userDoc.active) {
+              console.log('User account is inactive:', firebaseUser.uid);
+              return null;
+            }
+            
+            // For wholesaler admins and line workers, check tenant status
+            if (userDoc.roles.includes('WHOLESALER_ADMIN') || userDoc.roles.includes('LINE_WORKER')) {
+              if (!userDoc.tenantId) {
+                console.log('User missing tenantId:', firebaseUser.uid);
+                return null;
+              }
+              
+              // Fetch tenant document to check status
+              const { getDoc, doc } = await import('firebase/firestore');
+              const { db, COLLECTIONS } = await import('@/lib/firebase');
+              const tenantDoc = await getDoc(doc(db, COLLECTIONS.TENANTS, userDoc.tenantId));
+              if (!tenantDoc.exists()) {
+                console.log('Tenant not found:', userDoc.tenantId);
+                return null;
+              }
+              
+              const tenantData = tenantDoc.data();
+              if (tenantData.status !== 'ACTIVE') {
+                console.log('Tenant account is not active:', userDoc.tenantId, 'Status:', tenantData.status);
+                return null;
+              }
+            }
+            
             // Return user object with required fields
             return {
               id: firebaseUser.uid,

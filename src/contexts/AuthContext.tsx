@@ -11,8 +11,7 @@ import {
   signInWithPopup,
   sendPasswordResetEmail
 } from 'firebase/auth';
-import { auth, db } from '@/lib/firebase';
-import { ROLES, COLLECTIONS } from '@/lib/firebase';
+import { auth, db, COLLECTIONS, ROLES } from '@/lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import { AuthUser, AuthContextType, User } from '@/types';
 
@@ -68,9 +67,51 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           await new Promise(resolve => setTimeout(resolve, 200));
           
           if (userDoc.exists()) {
-            updateProgress(70, 'Preparing user interface...');
+            updateProgress(70, 'Validating user permissions...');
             
             const userData = userDoc.data() as User;
+            
+            // Check if user is active
+            if (!userData.active) {
+              console.error('User account is inactive:', firebaseUser.uid);
+              updateProgress(90, 'Account inactive...');
+              await new Promise(resolve => setTimeout(resolve, 150));
+              setUser(null);
+              return;
+            }
+            
+            // For wholesaler admins and line workers, check tenant status
+            if (userData.roles.includes('WHOLESALER_ADMIN') || userData.roles.includes('LINE_WORKER')) {
+              if (!userData.tenantId) {
+                console.error('User missing tenantId:', firebaseUser.uid);
+                updateProgress(90, 'Account configuration error...');
+                await new Promise(resolve => setTimeout(resolve, 150));
+                setUser(null);
+                return;
+              }
+              
+              // Fetch tenant document to check status
+              const tenantDoc = await getDoc(doc(db, COLLECTIONS.TENANTS, userData.tenantId));
+              if (!tenantDoc.exists()) {
+                console.error('Tenant not found:', userData.tenantId);
+                updateProgress(90, 'Account configuration error...');
+                await new Promise(resolve => setTimeout(resolve, 150));
+                setUser(null);
+                return;
+              }
+              
+              const tenantData = tenantDoc.data();
+              if (tenantData.status !== 'ACTIVE') {
+                console.error('Tenant account is not active:', userData.tenantId, 'Status:', tenantData.status);
+                updateProgress(90, 'Account pending approval...');
+                await new Promise(resolve => setTimeout(resolve, 150));
+                setUser(null);
+                return;
+              }
+            }
+            
+            updateProgress(85, 'Setting up dashboard...');
+            
             const authUser: AuthUser = {
               uid: firebaseUser.uid,
               email: firebaseUser.email!,
@@ -82,12 +123,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               assignedZips: userData.assignedZips
             };
             
-            updateProgress(85, 'Setting up dashboard...');
+            updateProgress(95, 'Almost ready...');
             
             // Final delay before completing
             await new Promise(resolve => setTimeout(resolve, 150));
             
-            updateProgress(95, 'Almost ready...');
+            updateProgress(100, 'Complete');
             setUser(authUser);
           } else {
             // If not found in users collection, try retailerUsers collection

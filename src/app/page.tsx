@@ -10,6 +10,7 @@ import { RetailerDashboard } from '@/components/RetailerDashboard';
 import { AppIntroCarousel } from '@/components/AppIntroCarousel';
 import { Skeleton } from '@/components/ui/skeleton';
 import { AppLoadingScreen } from '@/components/AppLoadingScreen';
+import { TenantStatusGuard } from '@/components/TenantStatusGuard';
 import { useRouteProtection } from '@/hooks/use-route-protection';
 import { useState, useEffect } from 'react';
 import { hasSeenIntroCarousel, resetIntroCarousel } from '@/lib/intro-carousel';
@@ -142,11 +143,19 @@ export default function Home() {
   }
 
   if (hasRole('WHOLESALER_ADMIN')) {
-    return <WholesalerAdminDashboard />;
+    return (
+      <TenantStatusGuard>
+        <WholesalerAdminDashboard />
+      </TenantStatusGuard>
+    );
   }
 
   if (hasRole('LINE_WORKER')) {
-    return <LineWorkerDashboard />;
+    return (
+      <TenantStatusGuard>
+        <LineWorkerDashboard />
+      </TenantStatusGuard>
+    );
   }
 
   // Fallback for users without proper roles - show role selection
