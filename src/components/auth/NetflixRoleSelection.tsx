@@ -271,9 +271,7 @@ export function NetflixRoleSelection({ onRoleSelect, onBack }: NetflixRoleSelect
                   textShadow: "0px 1px 2px rgba(0,0,0,0.25)",
                 }}>
                   PharmaLync
-                  <p style={{color:'gray', fontSize:'0.8rem'}}>Powered by SAANVI SYSTEMS</p>
                 </span>
-               
               </div>
             </div>
 
@@ -451,11 +449,11 @@ export function NetflixRoleSelection({ onRoleSelect, onBack }: NetflixRoleSelect
             <div className="max-w-6xl mx-auto">
               {/* Questions? Contact */}
               <div className="text-center mb-8 sm:mb-12">
-                <p className="text-gray-500 text-md sm:text-base mb-4">
-                  {/* Questions? Contact us 24/7 for support */}About Us
+                <p className="text-gray-500 text-sm sm:text-base mb-4">
+                  Questions? Contact us 24/7 for support
                 </p>
                 <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-                  {/* <a 
+                  <a 
                     href="tel:9014882779" 
                     className="flex items-center text-blue-600 hover:text-blue-500 transition-colors"
                   >
@@ -468,17 +466,14 @@ export function NetflixRoleSelection({ onRoleSelect, onBack }: NetflixRoleSelect
                   >
                     <Mail className="h-4 w-4 mr-2" />
                     <span className="text-sm sm:text-base">support@pharmalynk.com</span>
-                  </a> */}
-                <p className="text-white-500 text-md sm:text-base mb-4" style={{color:'white'}}>
-                    SAANVI SYSTEMS is a technology company specializing in software solutions for the pharmaceutical supply chain. Our flagship product, PharmaLync, is designed to streamline operations for wholesalers, line workers, and retailers, enhancing efficiency and transparency across the supply chain.
-                  </p>
+                  </a>
                 </div>
               </div>
 
               {/* Footer Links Grid */}
               <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-6 sm:gap-8 mb-8 sm:mb-12">
                 {/* Company */}
-                {/* <div className="space-y-3 sm:space-y-4">
+                <div className="space-y-3 sm:space-y-4">
                   <h3 className="text-gray-300 text-sm font-semibold uppercase tracking-wider">Company</h3>
                   <ul className="space-y-2">
                     <li>
@@ -497,7 +492,7 @@ export function NetflixRoleSelection({ onRoleSelect, onBack }: NetflixRoleSelect
                       </Link>
                     </li>
                   </ul>
-                </div> */}
+                </div>
 
                 {/* Support */}
                 <div className="space-y-3 sm:space-y-4">
@@ -513,11 +508,11 @@ export function NetflixRoleSelection({ onRoleSelect, onBack }: NetflixRoleSelect
                         FAQ
                       </Link>
                     </li>
-                    {/* <li>
+                    <li>
                       <Link href="/contact" className="text-gray-500 text-sm hover:text-gray-300 transition-colors">
                         Contact Us
                       </Link>
-                    </li> */}
+                    </li>
                   </ul>
                 </div>
 
@@ -535,16 +530,16 @@ export function NetflixRoleSelection({ onRoleSelect, onBack }: NetflixRoleSelect
                         Terms of Use
                       </Link>
                     </li>
-                    {/* <li>
+                    <li>
                       <Link href="/cookies" className="text-gray-500 text-sm hover:text-gray-300 transition-colors">
                         Cookie Preferences
                       </Link>
-                    </li> */}
+                    </li>
                   </ul>
                 </div>
 
                 {/* Resources */}
-                {/* <div className="space-y-3 sm:space-y-4">
+                <div className="space-y-3 sm:space-y-4">
                   <h3 className="text-gray-300 text-sm font-semibold uppercase tracking-wider">Resources</h3>
                   <ul className="space-y-2">
                     <li>
@@ -563,7 +558,7 @@ export function NetflixRoleSelection({ onRoleSelect, onBack }: NetflixRoleSelect
                       </Link>
                     </li>
                   </ul>
-                </div> */}
+                </div>
               </div>
 
               {/* Copyright */}
@@ -588,8 +583,7 @@ export function NetflixRoleSelection({ onRoleSelect, onBack }: NetflixRoleSelect
                   </select>
                 </div>
                 <div className="text-gray-500 text-xs sm:text-sm">
-                  {/* Made with ❤️ for pharmaceutical supply chain */}
-                  Powered By SAANVI SYSTEMS.
+                  Made with ❤️ for pharmaceutical supply chain
                 </div>
               </div>
             </div>

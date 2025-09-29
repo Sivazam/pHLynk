@@ -109,6 +109,7 @@ export const PAYMENT_METHODS = {
 
 // Tenant statuses
 export const TENANT_STATUSES = {
+  PENDING: 'PENDING',
   ACTIVE: 'ACTIVE',
   SUSPENDED: 'SUSPENDED'
 } as const;

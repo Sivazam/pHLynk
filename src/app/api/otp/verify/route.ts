@@ -541,6 +541,18 @@ export async function POST(request: NextRequest) {
                 retailerArea = retailerData.areaName || 'Unknown Area';
               }
               
+              // Get wholesaler name from wholesaler document
+              let wholesalerName = 'Wholesaler';
+              if (lineWorkerData.wholesalerId) {
+                const wholesalerRef = doc(db, 'users', lineWorkerData.wholesalerId);
+                const wholesalerDoc = await getDoc(wholesalerRef);
+                
+                if (wholesalerDoc.exists()) {
+                  const wholesalerData = wholesalerDoc.data();
+                  wholesalerName = wholesalerData.displayName || wholesalerData.name || 'Wholesaler';
+                }
+              }
+              
               // Format collection date
               const collectionDate = Fast2SMSService.formatDateForSMS(new Date());
               
@@ -555,7 +567,7 @@ export async function POST(request: NextRequest) {
                     retailerName: retailerUser.name || 'Retailer',
                     retailerArea,
                     collectionDate,
-                    wholesalerName: lineWorkerData.wholesalerName || 'Wholesaler'
+                    wholesalerName
                   }
                 );
                 
@@ -579,7 +591,7 @@ export async function POST(request: NextRequest) {
                         retailerName: retailerUser.name || 'Retailer',
                         retailerArea,
                         collectionDate,
-                        wholesalerName: wholesalerData.displayName || 'Wholesaler'
+                        wholesalerName: wholesalerData.displayName || wholesalerData.name || 'Wholesaler'
                       }
                     );
                     

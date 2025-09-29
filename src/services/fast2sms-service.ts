@@ -1,6 +1,9 @@
+import { getFast2SMSConfig } from '@/lib/functions-config';
+
 interface Fast2SMSConfig {
   apiKey?: string;
   senderId?: string;
+  entityId?: string;
 }
 
 interface Fast2SMSResponse {
@@ -10,12 +13,12 @@ interface Fast2SMSResponse {
 }
 
 interface SMSVariables {
-  amount: string;
-  lineWorkerName: string;
-  retailerName: string;
-  retailerArea: string;
-  wholesalerName: string;
-  collectionDate: string;
+  amount: string;           // Payment amount (e.g., "579")
+  lineWorkerName: string;   // Name of the line worker who collected the payment
+  retailerName: string;     // Name of the retailer who made the payment
+  retailerArea: string;     // Area/address of the retailer
+  wholesalerName: string;   // Name of the wholesaler (for "goods supplied by" or "on behalf of")
+  collectionDate: string;   // Date of collection in DD/MM/YY format
 }
 
 export class Fast2SMSService {
@@ -26,9 +29,11 @@ export class Fast2SMSService {
   }
 
   private getConfig(): Fast2SMSConfig {
+    const config = getFast2SMSConfig();
     return {
-      apiKey: process.env.FAST2SMS_API_KEY,
-      senderId: process.env.FAST2SMS_SENDER_ID || 'SNSYST'
+      apiKey: config.apiKey,
+      senderId: config.senderId,
+      entityId: config.entityId
     };
   }
 
@@ -45,39 +50,43 @@ export class Fast2SMSService {
         ? phoneNumber.substring(2) 
         : phoneNumber;
 
-      // Get template ID based on type
-      const templateId = this.getTemplateId(templateType);
+      // Get Fast2SMS message ID based on type
+      const messageId = this.getFast2SMSMessageId(templateType);
       
-      // Format variables for Fast2SMS API - order matters based on template
+      // Format variables for Fast2SMS API - order matters based on approved templates
       let variablesValues: string[];
       
       if (templateType === 'retailer') {
-        // Retailer Payment Confirmation template order:
-        // Thanks {retailerName}, {retailerArea} for the Payment of {amount}/- to Line man {lineWorkerName} who collected behalf of {wholesalerName} on {collectionDate} - SNSYST.
+        // RetailerNotify Fast2SMS template order:
+        // "Collection Acknowledgement: An amount of {#var#}/- from {#var#}, {#var#} has been updated in PharmaLync as payment towards goods supplied by {#var#}. Collected by Line man {#var#} on {#var#}. — SAANVI SYSTEMS"
+        // Fast2SMS Message ID: 199054
         variablesValues = [
-          variables.retailerName,
-          variables.retailerArea,
-          variables.amount,
-          variables.lineWorkerName,
-          variables.wholesalerName,
-          variables.collectionDate
+          variables.amount,           // {#var#} - payment amount
+          variables.retailerName,     // {#var#} - retailer name
+          variables.retailerArea,     // {#var#} - retailer area
+          variables.wholesalerName,   // {#var#} - wholesaler name (goods supplied by)
+          variables.lineWorkerName,   // {#var#} - line worker name
+          variables.collectionDate    // {#var#} - collection date
         ];
       } else {
-        // Wholesaler Collection Notification template order:
-        // Congratulations, {amount}/- has been successfully collected from {retailerName}, {retailerArea} by Line man {lineWorkerName} on {collectionDate} - SNSYST.
+        // WholeSalerNotify Fast2SMS template order:
+        // "Payment Update: {#var#}/- has been recorded in the PharmaLync system from {#var#}, {#var#}. Collected by Line man {#var#} on behalf of {#var#} on {#var#}. — SAANVI SYSTEMS."
+        // Fast2SMS Message ID: 199055
         variablesValues = [
-          variables.amount,
-          variables.retailerName,
-          variables.retailerArea,
-          variables.lineWorkerName,
-          variables.collectionDate
+          variables.amount,           // {#var#} - payment amount
+          variables.retailerName,     // {#var#} - retailer name
+          variables.retailerArea,     // {#var#} - retailer area
+          variables.lineWorkerName,   // {#var#} - line worker name
+          variables.wholesalerName,   // {#var#} - wholesaler name (on behalf of)
+          variables.collectionDate    // {#var#} - collection date
         ];
       }
       
       const formattedVariables = variablesValues.join('%7C'); // URL-encoded pipe character
 
       // Construct Fast2SMS API URL
-      const apiUrl = `https://www.fast2sms.com/dev/bulkV2?authorization=${this.config.apiKey}&route=dlt&sender_id=${this.config.senderId}&message=${templateId}&variables_values=${formattedVariables}&flash=0&numbers=${formattedPhone}`;
+      const entityIdParam = this.config.entityId ? `&entity_id=${this.config.entityId}` : '';
+      const apiUrl = `https://www.fast2sms.com/dev/bulkV2?authorization=${this.config.apiKey}&route=dlt&sender_id=${this.config.senderId}&message=${messageId}&variables_values=${formattedVariables}&flash=0&numbers=${formattedPhone}${entityIdParam}`;
 
       console.log('📤 Sending SMS via Fast2SMS:', {
         phoneNumber: formattedPhone,
@@ -158,14 +167,15 @@ export class Fast2SMSService {
         ? phoneNumber.substring(2) 
         : phoneNumber;
 
-      // Security alert template (you'll need to get the actual template ID)
-      const templateId = '198234'; // Placeholder - you'll replace this
+      // Security alert template (placeholder - replace with actual Fast2SMS message ID)
+      const messageId = '198234'; // TODO: Replace with actual Fast2SMS security alert message ID
       
       // Variables for security alert
       const variablesValues = [lineWorkerName].join('%7C');
 
       // Construct Fast2SMS API URL
-      const apiUrl = `https://www.fast2sms.com/dev/bulkV2?authorization=${this.config.apiKey}&route=dlt&sender_id=${this.config.senderId}&message=${templateId}&variables_values=${variablesValues}&flash=0&numbers=${formattedPhone}`;
+      const entityIdParam = this.config.entityId ? `&entity_id=${this.config.entityId}` : '';
+      const apiUrl = `https://www.fast2sms.com/dev/bulkV2?authorization=${this.config.apiKey}&route=dlt&sender_id=${this.config.senderId}&message=${messageId}&variables_values=${variablesValues}&flash=0&numbers=${formattedPhone}${entityIdParam}`;
 
       console.log('🚨 Sending security alert SMS via Fast2SMS:', {
         phoneNumber: formattedPhone,
@@ -225,13 +235,13 @@ export class Fast2SMSService {
     }
   }
 
-  private getTemplateId(templateType: 'retailer' | 'wholesaler'): string {
-    // Updated template IDs from the Excel file
+  private getFast2SMSMessageId(templateType: 'retailer' | 'wholesaler'): string {
+    // Fast2SMS message IDs (not DLT template IDs)
     switch (templateType) {
       case 'retailer':
-        return '1707175871824482924'; // RetailerPaymentConfirmation template ID
+        return '199054'; // Fast2SMS message ID for RetailerNotify
       case 'wholesaler':
-        return '1707175871835697439'; // WholesalerCollectionNotification template ID
+        return '199055'; // Fast2SMS message ID for WholeSalerNotify
       default:
         throw new Error(`Unknown template type: ${templateType}`);
     }
@@ -243,6 +253,7 @@ export class Fast2SMSService {
 
   getConfigStatus(): { configured: boolean; missing: string[] } {
     const required = ['apiKey'];
+    const optional = ['senderId', 'entityId'];
     const missing = required.filter(key => !this.config[key as keyof Fast2SMSConfig]);
     
     return {
@@ -257,6 +268,11 @@ export class Fast2SMSService {
     const month = (date.getMonth() + 1).toString().padStart(2, '0');
     const year = date.getFullYear().toString().slice(-2);
     return `${day}/${month}/${year}`;
+  }
+
+  // Helper method to get entity ID
+  getEntityId(): string | undefined {
+    return this.config.entityId;
   }
 }
 

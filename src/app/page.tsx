@@ -7,6 +7,7 @@ import { SuperAdminDashboard } from '@/components/SuperAdminDashboard';
 import { WholesalerAdminDashboard } from '@/components/WholesalerAdminDashboard';
 import { LineWorkerDashboard } from '@/components/LineWorkerDashboard';
 import { RetailerDashboard } from '@/components/RetailerDashboard';
+import { WholesalerPendingApproval } from '@/components/WholesalerPendingApproval';
 import { AppIntroCarousel } from '@/components/AppIntroCarousel';
 import { Skeleton } from '@/components/ui/skeleton';
 import { AppLoadingScreen } from '@/components/AppLoadingScreen';
@@ -19,6 +20,7 @@ export default function Home() {
   const [showRoleSelection, setShowRoleSelection] = useState(false);
   const [retailerId, setRetailerId] = useState<string | null>(null);
   const [showIntro, setShowIntro] = useState(false);
+  const [tenantStatus, setTenantStatus] = useState<string | null>(null);
 
   // Apply route protection to prevent back navigation after logout
   useRouteProtection();
@@ -63,7 +65,24 @@ export default function Home() {
     }
   }, [loading, user, retailerId]);
 
-  // Debug function to reset intro (remove in production)
+  // Fetch tenant status for wholesaler admins
+  useEffect(() => {
+    const fetchTenantStatus = async () => {
+      if (user && hasRole('WHOLESALER_ADMIN') && user.tenantId) {
+        try {
+          const response = await fetch(`/api/wholesaler/tenant-data?tenantId=${user.tenantId}`);
+          if (response.ok) {
+            const data = await response.json();
+            setTenantStatus(data.tenant.status);
+          }
+        } catch (error) {
+          console.error('Error fetching tenant status:', error);
+        }
+      }
+    };
+
+    fetchTenantStatus();
+  }, [user, hasRole]);
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
       if (e.ctrlKey && e.shiftKey && e.key === 'I') {
@@ -142,7 +161,23 @@ export default function Home() {
   }
 
   if (hasRole('WHOLESALER_ADMIN')) {
-    return <WholesalerAdminDashboard />;
+    // Show pending approval screen if tenant status is PENDING
+    if (tenantStatus === 'PENDING') {
+      return <WholesalerPendingApproval />;
+    }
+    // Show dashboard only if tenant status is ACTIVE
+    if (tenantStatus === 'ACTIVE') {
+      return <WholesalerAdminDashboard />;
+    }
+    // Show loading while fetching tenant status
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading your account...</p>
+        </div>
+      </div>
+    );
   }
 
   if (hasRole('LINE_WORKER')) {

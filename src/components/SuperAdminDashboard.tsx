@@ -558,30 +558,42 @@ export function SuperAdminDashboard() {
 
   const handleToggleTenantStatus = async (tenantId: string, currentStatus: string) => {
     try {
-      const newStatus = currentStatus === 'ACTIVE' ? 'SUSPENDED' : 'ACTIVE';
+      let newStatus: string;
+      
+      // Handle status transitions
+      switch (currentStatus) {
+        case 'PENDING':
+          newStatus = 'ACTIVE';
+          break;
+        case 'ACTIVE':
+          newStatus = 'SUSPENDED';
+          break;
+        case 'SUSPENDED':
+          newStatus = 'ACTIVE';
+          break;
+        default:
+          newStatus = 'ACTIVE';
+      }
+      
       await tenantService.update(tenantId, { status: newStatus }, 'system');
       
-      if (newStatus === 'SUSPENDED') {
-        const users = await userService.getAll(tenantId);
-        await Promise.all(
-          users.map(user => 
-            userService.update(user.id, { active: false }, tenantId)
-          )
-        );
-      } else {
-        const users = await userService.getAll(tenantId);
-        await Promise.all(
-          users.map(user => 
-            userService.update(user.id, { active: true }, tenantId)
-          )
-        );
-      }
+      // Update user active status based on tenant status
+      const users = await userService.getAll(tenantId);
+      const userActiveStatus = newStatus === 'ACTIVE';
+      
+      await Promise.all(
+        users.map(user => 
+          userService.update(user.id, { active: userActiveStatus }, tenantId)
+        )
+      );
       
       await fetchTenants();
       await fetchAnalytics();
       if (selectedTenant?.id === tenantId) {
         await fetchTenantDetails(tenantId);
       }
+      
+      showSuccess(`Tenant status updated to ${newStatus}`);
     } catch (err: any) {
       setError(err.message || 'Failed to update tenant status');
     }
@@ -602,6 +614,8 @@ export function SuperAdminDashboard() {
     switch (status) {
       case 'ACTIVE':
         return 'bg-green-100 text-green-800';
+      case 'PENDING':
+        return 'bg-yellow-100 text-yellow-800';
       case 'SUSPENDED':
         return 'bg-red-100 text-red-800';
       default:
@@ -866,6 +880,7 @@ export function SuperAdminDashboard() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="ALL">All Status</SelectItem>
+                <SelectItem value="PENDING">Pending Approval</SelectItem>
                 <SelectItem value="ACTIVE">Active</SelectItem>
                 <SelectItem value="SUSPENDED">Suspended</SelectItem>
               </SelectContent>
@@ -886,6 +901,7 @@ export function SuperAdminDashboard() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Tenant</TableHead>
+                  <TableHead>Owner</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Plan</TableHead>
                   <TableHead>Created</TableHead>
@@ -903,7 +919,21 @@ export function SuperAdminDashboard() {
                         <div>
                           <div className="font-medium">{tenant.name}</div>
                           <div className="text-sm text-gray-500">{tenant.id}</div>
+                          {tenant.status === 'PENDING' && tenant.address && (
+                            <div className="text-xs text-gray-400 mt-1">{tenant.address}</div>
+                          )}
                         </div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="text-sm">
+                        <div className="font-medium">{tenant.ownerName || 'N/A'}</div>
+                        {tenant.contactEmail && (
+                          <div className="text-xs text-gray-500">{tenant.contactEmail}</div>
+                        )}
+                        {tenant.contactPhone && (
+                          <div className="text-xs text-gray-500">{tenant.contactPhone}</div>
+                        )}
                       </div>
                     </TableCell>
                     <TableCell>
@@ -939,6 +969,11 @@ export function SuperAdminDashboard() {
                             <>
                               <UserX className="h-4 w-4 mr-1" />
                               Suspend
+                            </>
+                          ) : tenant.status === 'PENDING' ? (
+                            <>
+                              <UserCheck className="h-4 w-4 mr-1" />
+                              Approve
                             </>
                           ) : (
                             <>

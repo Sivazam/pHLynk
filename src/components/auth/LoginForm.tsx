@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useAuth } from '@/contexts/AuthContext';
-import { Loader2, Mail, Lock, Shield } from 'lucide-react';
+import { Loader2, Mail, Lock, Shield, Building2 } from 'lucide-react';
 import Link from 'next/link';
 import { StatusBarColor } from '../ui/StatusBarColor';
 
@@ -164,6 +164,18 @@ export function LoginForm({ onToggleMode, onResetPassword, onShowRoleSelection, 
                 <div className="inline-flex items-center rounded-full px-4 py-2 text-sm font-medium transition-all duration-300 cursor-pointer bg-[#3d6dcf] hover:bg-[#345bb0]">
                   <Shield className="w-4 h-4 mr-1 text-white" />
                   <span className="text-white">Super Admin Registration</span>
+                </div>
+              </Link>
+            </div>)
+          }
+
+          {/* Wholesaler Registration */}
+          {selectedRole === 'WHOLESALER_ADMIN' && (
+            <div className="text-center pt-4">
+              <Link href="/wholesaler-signup" className="inline-flex items-center">
+                <div className="inline-flex items-center rounded-full px-4 py-2 text-sm font-medium transition-all duration-300 cursor-pointer bg-green-600 hover:bg-green-700">
+                  <Building2 className="w-4 h-4 mr-1 text-white" />
+                  <span className="text-white">Create Wholesaler Account</span>
                 </div>
               </Link>
             </div>)
