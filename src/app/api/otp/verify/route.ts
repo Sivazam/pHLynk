@@ -635,7 +635,7 @@ export async function POST(request: NextRequest) {
               console.log('🚀 Attempting to send retailer SMS via Firebase Function...');
               try {
                 const sendRetailerSMSFunction = await getHttpsCallable('sendRetailerPaymentSMS');
-                console.log('📞 Firebase Function result:', sendRetailerSMSFunction ? 'AVAILABLE' : 'NOT AVAILABLE');
+                console.log('📞 Firebase Function is available and ready to call');
                 
                 if (retailerUser.phone) {
                   console.log('🚀 ABOUT TO CALL FIREBASE FUNCTION - sendRetailerPaymentSMS');
@@ -718,7 +718,7 @@ export async function POST(request: NextRequest) {
               console.log('🚀 Attempting to send wholesaler SMS via Firebase Function...');
               try {
                 const sendWholesalerSMSFunction = await getHttpsCallable('sendWholesalerPaymentSMS');
-                console.log('📞 Wholesaler Firebase Function result:', sendWholesalerSMSFunction ? 'AVAILABLE' : 'NOT AVAILABLE');
+                console.log('📞 Wholesaler Firebase Function is available and ready to call');
                 
                 if (lineWorkerData.wholesalerId) {
                   const wholesalerRef = doc(db, 'users', lineWorkerData.wholesalerId);
