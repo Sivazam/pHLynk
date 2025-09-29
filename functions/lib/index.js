@@ -15,13 +15,23 @@ var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (
 }) : function(o, v) {
     o["default"] = v;
 });
-var __importStar = (this && this.__importStar) || function (mod) {
-    if (mod && mod.__esModule) return mod;
-    var result = {};
-    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
-    __setModuleDefault(result, mod);
-    return result;
-};
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.processSMSResponse = exports.sendWholesalerPaymentSMS = exports.sendRetailerPaymentSMS = void 0;
 const functions = __importStar(require("firebase-functions"));
@@ -59,11 +69,11 @@ exports.sendRetailerPaymentSMS = functions.https.onCall(async (data, context) =>
         // Template: "Collection Acknowledgement: An amount of {#var#}/- from {#var#}, {#var#} has been updated in PharmaLync as payment towards goods supplied by {#var#}. Collected by Line man {#var#} on {#var#}."
         // Variables: 1=Amount, 2=Retailer Name, 3=Retailer Area, 4=Wholesaler Name, 5=Line Worker Name, 6=Date
         const variablesValues = [
-            data.amount.toString(),
-            retailerUser.name || data.retailerName,
-            retailerUser.address || data.retailerArea,
-            data.wholesalerName,
-            data.lineWorkerName,
+            data.amount.toString(), // {#var#} - payment amount
+            retailerUser.name || data.retailerName, // {#var#} - retailer name
+            retailerUser.address || data.retailerArea, // {#var#} - retailer area
+            data.wholesalerName, // {#var#} - wholesaler name (goods supplied by)
+            data.lineWorkerName, // {#var#} - line worker name
             data.collectionDate // {#var#} - collection date
         ];
         const formattedVariables = variablesValues.join('%7C'); // URL-encoded pipe character
@@ -173,11 +183,11 @@ exports.sendWholesalerPaymentSMS = functions.https.onCall(async (data, context) 
         // Template: "Payment Update: {#var#}/- has been recorded in the PharmaLync system from {#var#}, {#var#}. Collected by Line man {#var#} on behalf of {#var#} on {#var#}."
         // Variables: 1=Amount, 2=Retailer Name, 3=Retailer Area, 4=Line Worker Name, 5=Wholesaler Name, 6=Date
         const variablesValues = [
-            data.amount.toString(),
-            data.retailerName,
-            data.retailerArea,
-            data.lineWorkerName,
-            data.wholesalerName,
+            data.amount.toString(), // {#var#} - payment amount
+            data.retailerName, // {#var#} - retailer name
+            data.retailerArea, // {#var#} - retailer area
+            data.lineWorkerName, // {#var#} - line worker name
+            data.wholesalerName, // {#var#} - wholesaler name (on behalf of)
             data.collectionDate // {#var#} - collection date
         ];
         const formattedVariables = variablesValues.join('%7C'); // URL-encoded pipe character

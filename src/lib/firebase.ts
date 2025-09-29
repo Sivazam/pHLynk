@@ -55,16 +55,22 @@ export async function initializeFirebaseFunctions(): Promise<any> {
       if (functionsModule.getFunctions) {
         try {
           // Initialize Firebase Functions with proper configuration
-          functions = functionsModule.getFunctions(undefined, 'us-central1');
-          
-          // For development, connect to emulator if available
-          if (process.env.NODE_ENV === 'development' && functionsModule.connectFunctionsEmulator) {
-            try {
-              functionsModule.connectFunctionsEmulator(functions, 'localhost', 5001);
-              console.log('🔧 Connected to Firebase Functions emulator');
-            } catch (error) {
-              console.log('⚠️ Could not connect to Functions emulator, using production functions:', error);
+          // For production deployment, don't use emulator
+          if (process.env.NODE_ENV === 'development' && process.env.FUNCTIONS_EMULATOR === 'true') {
+            // Only connect to emulator if explicitly enabled
+            functions = functionsModule.getFunctions(undefined, 'us-central1');
+            if (functionsModule.connectFunctionsEmulator) {
+              try {
+                functionsModule.connectFunctionsEmulator(functions, 'localhost', 5001);
+                console.log('🔧 Connected to Firebase Functions emulator');
+              } catch (error) {
+                console.log('⚠️ Could not connect to Functions emulator, using production functions:', error);
+              }
             }
+          } else {
+            // For production or when emulator is not explicitly enabled
+            functions = functionsModule.getFunctions(undefined, 'us-central1');
+            console.log('🚀 Using production Firebase Functions');
           }
           
           functionsInitialized = true;

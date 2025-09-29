@@ -27,9 +27,11 @@ interface FirebaseFunctionResponse {
 async function getHttpsCallable(functionName: string) {
   try {
     console.log(`🔧 Attempting to get Firebase Function: ${functionName}`);
+    console.log(`🌍 Environment: ${process.env.NODE_ENV}`);
+    console.log(`🔧 Functions Emulator: ${process.env.FUNCTIONS_EMULATOR}`);
     
     // Ensure Firebase Functions are initialized
-    const functionsInstance = await initializeFirebaseFunctions();
+    let functionsInstance = await initializeFirebaseFunctions();
     console.log(`📋 Firebase Functions instance result:`, functionsInstance ? 'AVAILABLE' : 'NOT AVAILABLE');
     
     if (!functionsInstance) {
@@ -43,6 +45,7 @@ async function getHttpsCallable(functionName: string) {
           return null;
         }
         console.log(`✅ Firebase Functions reinitialization successful for ${functionName}`);
+        functionsInstance = retryInstance;
       } catch (retryError) {
         console.error(`❌ Error during Firebase Functions reinitialization for ${functionName}:`, retryError);
         return null;
