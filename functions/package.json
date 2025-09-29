@@ -2,7 +2,7 @@
   "name": "functions",
   "description": "Cloud Functions for Firebase",
   "scripts": {
-    "lint": "eslint src --ext .ts",
+    "lint": "eslint src/",
     "build": "tsc",
     "serve": "npm run build && firebase emulators:start --only functions",
     "shell": "npm run build && firebase functions:shell",
@@ -15,17 +15,14 @@
   },
   "main": "lib/index.js",
   "dependencies": {
-    "crypto": "^1.0.1",
-    "dotenv": "^16.6.1",
     "firebase-admin": "^11.11.1",
     "firebase-functions": "^4.9.0"
   },
   "devDependencies": {
-    "@typescript-eslint/eslint-plugin": "^3.10.1",
-    "@typescript-eslint/parser": "^3.10.1",
-    "eslint": "^7.6.0",
+    "@typescript-eslint/eslint-plugin": "^5.0.0",
+    "@typescript-eslint/parser": "^5.0.0",
+    "eslint": "^8.0.0",
     "eslint-plugin-import": "^2.32.0",
-    "eslint-plugin-promise": "^4.2.1",
     "firebase-functions-test": "^0.2.0",
     "typescript": "^4.0.0"
   },

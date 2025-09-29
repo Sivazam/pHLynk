@@ -1,7 +1,6 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
   typescript: {
     ignoreBuildErrors: false,
   },
@@ -26,7 +25,6 @@ const nextConfig: NextConfig = {
     'http://0.0.0.0:3000',
     'https://0.0.0.0:3000',
     'https://*.space.z.ai',
-    'https://preview-chat-d8008d24-a972-4c96-bc70-5e063c8e7ca6.space.z.ai',
     'https://*.z.ai',
     'https://z.ai'
   ],
@@ -136,45 +134,6 @@ const nextConfig: NextConfig = {
   experimental: {
     optimizeCss: true,
   },
-  // Disable caching in development
-  ...(process.env.NODE_ENV === 'development' && {
-    generateBuildId: async () => {
-      return 'dev-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
-    },
-    async headers() {
-      return [
-        {
-          source: '/(.*)',
-          headers: [
-            {
-              key: 'Cache-Control',
-              value: 'no-cache, no-store, must-revalidate, max-age=0',
-            },
-            {
-              key: 'Pragma',
-              value: 'no-cache',
-            },
-            {
-              key: 'Expires',
-              value: '0',
-            },
-            {
-              key: 'Surrogate-Control',
-              value: 'no-store',
-            },
-          ],
-        },
-      ];
-    },
-    // Add webpack configuration for better cache busting
-    webpack: (config, { dev }) => {
-      if (dev) {
-        config.output.filename = 'static/chunks/[name].[contenthash:8].js';
-        config.output.chunkFilename = 'static/chunks/[name].[contenthash:8].js';
-      }
-      return config;
-    },
-  }),
 };
 
 export default nextConfig;
