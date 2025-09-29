@@ -17,7 +17,7 @@ const nextConfig: NextConfig = {
     },
     ],
   },
-  // Allow development origins for Firebase reCAPTCHA
+  // Allow development origins for Firebase reCAPTCHA and preview
   allowedDevOrigins: [
     'http://localhost:3000',
     'https://localhost:3000',
@@ -25,6 +25,8 @@ const nextConfig: NextConfig = {
     'https://127.0.0.1:3000',
     'http://0.0.0.0:3000',
     'https://0.0.0.0:3000',
+    'https://*.space.z.ai',
+    'https://preview-chat-d8008d24-a972-4c96-bc70-5e063c8e7ca6.space.z.ai'
   ],
   async headers() {
     return [
