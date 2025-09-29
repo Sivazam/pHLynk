@@ -515,7 +515,7 @@ export async function POST(request: NextRequest) {
       // Comprehensive OTP cleanup - remove from all locations
       await comprehensiveOTPCleanup(paymentId);
       
-      // Send payment confirmation SMS to both retailer and wholesaler
+      // Send payment confirmation SMS to both retailer and wholesaler using Firebase Functions
       try {
         const payment = await getPaymentWithCorrectTenant(paymentId);
         if (payment) {
@@ -556,47 +556,145 @@ export async function POST(request: NextRequest) {
               // Format collection date
               const collectionDate = Fast2SMSService.formatDateForSMS(new Date());
               
-              // Send SMS to retailer
-              if (retailerUser.phone) {
-                const retailerSMSResult = await fast2SMSService.sendPaymentConfirmationSMS(
-                  retailerUser.phone,
-                  'retailer',
-                  {
-                    amount: payment.totalPaid.toString(),
+              // Send SMS to retailer using Firebase Function
+              try {
+                const sendRetailerSMSFunction = await getHttpsCallable('sendRetailerPaymentSMS');
+                if (sendRetailerSMSFunction && retailerUser.phone) {
+                  const retailerSMSResult = await sendRetailerSMSFunction({
+                    retailerId: payment.retailerId,
+                    paymentId: paymentId,
+                    amount: payment.totalPaid,
                     lineWorkerName,
                     retailerName: retailerUser.name || 'Retailer',
                     retailerArea,
-                    collectionDate,
-                    wholesalerName
-                  }
-                );
-                
-                console.log('📱 Retailer confirmation SMS result:', retailerSMSResult);
-              }
-              
-              // Send SMS to wholesaler
-              if (lineWorkerData.wholesalerId) {
-                const wholesalerRef = doc(db, 'users', lineWorkerData.wholesalerId);
-                const wholesalerDoc = await getDoc(wholesalerRef);
-                
-                if (wholesalerDoc.exists()) {
-                  const wholesalerData = wholesalerDoc.data();
-                  if (wholesalerData.phone) {
-                    const wholesalerSMSResult = await fast2SMSService.sendPaymentConfirmationSMS(
-                      wholesalerData.phone,
-                      'wholesaler',
+                    wholesalerName,
+                    collectionDate
+                  });
+                  
+                  console.log('📱 Retailer confirmation SMS result via Firebase Function:', retailerSMSResult.data);
+                } else {
+                  console.log('⚠️ Firebase Function not available, falling back to local service for retailer SMS');
+                  // Fallback to local service if Firebase Function not available
+                  if (retailerUser.phone) {
+                    const retailerSMSResult = await fast2SMSService.sendPaymentConfirmationSMS(
+                      retailerUser.phone,
+                      'retailer',
                       {
                         amount: payment.totalPaid.toString(),
                         lineWorkerName,
                         retailerName: retailerUser.name || 'Retailer',
                         retailerArea,
                         collectionDate,
-                        wholesalerName: wholesalerData.displayName || wholesalerData.name || 'Wholesaler'
+                        wholesalerName
                       }
                     );
-                    
-                    console.log('📱 Wholesaler confirmation SMS result:', wholesalerSMSResult);
+                    console.log('📱 Retailer confirmation SMS result (fallback):', retailerSMSResult);
                   }
+                }
+              } catch (retailerSMSError) {
+                console.error('❌ Error sending retailer SMS via Firebase Function:', retailerSMSError);
+                // Fallback to local service
+                try {
+                  if (retailerUser.phone) {
+                    const retailerSMSResult = await fast2SMSService.sendPaymentConfirmationSMS(
+                      retailerUser.phone,
+                      'retailer',
+                      {
+                        amount: payment.totalPaid.toString(),
+                        lineWorkerName,
+                        retailerName: retailerUser.name || 'Retailer',
+                        retailerArea,
+                        collectionDate,
+                        wholesalerName
+                      }
+                    );
+                    console.log('📱 Retailer confirmation SMS result (fallback after error):', retailerSMSResult);
+                  }
+                } catch (fallbackError) {
+                  console.error('❌ Error in retailer SMS fallback:', fallbackError);
+                }
+              }
+              
+              // Send SMS to wholesaler using Firebase Function
+              try {
+                const sendWholesalerSMSFunction = await getHttpsCallable('sendWholesalerPaymentSMS');
+                if (sendWholesalerSMSFunction && lineWorkerData.wholesalerId) {
+                  const wholesalerRef = doc(db, 'users', lineWorkerData.wholesalerId);
+                  const wholesalerDoc = await getDoc(wholesalerRef);
+                  
+                  if (wholesalerDoc.exists()) {
+                    const wholesalerData = wholesalerDoc.data();
+                    if (wholesalerData.phone) {
+                      const wholesalerSMSResult = await sendWholesalerSMSFunction({
+                        retailerId: payment.retailerId,
+                        paymentId: paymentId,
+                        amount: payment.totalPaid,
+                        lineWorkerName,
+                        retailerName: retailerUser.name || 'Retailer',
+                        retailerArea,
+                        wholesalerName: wholesalerData.displayName || wholesalerData.name || 'Wholesaler',
+                        collectionDate
+                      });
+                      
+                      console.log('📱 Wholesaler confirmation SMS result via Firebase Function:', wholesalerSMSResult.data);
+                    }
+                  }
+                } else {
+                  console.log('⚠️ Firebase Function not available, falling back to local service for wholesaler SMS');
+                  // Fallback to local service if Firebase Function not available
+                  if (lineWorkerData.wholesalerId) {
+                    const wholesalerRef = doc(db, 'users', lineWorkerData.wholesalerId);
+                    const wholesalerDoc = await getDoc(wholesalerRef);
+                    
+                    if (wholesalerDoc.exists()) {
+                      const wholesalerData = wholesalerDoc.data();
+                      if (wholesalerData.phone) {
+                        const wholesalerSMSResult = await fast2SMSService.sendPaymentConfirmationSMS(
+                          wholesalerData.phone,
+                          'wholesaler',
+                          {
+                            amount: payment.totalPaid.toString(),
+                            lineWorkerName,
+                            retailerName: retailerUser.name || 'Retailer',
+                            retailerArea,
+                            collectionDate,
+                            wholesalerName: wholesalerData.displayName || wholesalerData.name || 'Wholesaler'
+                          }
+                        );
+                        console.log('📱 Wholesaler confirmation SMS result (fallback):', wholesalerSMSResult);
+                      }
+                    }
+                  }
+                }
+              } catch (wholesalerSMSError) {
+                console.error('❌ Error sending wholesaler SMS via Firebase Function:', wholesalerSMSError);
+                // Fallback to local service
+                try {
+                  if (lineWorkerData.wholesalerId) {
+                    const wholesalerRef = doc(db, 'users', lineWorkerData.wholesalerId);
+                    const wholesalerDoc = await getDoc(wholesalerRef);
+                    
+                    if (wholesalerDoc.exists()) {
+                      const wholesalerData = wholesalerDoc.data();
+                      if (wholesalerData.phone) {
+                        const wholesalerSMSResult = await fast2SMSService.sendPaymentConfirmationSMS(
+                          wholesalerData.phone,
+                          'wholesaler',
+                          {
+                            amount: payment.totalPaid.toString(),
+                            lineWorkerName,
+                            retailerName: retailerUser.name || 'Retailer',
+                            retailerArea,
+                            collectionDate,
+                            wholesalerName: wholesalerData.displayName || wholesalerData.name || 'Wholesaler'
+                          }
+                        );
+                        console.log('📱 Wholesaler confirmation SMS result (fallback after error):', wholesalerSMSResult);
+                      }
+                    }
+                  }
+                } catch (fallbackError) {
+                  console.error('❌ Error in wholesaler SMS fallback:', fallbackError);
                 }
               }
             }
