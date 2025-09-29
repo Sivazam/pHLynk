@@ -654,9 +654,9 @@ export async function POST(request: NextRequest) {
                   } catch (functionCallError) {
                     console.error('❌ DETAILED ERROR calling retailer SMS Firebase Function:', {
                     error: functionCallError,
-                    message: functionCallError.message,
-                    stack: functionCallError.stack,
-                    code: functionCallError.code
+                    message: functionCallError instanceof Error ? functionCallError.message : 'Unknown error',
+                    stack: functionCallError instanceof Error ? functionCallError.stack : undefined,
+                    code: functionCallError && typeof functionCallError === 'object' && 'code' in functionCallError ? functionCallError.code : undefined
                   });
                     throw functionCallError; // Re-throw to trigger fallback
                   }
