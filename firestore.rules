@@ -1,0 +1,164 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isSuperAdmin() {
+      return isAuthenticated() && 
+             request.auth.token.role == 'SUPER_ADMIN';
+    }
+    
+    function isWholesalerAdmin() {
+      return isAuthenticated() && 
+             request.auth.token.role == 'WHOLESALER_ADMIN';
+    }
+    
+    function isLineWorker() {
+      return isAuthenticated() && 
+             request.auth.token.role == 'LINE_WORKER';
+    }
+    
+    function isRetailer() {
+      return isAuthenticated() && 
+             request.auth.token.role == 'RETAILER';
+    }
+    
+    function belongsToTenant(tenantId) {
+      return isAuthenticated() && 
+             request.auth.token.tenantId == tenantId;
+    }
+    
+    function belongsToWholesaler(wholesalerId) {
+      return isAuthenticated() && 
+             request.auth.token.wholesalerId == wholesalerId;
+    }
+
+    // Tenants collection
+    match /tenants/{tenantId} {
+      allow read: if isSuperAdmin();
+      allow create: if isSuperAdmin();
+      allow update: if isSuperAdmin();
+      allow delete: if isSuperAdmin();
+    }
+
+    // Users collection
+    match /users/{userId} {
+      allow read: if isAuthenticated() && 
+                    (isSuperAdmin() || 
+                     request.auth.uid == userId ||
+                     belongsToTenant(resource.data.tenantId));
+      allow create: if isSuperAdmin() || isWholesalerAdmin();
+      allow update: if isSuperAdmin() || 
+                     request.auth.uid == userId ||
+                     (isWholesalerAdmin() && belongsToTenant(resource.data.tenantId));
+      allow delete: if isSuperAdmin();
+    }
+
+    // Retailers collection
+    match /retailers/{retailerId} {
+      allow read: if isAuthenticated() && 
+                    (isSuperAdmin() || 
+                     isWholesalerAdmin() || 
+                     isLineWorker() ||
+                     isRetailer());
+      allow create: if isWholesalerAdmin() || isLineWorker();
+      allow update: if isAuthenticated() && 
+                    (isSuperAdmin() || 
+                     isWholesalerAdmin() || 
+                     isLineWorker() ||
+                     isRetailer());
+      allow delete: if isSuperAdmin() || isWholesalerAdmin();
+    }
+
+    // Payments collection
+    match /payments/{paymentId} {
+      allow read: if isAuthenticated() && 
+                    (isSuperAdmin() || 
+                     isWholesalerAdmin() || 
+                     isLineWorker() ||
+                     isRetailer());
+      allow create: if isLineWorker() || isWholesalerAdmin();
+      allow update: if isAuthenticated() && 
+                    (isSuperAdmin() || 
+                     isWholesalerAdmin() || 
+                     isLineWorker() ||
+                     isRetailer());
+      allow delete: if isSuperAdmin() || isWholesalerAdmin();
+    }
+
+    // OTPs collection
+    match /otps/{otpId} {
+      allow read, write: if false; // Only accessible via Cloud Functions
+    }
+
+    // Areas collection
+    match /areas/{areaId} {
+      allow read: if isAuthenticated();
+      allow create: if isSuperAdmin() || isWholesalerAdmin();
+      allow update: if isSuperAdmin() || isWholesalerAdmin();
+      allow delete: if isSuperAdmin();
+    }
+
+    // Retailer Users collection
+    match /retailerUsers/{retailerUserId} {
+      allow read: if isAuthenticated() && 
+                    (isSuperAdmin() || 
+                     isWholesalerAdmin() || 
+                     isLineWorker() ||
+                     isRetailer());
+      allow create: if isWholesalerAdmin();
+      allow update: if isAuthenticated() && 
+                    (isSuperAdmin() || 
+                     isWholesalerAdmin() ||
+                     isRetailer());
+      allow delete: if isSuperAdmin() || isWholesalerAdmin();
+    }
+
+    // Config collection
+    match /config/{configId} {
+      allow read: if isAuthenticated();
+      allow write: if isSuperAdmin();
+    }
+
+    // Subscriptions collection
+    match /subscriptions/{subscriptionId} {
+      allow read: if isAuthenticated() && 
+                    (isSuperAdmin() || 
+                     isWholesalerAdmin() ||
+                     belongsToTenant(resource.data.tenantId));
+      allow create: if isSuperAdmin() || isWholesalerAdmin();
+      allow update: if isSuperAdmin() || 
+                     isWholesalerAdmin() ||
+                     belongsToTenant(resource.data.tenantId);
+      allow delete: if isSuperAdmin();
+    }
+
+    // Monthly Targets collection
+    match /monthlyTargets/{targetId} {
+      allow read: if isAuthenticated() && 
+                    (isSuperAdmin() || 
+                     isWholesalerAdmin() ||
+                     belongsToTenant(resource.data.tenantId));
+      allow create: if isSuperAdmin() || isWholesalerAdmin();
+      allow update: if isSuperAdmin() || 
+                     isWholesalerAdmin() ||
+                     belongsToTenant(resource.data.tenantId);
+      allow delete: if isSuperAdmin();
+    }
+
+    // Payment Events collection
+    match /paymentEvents/{eventId} {
+      allow read: if isAuthenticated() && 
+                    (isSuperAdmin() || 
+                     isWholesalerAdmin() ||
+                     isLineWorker() ||
+                     isRetailer());
+      allow create: if isLineWorker() || isWholesalerAdmin();
+      allow update: if isSuperAdmin() || isWholesalerAdmin();
+      allow delete: if isSuperAdmin();
+    }
+  }
+}
