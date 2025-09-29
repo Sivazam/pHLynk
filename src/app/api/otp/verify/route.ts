@@ -633,6 +633,7 @@ export async function POST(request: NextRequest) {
               
               // Send SMS to retailer using Firebase Function
               console.log('🚀 Attempting to send retailer SMS via Firebase Function...');
+              let retailerSMSSuccess = false;
               try {
                 const sendRetailerSMSFunction = await getHttpsCallable('sendRetailerPaymentSMS');
                 console.log('📞 Firebase Function is available and ready to call');
@@ -651,16 +652,21 @@ export async function POST(request: NextRequest) {
                   });
                   
                   try {
-                    const retailerSMSResult = await sendRetailerSMSFunction({
-                      retailerId: payment.retailerId,
-                      paymentId: paymentId,
-                      amount: payment.totalPaid,
-                      lineWorkerName,
-                      retailerName: retailerUser.name || 'Retailer',
-                      retailerArea,
-                      wholesalerName,
-                      collectionDate
-                    });
+                    // Firebase Functions typically expect data wrapped in a 'data' property
+                    const requestData = {
+                      data: {
+                        retailerId: payment.retailerId,
+                        paymentId: paymentId,
+                        amount: payment.totalPaid,
+                        lineWorkerName,
+                        retailerName: retailerUser.name || 'Retailer',
+                        retailerArea,
+                        wholesalerName,
+                        collectionDate
+                      }
+                    };
+                    
+                    const retailerSMSResult = await sendRetailerSMSFunction(requestData);
                     
                     console.log('📱 Retailer confirmation SMS result via Firebase Function:', retailerSMSResult.data);
                     
@@ -673,6 +679,7 @@ export async function POST(request: NextRequest) {
                         phone: resultData.phone,
                         status: resultData.status
                       });
+                      retailerSMSSuccess = true;
                     } else {
                       console.warn('⚠️ Retailer SMS Firebase Function returned unsuccessful result:', resultData);
                       // Fallback to local service
@@ -689,6 +696,7 @@ export async function POST(request: NextRequest) {
                   }
                 } else {
                   console.log('⚠️ Retailer phone missing, skipping SMS');
+                  retailerSMSSuccess = true; // Consider as success since no phone
                 }
               } catch (retailerSMSError) {
                 console.error('❌ Error sending retailer SMS via Firebase Function:', retailerSMSError);
@@ -708,13 +716,14 @@ export async function POST(request: NextRequest) {
                       }
                     );
                     console.log('📱 Retailer confirmation SMS result (fallback after error):', retailerSMSResult);
+                    retailerSMSSuccess = true;
                   }
                 } catch (fallbackError) {
                   console.error('❌ Error in retailer SMS fallback:', fallbackError);
                 }
               }
               
-              // Send SMS to wholesaler using Firebase Function
+              // Send SMS to wholesaler using Firebase Function (independent of retailer SMS result)
               console.log('🚀 Attempting to send wholesaler SMS via Firebase Function...');
               try {
                 const sendWholesalerSMSFunction = await getHttpsCallable('sendWholesalerPaymentSMS');
@@ -739,16 +748,21 @@ export async function POST(request: NextRequest) {
                       });
                       
                       try {
-                        const wholesalerSMSResult = await sendWholesalerSMSFunction({
-                          retailerId: payment.retailerId,
-                          paymentId: paymentId,
-                          amount: payment.totalPaid,
-                          lineWorkerName,
-                          retailerName: retailerUser.name || 'Retailer',
-                          retailerArea,
-                          wholesalerName: wholesalerData.displayName || wholesalerData.name || 'Wholesaler',
-                          collectionDate
-                        });
+                        // Firebase Functions typically expect data wrapped in a 'data' property
+                        const requestData = {
+                          data: {
+                            retailerId: payment.retailerId,
+                            paymentId: paymentId,
+                            amount: payment.totalPaid,
+                            lineWorkerName,
+                            retailerName: retailerUser.name || 'Retailer',
+                            retailerArea,
+                            wholesalerName: wholesalerData.displayName || wholesalerData.name || 'Wholesaler',
+                            collectionDate
+                          }
+                        };
+                        
+                        const wholesalerSMSResult = await sendWholesalerSMSFunction(requestData);
                         
                         console.log('📱 Wholesaler confirmation SMS result via Firebase Function:', wholesalerSMSResult.data);
                         
@@ -810,6 +824,13 @@ export async function POST(request: NextRequest) {
                   console.error('❌ Error in wholesaler SMS fallback:', fallbackError);
                 }
               }
+              
+              console.log('📊 SMS Sending Summary:', {
+                retailerSMSSuccess,
+                retailerPhone: retailerUser.phone,
+                wholesalerId: lineWorkerData.wholesalerId,
+                wholesalerPhone: lineWorkerData.wholesalerId ? 'exists' : 'missing'
+              });
             }
           }
         }

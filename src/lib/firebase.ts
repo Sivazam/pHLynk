@@ -99,6 +99,9 @@ export async function callFirebaseFunction(functionName: string, data: any): Pro
     console.log(`📤 Making HTTP request to: ${functionUrl}`);
     console.log(`📤 Request headers:`, {
       'Content-Type': 'application/json',
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization'
     });
     console.log(`📤 Request body:`, JSON.stringify(data, null, 2));
     
@@ -107,11 +110,15 @@ export async function callFirebaseFunction(functionName: string, data: any): Pro
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization'
       },
       body: JSON.stringify(data),
     });
     
     console.log(`📤 Response status:`, response.status);
+    console.log(`📤 Response status text:`, response.statusText);
     console.log(`📤 Response headers:`, Object.fromEntries(response.headers.entries()));
     
     if (!response.ok) {
