@@ -724,18 +724,23 @@ export async function POST(request: NextRequest) {
               }
               
               // Send SMS to wholesaler using Firebase Function (independent of retailer SMS result)
-              console.log('🚀 Attempting to send wholesaler SMS via Firebase Function...');
+              console.log('🚀 REACHED WHOLESALER SMS SECTION - About to attempt sending wholesaler SMS...');
+              console.log('🔍 Debug - lineWorkerData:', lineWorkerData ? 'EXISTS' : 'MISSING');
+              console.log('🔍 Debug - lineWorkerData.wholesalerId:', lineWorkerData?.wholesalerId || 'MISSING');
               try {
                 const sendWholesalerSMSFunction = await getHttpsCallable('sendWholesalerPaymentSMS');
                 console.log('📞 Wholesaler Firebase Function is available and ready to call');
                 
                 if (lineWorkerData.wholesalerId) {
+                  console.log('🔍 Debug - wholesalerId found:', lineWorkerData.wholesalerId);
                   const wholesalerRef = doc(db, 'users', lineWorkerData.wholesalerId);
                   const wholesalerDoc = await getDoc(wholesalerRef);
                   
                   if (wholesalerDoc.exists()) {
+                    console.log('🔍 Debug - wholesaler document exists');
                     const wholesalerData = wholesalerDoc.data();
                     if (wholesalerData.phone) {
+                      console.log('🔍 Debug - wholesaler phone found:', wholesalerData.phone);
                       console.log('📤 Calling sendWholesalerPaymentSMS Firebase Function with data:', {
                         retailerId: payment.retailerId,
                         paymentId: paymentId,
@@ -786,15 +791,20 @@ export async function POST(request: NextRequest) {
                       }
                     } else {
                       console.log('⚠️ Wholesaler phone not found, skipping SMS');
+                      console.log('🔍 Debug - wholesalerData:', wholesalerData ? 'EXISTS' : 'MISSING');
+                      console.log('🔍 Debug - wholesalerData.phone:', wholesalerData?.phone || 'MISSING');
                     }
                   } else {
                     console.log('⚠️ Wholesaler document not found, skipping SMS');
+                    console.log('🔍 Debug - wholesalerDoc.exists():', wholesalerDoc.exists());
                   }
                 } else {
                   console.log('⚠️ Wholesaler ID missing, skipping SMS');
+                  console.log('🔍 Debug - lineWorkerData.wholesalerId:', lineWorkerData?.wholesalerId || 'MISSING');
                 }
               } catch (wholesalerSMSError) {
                 console.error('❌ Error sending wholesaler SMS via Firebase Function:', wholesalerSMSError);
+                console.log('🔍 Debug - Reached wholesaler SMS catch block');
                 // Fallback to local service
                 try {
                   if (lineWorkerData.wholesalerId) {

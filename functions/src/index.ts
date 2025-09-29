@@ -113,7 +113,7 @@ export const sendRetailerPaymentSMS = functions.https.onCall(async (data: {
       messageId: responseData.request_id || null,
       status: responseData.return ? 'SENT' : 'FAILED',
       response: responseData,
-      sentBy: context.auth.uid,
+      sentBy: context.auth?.uid || 'NEXTJS_API',
       sentAt: admin.firestore.FieldValue.serverTimestamp()
     });
 
@@ -290,7 +290,7 @@ export const sendWholesalerPaymentSMS = functions.https.onCall(async (data: {
       messageId: responseData.request_id || null,
       status: responseData.return ? 'SENT' : 'FAILED',
       response: responseData,
-      sentBy: context.auth.uid,
+      sentBy: context.auth?.uid || 'NEXTJS_API',
       sentAt: admin.firestore.FieldValue.serverTimestamp()
     });
 

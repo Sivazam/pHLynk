@@ -40,6 +40,7 @@ const admin = __importStar(require("firebase-admin"));
 admin.initializeApp();
 // SMS Notification Functions
 exports.sendRetailerPaymentSMS = functions.https.onCall(async (data, context) => {
+    var _a;
     try {
         // Note: Authentication check removed to allow calls from Next.js API routes
         // The function is secured by being a Firebase Function and requiring valid API key
@@ -111,7 +112,7 @@ exports.sendRetailerPaymentSMS = functions.https.onCall(async (data, context) =>
             messageId: responseData.request_id || null,
             status: responseData.return ? 'SENT' : 'FAILED',
             response: responseData,
-            sentBy: context.auth.uid,
+            sentBy: ((_a = context.auth) === null || _a === void 0 ? void 0 : _a.uid) || 'NEXTJS_API',
             sentAt: admin.firestore.FieldValue.serverTimestamp()
         });
         console.log('✅ CLOUD FUNCTION - SMS sent successfully:', responseData);
@@ -131,6 +132,7 @@ exports.sendRetailerPaymentSMS = functions.https.onCall(async (data, context) =>
     }
 });
 exports.sendWholesalerPaymentSMS = functions.https.onCall(async (data, context) => {
+    var _a;
     try {
         // Note: Authentication check removed to allow calls from Next.js API routes
         // The function is secured by being a Firebase Function and requiring valid API key
@@ -225,7 +227,7 @@ exports.sendWholesalerPaymentSMS = functions.https.onCall(async (data, context) 
             messageId: responseData.request_id || null,
             status: responseData.return ? 'SENT' : 'FAILED',
             response: responseData,
-            sentBy: context.auth.uid,
+            sentBy: ((_a = context.auth) === null || _a === void 0 ? void 0 : _a.uid) || 'NEXTJS_API',
             sentAt: admin.firestore.FieldValue.serverTimestamp()
         });
         console.log('✅ CLOUD FUNCTION - SMS sent successfully to wholesaler:', responseData);
