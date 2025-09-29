@@ -13,17 +13,39 @@ import { functions, initializeFirebaseFunctions } from '@/lib/firebase';
 // Helper function to get httpsCallable if functions are available
 async function getHttpsCallable(functionName: string) {
   try {
+    console.log(`🔧 Attempting to get Firebase Function: ${functionName}`);
+    
     // Ensure Firebase Functions are initialized
     const functionsInstance = await initializeFirebaseFunctions();
+    console.log(`📋 Firebase Functions instance result:`, functionsInstance ? 'AVAILABLE' : 'NOT AVAILABLE');
+    
     if (!functionsInstance) {
-      console.log('⚠️ Firebase Functions not available, using fallback mode');
-      return null;
+      console.log(`⚠️ Firebase Functions not available for ${functionName}, attempting to reinitialize...`);
+      
+      // Try to reinitialize Firebase Functions
+      try {
+        const retryInstance = await initializeFirebaseFunctions();
+        if (!retryInstance) {
+          console.log(`❌ Firebase Functions reinitialization failed for ${functionName}`);
+          return null;
+        }
+        console.log(`✅ Firebase Functions reinitialization successful for ${functionName}`);
+      } catch (retryError) {
+        console.error(`❌ Error during Firebase Functions reinitialization for ${functionName}:`, retryError);
+        return null;
+      }
     }
     
     const functionsModule = await import('firebase/functions');
-    return functionsModule.httpsCallable(functionsInstance, functionName);
+    console.log(`📦 Firebase Functions module imported successfully for ${functionName}`);
+    
+    const callableFunction = functionsModule.httpsCallable(functionsInstance, functionName);
+    console.log(`✅ Successfully created callable function for ${functionName}`);
+    
+    return callableFunction;
   } catch (error) {
-    console.log('⚠️ Firebase Functions not available, using fallback mode:', error);
+    console.error(`❌ Error getting Firebase Function ${functionName}:`, error);
+    console.log(`⚠️ Firebase Functions not available for ${functionName}, using fallback mode`);
     return null;
   }
 }
@@ -77,6 +99,16 @@ async function getPaymentWithCorrectTenant(paymentId: string) {
 
 export async function POST(request: NextRequest) {
   try {
+    // Proactively initialize Firebase Functions to ensure they're ready
+    console.log('🔧 Initializing Firebase Functions at start of OTP verification...');
+    try {
+      await initializeFirebaseFunctions();
+      console.log('✅ Firebase Functions initialization completed');
+    } catch (initError) {
+      console.error('❌ Firebase Functions initialization failed:', initError);
+      // Don't fail the request - we'll try to initialize again when needed
+    }
+
     const body: OTPVerifyRequest = await request.json();
     const { paymentId, otp } = body;
 
@@ -577,18 +609,32 @@ export async function POST(request: NextRequest) {
                     collectionDate
                   });
                   
-                  const retailerSMSResult = await sendRetailerSMSFunction({
-                    retailerId: payment.retailerId,
-                    paymentId: paymentId,
-                    amount: payment.totalPaid,
-                    lineWorkerName,
-                    retailerName: retailerUser.name || 'Retailer',
-                    retailerArea,
-                    wholesalerName,
-                    collectionDate
-                  });
-                  
-                  console.log('📱 Retailer confirmation SMS result via Firebase Function:', retailerSMSResult.data);
+                  try {
+                    const retailerSMSResult = await sendRetailerSMSFunction({
+                      retailerId: payment.retailerId,
+                      paymentId: paymentId,
+                      amount: payment.totalPaid,
+                      lineWorkerName,
+                      retailerName: retailerUser.name || 'Retailer',
+                      retailerArea,
+                      wholesalerName,
+                      collectionDate
+                    });
+                    
+                    console.log('📱 Retailer confirmation SMS result via Firebase Function:', retailerSMSResult.data);
+                    
+                    // Check if the SMS was sent successfully
+                    if (retailerSMSResult.data && retailerSMSResult.data.success) {
+                      console.log('✅ Retailer SMS sent successfully via Firebase Function');
+                    } else {
+                      console.warn('⚠️ Retailer SMS Firebase Function returned unsuccessful result:', retailerSMSResult.data);
+                      // Fallback to local service
+                      throw new Error('Firebase Function returned unsuccessful result');
+                    }
+                  } catch (functionCallError) {
+                    console.error('❌ Error calling retailer SMS Firebase Function:', functionCallError);
+                    throw functionCallError; // Re-throw to trigger fallback
+                  }
                 } else {
                   console.log('⚠️ Firebase Function not available or retailer phone missing, falling back to local service for retailer SMS');
                   console.log('  - Function available:', !!sendRetailerSMSFunction);
@@ -658,18 +704,32 @@ export async function POST(request: NextRequest) {
                         collectionDate
                       });
                       
-                      const wholesalerSMSResult = await sendWholesalerSMSFunction({
-                        retailerId: payment.retailerId,
-                        paymentId: paymentId,
-                        amount: payment.totalPaid,
-                        lineWorkerName,
-                        retailerName: retailerUser.name || 'Retailer',
-                        retailerArea,
-                        wholesalerName: wholesalerData.displayName || wholesalerData.name || 'Wholesaler',
-                        collectionDate
-                      });
-                      
-                      console.log('📱 Wholesaler confirmation SMS result via Firebase Function:', wholesalerSMSResult.data);
+                      try {
+                        const wholesalerSMSResult = await sendWholesalerSMSFunction({
+                          retailerId: payment.retailerId,
+                          paymentId: paymentId,
+                          amount: payment.totalPaid,
+                          lineWorkerName,
+                          retailerName: retailerUser.name || 'Retailer',
+                          retailerArea,
+                          wholesalerName: wholesalerData.displayName || wholesalerData.name || 'Wholesaler',
+                          collectionDate
+                        });
+                        
+                        console.log('📱 Wholesaler confirmation SMS result via Firebase Function:', wholesalerSMSResult.data);
+                        
+                        // Check if the SMS was sent successfully
+                        if (wholesalerSMSResult.data && wholesalerSMSResult.data.success) {
+                          console.log('✅ Wholesaler SMS sent successfully via Firebase Function');
+                        } else {
+                          console.warn('⚠️ Wholesaler SMS Firebase Function returned unsuccessful result:', wholesalerSMSResult.data);
+                          // Fallback to local service
+                          throw new Error('Firebase Function returned unsuccessful result');
+                        }
+                      } catch (functionCallError) {
+                        console.error('❌ Error calling wholesaler SMS Firebase Function:', functionCallError);
+                        throw functionCallError; // Re-throw to trigger fallback
+                      }
                     } else {
                       console.log('⚠️ Wholesaler phone not found, skipping SMS');
                     }

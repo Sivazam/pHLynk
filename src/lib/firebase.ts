@@ -53,27 +53,35 @@ export async function initializeFirebaseFunctions(): Promise<any> {
   if (!functionsInitPromise) {
     functionsInitPromise = import('firebase/functions').then(async functionsModule => {
       if (functionsModule.getFunctions) {
-        functions = functionsModule.getFunctions(app);
-        
-        // Connect to emulator in development (optional - remove for production)
-        if (process.env.NODE_ENV === 'development' && functionsModule.connectFunctionsEmulator) {
-          try {
-            functionsModule.connectFunctionsEmulator(functions, 'localhost', 5001);
-            console.log('🔧 Connected to Firebase Functions emulator');
-          } catch (error) {
-            console.log('⚠️ Could not connect to Functions emulator, using production functions');
+        try {
+          functions = functionsModule.getFunctions(app);
+          
+          // Connect to emulator in development (optional - remove for production)
+          if (process.env.NODE_ENV === 'development' && functionsModule.connectFunctionsEmulator) {
+            try {
+              functionsModule.connectFunctionsEmulator(functions, 'localhost', 5001);
+              console.log('🔧 Connected to Firebase Functions emulator');
+            } catch (error) {
+              console.log('⚠️ Could not connect to Functions emulator, using production functions:', error);
+              // Don't fail here - continue with production functions
+            }
           }
+          
+          functionsInitialized = true;
+          console.log('✅ Firebase Functions initialized successfully');
+          return functions;
+        } catch (error) {
+          console.error('❌ Error initializing Firebase Functions:', error);
+          functions = null;
+          return null;
         }
-        functionsInitialized = true;
-        console.log('✅ Firebase Functions initialized successfully');
-        return functions;
       } else {
-        console.log('⚠️ Firebase Functions module not available');
+        console.error('❌ Firebase Functions module not available - getFunctions function missing');
         functions = null;
         return null;
       }
     }).catch(error => {
-      console.log('⚠️ Firebase Functions module not available, using fallback mode:', error);
+      console.error('❌ Failed to import Firebase Functions module:', error);
       functions = null;
       return null;
     });
@@ -82,10 +90,21 @@ export async function initializeFirebaseFunctions(): Promise<any> {
   return functionsInitPromise;
 }
 
-// Auto-initialize functions in the background
-initializeFirebaseFunctions().catch(error => {
-  console.log('⚠️ Background Firebase Functions initialization failed:', error);
-});
+// Auto-initialize functions in the background with retry mechanism
+const initializeWithRetry = async (retryCount = 0, maxRetries = 3) => {
+  try {
+    await initializeFirebaseFunctions();
+    console.log('✅ Background Firebase Functions initialization successful');
+  } catch (error) {
+    console.error('❌ Background Firebase Functions initialization failed:', error);
+    if (retryCount < maxRetries) {
+      console.log(`🔄 Retrying Firebase Functions initialization (${retryCount + 1}/${maxRetries})...`);
+      setTimeout(() => initializeWithRetry(retryCount + 1, maxRetries), 2000 * (retryCount + 1));
+    }
+  }
+};
+
+initializeWithRetry();
 
 export { functions };
 
