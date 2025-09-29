@@ -32,6 +32,7 @@ import {
   paymentService,
   Timestamp
 } from '@/services/firestore';
+import { TENANT_STATUSES } from '@/lib/firebase';
 import { realtimeNotificationService } from '@/services/realtime-notifications';
 import { notificationService } from '@/services/notification-service';
 import { Tenant, CreateTenantForm, User, Area, Retailer, Payment } from '@/types';
@@ -556,44 +557,32 @@ export function SuperAdminDashboard() {
     }
   };
 
-  const handleToggleTenantStatus = async (tenantId: string, currentStatus: string) => {
+  const handleToggleTenantStatus = async (tenantId: string, currentStatus: keyof typeof TENANT_STATUSES) => {
     try {
-      let newStatus: string;
-      
-      // Handle status transitions
-      switch (currentStatus) {
-        case 'PENDING':
-          newStatus = 'ACTIVE';
-          break;
-        case 'ACTIVE':
-          newStatus = 'SUSPENDED';
-          break;
-        case 'SUSPENDED':
-          newStatus = 'ACTIVE';
-          break;
-        default:
-          newStatus = 'ACTIVE';
-      }
-      
+      const newStatus: keyof typeof TENANT_STATUSES = currentStatus === 'ACTIVE' ? 'SUSPENDED' : 'ACTIVE';
       await tenantService.update(tenantId, { status: newStatus }, 'system');
       
-      // Update user active status based on tenant status
-      const users = await userService.getAll(tenantId);
-      const userActiveStatus = newStatus === 'ACTIVE';
-      
-      await Promise.all(
-        users.map(user => 
-          userService.update(user.id, { active: userActiveStatus }, tenantId)
-        )
-      );
+      if (newStatus === 'SUSPENDED') {
+        const users = await userService.getAll(tenantId);
+        await Promise.all(
+          users.map(user => 
+            userService.update(user.id, { active: false }, tenantId)
+          )
+        );
+      } else {
+        const users = await userService.getAll(tenantId);
+        await Promise.all(
+          users.map(user => 
+            userService.update(user.id, { active: true }, tenantId)
+          )
+        );
+      }
       
       await fetchTenants();
       await fetchAnalytics();
       if (selectedTenant?.id === tenantId) {
         await fetchTenantDetails(tenantId);
       }
-      
-      showSuccess(`Tenant status updated to ${newStatus}`);
     } catch (err: any) {
       setError(err.message || 'Failed to update tenant status');
     }
@@ -901,7 +890,6 @@ export function SuperAdminDashboard() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Tenant</TableHead>
-                  <TableHead>Owner</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Plan</TableHead>
                   <TableHead>Created</TableHead>
@@ -919,21 +907,7 @@ export function SuperAdminDashboard() {
                         <div>
                           <div className="font-medium">{tenant.name}</div>
                           <div className="text-sm text-gray-500">{tenant.id}</div>
-                          {tenant.status === 'PENDING' && tenant.address && (
-                            <div className="text-xs text-gray-400 mt-1">{tenant.address}</div>
-                          )}
                         </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="text-sm">
-                        <div className="font-medium">{tenant.ownerName || 'N/A'}</div>
-                        {tenant.contactEmail && (
-                          <div className="text-xs text-gray-500">{tenant.contactEmail}</div>
-                        )}
-                        {tenant.contactPhone && (
-                          <div className="text-xs text-gray-500">{tenant.contactPhone}</div>
-                        )}
                       </div>
                     </TableCell>
                     <TableCell>
@@ -969,11 +943,6 @@ export function SuperAdminDashboard() {
                             <>
                               <UserX className="h-4 w-4 mr-1" />
                               Suspend
-                            </>
-                          ) : tenant.status === 'PENDING' ? (
-                            <>
-                              <UserCheck className="h-4 w-4 mr-1" />
-                              Approve
                             </>
                           ) : (
                             <>

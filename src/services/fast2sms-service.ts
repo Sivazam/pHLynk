@@ -1,5 +1,3 @@
-import { getFast2SMSConfig } from '@/lib/functions-config';
-
 interface Fast2SMSConfig {
   apiKey?: string;
   senderId?: string;
@@ -29,11 +27,10 @@ export class Fast2SMSService {
   }
 
   private getConfig(): Fast2SMSConfig {
-    const config = getFast2SMSConfig();
     return {
-      apiKey: config.apiKey,
-      senderId: config.senderId,
-      entityId: config.entityId
+      apiKey: process.env.fast2sms_api_key || process.env.FAST2SMS_API_KEY,
+      senderId: process.env.FAST2SMS_SENDER_ID || 'SNSYST',
+      entityId: process.env.entityid || process.env.ENTITY_ID
     };
   }
 

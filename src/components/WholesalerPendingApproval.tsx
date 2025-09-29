@@ -12,7 +12,7 @@ import { Building2, Clock, Edit, Save, X, RefreshCw, Mail, Phone, MapPin } from 
 import { useAuth } from '@/contexts/AuthContext';
 import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { StatusBarColor } from './ui/StatusBarColor';
+import { StatusBarColor } from '@/components/ui/StatusBarColor';
 
 interface TenantData {
   name: string;
