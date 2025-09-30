@@ -85,7 +85,7 @@ export async function POST(request: NextRequest) {
     try {
       // Try to use Firebase Functions if available (server-side only)
       const functionsModule = await import('firebase/functions');
-      if (functionsModule.getFunctions && typeof window === 'undefined') {
+      if (typeof window === 'undefined') {
         const { getFunctions, httpsCallable } = functionsModule;
         const functionsInstance = getFunctions();
         const generateOTPFunction = httpsCallable(functionsInstance, 'generateOTP');

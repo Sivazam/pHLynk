@@ -83,7 +83,7 @@ class RoleBasedNotificationService {
         userVisibleOnly: true,
         applicationServerKey: this.urlBase64ToUint8Array(
           'BMgK4zW7qP1s6vY7j8k9l0m1n2o3p4q5r6s7t8u9v0w1x2y3z4'
-        )
+        ) as unknown as ArrayBuffer
       });
 
       console.log('✅ Push subscription created for background notifications');
@@ -129,8 +129,7 @@ class RoleBasedNotificationService {
         icon: payload.icon || '/icon-192x192.png',
         badge: payload.badge || '/icon-96x96.png',
         tag: payload.tag,
-        requireInteraction: payload.requireInteraction,
-        actions: payload.actions
+        requireInteraction: payload.requireInteraction
       });
 
       // Handle notification click
@@ -294,8 +293,12 @@ class RoleBasedNotificationService {
       .replace(/-/g, '+')
       .replace(/_/g, '/');
 
-    const rawData = Buffer.from(base64, 'base64');
-    return new Uint8Array(rawData);
+    const binaryString = atob(base64);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    return bytes;
   }
 }
 
