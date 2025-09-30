@@ -742,6 +742,9 @@ export async function POST(request: NextRequest) {
                     collectionDate
                   });
                   
+                  console.log('🚨 CRITICAL DEBUG - ACTUAL RETAILER ID BEING SENT:', payment.retailerId);
+                  console.log('🚨 CRITICAL DEBUG - IS THIS A REAL RETAILER ID?', payment.retailerId !== 'retailer_123' ? 'YES' : 'NO');
+                  
                   try {
                     // Firebase Functions typically expect data wrapped in a 'data' property
                     const requestData = {
