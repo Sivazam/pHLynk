@@ -4,29 +4,118 @@ import * as admin from 'firebase-admin';
 // Initialize Firebase Admin
 admin.initializeApp();
 
+// Input validation helper
+function validateSMSInput(data: any) {
+  if (!data.retailerId || typeof data.retailerId !== 'string') {
+    throw new functions.https.HttpsError('invalid-argument', 'Invalid or missing retailerId');
+  }
+  if (!data.paymentId || typeof data.paymentId !== 'string') {
+    throw new functions.https.HttpsError('invalid-argument', 'Invalid or missing paymentId');
+  }
+  if (!data.amount || typeof data.amount !== 'number' || data.amount <= 0) {
+    throw new functions.https.HttpsError('invalid-argument', 'Invalid amount');
+  }
+  if (!data.lineWorkerName || typeof data.lineWorkerName !== 'string') {
+    throw new functions.https.HttpsError('invalid-argument', 'Invalid or missing lineWorkerName');
+  }
+  if (!data.retailerName || typeof data.retailerName !== 'string') {
+    throw new functions.https.HttpsError('invalid-argument', 'Invalid or missing retailerName');
+  }
+  if (!data.collectionDate || typeof data.collectionDate !== 'string') {
+    throw new functions.https.HttpsError('invalid-argument', 'Invalid or missing collectionDate');
+  }
+}
+
+// Rate limiting helper
+async function checkRateLimit(identifier: string, maxRequests = 10, windowMs = 60000) {
+  const now = admin.firestore.Timestamp.now();
+  const windowStart = new Date(now.toMillis() - windowMs);
+  
+  const requestsRef = admin.firestore()
+    .collection('rateLimits')
+    .doc(identifier)
+    .collection('requests')
+    .where('timestamp', '>=', admin.firestore.Timestamp.fromDate(windowStart));
+  
+  const snapshot = await requestsRef.get();
+  
+  if (snapshot.size >= maxRequests) {
+    throw new functions.https.HttpsError(
+      'resource-exhausted',
+      'Too many requests. Please try again later.'
+    );
+  }
+  
+  // Log this request
+  await admin.firestore()
+    .collection('rateLimits')
+    .doc(identifier)
+    .collection('requests')
+    .add({
+      timestamp: now,
+      functionName: 'sendPaymentSMS'
+    });
+}
+
+// Phone number validation helper
+function validatePhoneNumber(phone: string): string {
+  const cleanedPhone = phone.replace(/\D/g, '');
+  if (cleanedPhone.length < 10) {
+    throw new functions.https.HttpsError(
+      'invalid-argument',
+      'Invalid phone number'
+    );
+  }
+  return cleanedPhone;
+}
+
+// Fast2SMS configuration validation
+function getFast2SMSConfig() {
+  const fast2smsConfig = functions.config().fast2sms;
+  const fast2smsApiKey = fast2smsConfig?.api_key;
+  const senderId = fast2smsConfig?.sender_id || 'SNSYST';
+  const entityId = fast2smsConfig?.entity_id;
+  
+  if (!fast2smsApiKey) {
+    throw new functions.https.HttpsError(
+      'failed-precondition',
+      'Fast2SMS API key not configured in Firebase Functions config'
+    );
+  }
+  
+  if (!entityId) {
+    throw new functions.https.HttpsError(
+      'failed-precondition',
+      'Fast2SMS entity ID not configured in Firebase Functions config'
+    );
+  }
+  
+  return { fast2smsApiKey, senderId, entityId };
+}
+
 // SMS Notification Functions
-export const sendRetailerPaymentSMS = functions.https.onCall(async (data: {
-  retailerId: string;
-  paymentId: string;
-  amount: number;
-  lineWorkerName: string;
-  retailerName: string;
-  retailerArea: string;
-  wholesalerName: string;
-  collectionDate: string;
-}, context: any) => {
+export const sendRetailerPaymentSMS = functions.https.onCall(async (request: any) => {
   try {
-    // Note: Authentication check removed to allow calls from Next.js API routes
-    // The function is secured by being a Firebase Function and requiring valid API key
+    const { data } = request;
+    const context = request;
+    
+    // Input validation
+    validateSMSInput(data);
+    
+    // Rate limiting (by IP or user ID)
+    const identifier = context.auth?.uid || context.rawRequest?.ip || 'anonymous';
+    await checkRateLimit(identifier, 5, 60000); // 5 requests per minute
+    
     console.log('📞 CLOUD FUNCTION - Retailer Payment SMS Request:', {
       retailerId: data.retailerId,
       paymentId: data.paymentId,
       amount: data.amount,
       lineWorkerName: data.lineWorkerName,
-      caller: context.auth ? context.auth.uid : 'NEXTJS_API'
+      caller: context.auth ? context.auth.uid : 'NEXTJS_API',
+      ip: context.rawRequest?.ip
     });
 
-    // Get retailer user details
+    // Get retailer user details with better error handling
     const retailerUsersQuery = await admin.firestore()
       .collection('retailerUsers')
       .where('retailerId', '==', data.retailerId)
@@ -36,7 +125,7 @@ export const sendRetailerPaymentSMS = functions.https.onCall(async (data: {
     if (retailerUsersQuery.empty) {
       throw new functions.https.HttpsError(
         'not-found',
-        'Retailer user not found'
+        `Retailer user not found for retailerId: ${data.retailerId}`
       );
     }
 
@@ -45,12 +134,12 @@ export const sendRetailerPaymentSMS = functions.https.onCall(async (data: {
     if (!retailerUser.phone) {
       throw new functions.https.HttpsError(
         'failed-precondition',
-        'Retailer phone number not found'
+        `Retailer phone number not found for retailerId: ${data.retailerId}`
       );
     }
 
-    // Format phone number
-    const formattedPhone = retailerUser.phone.replace(/\D/g, '');
+    // Validate and format phone number
+    const formattedPhone = validatePhoneNumber(retailerUser.phone);
     
     // Prepare SMS variables - Order MUST match DLT template exactly
     // Template: "Collection Acknowledgement: An amount of {#var#}/- from {#var#}, {#var#} has been updated in PharmaLync as payment towards goods supplied by {#var#}. Collected by Line man {#var#} on {#var#}."
@@ -75,19 +164,9 @@ export const sendRetailerPaymentSMS = functions.https.onCall(async (data: {
     
     const formattedVariables = variablesValues.join('%7C'); // URL-encoded pipe character
 
-    // Get Fast2SMS configuration from Firebase Functions config
-    const fast2smsConfig = functions.config().fast2sms;
-    const fast2smsApiKey = fast2smsConfig?.api_key;
-    const senderId = fast2smsConfig?.sender_id || 'SNSYST';
-    const entityId = fast2smsConfig?.entity_id;
+    // Get Fast2SMS configuration with validation
+    const { fast2smsApiKey, senderId, entityId } = getFast2SMSConfig();
     const messageId = '199054'; // RetailerNotify template ID
-    
-    if (!fast2smsApiKey) {
-      throw new functions.https.HttpsError(
-        'failed-precondition',
-        'Fast2SMS API key not configured in environment variables'
-      );
-    }
 
     // Construct API URL
     const entityIdParam = `&entity_id=${entityId}`;
@@ -95,18 +174,27 @@ export const sendRetailerPaymentSMS = functions.https.onCall(async (data: {
     
     console.log('📞 CLOUD FUNCTION - Sending SMS to:', formattedPhone);
 
-    // Send SMS via Fast2SMS
+    // Send SMS via Fast2SMS with better error handling
+    console.log('📞 CLOUD FUNCTION - API URL:', apiUrl);
+    
     const response = await fetch(apiUrl, {
       method: 'GET',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'User-Agent': 'PharmaLync/1.0'
       }
     });
 
     if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ CLOUD FUNCTION - Fast2SMS API Error:', {
+        status: response.status,
+        statusText: response.statusText,
+        errorText
+      });
       throw new functions.https.HttpsError(
         'internal',
-        `Failed to send SMS: ${response.status} ${response.statusText}`
+        `Fast2SMS API error: ${response.status} ${response.statusText} - ${errorText}`
       );
     }
 
@@ -150,220 +238,231 @@ export const sendRetailerPaymentSMS = functions.https.onCall(async (data: {
   }
 });
 
-export const sendWholesalerPaymentSMS = functions.https.onCall(async (data: {
-  retailerId: string;
-  paymentId: string;
-  amount: number;
-  lineWorkerName: string;
-  retailerName: string;
-  retailerArea: string;
-  wholesalerName: string;
-  collectionDate: string;
-}, context: any) => {
+export const sendWholesalerPaymentSMS = functions.https.onCall(async (request: any) => {
   try {
-    // Note: Authentication check removed to allow calls from Next.js API routes
-    // The function is secured by being a Firebase Function and requiring valid API key
+    const { data } = request;
+    const context = request;
+    
+    // Input validation
+    validateSMSInput(data);
+    
+    // Rate limiting (by IP or user ID)
+    const identifier = context.auth?.uid || context.rawRequest?.ip || 'anonymous';
+    await checkRateLimit(identifier, 5, 60000); // 5 requests per minute
+    
     console.log('📞 CLOUD FUNCTION - Wholesaler Payment SMS Request:', {
       retailerId: data.retailerId,
       paymentId: data.paymentId,
       amount: data.amount,
       lineWorkerName: data.lineWorkerName,
-      caller: context.auth ? context.auth.uid : 'NEXTJS_API'
+      caller: context.auth ? context.auth.uid : 'NEXTJS_API',
+      ip: context.rawRequest?.ip
     });
 
-    // Get line worker details to find wholesaler
+    // CRITICAL FIX: Find the SPECIFIC line worker who made the payment
     const lineWorkerQuery = await admin.firestore()
       .collection('users')
       .where('roles', 'array-contains', 'LINE_WORKER')
-      .limit(10) // Get multiple line workers to find the one with wholesaler assignment
+      .where('displayName', '==', data.lineWorkerName) // Use the actual line worker name
+      .limit(1)
       .get();
 
     if (lineWorkerQuery.empty) {
       throw new functions.https.HttpsError(
         'not-found',
-        'No line workers found in the system'
+        `Line worker '${data.lineWorkerName}' not found in the system`
       );
     }
 
-    // Find a line worker that has a wholesaler assigned
-    let lineWorkerData = null;
-    for (const doc of lineWorkerQuery.docs) {
-      const workerData = doc.data();
-      if (workerData.wholesalerId) {
-        lineWorkerData = workerData;
-        break;
-      }
-    }
-
-    if (!lineWorkerData) {
-      throw new functions.https.HttpsError(
-        'not-found',
-        'No line worker with wholesaler assignment found'
-      );
-    }
-
-    console.log('🔧 CLOUD FUNCTION - Found line worker with wholesaler:', {
-      lineWorkerId: lineWorkerData.uid || lineWorkerData.id,
-      lineWorkerName: lineWorkerData.name || lineWorkerData.displayName,
-      wholesalerId: lineWorkerData.wholesalerId
-    });
+    const lineWorkerData = lineWorkerQuery.docs[0].data();
     
-    // Get wholesaler info
     if (!lineWorkerData.wholesalerId) {
       throw new functions.https.HttpsError(
         'failed-precondition',
-        'Line worker not assigned to any wholesaler'
+        `Line worker '${data.lineWorkerName}' is not assigned to any wholesaler`
       );
     }
 
-    const wholesalerDoc = await admin.firestore()
-      .collection('users')
-      .doc(lineWorkerData.wholesalerId)
-      .get();
-
-    if (!wholesalerDoc.exists) {
-      throw new functions.https.HttpsError(
-        'not-found',
-        'Wholesaler not found'
-      );
-    }
-
-    const wholesalerData = wholesalerDoc.data();
-    
-    if (!wholesalerData || !wholesalerData.phone) {
-      throw new functions.https.HttpsError(
-        'failed-precondition',
-        'Wholesaler phone number not found'
-      );
-    }
-
-    console.log('🔧 CLOUD FUNCTION - Found wholesaler details:', {
-      wholesalerId: wholesalerDoc.id,
-      wholesalerName: wholesalerData.displayName || wholesalerData.name,
-      wholesalerPhone: wholesalerData.phone
-    });
-
-    // Format phone number
-    const formattedPhone = wholesalerData.phone.replace(/\D/g, '');
-    
-    // Prepare SMS variables - Order MUST match DLT template exactly
-    // Template: "Payment Update: {#var#}/- has been recorded in the PharmaLync system from {#var#}, {#var#}. Collected by Line man {#var#} on behalf of {#var#} on {#var#}."
-    // Variables: 1=Amount, 2=Retailer Name, 3=Retailer Area, 4=Line Worker Name, 5=Wholesaler Name, 6=Date
-    const variablesValues: string[] = [
-      data.amount.toString(),              // {#var#} - payment amount
-      data.retailerName,                   // {#var#} - retailer name
-      data.retailerArea,                   // {#var#} - retailer area
-      data.lineWorkerName,                 // {#var#} - line worker name
-      data.wholesalerName,                 // {#var#} - wholesaler name (on behalf of)
-      data.collectionDate                  // {#var#} - collection date
-    ];
-    
-    console.log('🔧 CLOUD FUNCTION - WHOLESALER SMS Variables being used:', {
-      amount: variablesValues[0],
-      retailerName: variablesValues[1],
-      retailerArea: variablesValues[2],
-      lineWorkerName: variablesValues[3],
-      wholesalerName: variablesValues[4],
-      collectionDate: variablesValues[5]
+    console.log('🔧 CLOUD FUNCTION - Found correct line worker:', {
+      lineWorkerId: lineWorkerQuery.docs[0].id,
+      lineWorkerName: lineWorkerData.displayName || lineWorkerData.name,
+      wholesalerId: lineWorkerData.wholesalerId
     });
     
-    const formattedVariables = variablesValues.join('%7C'); // URL-encoded pipe character
+  // Get wholesaler info
+  const wholesalerDoc = await admin.firestore()
+    .collection('users')
+    .doc(lineWorkerData.wholesalerId)
+    .get();
 
-    // Get Fast2SMS configuration from Firebase Functions config
-    const fast2smsConfig = functions.config().fast2sms;
-    const fast2smsApiKey = fast2smsConfig?.api_key;
-    const senderId = fast2smsConfig?.sender_id || 'SNSYST';
-    const entityId = fast2smsConfig?.entity_id;
-    const messageId = '199055'; // WholeSalerNotify template ID
-    
-    if (!fast2smsApiKey) {
-      throw new functions.https.HttpsError(
-        'failed-precondition',
-        'Fast2SMS API key not configured in environment variables'
-      );
-    }
-
-    // Construct API URL
-    const entityIdParam = `&entity_id=${entityId}`;
-    const apiUrl = `https://www.fast2sms.com/dev/bulkV2?authorization=${fast2smsApiKey}&route=dlt&sender_id=${senderId}&message=${messageId}&variables_values=${formattedVariables}&flash=0&numbers=${formattedPhone}${entityIdParam}`;     
-    
-    console.log('📞 CLOUD FUNCTION - Sending SMS to wholesaler:', formattedPhone);
-
-    // Send SMS via Fast2SMS
-    const response = await fetch(apiUrl, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json'
-      }
-    });
-
-    if (!response.ok) {
-      throw new functions.https.HttpsError(
-        'internal',
-        `Failed to send SMS: ${response.status} ${response.statusText}`
-      );
-    }
-
-    const responseData: any = await response.json();
-    
-    // Log SMS delivery
-    await admin.firestore().collection('smsLogs').add({
-      type: 'WHOLESALER_PAYMENT_NOTIFICATION',
-      retailerId: data.retailerId,
-      paymentId: data.paymentId,
-      phone: formattedPhone,
-      amount: data.amount,
-      messageId: responseData.request_id || null,
-      status: responseData.return ? 'SENT' : 'FAILED',
-      response: responseData,
-      sentBy: context.auth?.uid || 'NEXTJS_API',
-      sentAt: admin.firestore.FieldValue.serverTimestamp()
-    });
-
-    console.log('✅ CLOUD FUNCTION - SMS sent successfully to wholesaler:', responseData);
-
-    return {
-      success: true,
-      messageId: responseData.request_id,
-      phone: formattedPhone,
-      status: responseData.return ? 'SENT' : 'FAILED'
-    };
-
-  } catch (error) {
-    console.error('❌ CLOUD FUNCTION - Error sending wholesaler payment SMS:', error);
-    
-    if (error instanceof functions.https.HttpsError) {
-      throw error;
-    }
-
+  if (!wholesalerDoc.exists) {
     throw new functions.https.HttpsError(
-      'internal',
-      'Failed to send wholesaler payment SMS',
-      error instanceof Error ? error.message : 'Unknown error'
+      'not-found',
+      `Wholesaler not found for ID: ${lineWorkerData.wholesalerId}`
     );
   }
+
+  const wholesalerData = wholesalerDoc.data();
+  
+  if (!wholesalerData || !wholesalerData.phone) {
+    throw new functions.https.HttpsError(
+      'failed-precondition',
+      `Wholesaler phone number not found for wholesaler: ${lineWorkerData.wholesalerId}`
+    );
+  }
+
+  console.log('🔧 CLOUD FUNCTION - Found wholesaler details:', {
+    wholesalerId: wholesalerDoc.id,
+    wholesalerName: wholesalerData.displayName || wholesalerData.name,
+    wholesalerPhone: wholesalerData.phone
+  });
+
+  // Validate and format phone number
+  const formattedPhone = validatePhoneNumber(wholesalerData.phone);
+  
+  // Prepare SMS variables - Order MUST match DLT template exactly
+  // Template: "Payment Update: {#var#}/- has been recorded in the PharmaLync system from {#var#}, {#var#}. Collected by Line man {#var#} on behalf of {#var#} on {#var#}."
+  // Variables: 1=Amount, 2=Retailer Name, 3=Retailer Area, 4=Line Worker Name, 5=Wholesaler Name, 6=Date
+  const variablesValues: string[] = [
+    data.amount.toString(),              // {#var#} - payment amount
+    data.retailerName,                   // {#var#} - retailer name
+    data.retailerArea,                   // {#var#} - retailer area
+    data.lineWorkerName,                 // {#var#} - line worker name
+    data.wholesalerName,                 // {#var#} - wholesaler name (on behalf of)
+    data.collectionDate                  // {#var#} - collection date
+  ];
+  
+  console.log('🔧 CLOUD FUNCTION - WHOLESALER SMS Variables being used:', {
+    amount: variablesValues[0],
+    retailerName: variablesValues[1],
+    retailerArea: variablesValues[2],
+    lineWorkerName: variablesValues[3],
+    wholesalerName: variablesValues[4],
+    collectionDate: variablesValues[5]
+  });
+  
+  const formattedVariables = variablesValues.join('%7C'); // URL-encoded pipe character
+
+  // Get Fast2SMS configuration with validation
+  const { fast2smsApiKey, senderId, entityId } = getFast2SMSConfig();
+  const messageId = '199055'; // WholeSalerNotify template ID
+
+  // Construct API URL
+  const entityIdParam = `&entity_id=${entityId}`;
+  const apiUrl = `https://www.fast2sms.com/dev/bulkV2?authorization=${fast2smsApiKey}&route=dlt&sender_id=${senderId}&message=${messageId}&variables_values=${formattedVariables}&flash=0&numbers=${formattedPhone}${entityIdParam}`;     
+  
+  console.log('📞 CLOUD FUNCTION - Sending SMS to wholesaler:', formattedPhone);
+
+  // Send SMS via Fast2SMS with better error handling
+  console.log('📞 CLOUD FUNCTION - API URL:', apiUrl);
+  
+  const response = await fetch(apiUrl, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+      'User-Agent': 'PharmaLync/1.0'
+    }
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error('❌ CLOUD FUNCTION - Fast2SMS API Error:', {
+      status: response.status,
+      statusText: response.statusText,
+      errorText
+    });
+    throw new functions.https.HttpsError(
+      'internal',
+      `Fast2SMS API error: ${response.status} ${response.statusText} - ${errorText}`
+    );
+  }
+
+  const responseData: any = await response.json();
+  
+  // Log SMS delivery
+  await admin.firestore().collection('smsLogs').add({
+    type: 'WHOLESALER_PAYMENT_NOTIFICATION',
+    retailerId: data.retailerId,
+    paymentId: data.paymentId,
+    phone: formattedPhone,
+    amount: data.amount,
+    messageId: responseData.request_id || null,
+    status: responseData.return ? 'SENT' : 'FAILED',
+    response: responseData,
+    sentBy: context.auth?.uid || 'NEXTJS_API',
+    sentAt: admin.firestore.FieldValue.serverTimestamp()
+  });
+
+  console.log('✅ CLOUD FUNCTION - SMS sent successfully to wholesaler:', responseData);
+
+  return {
+    success: true,
+    messageId: responseData.request_id,
+    phone: formattedPhone,
+    status: responseData.return ? 'SENT' : 'FAILED'
+  };
+
+} catch (error) {
+  console.error('❌ CLOUD FUNCTION - Error sending wholesaler payment SMS:', error);
+  
+  if (error instanceof functions.https.HttpsError) {
+    throw error;
+  }
+
+  throw new functions.https.HttpsError(
+    'internal',
+    'Failed to send wholesaler payment SMS',
+    error instanceof Error ? error.message : 'Unknown error'
+  );
+}
 });
 
 // Process SMS response helper function
 export const processSMSResponse = functions.https.onCall(async (data: any, context: any) => {
   try {
-    // Note: Authentication check removed to allow calls from Next.js API routes
+    // Input validation
+    if (!data || typeof data !== 'object') {
+      throw new functions.https.HttpsError(
+        'invalid-argument',
+        'Invalid request data'
+      );
+    }
+    
+    if (!data.url || typeof data.url !== 'string') {
+      throw new functions.https.HttpsError(
+        'invalid-argument',
+        'URL is required and must be a string'
+      );
+    }
+    
+    // Rate limiting
+    const identifier = context.auth?.uid || context.rawRequest?.ip || 'anonymous';
+    await checkRateLimit(identifier, 20, 60000); // 20 requests per minute
+    
     console.log('📞 CLOUD FUNCTION - Processing SMS response:', {
       url: data.url?.substring(0, 100) + '...',
-      caller: context.auth ? context.auth.uid : 'NEXTJS_API'
+      caller: context.auth ? context.auth.uid : 'NEXTJS_API',
+      ip: context.rawRequest?.ip
     });
 
     const response = await fetch(data.url, {
       method: 'GET',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'User-Agent': 'PharmaLync/1.0'
       }
     });
 
     if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ CLOUD FUNCTION - SMS Response API Error:', {
+        status: response.status,
+        statusText: response.statusText,
+        errorText
+      });
       throw new functions.https.HttpsError(
         'internal',
-        `Failed to process SMS response: ${response.status} ${response.statusText}`
+        `Failed to process SMS response: ${response.status} ${response.statusText} - ${errorText}`
       );
     }
 
@@ -394,9 +493,14 @@ export const processSMSResponse = functions.https.onCall(async (data: any, conte
   } catch (error) {
     console.error('❌ CLOUD FUNCTION - Error processing SMS response:', error);
     
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error'
-    };
+    if (error instanceof functions.https.HttpsError) {
+      throw error;
+    }
+    
+    throw new functions.https.HttpsError(
+      'internal',
+      'Failed to process SMS response',
+      error instanceof Error ? error.message : 'Unknown error'
+    );
   }
 });

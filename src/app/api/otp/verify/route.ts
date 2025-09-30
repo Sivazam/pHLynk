@@ -791,9 +791,20 @@ export async function POST(request: NextRequest) {
                 }
               } catch (retailerSMSError) {
                 console.error('❌ Error sending retailer SMS via Firebase Function:', retailerSMSError);
+                console.error('❌ Detailed retailer SMS error:', {
+                  error: retailerSMSError,
+                  message: retailerSMSError instanceof Error ? retailerSMSError.message : 'Unknown error',
+                  stack: retailerSMSError instanceof Error ? retailerSMSError.stack : undefined,
+                  functionName: 'sendRetailerPaymentSMS',
+                  retailerId: payment.retailerId,
+                  paymentId: paymentId,
+                  retailerPhone: retailerUser.phone
+                });
+                
                 // Fallback to local service
                 try {
                   if (retailerUser.phone) {
+                    console.log('🔄 Attempting fallback to local SMS service for retailer...');
                     const retailerSMSResult = await fast2SMSService.sendPaymentConfirmationSMS(
                       retailerUser.phone,
                       'retailer',
@@ -916,10 +927,22 @@ export async function POST(request: NextRequest) {
                 }
               } catch (wholesalerSMSError) {
                 console.error('❌ Error sending wholesaler SMS via Firebase Function:', wholesalerSMSError);
+                console.error('❌ Detailed wholesaler SMS error:', {
+                  error: wholesalerSMSError,
+                  message: wholesalerSMSError instanceof Error ? wholesalerSMSError.message : 'Unknown error',
+                  stack: wholesalerSMSError instanceof Error ? wholesalerSMSError.stack : undefined,
+                  functionName: 'sendWholesalerPaymentSMS',
+                  retailerId: payment.retailerId,
+                  paymentId: paymentId,
+                  lineWorkerId: payment.lineWorkerId,
+                  wholesalerId: lineWorkerData?.wholesalerId
+                });
                 console.log('🔍 Debug - Reached wholesaler SMS catch block');
+                
                 // Fallback to local service
                 try {
                   if (lineWorkerData.wholesalerId) {
+                    console.log('🔄 Attempting fallback to local SMS service for wholesaler...');
                     const wholesalerRef = doc(db, 'users', lineWorkerData.wholesalerId);
                     const wholesalerDoc = await getDoc(wholesalerRef);
                     

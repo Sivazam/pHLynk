@@ -82,73 +82,105 @@ export async function initializeFirebaseFunctions(): Promise<any> {
   return functionsInitPromise;
 }
 
-// Helper function to call Firebase Functions via HTTP
-export async function callFirebaseFunction(functionName: string, data: any): Promise<any> {
-  try {
-    console.log(`🌐 Calling Firebase Function via HTTP: ${functionName}`);
-    console.log(`📤 Function data:`, JSON.stringify(data, null, 2));
-    
-    // Get the Firebase project ID from the config
-    const firebaseConfig = {
-      projectId: "pharmalynkk"
-    };
-    
-    // Construct the function URL
-    const functionUrl = `https://us-central1-${firebaseConfig.projectId}.cloudfunctions.net/${functionName}`;
-    
-    // Firebase Functions expect the data to be directly in the body, not wrapped in a 'data' property
-    // If the data has a 'data' property, unwrap it for HTTP calls
-    const requestData = data.data || data;
-    
-    console.log(`🔧 Data unwrapping for HTTP call:`);
-    console.log(`📥 Original data structure:`, JSON.stringify(data, null, 2));
-    console.log(`📤 Unwrapped request data:`, JSON.stringify(requestData, null, 2));
-    console.log(`📤 Has 'data' property:`, !!data.data);
-    
-    console.log(`📤 Making HTTP request to: ${functionUrl}`);
-    console.log(`📤 Request headers:`, {
-      'Content-Type': 'application/json',
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization'
-    });
-    console.log(`📤 Request body:`, JSON.stringify(requestData, null, 2));
-    
-    // Make the HTTP request
-    const response = await fetch(functionUrl, {
-      method: 'POST',
-      headers: {
+// Helper function to call Firebase Functions via HTTP with retry logic
+export async function callFirebaseFunction(functionName: string, data: any, retries = 2): Promise<any> {
+  let lastError: any = null;
+  
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      console.log(`🌐 Calling Firebase Function via HTTP: ${functionName} (attempt ${attempt + 1}/${retries + 1})`);
+      console.log(`📤 Function data:`, JSON.stringify(data, null, 2));
+      
+      // Get the Firebase project ID from the config
+      const firebaseConfig = {
+        projectId: "pharmalynkk"
+      };
+      
+      // Construct the function URL
+      const functionUrl = `https://us-central1-${firebaseConfig.projectId}.cloudfunctions.net/${functionName}`;
+      
+      // Firebase Functions expect the data to be sent directly for HTTP calls
+      // If the data has a 'data' property (from callable function format), unwrap it
+      // If the data is already the direct parameters, use it as-is
+      let requestData = data;
+      
+      // Check if this is callable function format (has 'data' property)
+      if (data && typeof data === 'object' && data.data && typeof data.data === 'object') {
+        console.log(`🔧 Detected callable function format, unwrapping 'data' property`);
+        requestData = data.data;
+      } else {
+        console.log(`🔧 Using direct data format for HTTP call`);
+      }
+      
+      console.log(`🔧 Data processing for HTTP call:`);
+      console.log(`📥 Original data structure:`, JSON.stringify(data, null, 2));
+      console.log(`📤 Processed request data:`, JSON.stringify(requestData, null, 2));
+      console.log(`📤 Had 'data' property:`, !!(data && typeof data === 'object' && data.data));
+      
+      console.log(`📤 Making HTTP request to: ${functionUrl}`);
+      console.log(`📤 Request headers:`, {
         'Content-Type': 'application/json',
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
         'Access-Control-Allow-Headers': 'Content-Type, Authorization'
-      },
-      body: JSON.stringify(requestData),
-    });
-    
-    console.log(`📤 Response status:`, response.status);
-    console.log(`📤 Response status text:`, response.statusText);
-    console.log(`📤 Response headers:`, Object.fromEntries(response.headers.entries()));
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`❌ HTTP error! status: ${response.status}, response:`, errorText);
-      throw new Error(`HTTP error! status: ${response.status}, response: ${errorText}`);
+      });
+      console.log(`📤 Request body:`, JSON.stringify(requestData, null, 2));
+      
+      // Make the HTTP request with timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+      
+      const response = await fetch(functionUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+        },
+        body: JSON.stringify(requestData),
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
+      
+      console.log(`📤 Response status:`, response.status);
+      console.log(`📤 Response status text:`, response.statusText);
+      console.log(`📤 Response headers:`, Object.fromEntries(response.headers.entries()));
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`❌ HTTP error! status: ${response.status}, response:`, errorText);
+        throw new Error(`HTTP error! status: ${response.status}, response: ${errorText}`);
+      }
+      
+      const result = await response.json();
+      console.log(`✅ Firebase Function ${functionName} called successfully:`, result);
+      
+      return result;
+      
+    } catch (error) {
+      lastError = error;
+      console.error(`❌ Error calling Firebase Function ${functionName} (attempt ${attempt + 1}/${retries + 1}):`, error);
+      
+      // If this is not the last attempt, wait before retrying
+      if (attempt < retries) {
+        const delay = Math.pow(2, attempt) * 1000; // Exponential backoff: 1s, 2s, 4s
+        console.log(`⏳ Retrying in ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
     }
-    
-    const result = await response.json();
-    console.log(`✅ Firebase Function ${functionName} called successfully:`, result);
-    
-    return result;
-  } catch (error) {
-    console.error(`❌ Error calling Firebase Function ${functionName}:`, error);
-    console.error(`❌ Error details:`, {
-      message: error instanceof Error ? error.message : 'Unknown error',
-      stack: error instanceof Error ? error.stack : undefined,
-      code: error && typeof error === 'object' && 'code' in error ? error.code : undefined
-    });
-    throw error;
   }
+  
+  // All attempts failed
+  console.error(`❌ All ${retries + 1} attempts failed for Firebase Function ${functionName}`);
+  console.error(`❌ Final error details:`, {
+    message: lastError instanceof Error ? lastError.message : 'Unknown error',
+    stack: lastError instanceof Error ? lastError.stack : undefined,
+    code: lastError && typeof lastError === 'object' && 'code' in lastError ? lastError.code : undefined
+  });
+  
+  throw lastError;
 }
 
 // Auto-initialize functions in the background with retry mechanism
