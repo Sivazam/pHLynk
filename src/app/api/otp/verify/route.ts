@@ -125,11 +125,55 @@ async function getPaymentWithCorrectTenant(paymentId: string) {
         } as any;
         
         console.log('🔍 Payment found via direct access');
+        
+        // If we found the payment but it has a different tenantId, try to get it with that tenantId too
+        if (paymentData.tenantId && paymentData.tenantId !== 'system') {
+          console.log('🔍 Trying with actual tenantId:', paymentData.tenantId);
+          const paymentWithCorrectTenant = await paymentService.getById(paymentId, paymentData.tenantId);
+          if (paymentWithCorrectTenant) {
+            console.log('🔍 Payment found with correct tenantId');
+            payment = paymentWithCorrectTenant;
+          }
+        }
       } else {
         console.log('🔍 Payment document not found via direct access');
       }
     } catch (error) {
       console.error('Error accessing payment document directly:', error);
+    }
+  }
+  
+  // If still not found, try with common tenant IDs used by line workers
+  if (!payment) {
+    console.log('🔍 Still not found, trying common tenant IDs...');
+    // Try to get all line worker users to see what tenant IDs they use
+    try {
+      const usersRef = collection(db, 'users');
+      const usersQuery = query(usersRef, where('roles', 'array-contains', 'LINE_WORKER'));
+      const usersSnapshot = await getDocs(usersQuery);
+      
+      const tenantIds = new Set<string>();
+      usersSnapshot.forEach(doc => {
+        const userData = doc.data();
+        if (userData.tenantId && userData.tenantId !== 'system') {
+          tenantIds.add(userData.tenantId);
+        }
+      });
+      
+      console.log('🔍 Found tenant IDs to try:', Array.from(tenantIds));
+      
+      // Try each tenant ID
+      for (const tenantId of tenantIds) {
+        console.log('🔍 Trying with tenantId:', tenantId);
+        const paymentWithTenant = await paymentService.getById(paymentId, tenantId);
+        if (paymentWithTenant) {
+          console.log('🔍 Payment found with tenantId:', tenantId);
+          payment = paymentWithTenant;
+          break;
+        }
+      }
+    } catch (error) {
+      console.error('Error trying tenant IDs:', error);
     }
   }
   
