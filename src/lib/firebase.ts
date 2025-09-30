@@ -96,6 +96,15 @@ export async function callFirebaseFunction(functionName: string, data: any): Pro
     // Construct the function URL
     const functionUrl = `https://us-central1-${firebaseConfig.projectId}.cloudfunctions.net/${functionName}`;
     
+    // Firebase Functions expect the data to be directly in the body, not wrapped in a 'data' property
+    // If the data has a 'data' property, unwrap it for HTTP calls
+    const requestData = data.data || data;
+    
+    console.log(`🔧 Data unwrapping for HTTP call:`);
+    console.log(`📥 Original data structure:`, JSON.stringify(data, null, 2));
+    console.log(`📤 Unwrapped request data:`, JSON.stringify(requestData, null, 2));
+    console.log(`📤 Has 'data' property:`, !!data.data);
+    
     console.log(`📤 Making HTTP request to: ${functionUrl}`);
     console.log(`📤 Request headers:`, {
       'Content-Type': 'application/json',
@@ -103,7 +112,7 @@ export async function callFirebaseFunction(functionName: string, data: any): Pro
       'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type, Authorization'
     });
-    console.log(`📤 Request body:`, JSON.stringify(data, null, 2));
+    console.log(`📤 Request body:`, JSON.stringify(requestData, null, 2));
     
     // Make the HTTP request
     const response = await fetch(functionUrl, {
@@ -114,7 +123,7 @@ export async function callFirebaseFunction(functionName: string, data: any): Pro
         'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
         'Access-Control-Allow-Headers': 'Content-Type, Authorization'
       },
-      body: JSON.stringify(data),
+      body: JSON.stringify(requestData),
     });
     
     console.log(`📤 Response status:`, response.status);
