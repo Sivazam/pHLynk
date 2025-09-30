@@ -617,9 +617,31 @@ export async function POST(request: NextRequest) {
               if (retailerDoc.exists()) {
                 const retailerData = retailerDoc.data();
                 console.log('🔍 Debug - retailerData:', retailerData);
-                retailerArea = retailerData.areaName || 'Unknown Area';
+                
+                // Get the correct area name from the area document
+                if (retailerData.areaId) {
+                  console.log('🔍 Debug - retailer areaId:', retailerData.areaId);
+                  const areaRef = doc(db, 'areas', retailerData.areaId);
+                  const areaDoc = await getDoc(areaRef);
+                  
+                  if (areaDoc.exists()) {
+                    const areaData = areaDoc.data();
+                    console.log('🔍 Debug - areaData:', areaData);
+                    retailerArea = areaData.name || 'Unknown Area';
+                    console.log('🔍 Debug - Correct retailer area from area document:', retailerArea);
+                  } else {
+                    console.log('🔍 Debug - Area document not found for areaId:', retailerData.areaId);
+                    retailerArea = 'Unknown Area';
+                  }
+                } else {
+                  console.log('🔍 Debug - Retailer has no areaId assigned');
+                  // Fallback to areaName if areaId is not available (backward compatibility)
+                  retailerArea = retailerData.areaName || 'Unknown Area';
+                }
+              } else {
+                console.log('🔍 Debug - Retailer document not found');
               }
-              console.log('🔍 Debug - retailerArea:', retailerArea);
+              console.log('🔍 Debug - Final retailerArea:', retailerArea);
               
               // Get wholesaler name from wholesaler document
               let wholesalerName = 'Wholesaler';
@@ -739,20 +761,33 @@ export async function POST(request: NextRequest) {
               console.log('🚀 INITIATING WHOLESALER SMS - Sending payment notification to wholesaler...');
               console.log('🔍 Debug - lineWorkerData:', lineWorkerData ? 'EXISTS' : 'MISSING');
               console.log('🔍 Debug - lineWorkerData.wholesalerId:', lineWorkerData?.wholesalerId || 'MISSING');
+              console.log('🔍 Debug - lineWorkerData full object:', JSON.stringify(lineWorkerData, null, 2));
+              
               try {
+                console.log('🔧 Debug - Attempting to get sendWholesalerPaymentSMS function...');
                 const sendWholesalerSMSFunction = await getHttpsCallable('sendWholesalerPaymentSMS');
                 console.log('📞 Wholesaler Firebase Function is available and ready to call');
+                console.log('🔧 Debug - sendWholesalerSMSFunction type:', typeof sendWholesalerSMSFunction);
                 
                 if (lineWorkerData.wholesalerId) {
                   console.log('🔍 Debug - wholesalerId found:', lineWorkerData.wholesalerId);
+                  console.log('🔍 Debug - About to fetch wholesaler document...');
                   const wholesalerRef = doc(db, 'users', lineWorkerData.wholesalerId);
                   const wholesalerDoc = await getDoc(wholesalerRef);
+                  console.log('🔍 Debug - wholesalerDoc.exists():', wholesalerDoc.exists());
                   
                   if (wholesalerDoc.exists()) {
                     console.log('🔍 Debug - wholesaler document exists');
                     const wholesalerData = wholesalerDoc.data();
+                    console.log('🔍 Debug - wholesalerData:', JSON.stringify(wholesalerData, null, 2));
+                    console.log('🔍 Debug - wholesalerData contents:', wholesalerData);
                     if (wholesalerData.phone) {
                       console.log('🔍 Debug - wholesaler phone found:', wholesalerData.phone);
+                      console.log('🔍 Debug - wholesaler name fields:', {
+                        displayName: wholesalerData.displayName,
+                        name: wholesalerData.name,
+                        finalName: wholesalerData.displayName || wholesalerData.name || 'Wholesaler'
+                      });
                       console.log('📤 Calling sendWholesalerPaymentSMS Firebase Function with data:', {
                         retailerId: payment.retailerId,
                         paymentId: paymentId,
@@ -760,7 +795,7 @@ export async function POST(request: NextRequest) {
                         lineWorkerName,
                         retailerName: retailerUser.name || 'Retailer',
                         retailerArea,
-                        wholesalerName: wholesalerData.displayName || wholesalerData.name || 'Wholesaler',
+                        wholesalerName: wholesalerName, // Use the already computed wholesalerName variable
                         collectionDate
                       });
                       
@@ -774,12 +809,14 @@ export async function POST(request: NextRequest) {
                             lineWorkerName,
                             retailerName: retailerUser.name || 'Retailer',
                             retailerArea,
-                            wholesalerName: wholesalerData.displayName || wholesalerData.name || 'Wholesaler',
+                            wholesalerName: wholesalerName, // Use the already computed wholesalerName variable for consistency
                             collectionDate
                           }
                         };
                         
+                        console.log('🚀 CRITICAL - About to call sendWholesalerSMSFunction with requestData:', requestData);
                         const wholesalerSMSResult = await sendWholesalerSMSFunction(requestData);
+                        console.log('✅ CRITICAL - sendWholesalerSMSFunction called successfully!');
                         
                         console.log('📱 Wholesaler confirmation SMS result via Firebase Function:', wholesalerSMSResult.data);
                         
@@ -805,14 +842,20 @@ export async function POST(request: NextRequest) {
                       console.log('⚠️ Wholesaler phone not found, skipping SMS');
                       console.log('🔍 Debug - wholesalerData:', wholesalerData ? 'EXISTS' : 'MISSING');
                       console.log('🔍 Debug - wholesalerData.phone:', wholesalerData?.phone || 'MISSING');
+                      console.log('🔍 Debug - wholesalerData full object:', JSON.stringify(wholesalerData, null, 2));
+                      console.log('🚨 CRITICAL - WHOLESALER SMS SKIPPED DUE TO MISSING PHONE NUMBER');
                     }
                   } else {
                     console.log('⚠️ Wholesaler document not found, skipping SMS');
                     console.log('🔍 Debug - wholesalerDoc.exists():', wholesalerDoc.exists());
+                    console.log('🔍 Debug - attempted wholesalerId:', lineWorkerData.wholesalerId);
+                    console.log('🚨 CRITICAL - WHOLESALER SMS SKIPPED DUE TO MISSING WHOLESALER DOCUMENT');
                   }
                 } else {
                   console.log('⚠️ Wholesaler ID missing, skipping SMS');
                   console.log('🔍 Debug - lineWorkerData.wholesalerId:', lineWorkerData?.wholesalerId || 'MISSING');
+                  console.log('🔍 Debug - lineWorkerData full object:', JSON.stringify(lineWorkerData, null, 2));
+                  console.log('🚨 CRITICAL - WHOLESALER SMS SKIPPED DUE TO MISSING WHOLESALER ID IN LINE WORKER');
                 }
               } catch (wholesalerSMSError) {
                 console.error('❌ Error sending wholesaler SMS via Firebase Function:', wholesalerSMSError);

@@ -171,40 +171,42 @@ export const sendWholesalerPaymentSMS = functions.https.onCall(async (data: {
       caller: context.auth ? context.auth.uid : 'NEXTJS_API'
     });
 
-    // Get retailer details to find wholesaler
-    const retailerDoc = await admin.firestore().collection('retailers').doc(data.retailerId).get();
-    if (!retailerDoc.exists) {
-      throw new functions.https.HttpsError(
-        'not-found',
-        'Retailer not found'
-      );
-    }
-
-    const retailerData = retailerDoc.data();
-    if (!retailerData) {
-      throw new functions.https.HttpsError(
-        'failed-precondition',
-        'Retailer data not found'
-      );
-    }
-    
-    // Find line worker assigned to this retailer
+    // Get line worker details to find wholesaler
     const lineWorkerQuery = await admin.firestore()
       .collection('users')
-      .where('assignedAreas', 'array-contains', retailerData.areaId)
       .where('roles', 'array-contains', 'LINE_WORKER')
-      .limit(1)
+      .limit(10) // Get multiple line workers to find the one with wholesaler assignment
       .get();
 
     if (lineWorkerQuery.empty) {
       throw new functions.https.HttpsError(
         'not-found',
-        'Line worker not found for this retailer'
+        'No line workers found in the system'
       );
     }
 
-    const lineWorkerDoc = lineWorkerQuery.docs[0];
-    const lineWorkerData = lineWorkerDoc.data();
+    // Find a line worker that has a wholesaler assigned
+    let lineWorkerData = null;
+    for (const doc of lineWorkerQuery.docs) {
+      const workerData = doc.data();
+      if (workerData.wholesalerId) {
+        lineWorkerData = workerData;
+        break;
+      }
+    }
+
+    if (!lineWorkerData) {
+      throw new functions.https.HttpsError(
+        'not-found',
+        'No line worker with wholesaler assignment found'
+      );
+    }
+
+    console.log('🔧 CLOUD FUNCTION - Found line worker with wholesaler:', {
+      lineWorkerId: lineWorkerData.uid || lineWorkerData.id,
+      lineWorkerName: lineWorkerData.name || lineWorkerData.displayName,
+      wholesalerId: lineWorkerData.wholesalerId
+    });
     
     // Get wholesaler info
     if (!lineWorkerData.wholesalerId) {
@@ -234,6 +236,12 @@ export const sendWholesalerPaymentSMS = functions.https.onCall(async (data: {
         'Wholesaler phone number not found'
       );
     }
+
+    console.log('🔧 CLOUD FUNCTION - Found wholesaler details:', {
+      wholesalerId: wholesalerDoc.id,
+      wholesalerName: wholesalerData.displayName || wholesalerData.name,
+      wholesalerPhone: wholesalerData.phone
+    });
 
     // Format phone number
     const formattedPhone = wholesalerData.phone.replace(/\D/g, '');
