@@ -18,7 +18,18 @@ export async function POST(request: NextRequest) {
 
     console.log('🧪 Testing Firebase Functions connectivity...\n');
     
-    const results = [];
+    const results: Array<{
+      functionName: string;
+      url: string;
+      status: string;
+      message: string;
+      details: {
+        httpStatus: number;
+        httpStatusText: string;
+        response: any;
+        error: string | null;
+      };
+    }> = [];
 
     for (const functionName of testUrls) {
       const functionUrl = `https://us-central1-${firebaseConfig.projectId}.cloudfunctions.net/${functionName}`;
@@ -31,7 +42,12 @@ export async function POST(request: NextRequest) {
         url: functionUrl,
         status: 'unknown',
         message: '',
-        details: {}
+        details: {
+          httpStatus: 0,
+          httpStatusText: '',
+          response: null as any,
+          error: null as string | null
+        }
       };
       
       try {
