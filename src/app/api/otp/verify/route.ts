@@ -389,6 +389,11 @@ export async function POST(request: NextRequest) {
     if (otpData.code.toUpperCase() === otp.toUpperCase()) {
       console.log('✅ OTP verification successful!');
       
+      // CRITICAL DEBUG: Add logging right after successful verification
+      console.log('🚨 CRITICAL DEBUG - OTP verification successful, about to update payment state');
+      console.log('🚨 CRITICAL DEBUG - PaymentId:', paymentId);
+      console.log('🚨 CRITICAL DEBUG - About to call getPaymentWithCorrectTenant for payment update');
+      
       // Use Cloud Function to verify OTP (more secure) - if available
       try {
         const verifyOTPFunction = await getHttpsCallable('verifyOTP');
@@ -634,13 +639,21 @@ export async function POST(request: NextRequest) {
       // Comprehensive OTP cleanup - remove from all locations
       await comprehensiveOTPCleanup(paymentId);
       
+      // CRITICAL DEBUG: Add logging right before SMS sending
+      console.log('🚨 CRITICAL DEBUG - About to send SMS notifications');
+      console.log('🚨 CRITICAL DEBUG - PaymentId:', paymentId);
+      
       // Send payment confirmation SMS to both retailer and wholesaler using Firebase Functions
       console.log('🚀 PAYMENT SUCCESSFUL - Sending SMS notifications to both retailer and wholesaler...');
       try {
+        console.log('🚨 CRITICAL DEBUG - Inside SMS sending try block');
         const payment = await getPaymentWithCorrectTenant(paymentId);
+        console.log('🚨 CRITICAL DEBUG - getPaymentWithCorrectTenant result:', payment ? 'FOUND' : 'NOT FOUND');
         if (payment) {
+          console.log('🚨 CRITICAL DEBUG - Payment found, proceeding with retailer user lookup');
           // Get retailer user details
           const retailerUser = await RetailerAuthService.getRetailerUserByRetailerId(payment.retailerId);
+          console.log('🚨 CRITICAL DEBUG - Retailer user result:', retailerUser ? 'FOUND' : 'NOT FOUND');
           
           if (retailerUser) {
             // Get line worker details

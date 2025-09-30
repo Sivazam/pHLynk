@@ -289,6 +289,8 @@ export const OTPEnterForm: React.FC<OTPEnterFormProps> = ({
       setError(null);
       setIsVerifying(true); // Start loading
       console.log('🔍 Verifying OTP for payment:', payment.id);
+      console.log('🔍 OTP code being sent:', otp);
+      console.log('🔍 About to make API call to /api/otp/verify');
 
       const response = await fetch('/api/otp/verify', {
         method: 'POST',
@@ -301,7 +303,11 @@ export const OTPEnterForm: React.FC<OTPEnterFormProps> = ({
         }),
       });
 
+      console.log('🔍 API response status:', response.status);
+      console.log('🔍 API response ok:', response.ok);
+
       const result = await response.json();
+      console.log('🔍 API response result:', result);
 
       if (!response.ok) {
         // Update remaining attempts based on response
@@ -330,14 +336,19 @@ export const OTPEnterForm: React.FC<OTPEnterFormProps> = ({
 
       if (result.success) {
         console.log('✅ OTP verified successfully!');
+        console.log('🔍 Full success response:', result);
+        console.log('🎉 About to show success UI and trigger confetti');
         setShowSuccess(true);
         setTriggerConfetti(true);
         
         // Call success callback after a short delay
         setTimeout(() => {
+          console.log('🔍 Calling onVerifySuccess callback');
           onVerifySuccess();
         }, 1500);
       } else {
+        console.log('❌ OTP verification failed - result.success was false');
+        console.log('🔍 Full failure response:', result);
         setError('Invalid OTP. Please try again.');
       }
     } catch (error: any) {
