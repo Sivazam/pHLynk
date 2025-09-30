@@ -201,14 +201,17 @@ class RoleBasedNotificationService {
       if (Notification.permission === 'granted') {
         try {
           console.log('🔔 Showing immediate notification as fallback/primary');
-          const notification = new Notification(payload.title, {
+          
+          // Create notification options with proper typing
+          const notificationOptions: NotificationOptions = {
             body: payload.body,
             icon: payload.icon || '/icon-192x192.png',
             badge: payload.badge || '/icon-96x96.png',
             tag: payload.tag,
-            requireInteraction: payload.requireInteraction,
-            actions: payload.actions || []
-          });
+            requireInteraction: payload.requireInteraction
+          };
+
+          const notification = new Notification(payload.title, notificationOptions);
 
           // Handle notification click
           notification.onclick = () => {
