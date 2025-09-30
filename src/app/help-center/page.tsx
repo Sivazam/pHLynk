@@ -169,8 +169,8 @@ export default function HelpCenterPage() {
             <div className="flex items-center space-x-4">
               <Link href="/" className="flex items-center space-x-2">
                 <Image 
-                  src="/logo.png" 
-                  alt="PharmaLync" 
+                  src="/logoMain.png" 
+                  alt="PharmaLync Logo" 
                   width={40}
                   height={40}
                   className="rounded-lg"
@@ -397,8 +397,8 @@ export default function HelpCenterPage() {
             <div className="col-span-1 md:col-span-2">
               <div className="flex items-center space-x-2 mb-4">
                 <Image 
-                  src="/logo.png" 
-                  alt="PharmaLync" 
+                  src="/logoMain.png" 
+                  alt="PharmaLync Logo" 
                   width={40}
                   height={40}
                   className="rounded-lg"

@@ -13,7 +13,8 @@ import {
   Clock,
   TrendingUp,
   Users,
-  ArrowRight
+  ArrowRight,
+  RefreshCw
 } from 'lucide-react'
 import Link from 'next/link'
 
@@ -43,12 +44,23 @@ export default function RetailerDashboard() {
   const [pendingPayments, setPendingPayments] = useState<PendingPayment[]>([])
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
 
   useEffect(() => {
     fetchDashboardData()
+    
+    // Set up periodic refresh to keep data current
+    const refreshInterval = setInterval(() => {
+      fetchDashboardData()
+    }, 10000) // Refresh every 10 seconds
+    
+    return () => clearInterval(refreshInterval)
   }, [])
 
-  const fetchDashboardData = async () => {
+  const fetchDashboardData = async (isManualRefresh = false) => {
+    if (isManualRefresh) {
+      setRefreshing(true)
+    }
     try {
       // Fetch pending payments
       const paymentsResponse = await fetch('/api/retailer/pending-payments')
@@ -67,6 +79,9 @@ export default function RetailerDashboard() {
       console.error('Error fetching dashboard data:', error)
     } finally {
       setLoading(false)
+      if (isManualRefresh) {
+        setRefreshing(false)
+      }
     }
   }
 
@@ -96,12 +111,22 @@ export default function RetailerDashboard() {
             Manage your payments and view transaction history
           </p>
         </div>
-        <Link href="/retailer/payment-history">
-          <Button>
-            <History className="mr-2 h-4 w-4" />
-            View Payment History
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={() => fetchDashboardData(true)}
+            disabled={refreshing}
+          >
+            <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+            Refresh
           </Button>
-        </Link>
+          <Link href="/retailer/payment-history">
+            <Button>
+              <History className="mr-2 h-4 w-4" />
+              View Payment History
+            </Button>
+          </Link>
+        </div>
       </div>
 
       {/* Stats Cards */}

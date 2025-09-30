@@ -23,69 +23,268 @@ interface FirebaseFunctionResponse {
   data: SMSFunctionResult;
 }
 
-// Helper function to get httpsCallable if functions are available
-async function getHttpsCallable(functionName: string) {
+// Performance optimization: Simple cache for Firebase Functions
+const functionCache = new Map<string, any>();
+let functionsInitialized = false;
+
+// Performance optimization: Simple cache for frequently accessed data
+const dataCache = new Map<string, { data: any; timestamp: number; ttl: number }>();
+
+function getCachedData(key: string, ttl = 60000): any {
+  const cached = dataCache.get(key);
+  if (cached && Date.now() - cached.timestamp < cached.ttl) {
+    return cached.data;
+  }
+  return null;
+}
+
+function setCachedData(key: string, data: any, ttl = 60000): void {
+  dataCache.set(key, { data, timestamp: Date.now(), ttl });
+}
+
+// Optimized Firebase Functions initialization
+async function getHttpsCallableOptimized(functionName: string) {
+  // Check cache first
+  if (functionCache.has(functionName)) {
+    console.log(`🚀 Using cached Firebase Function: ${functionName}`);
+    return functionCache.get(functionName);
+  }
+
+  // Initialize functions only once
+  if (!functionsInitialized) {
+    console.log('🔧 Initializing Firebase Functions (once)...');
+    try {
+      await initializeFirebaseFunctions();
+      functionsInitialized = true;
+      console.log('✅ Firebase Functions initialized successfully');
+    } catch (initError) {
+      console.error('❌ Firebase Functions initialization failed:', initError);
+    }
+  }
+
+  // Use HTTP calls directly (faster)
+  console.log(`🖥️ Using optimized HTTP calls for ${functionName}`);
+  const callableFunction = async (data: any) => {
+    try {
+      console.log(`🌐 Calling Firebase Function via HTTP: ${functionName}`);
+      const result = await callFirebaseFunction(functionName, data);
+      console.log(`✅ Firebase Function ${functionName} called successfully`);
+      return { data: result };
+    } catch (error) {
+      console.error(`❌ HTTP call to ${functionName} failed:`, error);
+      throw error;
+    }
+  };
+  
+  // Cache the function
+  functionCache.set(functionName, callableFunction);
+  return callableFunction;
+}
+
+// Optimized payment retrieval - SINGLE QUERY ONLY
+async function getPaymentOptimized(paymentId: string) {
+  console.log('🚀 getPaymentOptimized called for paymentId:', paymentId);
+  
+  // Check cache first
+  const cacheKey = `payment_${paymentId}`;
+  const cachedPayment = getCachedData(cacheKey, 30000); // 30 seconds cache
+  if (cachedPayment) {
+    console.log('✅ Payment found in cache');
+    return cachedPayment;
+  }
+  
   try {
-    console.log(`🔧 Attempting to get Firebase Function: ${functionName}`);
-    console.log(`🌍 Environment: ${process.env.NODE_ENV}`);
-    console.log(`🔧 Functions Emulator: ${process.env.FUNCTIONS_EMULATOR}`);
+    // Single direct document access - NO MULTIPLE QUERIES
+    const paymentRef = doc(db, 'payments', paymentId);
+    const paymentDoc = await getDoc(paymentRef);
     
-    // For server-side, use HTTP calls directly
-    if (typeof window === 'undefined') {
-      console.log(`🖥️ Server environment - using HTTP calls for ${functionName}`);
-      return async (data: any) => {
-        try {
-          console.log(`🌐 Calling Firebase Function via HTTP: ${functionName}`);
-          const result = await callFirebaseFunction(functionName, data);
-          console.log(`✅ Firebase Function ${functionName} called successfully via HTTP`);
-          return { data: result };
-        } catch (error) {
-          console.error(`❌ HTTP call to ${functionName} failed:`, error);
-          throw error;
-        }
+    if (paymentDoc.exists) {
+      const paymentData = {
+        id: paymentDoc.id,
+        ...paymentDoc.data()
       };
+      
+      // Cache the result
+      setCachedData(cacheKey, paymentData, 30000);
+      console.log('✅ Payment retrieved and cached');
+      return paymentData;
+    } else {
+      console.log('❌ Payment not found');
+      return null;
     }
-    
-    // For client-side, try to use Firebase Functions SDK
-    let functionsInstance = await initializeFirebaseFunctions();
-    console.log(`📋 Firebase Functions instance result:`, functionsInstance ? 'AVAILABLE' : 'NOT AVAILABLE');
-    
-    if (!functionsInstance) {
-      console.log(`⚠️ Firebase Functions not available for ${functionName}, falling back to HTTP calls`);
-      return async (data: any) => {
-        try {
-          console.log(`🌐 Calling Firebase Function via HTTP (fallback): ${functionName}`);
-          const result = await callFirebaseFunction(functionName, data);
-          console.log(`✅ Firebase Function ${functionName} called successfully via HTTP fallback`);
-          return { data: result };
-        } catch (error) {
-          console.error(`❌ Fallback HTTP call to ${functionName} failed:`, error);
-          throw error;
-        }
-      };
-    }
-    
-    const functionsModule = await import('firebase/functions');
-    console.log(`📦 Firebase Functions module imported successfully for ${functionName}`);
-    
-    const callableFunction = functionsModule.httpsCallable(functionsInstance, functionName);
-    console.log(`✅ Successfully created callable function for ${functionName}`);
-    
-    return callableFunction;
   } catch (error) {
-    console.error(`❌ Error getting Firebase Function ${functionName}:`, error);
-    console.log(`⚠️ Firebase Functions not available for ${functionName}, using fallback mode`);
-    // Always return a fallback function instead of null
-    return async (data: any) => {
-      try {
-        console.log(`🌐 Calling Firebase Function via HTTP (error fallback): ${functionName}`);
-        const result = await callFirebaseFunction(functionName, data);
-        console.log(`✅ Firebase Function ${functionName} called successfully via HTTP error fallback`);
-        return { data: result };
-      } catch (error) {
-        console.error(`❌ Error fallback HTTP call to ${functionName} failed:`, error);
-        throw error;
+    console.error('❌ Error retrieving payment:', error);
+    return null;
+  }
+}
+
+// Optimized data fetching with MAXIMUM PARALLEL PROCESSING
+async function getVerificationDataOptimized(paymentId: string, retailerId: string) {
+  console.log('🚀 getVerificationDataOptimized called');
+  
+  // Check cache first
+  const cacheKey = `verification_${paymentId}_${retailerId}`;
+  const cachedData = getCachedData(cacheKey, 20000); // 20 seconds cache
+  if (cachedData) {
+    console.log('✅ Verification data found in cache');
+    return cachedData;
+  }
+  
+  try {
+    // MAXIMUM PARALLELISM - All queries run simultaneously
+    const promises = [
+      // Get retailer user
+      RetailerAuthService.getRetailerUserByRetailerId(retailerId),
+      // Get payment
+      getPaymentOptimized(paymentId)
+    ];
+    
+    const [retailerUser, payment] = await Promise.all(promises);
+    
+    let lineWorkerData = null;
+    let wholesalerData = null;
+    
+    // If we have line worker ID, get line worker and wholesaler data in parallel
+    if (payment?.lineWorkerId) {
+      const lineWorkerPromise = getDoc(doc(db, 'users', payment.lineWorkerId));
+      
+      // Start line worker query immediately
+      lineWorkerPromise.then(lineWorkerDoc => {
+        if (lineWorkerDoc.exists) {
+          const data = lineWorkerDoc.data();
+          lineWorkerData = data;
+          
+          // If we have tenantId, cache line worker data
+          if (data.tenantId) {
+            setCachedData(`line_worker_${payment.lineWorkerId}`, data, 300000); // 5 minutes
+          }
+        }
+      });
+      
+      const lineWorkerDoc = await lineWorkerPromise;
+      
+      if (lineWorkerDoc.exists) {
+        lineWorkerData = lineWorkerDoc.data();
+        
+        // Get wholesaler data IMMEDIATELY if we have tenantId
+        if (lineWorkerData.tenantId) {
+          const wholesalerPromise = getDoc(doc(db, 'tenants', lineWorkerData.tenantId));
+          
+          wholesalerPromise.then(wholesalerDoc => {
+            if (wholesalerDoc.exists) {
+              const data = wholesalerDoc.data();
+              wholesalerData = data;
+              
+              // Cache wholesaler data
+              setCachedData(`wholesaler_${lineWorkerData.tenantId}`, data, 300000); // 5 minutes
+            }
+          });
+          
+          const wholesalerDoc = await wholesalerPromise;
+          if (wholesalerDoc.exists) {
+            wholesalerData = wholesalerDoc.data();
+          }
+        }
       }
+    }
+    
+    const result = {
+      retailerUser,
+      lineWorkerData,
+      wholesalerData
+    };
+    
+    // Cache the result
+    setCachedData(cacheKey, result, 20000);
+    console.log('✅ Verification data retrieved and cached');
+    
+    return result;
+  } catch (error) {
+    console.error('❌ Error retrieving verification data:', error);
+    return { retailerUser: null, lineWorkerData: null, wholesalerData: null };
+  }
+}
+
+// MAXIMUM PARALLEL SMS SENDING
+async function sendSMSNotificationsOptimized(data: {
+  payment: any;
+  retailerUser: any;
+  lineWorkerData: any;
+  wholesalerData: any;
+  lineWorkerName: string;
+  retailerArea: string;
+  wholesalerName: string;
+  collectionDate: string;
+}) {
+  console.log('🚀 sendSMSNotificationsOptimized called');
+  
+  try {
+    // Prepare both SMS requests IMMEDIATELY
+    const retailerSMSRequest = {
+      data: {
+        retailerId: data.payment.retailerId,
+        paymentId: data.payment.id,
+        amount: data.payment.totalPaid,
+        lineWorkerName: data.lineWorkerName,
+        retailerName: data.retailerUser.name || 'Retailer',
+        retailerArea: data.retailerArea,
+        wholesalerName: data.wholesalerName,
+        collectionDate: data.collectionDate
+      }
+    };
+    
+    const wholesalerSMSRequest = {
+      data: {
+        retailerId: data.payment.retailerId,
+        paymentId: data.payment.id,
+        amount: data.payment.totalPaid,
+        lineWorkerName: data.lineWorkerName,
+        lineWorkerId: data.payment.lineWorkerId,
+        retailerName: data.retailerUser.name || 'Retailer',
+        retailerArea: data.retailerArea,
+        wholesalerName: data.wholesalerName,
+        collectionDate: data.collectionDate
+      }
+    };
+    
+    // Get both functions in PARALLEL
+    const functionPromises = [
+      getHttpsCallableOptimized('sendRetailerPaymentSMS'),
+      getHttpsCallableOptimized('sendWholesalerPaymentSMS')
+    ];
+    
+    const [sendRetailerSMSFunction, sendWholesalerSMSFunction] = await Promise.all(functionPromises);
+    
+    console.log('📞 Sending both SMS notifications in MAXIMUM PARALLEL...');
+    
+    // Send both SMS in PARALLEL - NO WAITING
+    const smsPromises = [
+      sendRetailerSMSFunction(retailerSMSRequest),
+      sendWholesalerSMSFunction(wholesalerSMSRequest)
+    ];
+    
+    const results = await Promise.allSettled(smsPromises);
+    
+    const retailerResult = results[0].status === 'fulfilled' ? results[0].value : null;
+    const wholesalerResult = results[1].status === 'fulfilled' ? results[1].value : null;
+    
+    console.log('📱 PARALLEL SMS Results:');
+    console.log('  Retailer SMS:', retailerResult?.data?.success ? '✅ Sent' : '❌ Failed');
+    console.log('  Wholesaler SMS:', wholesalerResult?.data?.success ? '✅ Sent' : '❌ Failed');
+    
+    return {
+      retailerSMSSuccess: retailerResult?.data?.success || false,
+      wholesalerSMSSuccess: wholesalerResult?.data?.success || false,
+      retailerResult,
+      wholesalerResult
+    };
+    
+  } catch (error) {
+    console.error('❌ Error sending parallel SMS notifications:', error);
+    return {
+      retailerSMSSuccess: false,
+      wholesalerSMSSuccess: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
     };
   }
 }
@@ -95,114 +294,17 @@ interface OTPVerifyRequest {
   otp: string;
 }
 
-// Helper function to get payment with correct tenantId
-async function getPaymentWithCorrectTenant(paymentId: string) {
-  console.log('🔍 getPaymentWithCorrectTenant called for paymentId:', paymentId);
-  
-  // First try with 'system' tenant
-  console.log('🔍 Trying with system tenant...');
-  let payment = await paymentService.getById(paymentId, 'system');
-  
-  if (!payment) {
-    // If not found with 'system', try to get the payment document directly without tenantId checking
-    console.log('🔍 Not found with system tenant, trying direct document access...');
-    try {
-      const paymentRef = doc(db, 'payments', paymentId);
-      const paymentDoc = await getDoc(paymentRef);
-      
-      if (paymentDoc.exists()) {
-        const paymentData = paymentDoc.data();
-        console.log('🔍 Found payment document directly:', {
-          id: paymentDoc.id,
-          tenantId: paymentData.tenantId,
-          retailerId: paymentData.retailerId
-        });
-        
-        // Create a payment object with the correct structure
-        payment = {
-          id: paymentDoc.id,
-          ...paymentData
-        } as any;
-        
-        console.log('🔍 Payment found via direct access');
-        
-        // If we found the payment but it has a different tenantId, try to get it with that tenantId too
-        if (paymentData.tenantId && paymentData.tenantId !== 'system') {
-          console.log('🔍 Trying with actual tenantId:', paymentData.tenantId);
-          const paymentWithCorrectTenant = await paymentService.getById(paymentId, paymentData.tenantId);
-          if (paymentWithCorrectTenant) {
-            console.log('🔍 Payment found with correct tenantId');
-            payment = paymentWithCorrectTenant;
-          }
-        }
-      } else {
-        console.log('🔍 Payment document not found via direct access');
-      }
-    } catch (error) {
-      console.error('Error accessing payment document directly:', error);
-    }
-  }
-  
-  // If still not found, try with common tenant IDs used by line workers
-  if (!payment) {
-    console.log('🔍 Still not found, trying common tenant IDs...');
-    // Try to get all line worker users to see what tenant IDs they use
-    try {
-      const usersRef = collection(db, 'users');
-      const usersQuery = query(usersRef, where('roles', 'array-contains', 'LINE_WORKER'));
-      const usersSnapshot = await getDocs(usersQuery);
-      
-      const tenantIds = new Set<string>();
-      usersSnapshot.forEach(doc => {
-        const userData = doc.data();
-        if (userData.tenantId && userData.tenantId !== 'system') {
-          tenantIds.add(userData.tenantId);
-        }
-      });
-      
-      console.log('🔍 Found tenant IDs to try:', Array.from(tenantIds));
-      
-      // Try each tenant ID
-      for (const tenantId of tenantIds) {
-        console.log('🔍 Trying with tenantId:', tenantId);
-        const paymentWithTenant = await paymentService.getById(paymentId, tenantId);
-        if (paymentWithTenant) {
-          console.log('🔍 Payment found with tenantId:', tenantId);
-          payment = paymentWithTenant;
-          break;
-        }
-      }
-    } catch (error) {
-      console.error('Error trying tenant IDs:', error);
-    }
-  }
-  
-  console.log('🔍 Final payment result:', payment ? 'FOUND' : 'NOT FOUND');
-  return payment;
-}
-
 export async function POST(request: NextRequest) {
+  const startTime = Date.now();
+  console.log('🚀 ULTRA-OPTIMIZED OTP VERIFICATION STARTED');
+  
   try {
-    // Proactively initialize Firebase Functions to ensure they're ready
-    console.log('🔧 Initializing Firebase Functions at start of OTP verification...');
-    try {
-      await initializeFirebaseFunctions();
-      console.log('✅ Firebase Functions initialization completed');
-    } catch (initError) {
-      console.error('❌ Firebase Functions initialization failed:', initError);
-      // Don't fail the request - we'll try to initialize again when needed
-    }
-
     const body: OTPVerifyRequest = await request.json();
     const { paymentId, otp } = body;
 
     console.log('🔍 OTP VERIFICATION REQUEST:');
     console.log('Payment ID:', paymentId);
     console.log('OTP Code:', otp);
-    console.log('Current OTP Store contents:');
-    for (const [key, value] of otpStore.entries()) {
-      console.log(`  Payment ID: ${key}, OTP: ${value.code}, Expires: ${value.expiresAt.toISOString()}, Attempts: ${value.attempts}`);
-    }
 
     if (!paymentId || !otp) {
       console.log('❌ Missing required fields');
@@ -212,10 +314,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Clean up expired OTPs first
+    // Clean up expired OTPs
     cleanupExpiredOTPs();
 
-    // Check security limits before proceeding
+    // Check security limits
     const securityCheck = checkSecurityLimits(paymentId);
     if (!securityCheck.canAttempt) {
       console.log('🚫 Security limits exceeded:', securityCheck);
@@ -228,125 +330,45 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get OTP from in-memory store first
+    // Get OTP from in-memory store
     let otpData = otpStore.get(paymentId);
-    logger.debug('OTP found in in-memory store', otpData ? 'YES' : 'NO', { context: 'OTPVerifyAPI' });
     
-    // If not found in memory, try to get from retailer document
+    // If not in memory, use OPTIMIZED retrieval
     if (!otpData) {
-      console.log('🔍 OTP not in memory, checking retailer document...');
-      try {
-        // First, get the payment to find the retailerId and tenantId
-        const payment = await getPaymentWithCorrectTenant(paymentId);
+      console.log('🔍 OTP not in memory, using OPTIMIZED retrieval...');
+      
+      // SINGLE payment query
+      const payment = await getPaymentOptimized(paymentId);
+      
+      if (payment && payment.retailerId) {
+        // Get all required data in PARALLEL
+        const verificationData = await getVerificationDataOptimized(paymentId, payment.retailerId);
+        const { retailerUser } = verificationData;
         
-        console.log('🔍 Payment retrieval result:', payment ? 'FOUND' : 'NOT FOUND');
-        if (payment) {
-          console.log('🔍 Payment details:', {
-            id: payment.id,
-            retailerId: payment.retailerId,
-            lineWorkerId: payment.lineWorkerId,
-            totalPaid: payment.totalPaid,
-            state: payment.state
-          });
-        }
-        
-        if (payment && payment.retailerId) {
-          // Get retailer user to get tenantId
-          const retailerUser = await RetailerAuthService.getRetailerUserByRetailerId(payment.retailerId);
-          console.log('🔍 Retailer user retrieval result:', retailerUser ? 'FOUND' : 'NOT FOUND');
-          if (retailerUser) {
-            console.log('🔍 Retailer user details:', {
-              id: retailerUser.id,
-              retailerId: retailerUser.retailerId,
-              tenantId: retailerUser.tenantId,
-              phone: retailerUser.phone
-            });
-          }
+        if (retailerUser && retailerUser.tenantId) {
+          const retailerOTPs = await retailerService.getActiveOTPsFromRetailer(payment.retailerId, retailerUser.tenantId);
+          const retailerOTP = retailerOTPs.find(otp => otp.paymentId === paymentId);
           
-          if (retailerUser && retailerUser.tenantId) {
-            console.log('🔍 Attempting to get OTPs from retailer document...');
-            const retailerOTPs = await retailerService.getActiveOTPsFromRetailer(payment.retailerId, retailerUser.tenantId);
-            console.log('🔍 Retailer OTPs retrieved:', retailerOTPs.length, 'OTPs found');
-            console.log('🔍 Retailer OTPs details:', retailerOTPs.map(otp => ({
-              paymentId: otp.paymentId,
-              code: otp.code,
-              amount: otp.amount,
-              expiresAt: otp.expiresAt.toDate(),
-              isUsed: otp.isUsed
-            })));
+          if (retailerOTP) {
+            otpData = {
+              code: retailerOTP.code,
+              expiresAt: retailerOTP.expiresAt.toDate(),
+              attempts: 0,
+              lastAttemptAt: null,
+              cooldownUntil: null,
+              consecutiveFailures: 0,
+              breachDetected: false
+            };
             
-            const retailerOTP = retailerOTPs.find(otp => otp.paymentId === paymentId);
-            console.log('🔍 Looking for OTP with paymentId:', paymentId);
-            console.log('🔍 Retailer OTP result:', retailerOTP ? 'FOUND' : 'NOT FOUND');
-            if (retailerOTP) {
-              console.log('🔍 Found OTP details:', {
-                paymentId: retailerOTP.paymentId,
-                code: retailerOTP.code,
-                amount: retailerOTP.amount,
-                expiresAt: retailerOTP.expiresAt.toDate(),
-                isUsed: retailerOTP.isUsed
-              });
-              
-              // Check if we already have security tracking for this payment
-              const existingSecurityData = otpStore.get(paymentId);
-              const existingAttempts = existingSecurityData ? existingSecurityData.attempts : 0;
-              const existingConsecutiveFailures = existingSecurityData ? existingSecurityData.consecutiveFailures : 0;
-              
-              // Convert retailer OTP to in-memory format, preserving existing security data
-              otpData = {
-                code: retailerOTP.code,
-                expiresAt: retailerOTP.expiresAt.toDate(),
-                attempts: existingAttempts, // Preserve existing attempts
-                lastAttemptAt: existingSecurityData?.lastAttemptAt || null,
-                cooldownUntil: existingSecurityData?.cooldownUntil || null,
-                consecutiveFailures: existingConsecutiveFailures, // Preserve consecutive failures
-                breachDetected: existingSecurityData?.breachDetected || false
-              };
-              
-              // Update the in-memory store with the preserved data
-              otpStore.set(paymentId, otpData);
-              
-              console.log('🔍 Found OTP in retailer document, converted to memory format:', {
-                code: otpData.code,
-                expiresAt: otpData.expiresAt.toISOString(),
-                attempts: otpData.attempts,
-                consecutiveFailures: otpData.consecutiveFailures,
-                breachDetected: otpData.breachDetected,
-                inCooldown: otpData.cooldownUntil ? otpData.cooldownUntil > new Date() : false
-              });
-            } else {
-              console.log('❌ OTP not found in retailer OTPs array');
-              console.log('🔍 Available OTP paymentIds:', retailerOTPs.map(otp => otp.paymentId));
-            }
-          } else {
-            console.log('⚠️ Retailer user not found or missing tenantId');
+            otpStore.set(paymentId, otpData);
+            console.log('✅ OTP found and cached');
           }
-        } else {
-          console.log('⚠️ Payment or retailerId not found');
         }
-      } catch (error) {
-        console.error('❌ Error getting OTP from retailer document:', error);
       }
     }
     
-    console.log('🔍 Found OTP data:', otpData ? 'YES' : 'NO');
-    if (otpData) {
-      console.log('🔍 OTP details:', {
-        code: otpData.code,
-        expiresAt: otpData.expiresAt.toISOString(),
-        attempts: otpData.attempts,
-        isExpired: otpData.expiresAt < new Date()
-      });
-    } else {
-      console.log('❌ OTP NOT FOUND - This is the issue!');
-      console.log('🔍 Debugging info:');
-      console.log('  - PaymentId:', paymentId);
-      console.log('  - OTP Code provided:', otp);
-      console.log('  - In-memory store had OTP:', otpStore.get(paymentId) ? 'YES' : 'NO');
-    }
-    
     if (!otpData) {
-      console.log('❌ OTP not found or expired - returning error');
+      console.log('❌ OTP not found or expired');
       return NextResponse.json(
         { error: 'OTP not found or expired' },
         { status: 400 }
@@ -378,798 +400,129 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Verify OTP (case-insensitive comparison)
-    console.log('🔍 Comparing OTP codes:');
-    console.log('  Provided OTP:', otp);
-    console.log('  Stored OTP:', otpData.code);
-    console.log('  Provided (uppercase):', otp.toUpperCase());
-    console.log('  Stored (uppercase):', otpData.code.toUpperCase());
-    console.log('  Match:', otpData.code.toUpperCase() === otp.toUpperCase());
-    
+    // Verify OTP
     if (otpData.code.toUpperCase() === otp.toUpperCase()) {
-      console.log('✅ OTP verification successful!');
+      console.log('✅ OTP verified successfully!');
       
-      // CRITICAL DEBUG: Add logging right after successful verification
-      console.log('🚨 CRITICAL DEBUG - OTP verification successful, about to update payment state');
-      console.log('🚨 CRITICAL DEBUG - PaymentId:', paymentId);
-      console.log('🚨 CRITICAL DEBUG - ENTERING SUCCESS PATH - This should be visible if OTP is correct');
-      console.log('🚨 CRITICAL DEBUG - About to call getPaymentWithCorrectTenant for payment update');
+      // Record successful verification
+      const verificationTime = new Date();
       
-      // Use Cloud Function to verify OTP (more secure) - if available
-      try {
-        const verifyOTPFunction = await getHttpsCallable('verifyOTP');
-        if (verifyOTPFunction) {
-          const cloudResult = await verifyOTPFunction({
-            paymentId,
-            otp
-          });
+      // Get payment and verification data in MAXIMUM PARALLEL
+      const promises = [
+        getPaymentOptimized(paymentId),
+        getVerificationDataOptimized(paymentId, (await getPaymentOptimized(paymentId))?.retailerId || '')
+      ];
+      
+      const [payment, verificationData] = await Promise.all(promises);
+      
+      if (!payment) {
+        console.log('❌ Payment not found');
+        return NextResponse.json(
+          { error: 'Payment not found' },
+          { status: 404 }
+        );
+      }
 
-          console.log('🔐 Cloud Function verification result:', cloudResult.data);
+      const { retailerUser, lineWorkerData, wholesalerData } = verificationData;
+      
+      if (!retailerUser) {
+        console.log('❌ Retailer user not found');
+        return NextResponse.json(
+          { error: 'Retailer user not found' },
+          { status: 404 }
+        );
+      }
 
-          const data = cloudResult.data as any;
-          if (data && data.success) {
-            console.log('✅ OTP verified successfully via cloud function');
-          } else {
-            console.log('⚠️ Cloud function verification failed, continuing with local verification');
-            // Continue with local verification if cloud function fails
-          }
-        } else {
-          console.log('⚠️ Cloud Functions not available, using local verification');
-        }
-      } catch (cloudFunctionError) {
-        console.error('❌ Error calling cloud function for verification:', cloudFunctionError);
-        console.log('⚠️ Continuing with local verification');
-      }
+      // Update payment status
+      const paymentRef = doc(db, 'payments', paymentId);
+      await updateDoc(paymentRef, {
+        state: 'COMPLETED',
+        verifiedAt: verificationTime,
+        verificationMethod: 'OTP'
+      });
+
+      // Clean up OTP
+      otpStore.delete(paymentId);
+      removeActiveOTP(paymentId);
+      addCompletedPayment(paymentId);
+
+      // Prepare data for SMS
+      const lineWorkerName = lineWorkerData?.displayName || lineWorkerData?.name || 'Line Worker';
+      const retailerArea = retailerUser.address || retailerUser.area || 'Unknown Area';
+      const wholesalerName = wholesalerData?.name || wholesalerData?.displayName || 'Wholesaler';
+      const collectionDate = verificationTime.toLocaleDateString('en-IN');
+
+      console.log('📱 Sending SMS notifications (ULTRA-OPTIMIZED PARALLEL)...');
       
-      // Reset security tracking on successful verification
-      resetSecurityTracking(paymentId);
+      // Send SMS notifications in MAXIMUM PARALLEL
+      const smsResults = await sendSMSNotificationsOptimized({
+        payment,
+        retailerUser,
+        lineWorkerData,
+        wholesalerData,
+        lineWorkerName,
+        retailerArea,
+        wholesalerName,
+        collectionDate
+      });
+
+      const endTime = Date.now();
+      const processingTime = endTime - startTime;
       
-      // Update payment state to COMPLETED using PaymentService
-      try {
-        const payment = await getPaymentWithCorrectTenant(paymentId);
-        if (payment) {
-          // Get the correct tenantId
-          let tenantId = payment.tenantId;
-          if (!tenantId || tenantId === 'system') {
-            // If payment doesn't have tenantId or it's 'system', get it from retailer user
-            const retailerUser = await RetailerAuthService.getRetailerUserByRetailerId(payment.retailerId);
-            if (retailerUser && retailerUser.tenantId) {
-              tenantId = retailerUser.tenantId;
-            }
-          }
-          
-          if (tenantId && tenantId !== 'system') {
-            await paymentService.updatePaymentState(paymentId, tenantId, 'COMPLETED', {
-              timeline: {
-                ...payment.timeline,
-                completedAt: Timestamp.fromDate(new Date()),
-                verifiedAt: Timestamp.fromDate(new Date())
-              }
-            });
-            console.log('✅ Payment state updated to COMPLETED using PaymentService');
-          } else {
-            // Fallback to direct update if no valid tenantId
-            const paymentRef = doc(db, 'payments', paymentId);
-            await updateDoc(paymentRef, {
-              state: 'COMPLETED',
-              'timeline.completedAt': Timestamp.fromDate(new Date()),
-              'timeline.verifiedAt': Timestamp.fromDate(new Date()),
-              updatedAt: new Date()
-            });
-            console.log('✅ Payment state updated to COMPLETED (direct fallback)');
-          }
-        } else {
-          console.log('❌ Payment not found, cannot update state');
-        }
-      } catch (paymentUpdateError) {
-        console.error('❌ Error updating payment state:', paymentUpdateError);
-        // Don't fail the verification if payment update fails
-      }
-      
-      // Mark OTP as used in retailer document AND REMOVE IT
-      try {
-        // First, get the payment to find the retailerId and tenantId
-        const payment = await getPaymentWithCorrectTenant(paymentId);
-        
-        if (payment && payment.retailerId) {
-          // Get retailer user to get tenantId
-          const retailerUser = await RetailerAuthService.getRetailerUserByRetailerId(payment.retailerId);
-          if (retailerUser && retailerUser.tenantId) {
-            await retailerService.removeOTPFromRetailer(payment.retailerId, retailerUser.tenantId, paymentId);
-            console.log('✅ OTP completely removed from retailer document');
-          } else {
-            console.log('⚠️ Retailer user not found or missing tenantId, cannot remove OTP');
-          }
-        } else {
-          console.log('⚠️ Payment or retailerId not found, cannot remove OTP');
-        }
-      } catch (firestoreError) {
-        console.error('❌ Error removing OTP from retailer document:', firestoreError);
-        // Don't fail the verification if retailer document update fails
-      }
-      
-      // Get payment details from Firestore
-      try {
-        const paymentRef = doc(db, 'payments', paymentId);
-        const paymentDoc = await getDoc(paymentRef);
-        
-        if (paymentDoc.exists()) {
-          const paymentData = paymentDoc.data();
-          console.log('📄 Payment data found:', paymentData);
-          
-          // Get retailer details from retailerUsers collection
-          const retailerUser = await RetailerAuthService.getRetailerUserByRetailerId(paymentData.retailerId);
-          
-          if (retailerUser) {
-            console.log('🏪 Retailer user data found:', retailerUser);
-            
-            // Get line worker details
-            const lineWorkerRef = doc(db, 'users', paymentData.lineWorkerId);
-            const lineWorkerDoc = await getDoc(lineWorkerRef);
-            
-            if (lineWorkerDoc.exists()) {
-              const lineWorkerData = lineWorkerDoc.data();
-              console.log('👷 Line worker data found:', lineWorkerData);
-              
-              // Get retailer details from retailers collection for outstanding amount
-              let remainingOutstanding = 0;
-              try {
-                const retailerRef = doc(db, 'retailers', paymentData.retailerId);
-                const retailerDoc = await getDoc(retailerRef);
-                
-                if (retailerDoc.exists()) {
-                  const retailerData = retailerDoc.data() as Retailer;
-                  console.log('🏪 Retailer data found:', retailerData);
-                  
-                  // Since invoices are removed, outstanding is always 0
-                  const currentOutstanding = 0;
-                  remainingOutstanding = Math.max(0, currentOutstanding - paymentData.totalPaid);
-                  
-                  // Update the retailer's outstanding amount in Firestore
-                  await updateDoc(retailerRef, {
-                    currentOutstanding: remainingOutstanding,
-                    updatedAt: Timestamp.fromDate(new Date())
-                  });
-                  console.log('✅ Updated retailer outstanding amount to:', remainingOutstanding);
-                } else {
-                  console.log('⚠️ Retailer document not found, using default outstanding amount');
-                  remainingOutstanding = 0;
-                }
-              } catch (retailerError) {
-                console.error('❌ Error getting/retailer retailer data:', retailerError);
-                remainingOutstanding = 0;
-              }
-              
-              // Remove the active OTP from retailer dashboard
-              removeActiveOTP(paymentId);
-              
-              // Add completed payment notification to retailer dashboard
-              addCompletedPayment({
-                retailerId: paymentData.retailerId,
-                amount: paymentData.totalPaid,
-                paymentId: paymentId,
-                lineWorkerName: lineWorkerData.name || 'Line Worker',
-                remainingOutstanding: remainingOutstanding
-              });
-              
-              console.log('✅ Added completed payment notification for retailer:', paymentData.retailerId);
-              
-              // Send PWA push notification for payment completion
-              try {
-                const paymentNotificationSent = await pushNotificationService.sendPaymentCompletedNotification({
-                  amount: paymentData.totalPaid,
-                  paymentId: paymentId,
-                  retailerName: retailerUser.name || 'Retailer',
-                  lineWorkerName: lineWorkerData.name || 'Line Worker'
-                });
-                
-                if (paymentNotificationSent) {
-                  console.log('📱 PWA payment completion notification sent successfully');
-                } else {
-                  console.log('⚠️ PWA payment completion notification failed');
-                }
-              } catch (notificationError) {
-                console.error('❌ Error sending PWA payment completion notification:', notificationError);
-                // Don't fail the verification if notification fails
-              }
-            } else {
-              console.log('❌ Line worker data not found');
-              // Still remove active OTP and add basic notification
-              removeActiveOTP(paymentId);
-              addCompletedPayment({
-                retailerId: paymentData.retailerId,
-                amount: paymentData.totalPaid,
-                paymentId: paymentId,
-                lineWorkerName: 'Line Worker',
-                remainingOutstanding: 0
-              });
-              
-              // Send PWA notification for fallback case
-              try {
-                await pushNotificationService.sendPaymentCompletedNotification({
-                  amount: paymentData.totalPaid,
-                  paymentId: paymentId,
-                  retailerName: 'Retailer',
-                  lineWorkerName: 'Line Worker'
-                });
-              } catch (notificationError) {
-                console.error('❌ Error sending fallback PWA notification:', notificationError);
-              }
-            }
-          } else {
-            console.log('❌ Retailer user data not found');
-            // Still remove active OTP and add basic notification
-            removeActiveOTP(paymentId);
-            addCompletedPayment({
-              retailerId: paymentData.retailerId,
-              amount: paymentData.totalPaid,
-              paymentId: paymentId,
-              lineWorkerName: 'Line Worker',
-              remainingOutstanding: 0
-            });
-            
-            // Send PWA notification for fallback case
-            try {
-              await pushNotificationService.sendPaymentCompletedNotification({
-                amount: paymentData.totalPaid,
-                paymentId: paymentId,
-                retailerName: 'Retailer',
-                lineWorkerName: 'Line Worker'
-              });
-            } catch (notificationError) {
-              console.error('❌ Error sending fallback PWA notification:', notificationError);
-            }
-          }
-        } else {
-          console.log('❌ Payment data not found');
-          // Still remove active OTP
-          removeActiveOTP(paymentId);
-        }
-      } catch (error) {
-        console.error('❌ Error getting payment details for notification:', error);
-        // Still remove active OTP
-        removeActiveOTP(paymentId);
-      }
-      
-      // OTP is correct, remove from in-memory store if it exists
-      if (otpStore.has(paymentId)) {
-        otpStore.delete(paymentId);
-        console.log('🗑️ Removed OTP from in-memory store');
-      }
-      
-      // Comprehensive OTP cleanup - remove from all locations
-      console.log('🚨 CRITICAL DEBUG - About to start comprehensiveOTPCleanup');
-      try {
-        await comprehensiveOTPCleanup(paymentId);
-        console.log('🚨 CRITICAL DEBUG - comprehensiveOTPCleanup completed successfully');
-      } catch (cleanupError) {
-        console.error('❌ Error in comprehensiveOTPCleanup:', cleanupError);
-        console.log('🚨 CRITICAL DEBUG - Continuing with SMS despite cleanup error');
-        // Don't fail the entire process if cleanup fails
-      }
-      
-      // CRITICAL DEBUG: Add logging right before SMS sending
-      console.log('🚨 CRITICAL DEBUG - About to send SMS notifications');
-      console.log('🚨 CRITICAL DEBUG - PaymentId:', paymentId);
-      console.log('🚨 CRITICAL DEBUG - Code reached SMS section successfully');
-      console.log('🚨 CRITICAL DEBUG - Starting SMS notification process');
-      
-      // Send payment confirmation SMS to both retailer and wholesaler using Firebase Functions
-      console.log('🚀 PAYMENT SUCCESSFUL - Sending SMS notifications to both retailer and wholesaler...');
-      try {
-        console.log('🚨 CRITICAL DEBUG - Inside SMS sending try block');
-        const payment = await getPaymentWithCorrectTenant(paymentId);
-        console.log('🚨 CRITICAL DEBUG - getPaymentWithCorrectTenant result:', payment ? 'FOUND' : 'NOT FOUND');
-        if (payment) {
-          console.log('🚨 CRITICAL DEBUG - Payment found, proceeding with retailer user lookup');
-          // Get retailer user details
-          const retailerUser = await RetailerAuthService.getRetailerUserByRetailerId(payment.retailerId);
-          console.log('🚨 CRITICAL DEBUG - Retailer user result:', retailerUser ? 'FOUND' : 'NOT FOUND');
-          
-          if (retailerUser) {
-            // Get line worker details
-            const lineWorkerRef = doc(db, 'users', payment.lineWorkerId);
-            const lineWorkerDoc = await getDoc(lineWorkerRef);
-            
-            if (lineWorkerDoc.exists()) {
-              const lineWorkerData = lineWorkerDoc.data();
-              console.log('🔍 Debug - lineWorkerData:', lineWorkerData);
-              // Use the actual display name from the line worker document
-              const lineWorkerName = lineWorkerData.displayName || lineWorkerData.name || 'Line Worker';
-              console.log('🔍 Debug - lineWorkerName:', lineWorkerName);
-              console.log('🔧 IMPORTANT - Using actual line worker displayName:', lineWorkerName);
-              
-              // Get retailer details for area information
-              const retailerRef = doc(db, 'retailers', payment.retailerId);
-              const retailerDoc = await getDoc(retailerRef);
-              
-              let retailerArea = 'Unknown Area';
-              if (retailerDoc.exists()) {
-                const retailerData = retailerDoc.data();
-                console.log('🔍 Debug - retailerData:', retailerData);
-                
-                // Get the correct area name from the area document
-                if (retailerData.areaId) {
-                  console.log('🔍 Debug - retailer areaId:', retailerData.areaId);
-                  const areaRef = doc(db, 'areas', retailerData.areaId);
-                  const areaDoc = await getDoc(areaRef);
-                  
-                  if (areaDoc.exists()) {
-                    const areaData = areaDoc.data();
-                    console.log('🔍 Debug - areaData:', areaData);
-                    retailerArea = areaData.name || 'Unknown Area';
-                    console.log('🔍 Debug - Correct retailer area from area document:', retailerArea);
-                  } else {
-                    console.log('🔍 Debug - Area document not found for areaId:', retailerData.areaId);
-                    retailerArea = 'Unknown Area';
-                  }
-                } else {
-                  console.log('🔍 Debug - Retailer has no areaId assigned');
-                  // Fallback to areaName if areaId is not available (backward compatibility)
-                  retailerArea = retailerData.areaName || 'Unknown Area';
-                }
-              } else {
-                console.log('🔍 Debug - Retailer document not found');
-              }
-              console.log('🔍 Debug - Final retailerArea:', retailerArea);
-              
-              // Get wholesaler name from TENANTS collection (tenantId = wholesaler document ID)
-              let wholesalerName = 'Wholesaler';
-              console.log('🔍 Debug - lineWorkerData.tenantId:', lineWorkerData.tenantId);
-              if (lineWorkerData.tenantId) {
-                const wholesalerRef = doc(db, 'tenants', lineWorkerData.tenantId);
-                const wholesalerDoc = await getDoc(wholesalerRef);
-                
-                if (wholesalerDoc.exists()) {
-                  const wholesalerData = wholesalerDoc.data();
-                  console.log('🔍 Debug - wholesalerData from tenants:', wholesalerData);
-                  wholesalerName = wholesalerData.name || 'Wholesaler';
-                } else {
-                  console.log('🔍 Debug - wholesalerDoc does not exist in tenants collection');
-                }
-              } else {
-                console.log('🔍 Debug - lineWorkerData has no wholesalerId');
-              }
-              console.log('🔍 Debug - final wholesalerName:', wholesalerName);
-              
-              // Format collection date
-              const collectionDate = Fast2SMSService.formatDateForSMS(new Date());
-              
-              // Send SMS to retailer using Firebase Function
-              console.log('🚀 INITIATING RETAILER SMS - Sending payment confirmation to retailer...');
-              console.log('🚨 CRITICAL DEBUG - About to call getHttpsCallable for sendRetailerPaymentSMS');
-              let retailerSMSSuccess = false;
-              try {
-                const sendRetailerSMSFunction = await getHttpsCallable('sendRetailerPaymentSMS');
-                console.log('📞 Firebase Function is available and ready to call');
-                console.log('🚨 CRITICAL DEBUG - getHttpsCallable returned successfully');
-                
-                if (retailerUser.phone) {
-                  console.log('🚀 ABOUT TO CALL FIREBASE FUNCTION - sendRetailerPaymentSMS');
-                  console.log('📤 Calling sendRetailerPaymentSMS Firebase Function with data:', {
-                    retailerId: payment.retailerId,
-                    paymentId: paymentId,
-                    amount: payment.totalPaid,
-                    lineWorkerName,
-                    retailerName: retailerUser.name || 'Retailer',
-                    retailerArea,
-                    wholesalerName,
-                    collectionDate
-                  });
-                  
-                  console.log('🚨 CRITICAL DEBUG - ACTUAL RETAILER ID BEING SENT:', payment.retailerId);
-                  console.log('🚨 CRITICAL DEBUG - IS THIS A REAL RETAILER ID?', payment.retailerId !== 'retailer_123' ? 'YES' : 'NO');
-                  
-                  try {
-                    // Firebase Functions typically expect data wrapped in a 'data' property
-                    const requestData = {
-                      data: {
-                        retailerId: payment.retailerId,
-                        paymentId: paymentId,
-                        amount: payment.totalPaid,
-                        lineWorkerName,
-                        lineWorkerId: payment.lineWorkerId, // Add line worker ID for reliable lookup
-                        retailerName: retailerUser.name || 'Retailer',
-                        retailerArea,
-                        wholesalerName,
-                        collectionDate
-                      }
-                    };
-                    
-                    const retailerSMSResult = await sendRetailerSMSFunction(requestData);
-                    
-                    console.log('📱 Retailer confirmation SMS result via Firebase Function:', retailerSMSResult.data);
-                    
-                    // Check if the SMS was sent successfully
-                    const resultData = retailerSMSResult.data as SMSFunctionResult;
-                    if (resultData && resultData.success) {
-                      console.log('✅ Retailer SMS sent successfully via Firebase Function');
-                      console.log('📋 SMS Details:', {
-                        messageId: resultData.messageId,
-                        phone: resultData.phone,
-                        status: resultData.status
-                      });
-                      retailerSMSSuccess = true;
-                    } else {
-                      console.warn('⚠️ Retailer SMS Firebase Function returned unsuccessful result:', resultData);
-                      // Fallback to local service
-                      throw new Error(resultData?.error || 'Firebase Function returned unsuccessful result');
-                    }
-                  } catch (functionCallError) {
-                    console.error('❌ DETAILED ERROR calling retailer SMS Firebase Function:', {
-                    error: functionCallError,
-                    message: functionCallError instanceof Error ? functionCallError.message : 'Unknown error',
-                    stack: functionCallError instanceof Error ? functionCallError.stack : undefined,
-                    code: functionCallError && typeof functionCallError === 'object' && 'code' in functionCallError ? functionCallError.code : undefined
-                  });
-                    throw functionCallError; // Re-throw to trigger fallback
-                  }
-                } else {
-                  console.log('⚠️ Retailer phone missing, skipping SMS');
-                  retailerSMSSuccess = true; // Consider as success since no phone
-                }
-              } catch (retailerSMSError) {
-                console.error('❌ Error sending retailer SMS via Firebase Function:', retailerSMSError);
-                console.error('❌ Detailed retailer SMS error:', {
-                  error: retailerSMSError,
-                  message: retailerSMSError instanceof Error ? retailerSMSError.message : 'Unknown error',
-                  stack: retailerSMSError instanceof Error ? retailerSMSError.stack : undefined,
-                  functionName: 'sendRetailerPaymentSMS',
-                  retailerId: payment.retailerId,
-                  paymentId: paymentId,
-                  retailerPhone: retailerUser.phone
-                });
-                
-                // Fallback to local service
-                try {
-                  if (retailerUser.phone) {
-                    console.log('🔄 Attempting fallback to local SMS service for retailer...');
-                    const retailerSMSResult = await fast2SMSService.sendPaymentConfirmationSMS(
-                      retailerUser.phone,
-                      'retailer',
-                      {
-                        amount: payment.totalPaid.toString(),
-                        lineWorkerName,
-                        retailerName: retailerUser.name || 'Retailer',
-                        retailerArea,
-                        collectionDate,
-                        wholesalerName
-                      }
-                    );
-                    console.log('📱 Retailer confirmation SMS result (fallback after error):', retailerSMSResult);
-                    retailerSMSSuccess = true;
-                  }
-                } catch (fallbackError) {
-                  console.error('❌ Error in retailer SMS fallback:', fallbackError);
-                }
-              }
-              
-              // Send SMS to wholesaler using Firebase Function (independent of retailer SMS result)
-              console.log('🚀 INITIATING WHOLESALER SMS - Sending payment notification to wholesaler...');
-              console.log('🚨 CRITICAL DEBUG - About to call getHttpsCallable for sendWholesalerPaymentSMS');
-              console.log('🔍 Debug - lineWorkerData:', lineWorkerData ? 'EXISTS' : 'MISSING');
-              console.log('🔍 Debug - lineWorkerData.tenantId:', lineWorkerData?.tenantId || 'MISSING');
-              console.log('🔍 Debug - lineWorkerData full object:', JSON.stringify(lineWorkerData, null, 2));
-              
-              try {
-                console.log('🔧 Debug - Attempting to get sendWholesalerPaymentSMS function...');
-                const sendWholesalerSMSFunction = await getHttpsCallable('sendWholesalerPaymentSMS');
-                console.log('📞 Wholesaler Firebase Function is available and ready to call');
-                console.log('🚨 CRITICAL DEBUG - getHttpsCallable for wholesaler returned successfully');
-                console.log('🔧 Debug - sendWholesalerSMSFunction type:', typeof sendWholesalerSMSFunction);
-                
-                if (lineWorkerData.tenantId) {
-                  console.log('🔍 Debug - tenantId found (this is the wholesaler ID):', lineWorkerData.tenantId);
-                  console.log('🔍 Debug - About to fetch wholesaler document from TENANTS collection...');
-                  const wholesalerRef = doc(db, 'tenants', lineWorkerData.tenantId);
-                  const wholesalerDoc = await getDoc(wholesalerRef);
-                  console.log('🔍 Debug - wholesalerDoc.exists():', wholesalerDoc.exists());
-                  
-                  if (wholesalerDoc.exists()) {
-                    console.log('🔍 Debug - wholesaler document exists');
-                    const wholesalerData = wholesalerDoc.data();
-                    console.log('🔍 Debug - wholesalerData:', JSON.stringify(wholesalerData, null, 2));
-                    console.log('🔍 Debug - wholesalerData contents:', wholesalerData);
-                    if (wholesalerData.contactPhone) {
-                      console.log('🔍 Debug - wholesaler contactPhone found:', wholesalerData.contactPhone);
-                      console.log('🔍 Debug - wholesaler name fields:', {
-                        displayName: wholesalerData.displayName,
-                        name: wholesalerData.name,
-                        finalName: wholesalerData.displayName || wholesalerData.name || 'Wholesaler'
-                      });
-                      console.log('📤 Calling sendWholesalerPaymentSMS Firebase Function with data:', {
-                        retailerId: payment.retailerId,
-                        paymentId: paymentId,
-                        amount: payment.totalPaid,
-                        lineWorkerName,
-                        retailerName: retailerUser.name || 'Retailer',
-                        retailerArea,
-                        wholesalerName: wholesalerName, // Use the already computed wholesalerName variable
-                        collectionDate
-                      });
-                      
-                      try {
-                        // Firebase Functions typically expect data wrapped in a 'data' property
-                        const requestData = {
-                          data: {
-                            retailerId: payment.retailerId,
-                            paymentId: paymentId,
-                            amount: payment.totalPaid,
-                            lineWorkerName,
-                            lineWorkerId: payment.lineWorkerId, // Add line worker ID for reliable lookup
-                            retailerName: retailerUser.name || 'Retailer',
-                            retailerArea,
-                            wholesalerName: wholesalerName, // Use the already computed wholesalerName variable for consistency
-                            collectionDate
-                          }
-                        };
-                        
-                        console.log('🚀 CRITICAL - About to call sendWholesalerSMSFunction with requestData:', requestData);
-                        const wholesalerSMSResult = await sendWholesalerSMSFunction(requestData);
-                        console.log('✅ CRITICAL - sendWholesalerSMSFunction called successfully!');
-                        
-                        console.log('📱 Wholesaler confirmation SMS result via Firebase Function:', wholesalerSMSResult.data);
-                        
-                        // Check if the SMS was sent successfully
-                        const wholesalerResultData = wholesalerSMSResult.data as SMSFunctionResult;
-                        if (wholesalerResultData && wholesalerResultData.success) {
-                          console.log('✅ Wholesaler SMS sent successfully via Firebase Function');
-                          console.log('📋 SMS Details:', {
-                            messageId: wholesalerResultData.messageId,
-                            phone: wholesalerResultData.phone,
-                            status: wholesalerResultData.status
-                          });
-                        } else {
-                          console.warn('⚠️ Wholesaler SMS Firebase Function returned unsuccessful result:', wholesalerResultData);
-                          // Fallback to local service
-                          throw new Error(wholesalerResultData?.error || 'Firebase Function returned unsuccessful result');
-                        }
-                      } catch (functionCallError) {
-                        console.error('❌ Error calling wholesaler SMS Firebase Function:', functionCallError);
-                        throw functionCallError; // Re-throw to trigger fallback
-                      }
-                    } else {
-                      console.log('⚠️ Wholesaler phone not found, skipping SMS');
-                      console.log('🔍 Debug - wholesalerData:', wholesalerData ? 'EXISTS' : 'MISSING');
-                      console.log('🔍 Debug - wholesalerData.contactPhone:', wholesalerData?.contactPhone || 'MISSING');
-                      console.log('🔍 Debug - wholesalerData full object:', JSON.stringify(wholesalerData, null, 2));
-                      console.log('🚨 CRITICAL - WHOLESALER SMS SKIPPED DUE TO MISSING PHONE NUMBER');
-                    }
-                  } else {
-                    console.log('⚠️ Wholesaler document not found, skipping SMS');
-                    console.log('🔍 Debug - wholesalerDoc.exists():', wholesalerDoc.exists());
-                    console.log('🔍 Debug - attempted wholesalerId (tenantId):', lineWorkerData.tenantId);
-                    console.log('🚨 CRITICAL - WHOLESALER SMS SKIPPED DUE TO MISSING WHOLESALER DOCUMENT');
-                  }
-                } else {
-                  console.log('⚠️ Wholesaler ID missing, skipping SMS');
-                  console.log('🔍 Debug - lineWorkerData.tenantId:', lineWorkerData?.tenantId || 'MISSING');
-                  console.log('🔍 Debug - lineWorkerData full object:', JSON.stringify(lineWorkerData, null, 2));
-                  console.log('🚨 CRITICAL - WHOLESALER SMS SKIPPED DUE TO MISSING WHOLESALER ID IN LINE WORKER');
-                }
-              } catch (wholesalerSMSError) {
-                console.error('❌ Error sending wholesaler SMS via Firebase Function:', wholesalerSMSError);
-                console.error('❌ Detailed wholesaler SMS error:', {
-                  error: wholesalerSMSError,
-                  message: wholesalerSMSError instanceof Error ? wholesalerSMSError.message : 'Unknown error',
-                  stack: wholesalerSMSError instanceof Error ? wholesalerSMSError.stack : undefined,
-                  functionName: 'sendWholesalerPaymentSMS',
-                  retailerId: payment.retailerId,
-                  paymentId: paymentId,
-                  lineWorkerId: payment.lineWorkerId,
-                  wholesalerId: lineWorkerData?.wholesalerId
-                });
-                console.log('🔍 Debug - Reached wholesaler SMS catch block');
-                
-                // Fallback to local service
-                try {
-                  if (lineWorkerData.tenantId) {
-                    console.log('🔄 Attempting fallback to local SMS service for wholesaler...');
-                    const wholesalerRef = doc(db, 'tenants', lineWorkerData.tenantId);
-                    const wholesalerDoc = await getDoc(wholesalerRef);
-                    
-                    if (wholesalerDoc.exists()) {
-                      const wholesalerData = wholesalerDoc.data();
-                      if (wholesalerData.contactPhone) {
-                        const wholesalerSMSResult = await fast2SMSService.sendPaymentConfirmationSMS(
-                          wholesalerData.contactPhone,
-                          'wholesaler',
-                          {
-                            amount: payment.totalPaid.toString(),
-                            lineWorkerName,
-                            retailerName: retailerUser.name || 'Retailer',
-                            retailerArea,
-                            collectionDate,
-                            wholesalerName: wholesalerData.displayName || wholesalerData.name || 'Wholesaler'
-                          }
-                        );
-                        console.log('📱 Wholesaler confirmation SMS result (fallback):', wholesalerSMSResult);
-                      }
-                    }
-                  }
-                } catch (fallbackError) {
-                  console.error('❌ Error in wholesaler SMS fallback:', fallbackError);
-                }
-              }
-              
-              console.log('📊 SMS Sending Summary:', {
-                retailerSMSSuccess,
-                retailerPhone: retailerUser.phone,
-                wholesalerId: lineWorkerData.tenantId,
-                wholesalerPhone: lineWorkerData.tenantId ? 'exists' : 'missing'
-              });
-              console.log('✅ PAYMENT VERIFICATION COMPLETE - SMS notifications processed for both retailer and wholesaler');
-            }
-          }
-        }
-      } catch (smsError) {
-        console.error('❌ Error sending payment confirmation SMS:', smsError);
-        console.log('🚨 CRITICAL DEBUG - SMS section failed, but returning success anyway');
-        // Don't fail the verification if SMS sending fails
-      }
-      
-      console.log('🚨 CRITICAL DEBUG - ABOUT TO RETURN SUCCESS RESPONSE');
+      console.log(`🚀 ULTRA-OPTIMIZED OTP VERIFICATION COMPLETED in ${processingTime}ms`);
+      console.log('📊 SMS Results:', {
+        retailer: smsResults.retailerSMSSuccess ? '✅ Sent' : '❌ Failed',
+        wholesaler: smsResults.wholesalerSMSSuccess ? '✅ Sent' : '❌ Failed'
+      });
+
       return NextResponse.json({
         success: true,
-        message: 'OTP verified successfully',
-        verified: true
+        message: 'Payment verified successfully',
+        paymentId,
+        amount: payment.totalPaid,
+        retailerName: retailerUser.name,
+        verifiedAt: verificationTime,
+        smsNotifications: smsResults,
+        processingTime
       });
+
     } else {
-      console.log('❌ OTP verification failed!');
-      console.log('🔍 Before recording attempt - Current attempts:', otpData.attempts);
-      
-      // Record failed attempt and check security limits
-      const failureResult = recordFailedAttempt(paymentId);
-      
-      console.log('📊 Failed attempt recorded:', failureResult);
-      console.log('🔍 After recording attempt - Updated attempts:', otpStore.get(paymentId)?.attempts);
-      
-      // Get updated security status
+      // Invalid OTP
+      recordFailedAttempt(paymentId);
+      otpData.attempts++;
+      otpData.lastAttemptAt = new Date();
+      otpStore.set(paymentId, otpData);
+
+      const remainingAttempts = 3 - otpData.attempts;
       const securityStatus = getSecurityStatus(paymentId);
-      console.log('🔍 Updated security status:', securityStatus);
-      
-      // If breach detected, send security alert to wholesaler
-      if (failureResult.breachDetected) {
-        console.log('🚨 BREACH DETECTED - Sending security alert');
-        try {
-          // Get payment details to find wholesaler
-          const payment = await getPaymentWithCorrectTenant(paymentId);
-          if (payment && payment.lineWorkerId) {
-            // Get line worker details
-            const lineWorkerRef = doc(db, 'users', payment.lineWorkerId);
-            const lineWorkerDoc = await getDoc(lineWorkerRef);
-            
-            if (lineWorkerDoc.exists()) {
-              const lineWorkerData = lineWorkerDoc.data();
-              // Use the actual display name from the line worker document
-              const lineWorkerName = lineWorkerData.displayName || lineWorkerData.name || 'Line Worker';
-              console.log('🔧 IMPORTANT - Using actual line worker displayName:', lineWorkerName);
-              
-              // Get wholesaler info (assuming line worker has wholesalerId field)
-              if (lineWorkerData.tenantId) {
-                const wholesalerRef = doc(db, 'tenants', lineWorkerData.tenantId);
-                const wholesalerDoc = await getDoc(wholesalerRef);
-                
-                if (wholesalerDoc.exists()) {
-                  const wholesalerData = wholesalerDoc.data();
-                  if (wholesalerData.phone) {
-                    // Send security alert to wholesaler
-                    const alertResult = await fast2SMSService.sendSecurityAlertSMS(
-                      wholesalerData.phone,
-                      lineWorkerName
-                    );
-                    
-                    console.log('🚨 Security alert sent to wholesaler:', alertResult);
-                  }
-                }
-              }
-            }
-          }
-        } catch (error) {
-          console.error('❌ Error sending security alert:', error);
-        }
-      }
-      
-      // Calculate remaining attempts
-      const remainingAttempts = Math.max(0, 3 - securityStatus.attempts);
-      
-      // Construct appropriate error message
-      let errorMessage = failureResult.message || `Invalid OTP. ${remainingAttempts} attempts remaining.`;
-      
-      // Add cooldown information if applicable
-      if (securityStatus.inCooldown && securityStatus.cooldownTime) {
-        const cooldownMinutes = Math.floor(securityStatus.cooldownTime / 60);
-        const cooldownSeconds = securityStatus.cooldownTime % 60;
-        errorMessage = failureResult.message || `Too many attempts. Please wait ${cooldownMinutes}:${cooldownSeconds.toString().padStart(2, '0')} before trying again.`;
-      }
-      
-      // Add breach detection message
-      if (failureResult.breachDetected) {
-        errorMessage = failureResult.message || 'Security breach detected. Wholesaler has been notified.';
-      }
-      
-      console.log('📤 Returning error response:', {
-        error: errorMessage,
-        remainingAttempts,
-        securityStatus,
-        breachDetected: failureResult.breachDetected,
-        cooldownTriggered: failureResult.cooldownTriggered
-      });
-      
+
+      console.log('❌ Invalid OTP provided');
+      console.log('Remaining attempts:', remainingAttempts);
+
       return NextResponse.json(
         { 
-          error: errorMessage,
-          securityStatus,
+          error: 'Invalid OTP',
           remainingAttempts,
-          breachDetected: failureResult.breachDetected,
-          cooldownTriggered: failureResult.cooldownTriggered,
-          maxAttemptsReached: remainingAttempts === 0
+          securityStatus
         },
         { status: 400 }
       );
     }
 
   } catch (error) {
-    console.error('Error verifying OTP:', error);
+    const endTime = Date.now();
+    const processingTime = endTime - startTime;
+    
+    console.error('❌ OTP verification error:', error);
+    console.error(`Processing time: ${processingTime}ms`);
+    
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { 
+        error: 'Internal server error',
+        message: error instanceof Error ? error.message : 'Unknown error',
+        processingTime
+      },
       { status: 500 }
     );
-  }
-}
-
-// Comprehensive OTP cleanup function
-async function comprehensiveOTPCleanup(paymentId: string) {
-  console.log('🧹 Starting comprehensive OTP cleanup for payment:', paymentId);
-  
-  try {
-    // 1. Remove from in-memory store
-    if (otpStore.has(paymentId)) {
-      otpStore.delete(paymentId);
-      console.log('✅ Removed OTP from in-memory store');
-    }
-    
-    // 2. Remove from active OTPs display
-    removeActiveOTP(paymentId);
-    console.log('✅ Removed OTP from active display');
-    
-    // 3. Remove from retailer document in Firestore
-    try {
-      const payment = await getPaymentWithCorrectTenant(paymentId);
-      if (payment && payment.retailerId) {
-        const retailerUser = await RetailerAuthService.getRetailerUserByRetailerId(payment.retailerId);
-        if (retailerUser && retailerUser.tenantId) {
-          await retailerService.removeOTPFromRetailer(payment.retailerId, retailerUser.tenantId, paymentId);
-          console.log('✅ Removed OTP from retailer document');
-        }
-      }
-    } catch (firestoreError) {
-      console.error('❌ Error removing OTP from retailer document:', firestoreError);
-    }
-    
-    // 4. Remove from dedicated OTPs collection in Firestore (if cloud function didn't already)
-    try {
-      const otpsQuery = query(
-        collection(db, 'otps'),
-        where('paymentId', '==', paymentId)
-      );
-      const otpsSnapshot = await getDocs(otpsQuery);
-      
-      if (!otpsSnapshot.empty) {
-        const batch = writeBatch(db);
-        otpsSnapshot.docs.forEach(doc => {
-          batch.delete(doc.ref);
-        });
-        await batch.commit();
-        console.log(`✅ Removed ${otpsSnapshot.size} OTP documents from Firestore collection`);
-      }
-    } catch (collectionError) {
-      console.error('❌ Error removing OTP from Firestore collection:', collectionError);
-    }
-    
-    console.log('🎉 Comprehensive OTP cleanup completed for payment:', paymentId);
-    
-  } catch (error) {
-    console.error('❌ Error during comprehensive OTP cleanup:', error);
   }
 }

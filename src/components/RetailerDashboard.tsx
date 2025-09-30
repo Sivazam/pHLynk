@@ -385,6 +385,16 @@ export function RetailerDashboard() {
           
           // Also check for completed payments that should close OTP popup
           checkCompletedPayments();
+          
+          // Cleanup old shown popups to prevent memory leaks (keep only last 50)
+          setShownCompletedPaymentPopups(prev => {
+            if (prev.size > 50) {
+              const newArray = Array.from(prev);
+              const keepLast50 = newArray.slice(-50);
+              return new Set(keepLast50);
+            }
+            return prev;
+          });
         }
       }, 5000); // Check every 5 seconds as a fallback
 
@@ -394,7 +404,7 @@ export function RetailerDashboard() {
 
   // Check for completed payments and close OTP popup if needed
   const checkCompletedPayments = async () => {
-    if (!retailer || !tenantId) return; // Removed !showOTPPopup condition
+    if (!retailer || !tenantId) return;
     
     try {
       // Check for recently completed payments
@@ -430,7 +440,7 @@ export function RetailerDashboard() {
         const updatedActiveOTPs = getActiveOTPsForRetailer(retailer.id);
         setActiveOTPs(updatedActiveOTPs);
         
-        // Show success popup for the most recent completion
+        // Show success popup for the most recent completion ONLY if not already shown
         const latestPayment = recentCompletedPayments[recentCompletedPayments.length - 1];
         if (!shownCompletedPaymentPopups.has(latestPayment.id)) {
           setNewCompletedPayment({
@@ -442,16 +452,19 @@ export function RetailerDashboard() {
           setShowSettlementPopup(true);
           setTriggerConfetti(true);
           
-          // Add to shown OTP popups
-          setShownOTPpopups(prev => new Set(prev).add(latestPayment.id));
-          
-          // Add to shown completed payment popups
+          // Add to shown completed payment popups FIRST to prevent re-showing
           setShownCompletedPaymentPopups(prev => new Set(prev).add(latestPayment.id));
           
           // Hide confetti after 5 seconds
           setTimeout(() => {
             setTriggerConfetti(false);
           }, 5000);
+          
+          // Refresh dashboard data to show updated stats
+          setTimeout(() => {
+            console.log('🔄 Refreshing dashboard data after payment completion');
+            fetchRetailerData(retailer.id);
+          }, 1000);
         }
       }
     } catch (error) {
@@ -1666,7 +1679,15 @@ Thank you for your payment!
               </div>
               
               <Button
-                onClick={() => setShowSettlementPopup(false)}
+                onClick={() => {
+                  setShowSettlementPopup(false);
+                  setNewCompletedPayment(null);
+                  // Refresh dashboard data when closing the popup
+                  setTimeout(() => {
+                    console.log('🔄 Refreshing dashboard data after closing payment completion popup');
+                    fetchRetailerData(retailer!.id);
+                  }, 500);
+                }}
                 className="w-full"
               >
                 Close

@@ -74,8 +74,8 @@ export function AuthComponent({ onShowRoleSelection }: AuthComponentProps) {
             {/* Logo Container with white border and shadow */}
             <div className="w-16 h-16 flex items-center justify-center">
               <Image 
-                src="/logo.png" 
-                alt="pHLynk Logo" 
+                src="/logoMain.png" 
+                alt="PharmaLync Logo" 
                 width={50}
                 height={50}
                 className="drop-shadow-lg rounded-lg"

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { retailerService, paymentService } from '@/services/firestore'
+import { db } from '@/lib/firebase'
+import { collection, query, where, getDocs } from 'firebase/firestore'
 
 export async function GET(request: NextRequest) {
   try {
@@ -12,10 +14,9 @@ export async function GET(request: NextRequest) {
     }
 
     const retailerId = session.user.id
-    const tenantId = 'default' // You may need to determine this from the session or context
 
-    // Get retailer details
-    const retailer = await retailerService.getById(retailerId, tenantId)
+    // Get retailer details to find tenantId
+    const retailer = await retailerService.getById(retailerId, 'default')
 
     if (!retailer) {
       return NextResponse.json({ 
@@ -27,16 +28,18 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    // Get all payments for this retailer
-    const payments = await paymentService.query(tenantId, [
-      // Assuming payments have a retailerId field - adjust the query as needed
-      // This might need to be adjusted based on your actual data model
-    ])
+    // Use the correct tenantId from retailer
+    const tenantId = retailer.tenantId || 'default'
 
-    // For now, let's filter payments in memory since we don't know the exact schema
-    const retailerPayments = payments.filter(payment => 
-      payment.retailerId === retailerId
-    )
+    // Query payments directly from Firestore for better performance and accuracy
+    const paymentsRef = collection(db, 'payments')
+    const paymentsQuery = query(paymentsRef, where('retailerId', '==', retailerId))
+    const paymentSnapshot = await getDocs(paymentsQuery)
+    
+    const retailerPayments = paymentSnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }))
 
     // Calculate stats
     const totalPayments = retailerPayments.length
@@ -46,9 +49,8 @@ export async function GET(request: NextRequest) {
     ).length
     const totalAmount = retailerPayments.reduce((sum, payment) => sum + (payment.totalPaid || 0), 0)
 
-    // For associated wholesalers, we would need to check the retailer's associations
-    // This might be stored in the retailer document or in a separate collection
-    const associatedWholesalers = 0 // Placeholder - implement based on your data model
+    // Get associated wholesalers count
+    const associatedWholesalers = retailer.tenantId ? 1 : 0 // Each retailer is associated with one wholesaler/tenant
 
     return NextResponse.json({
       totalPayments,
