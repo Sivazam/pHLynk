@@ -165,7 +165,7 @@ export function PWANotificationManager({ userRole, className }: PWANotificationM
       notificationPermission: typeof Notification !== 'undefined' ? Notification.permission : 'Not supported',
       serviceWorkerSupported: 'serviceWorker' in navigator,
       pushManagerSupported: 'PushManager' in window,
-      currentUserRole: roleBasedNotificationService.getCurrentUserRole()
+      currentUserRole: roleBasedNotificationService.getCurrentRole()
     });
   };
 

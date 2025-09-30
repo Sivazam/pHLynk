@@ -43,6 +43,11 @@ class RoleBasedNotificationService {
     console.log(`🔐 Set current user role: ${this.currentUserRole}`);
   }
 
+  // Public getter for current user role
+  getCurrentRole(): string {
+    return this.currentUserRole !== 'unknown' ? this.currentUserRole : this.getCurrentUserRole();
+  }
+
   private async initializeServiceWorker() {
     if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
       try {

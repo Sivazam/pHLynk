@@ -130,6 +130,7 @@ export interface Payment extends BaseDocument {
   retailerId: string;
   retailerName: string; // Added to preserve historical retailer name
   lineWorkerId: string;
+  lineWorkerName?: string; // Optional: may not be available in older records
   totalPaid: number;
   method: keyof typeof PAYMENT_METHODS;
   state: keyof typeof PAYMENT_STATES;
