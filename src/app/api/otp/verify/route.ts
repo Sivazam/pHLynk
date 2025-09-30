@@ -870,8 +870,8 @@ export async function POST(request: NextRequest) {
                     const wholesalerData = wholesalerDoc.data();
                     console.log('🔍 Debug - wholesalerData:', JSON.stringify(wholesalerData, null, 2));
                     console.log('🔍 Debug - wholesalerData contents:', wholesalerData);
-                    if (wholesalerData.phone) {
-                      console.log('🔍 Debug - wholesaler phone found:', wholesalerData.phone);
+                    if (wholesalerData.contactPhone) {
+                      console.log('🔍 Debug - wholesaler contactPhone found:', wholesalerData.contactPhone);
                       console.log('🔍 Debug - wholesaler name fields:', {
                         displayName: wholesalerData.displayName,
                         name: wholesalerData.name,
@@ -931,19 +931,19 @@ export async function POST(request: NextRequest) {
                     } else {
                       console.log('⚠️ Wholesaler phone not found, skipping SMS');
                       console.log('🔍 Debug - wholesalerData:', wholesalerData ? 'EXISTS' : 'MISSING');
-                      console.log('🔍 Debug - wholesalerData.phone:', wholesalerData?.phone || 'MISSING');
+                      console.log('🔍 Debug - wholesalerData.contactPhone:', wholesalerData?.contactPhone || 'MISSING');
                       console.log('🔍 Debug - wholesalerData full object:', JSON.stringify(wholesalerData, null, 2));
                       console.log('🚨 CRITICAL - WHOLESALER SMS SKIPPED DUE TO MISSING PHONE NUMBER');
                     }
                   } else {
                     console.log('⚠️ Wholesaler document not found, skipping SMS');
                     console.log('🔍 Debug - wholesalerDoc.exists():', wholesalerDoc.exists());
-                    console.log('🔍 Debug - attempted wholesalerId:', lineWorkerData.wholesalerId);
+                    console.log('🔍 Debug - attempted wholesalerId (tenantId):', lineWorkerData.tenantId);
                     console.log('🚨 CRITICAL - WHOLESALER SMS SKIPPED DUE TO MISSING WHOLESALER DOCUMENT');
                   }
                 } else {
                   console.log('⚠️ Wholesaler ID missing, skipping SMS');
-                  console.log('🔍 Debug - lineWorkerData.wholesalerId:', lineWorkerData?.wholesalerId || 'MISSING');
+                  console.log('🔍 Debug - lineWorkerData.tenantId:', lineWorkerData?.tenantId || 'MISSING');
                   console.log('🔍 Debug - lineWorkerData full object:', JSON.stringify(lineWorkerData, null, 2));
                   console.log('🚨 CRITICAL - WHOLESALER SMS SKIPPED DUE TO MISSING WHOLESALER ID IN LINE WORKER');
                 }
@@ -963,16 +963,16 @@ export async function POST(request: NextRequest) {
                 
                 // Fallback to local service
                 try {
-                  if (lineWorkerData.wholesalerId) {
+                  if (lineWorkerData.tenantId) {
                     console.log('🔄 Attempting fallback to local SMS service for wholesaler...');
-                    const wholesalerRef = doc(db, 'users', lineWorkerData.wholesalerId);
+                    const wholesalerRef = doc(db, 'tenants', lineWorkerData.tenantId);
                     const wholesalerDoc = await getDoc(wholesalerRef);
                     
                     if (wholesalerDoc.exists()) {
                       const wholesalerData = wholesalerDoc.data();
-                      if (wholesalerData.phone) {
+                      if (wholesalerData.contactPhone) {
                         const wholesalerSMSResult = await fast2SMSService.sendPaymentConfirmationSMS(
-                          wholesalerData.phone,
+                          wholesalerData.contactPhone,
                           'wholesaler',
                           {
                             amount: payment.totalPaid.toString(),
@@ -995,8 +995,8 @@ export async function POST(request: NextRequest) {
               console.log('📊 SMS Sending Summary:', {
                 retailerSMSSuccess,
                 retailerPhone: retailerUser.phone,
-                wholesalerId: lineWorkerData.wholesalerId,
-                wholesalerPhone: lineWorkerData.wholesalerId ? 'exists' : 'missing'
+                wholesalerId: lineWorkerData.tenantId,
+                wholesalerPhone: lineWorkerData.tenantId ? 'exists' : 'missing'
               });
               console.log('✅ PAYMENT VERIFICATION COMPLETE - SMS notifications processed for both retailer and wholesaler');
             }
@@ -1046,8 +1046,8 @@ export async function POST(request: NextRequest) {
               console.log('🔧 IMPORTANT - Using actual line worker displayName:', lineWorkerName);
               
               // Get wholesaler info (assuming line worker has wholesalerId field)
-              if (lineWorkerData.wholesalerId) {
-                const wholesalerRef = doc(db, 'users', lineWorkerData.wholesalerId);
+              if (lineWorkerData.tenantId) {
+                const wholesalerRef = doc(db, 'tenants', lineWorkerData.tenantId);
                 const wholesalerDoc = await getDoc(wholesalerRef);
                 
                 if (wholesalerDoc.exists()) {
