@@ -13,6 +13,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DashboardNavigation, NavItem, NotificationItem } from '@/components/DashboardNavigation';
 import { DateRangeFilter, DateRangeOption } from '@/components/ui/DateRangeFilter';
+import { PWANotificationManager } from '@/components/PWANotificationManager';
 import { Skeleton } from '@/components/ui/skeleton';
 import { LoadingOverlay } from '@/components/ui/LoadingOverlay';
 import { LoadingButton } from '@/components/ui/LoadingButton';
@@ -1371,6 +1372,9 @@ Thank you for your payment!
                         </div>
                       </CardContent>
                     </Card>
+
+                    {/* PWA Notification Manager */}
+                    <PWANotificationManager userRole="LINE_WORKER" />
                   </div>
                 )}
 

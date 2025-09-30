@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
     const retailerPayments = paymentSnapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data()
-    }))
+    } as any))
 
     // Calculate stats
     const totalPayments = retailerPayments.length

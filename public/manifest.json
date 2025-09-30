@@ -1,12 +1,13 @@
 {
-  "name": "PharmaLync",
-  "short_name": "PharmaLync",
+  "name": "pHLynk",
+  "short_name": "pHLynk",
   "description": "Pharmaceutical Supply Chain Management System",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#000000",
   "theme_color": "#000000",
   "orientation": "portrait-primary",
+  "scope": "/",
   "icons": [
     {
       "src": "/icon-72x72.png",
@@ -58,5 +59,7 @@
     }
   ],
   "categories": ["business", "productivity"],
-  "lang": "en"
+  "lang": "en",
+  "gcm_sender_id": "103953800507",
+  "permissions": ["notifications"]
 }

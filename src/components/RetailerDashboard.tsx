@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { DashboardNavigation, NavItem } from '@/components/DashboardNavigation';
+import { PWANotificationManager } from '@/components/PWANotificationManager';
 import { useAuth } from '@/contexts/AuthContext';
 import { retailerService, paymentService, otpService } from '@/services/firestore';
 import { realtimeNotificationService } from '@/services/realtime-notifications';
@@ -1395,6 +1396,9 @@ Thank you for your payment!
                         </div>
                       </CardContent>
                     </Card>
+
+                    {/* PWA Notification Manager */}
+                    <PWANotificationManager userRole="RETAILER" />
                   </div>
                 )}
 

@@ -5,10 +5,10 @@ import { db } from '@/lib/firebase';
 import { RetailerAuthService } from '@/services/retailer-auth';
 import { retailerService, paymentService } from '@/services/firestore';
 import { fast2SMSService, Fast2SMSService } from '@/services/fast2sms-service';
-import { pushNotificationService } from '@/services/push-notification-service';
+import { roleBasedNotificationService } from '@/services/role-based-notification-service';
 import { Retailer } from '@/types';
 import { logger } from '@/lib/logger';
-import { functions, initializeFirebaseFunctions, callFirebaseFunction } from '@/lib/firebase';
+import { callFirebaseFunction } from '@/lib/firebase';
 
 // Type definitions for Firebase Function results
 interface SMSFunctionResult {
@@ -50,19 +50,7 @@ async function getHttpsCallableOptimized(functionName: string) {
     return functionCache.get(functionName);
   }
 
-  // Initialize functions only once
-  if (!functionsInitialized) {
-    console.log('🔧 Initializing Firebase Functions (once)...');
-    try {
-      await initializeFirebaseFunctions();
-      functionsInitialized = true;
-      console.log('✅ Firebase Functions initialized successfully');
-    } catch (initError) {
-      console.error('❌ Firebase Functions initialization failed:', initError);
-    }
-  }
-
-  // Use HTTP calls directly (faster)
+  // Use HTTP calls directly (faster and avoids client-side issues)
   console.log(`🖥️ Using optimized HTTP calls for ${functionName}`);
   const callableFunction = async (data: any) => {
     try {
@@ -98,7 +86,7 @@ async function getPaymentOptimized(paymentId: string) {
     const paymentRef = doc(db, 'payments', paymentId);
     const paymentDoc = await getDoc(paymentRef);
     
-    if (paymentDoc.exists) {
+    if (paymentDoc.exists()) {
       const paymentData = {
         id: paymentDoc.id,
         ...paymentDoc.data()
@@ -141,8 +129,8 @@ async function getVerificationDataOptimized(paymentId: string, retailerId: strin
     
     const [retailerUser, payment] = await Promise.all(promises);
     
-    let lineWorkerData = null;
-    let wholesalerData = null;
+    let lineWorkerData: any = null;
+    let wholesalerData: any = null;
     
     // If we have line worker ID, get line worker and wholesaler data in parallel
     if (payment?.lineWorkerId) {
@@ -150,39 +138,49 @@ async function getVerificationDataOptimized(paymentId: string, retailerId: strin
       
       // Start line worker query immediately
       lineWorkerPromise.then(lineWorkerDoc => {
-        if (lineWorkerDoc.exists) {
+        if (lineWorkerDoc.exists()) {
           const data = lineWorkerDoc.data();
-          lineWorkerData = data;
-          
-          // If we have tenantId, cache line worker data
-          if (data.tenantId) {
-            setCachedData(`line_worker_${payment.lineWorkerId}`, data, 300000); // 5 minutes
+          if (data) {
+            lineWorkerData = data;
+            
+            // If we have tenantId, cache line worker data
+            if (data.tenantId) {
+              setCachedData(`line_worker_${payment.lineWorkerId}`, data, 300000); // 5 minutes
+            }
           }
         }
       });
       
       const lineWorkerDoc = await lineWorkerPromise;
       
-      if (lineWorkerDoc.exists) {
-        lineWorkerData = lineWorkerDoc.data();
-        
-        // Get wholesaler data IMMEDIATELY if we have tenantId
-        if (lineWorkerData.tenantId) {
-          const wholesalerPromise = getDoc(doc(db, 'tenants', lineWorkerData.tenantId));
+      if (lineWorkerDoc.exists()) {
+        const data = lineWorkerDoc.data();
+        if (data) {
+          lineWorkerData = data;
           
-          wholesalerPromise.then(wholesalerDoc => {
-            if (wholesalerDoc.exists) {
+          // Get wholesaler data IMMEDIATELY if we have tenantId
+          if (lineWorkerData.tenantId) {
+            const wholesalerPromise = getDoc(doc(db, 'tenants', lineWorkerData.tenantId));
+            
+            wholesalerPromise.then(wholesalerDoc => {
+              if (wholesalerDoc.exists()) {
+                const data = wholesalerDoc.data();
+                if (data) {
+                  wholesalerData = data;
+                  
+                  // Cache wholesaler data
+                  setCachedData(`wholesaler_${lineWorkerData.tenantId}`, data, 300000); // 5 minutes
+                }
+              }
+            });
+            
+            const wholesalerDoc = await wholesalerPromise;
+            if (wholesalerDoc.exists()) {
               const data = wholesalerDoc.data();
-              wholesalerData = data;
-              
-              // Cache wholesaler data
-              setCachedData(`wholesaler_${lineWorkerData.tenantId}`, data, 300000); // 5 minutes
+              if (data) {
+                wholesalerData = data;
+              }
             }
-          });
-          
-          const wholesalerDoc = await wholesalerPromise;
-          if (wholesalerDoc.exists) {
-            wholesalerData = wholesalerDoc.data();
           }
         }
       }
@@ -444,7 +442,13 @@ export async function POST(request: NextRequest) {
       // Clean up OTP
       otpStore.delete(paymentId);
       removeActiveOTP(paymentId);
-      addCompletedPayment(paymentId);
+      addCompletedPayment({
+        retailerId: payment.retailerId,
+        amount: payment.totalPaid,
+        paymentId: paymentId,
+        lineWorkerName: lineWorkerData?.displayName || lineWorkerData?.name || 'Line Worker',
+        remainingOutstanding: 0 // This would need to be calculated based on business logic
+      });
 
       // Prepare data for SMS
       const lineWorkerName = lineWorkerData?.displayName || lineWorkerData?.name || 'Line Worker';
@@ -465,6 +469,26 @@ export async function POST(request: NextRequest) {
         wholesalerName,
         collectionDate
       });
+
+      // Send PWA push notification for payment completion
+      try {
+        console.log('📱 Sending PWA payment completion notification...');
+        const pwaNotificationSent = await roleBasedNotificationService.sendPaymentCompletedToAll({
+          amount: payment.totalPaid,
+          paymentId: paymentId,
+          retailerName: retailerUser.name,
+          lineWorkerName: lineWorkerName
+        });
+        
+        if (pwaNotificationSent) {
+          console.log('✅ PWA payment completion notification sent successfully');
+        } else {
+          console.log('⚠️ PWA payment completion notification failed, but payment was verified');
+        }
+      } catch (pwaNotificationError) {
+        console.error('❌ Error sending PWA payment completion notification:', pwaNotificationError);
+        // Don't fail the request if PWA notification fails
+      }
 
       const endTime = Date.now();
       const processingTime = endTime - startTime;

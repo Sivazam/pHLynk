@@ -205,6 +205,27 @@ self.addEventListener('message', event => {
     );
   }
   
+  if (event.data && event.data.type === 'SHOW_NOTIFICATION') {
+    console.log('📱 Showing role-based notification:', event.data.payload);
+    
+    const payload = event.data.payload;
+    
+    event.waitUntil(
+      self.registration.showNotification(payload.title, {
+        body: payload.body,
+        icon: payload.icon || '/icon-192x192.png',
+        badge: payload.badge || '/icon-96x96.png',
+        tag: payload.tag,
+        requireInteraction: payload.requireInteraction || false,
+        actions: payload.actions || [],
+        data: {
+          type: event.data.type,
+          originalData: event.data.originalData
+        }
+      })
+    );
+  }
+  
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
   }

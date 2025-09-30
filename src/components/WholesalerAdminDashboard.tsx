@@ -24,6 +24,7 @@ import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { useLoadingState } from '@/hooks/useLoadingState';
 
 import { DashboardNavigation, NavItem, NotificationItem } from '@/components/DashboardNavigation';
+import { PWANotificationManager } from '@/components/PWANotificationManager';
 
 import { useAuth, useWholesalerAdmin, useSuperAdmin } from '@/contexts/AuthContext';
 import { 
@@ -1193,6 +1194,8 @@ export function WholesalerAdminDashboard() {
         </CardContent>
       </Card>
 
+      {/* PWA Notification Manager */}
+      <PWANotificationManager userRole="WHOLESALER_ADMIN" />
 
     </div>
   );

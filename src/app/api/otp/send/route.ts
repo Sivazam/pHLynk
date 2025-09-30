@@ -5,23 +5,7 @@ import { otpStore, sendOTPToRetailer, cleanupExpiredOTPs, addActiveOTP } from '@
 import { RetailerAuthService } from '@/services/retailer-auth';
 import { retailerService } from '@/services/firestore';
 import { Timestamp as FirebaseTimestamp } from 'firebase/firestore';
-import { pushNotificationService } from '@/services/push-notification-service';
-import { functions } from '@/lib/firebase';
-
-// Helper function to get httpsCallable if functions are available
-async function getHttpsCallable(functionName: string) {
-  if (!functions) {
-    return null;
-  }
-  
-  try {
-    const functionsModule = await import('firebase/functions');
-    return functionsModule.httpsCallable(functions, functionName);
-  } catch (error) {
-    console.log('⚠️ Firebase Functions not available, using fallback mode');
-    return null;
-  }
-}
+import { roleBasedNotificationService } from '@/services/role-based-notification-service';
 
 interface OTPRequest {
   retailerId: string;
@@ -99,8 +83,13 @@ export async function POST(request: NextRequest) {
     // Use Cloud Function to generate OTP (more secure) - if available
     let otpData;
     try {
-      const generateOTPFunction = await getHttpsCallable('generateOTP');
-      if (generateOTPFunction) {
+      // Try to use Firebase Functions if available (server-side only)
+      const functionsModule = await import('firebase/functions');
+      if (functionsModule.getFunctions && typeof window === 'undefined') {
+        const { getFunctions, httpsCallable } = functionsModule;
+        const functionsInstance = getFunctions();
+        const generateOTPFunction = httpsCallable(functionsInstance, 'generateOTP');
+        
         const result = await generateOTPFunction({
           retailerId,
           paymentId,
@@ -118,7 +107,7 @@ export async function POST(request: NextRequest) {
           throw new Error(data?.error || 'Failed to generate OTP via cloud function');
         }
       } else {
-        throw new Error('Cloud Functions not available');
+        throw new Error('Firebase Functions not available in this environment');
       }
     } catch (cloudFunctionError) {
       console.error('❌ Error calling cloud function:', cloudFunctionError);
@@ -193,9 +182,9 @@ export async function POST(request: NextRequest) {
     const sent = sendOTPToRetailer(retailerUser.phone, otpData.code, amount);
     console.log('📤 OTP send result:', sent);
     
-    // Send PWA push notification to retailer
+    // Send PWA push notification to RETAILER ONLY
     try {
-      const notificationSent = await pushNotificationService.sendOTPNotification({
+      const notificationSent = await roleBasedNotificationService.sendOTPToRetailer({
         otp: otpData.code,
         amount,
         paymentId,
@@ -204,12 +193,12 @@ export async function POST(request: NextRequest) {
       });
       
       if (notificationSent) {
-        console.log('📱 PWA notification sent successfully');
+        console.log('📱 PWA OTP notification sent to retailer only');
       } else {
-        console.log('⚠️ PWA notification failed, but OTP was generated');
+        console.log('⚠️ PWA OTP notification failed, but OTP was generated');
       }
     } catch (notificationError) {
-      console.error('❌ Error sending PWA notification:', notificationError);
+      console.error('❌ Error sending PWA OTP notification:', notificationError);
       // Don't fail the request if notification fails
     }
     

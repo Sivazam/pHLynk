@@ -40,16 +40,16 @@ export const db = getFirestore(app);
 // Initialize Firebase Storage and get a reference to the service
 export const storage = getStorage(app);
 
-// Initialize Firebase Functions and get a reference to the service (optional)
-// Only initialize if the functions module is available
+// Initialize Firebase Functions and get a reference to the service (server-side only)
+// Firebase Functions are only available on the server side
 let functionsInitialized = false;
 let functionsInitPromise: Promise<any> | null = null;
 
 export async function initializeFirebaseFunctions(): Promise<any> {
-  // For server-side environments, we'll use HTTP calls instead of Firebase Functions SDK
-  if (typeof window === 'undefined') {
-    console.log('🖥️ Server environment detected - using HTTP calls for Firebase Functions');
-    return null; // We'll handle this differently in the API routes
+  // Firebase Functions are only available in server-side environment
+  if (typeof window !== 'undefined') {
+    console.log('🌐 Browser environment - Firebase Functions not available on client side');
+    return null;
   }
   
   if (functionsInitialized && functions) {
@@ -59,7 +59,7 @@ export async function initializeFirebaseFunctions(): Promise<any> {
   if (!functionsInitPromise) {
     functionsInitPromise = (async () => {
       try {
-        console.log('🌐 Browser environment - using Firebase Functions SDK');
+        console.log('🖥️ Server environment - initializing Firebase Functions');
         const functionsModule = await import('firebase/functions');
         console.log('📦 Firebase Functions module loaded:', Object.keys(functionsModule));
         
@@ -69,7 +69,7 @@ export async function initializeFirebaseFunctions(): Promise<any> {
           console.log('✅ Firebase Functions initialized successfully');
           return functions;
         } else {
-          console.error('❌ getFunctions not available in browser');
+          console.error('❌ getFunctions not available');
           return null;
         }
       } catch (error) {
@@ -182,7 +182,7 @@ export async function callFirebaseFunction(functionName: string, data: any, retr
   throw lastError;
 }
 
-// Auto-initialize functions in the background with retry mechanism
+// Auto-initialize functions in the background with retry mechanism (server-side only)
 const initializeWithRetry = async (retryCount = 0, maxRetries = 3) => {
   try {
     await initializeFirebaseFunctions();
@@ -196,7 +196,10 @@ const initializeWithRetry = async (retryCount = 0, maxRetries = 3) => {
   }
 };
 
-initializeWithRetry();
+// Initialize functions only on server side
+if (typeof window === 'undefined') {
+  initializeWithRetry();
+}
 
 export { functions };
 

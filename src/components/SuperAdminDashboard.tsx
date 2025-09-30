@@ -15,6 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DashboardNavigation, NavItem, NotificationItem } from '@/components/DashboardNavigation';
 import { DateRangeFilter } from '@/components/ui/DateRangeFilter';
 import { SuccessFeedback } from '@/components/SuccessFeedback';
+import { PWANotificationManager } from '@/components/PWANotificationManager';
 import { useSuccessFeedback } from '@/hooks/useSuccessFeedback';
 
 import { Skeleton } from '@/components/ui/skeleton';
@@ -777,6 +778,9 @@ export function SuperAdminDashboard() {
               </div>
             </CardContent>
           </Card>
+
+          {/* PWA Notification Manager */}
+          <PWANotificationManager userRole="SUPER_ADMIN" />
         </>
       )}
     </div>
