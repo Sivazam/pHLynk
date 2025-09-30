@@ -676,6 +676,15 @@ export function RetailerDashboard() {
                   const updatedActiveOTPs = getActiveOTPsForRetailer(retailerId);
                   setActiveOTPs(updatedActiveOTPs);
                   
+                  // Add to completed payments list
+                  const completedPayment = {
+                    amount: paymentData.totalPaid,
+                    paymentId: paymentId,
+                    lineWorkerName: paymentData.lineWorkerName || 'Line Worker',
+                    completedAt: completedAt
+                  };
+                  setCompletedPayments(prev => [...prev, completedPayment]);
+                  
                   // Show success popup with confetti
                   setNewCompletedPayment({
                     amount: paymentData.totalPaid,
@@ -703,6 +712,12 @@ export function RetailerDashboard() {
                   setTimeout(() => {
                     setTriggerConfetti(false);
                   }, 5000);
+                  
+                  // Refresh payments data to update recent transactions
+                  setTimeout(() => {
+                    console.log('🔄 Refreshing payments data after real-time payment completion');
+                    fetchRetailerData(retailerId);
+                  }, 1000);
                 } else {
                   console.log('🔔 Success popup already shown for payment:', paymentId);
                 }

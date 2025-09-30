@@ -157,6 +157,11 @@ export function PWANotificationManager({ userRole, className }: PWANotificationM
 
   // Debug function to check notification status
   const debugNotificationStatus = () => {
+    const isPWA = window.matchMedia('(display-mode: standalone)').matches;
+    const isStandalone = (window.navigator as any).standalone;
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    const isChrome = /Chrome/.test(navigator.userAgent) && /Google Inc/.test(navigator.vendor);
+    
     console.log('🔍 PWA Notification Debug Info:', {
       isSupported,
       hasPermission,
@@ -165,9 +170,32 @@ export function PWANotificationManager({ userRole, className }: PWANotificationM
       notificationPermission: typeof Notification !== 'undefined' ? Notification.permission : 'Not supported',
       serviceWorkerSupported: 'serviceWorker' in navigator,
       pushManagerSupported: 'PushManager' in window,
-      currentUserRole: roleBasedNotificationService.getCurrentRole()
+      currentUserRole: roleBasedNotificationService.getCurrentRole(),
+      platform: {
+        isPWA,
+        isStandalone,
+        isIOS,
+        isChrome,
+        userAgent: navigator.userAgent
+      }
     });
+    
+    // Show user-friendly status
+    if (isIOS) {
+      toast.info('iOS detected: Make sure you added this app to Home Screen for full PWA features');
+    } else if (isChrome && !isPWA) {
+      toast.info('Chrome detected: Look for the install icon (+) in the address bar to install as PWA');
+    } else if (hasPermission) {
+      toast.success('Notifications are enabled and working!');
+    } else {
+      toast.warning('Please enable notifications to receive OTP and payment alerts');
+    }
   };
+
+  // Check platform and show appropriate guidance
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+  const isPWA = window.matchMedia('(display-mode: standalone)').matches;
+  const isChrome = /Chrome/.test(navigator.userAgent) && /Google Inc/.test(navigator.vendor);
 
   // Don't render anything if notifications are not supported
   if (!isSupported) {
@@ -180,6 +208,16 @@ export function PWANotificationManager({ userRole, className }: PWANotificationM
               PWA notifications are not supported in this browser
             </span>
           </div>
+          {isIOS && (
+            <div className="mt-2 text-xs text-yellow-700">
+              <p>For iOS users:</p>
+              <ul className="list-disc list-inside mt-1 space-y-1">
+                <li>Add this app to your Home Screen</li>
+                <li>Ensure notifications are enabled in Settings</li>
+                <li>Check Safari Website Settings</li>
+              </ul>
+            </div>
+          )}
         </CardContent>
       </Card>
     );
@@ -351,6 +389,32 @@ export function PWANotificationManager({ userRole, className }: PWANotificationM
           <p>• Notifications work even when the app is in background</p>
           <p>• Available on supported browsers and devices</p>
           <p>• You can disable notifications anytime</p>
+          
+          {/* Platform-specific guidance */}
+          {isIOS && !isPWA && (
+            <div className="mt-2 p-2 bg-blue-50 rounded text-blue-700">
+              <p className="font-medium">iOS Users:</p>
+              <ul className="list-disc list-inside mt-1 space-y-1">
+                <li>Tap Share → Add to Home Screen</li>
+                <li>Enable notifications in Settings → Notifications</li>
+                <li>Check Settings → Safari → Website Settings</li>
+              </ul>
+            </div>
+          )}
+          
+          {isChrome && !isPWA && (
+            <div className="mt-2 p-2 bg-green-50 rounded text-green-700">
+              <p className="font-medium">Chrome Users:</p>
+              <p>Look for the install icon (⊕) in the address bar to install as PWA for better notification support</p>
+            </div>
+          )}
+          
+          {isPWA && (
+            <div className="mt-2 p-2 bg-purple-50 rounded text-purple-700">
+              <p className="font-medium">✅ PWA Installed</p>
+              <p>Full notification support is available</p>
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>

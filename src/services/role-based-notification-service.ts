@@ -95,17 +95,33 @@ class RoleBasedNotificationService {
 
   async requestNotificationPermission(): Promise<boolean> {
     if (!this.isSupported || typeof Notification === 'undefined') {
+      console.warn('⚠️ Notifications not supported in this environment');
       return false;
     }
 
     try {
+      console.log('🔔 Requesting notification permission...');
       const permission = await Notification.requestPermission();
       const granted = permission === 'granted';
       
       if (granted) {
         console.log('✅ Notification permission granted');
+        
+        // Check if we're in a PWA installed environment
+        const isPWA = this.isPWAInstalled();
+        console.log('📱 PWA Environment:', {
+          isStandalone: isPWA,
+          isInWebApp: window.matchMedia('(display-mode: standalone)').matches,
+          isInBrowser: !isPWA
+        });
+        
         // Subscribe to push notifications for background support
         await this.subscribeToPushNotifications();
+        
+        // Test immediate notification to verify it works
+        await this.testImmediateNotification();
+      } else {
+        console.warn('❌ Notification permission denied');
       }
       
       return granted;
@@ -156,48 +172,70 @@ class RoleBasedNotificationService {
     const payload = this.createNotificationPayload(notificationData);
     
     try {
-      console.log('📱 Sending notification:', { userRole, targetRole: notificationData.targetRole, payload });
+      console.log('📱 Sending notification:', { 
+        userRole, 
+        targetRole: notificationData.targetRole, 
+        payload,
+        isPWA: this.isPWAInstalled(),
+        hasServiceWorker: !!this.serviceWorkerRegistration?.active
+      });
       
-      // Send notification via service worker for background support
+      // Enhanced notification sending with fallbacks
+      let notificationSent = false;
+      
+      // Try service worker first (best for PWA)
       if (this.serviceWorkerRegistration && this.serviceWorkerRegistration.active) {
-        console.log('📡 Sending message to service worker');
-        this.serviceWorkerRegistration.active.postMessage({
-          type: 'SHOW_NOTIFICATION',
-          payload
-        });
-      } else {
-        console.warn('⚠️ Service worker not active, using fallback');
-      }
-
-      // Also show immediate notification for active users (fallback)
-      if (Notification.permission === 'granted') {
-        console.log('🔔 Showing immediate notification as fallback');
-        const notification = new Notification(payload.title, {
-          body: payload.body,
-          icon: payload.icon || '/icon-192x192.png',
-          badge: payload.badge || '/icon-96x96.png',
-          tag: payload.tag,
-          requireInteraction: payload.requireInteraction
-        });
-
-        // Handle notification click
-        notification.onclick = () => {
-          this.handleNotificationClick(notificationData);
-          notification.close();
-        };
-
-        // Auto-close after 5 seconds for non-interactive notifications
-        if (!payload.requireInteraction) {
-          setTimeout(() => {
-            notification.close();
-          }, 5000);
+        try {
+          console.log('📡 Sending message to service worker');
+          this.serviceWorkerRegistration.active.postMessage({
+            type: 'SHOW_NOTIFICATION',
+            payload
+          });
+          notificationSent = true;
+        } catch (swError) {
+          console.warn('⚠️ Service worker notification failed:', swError);
         }
-      } else {
-        console.warn('⚠️ Notification permission not granted');
       }
+      
+      // Fallback to immediate notification (works in browser and PWA)
+      if (Notification.permission === 'granted') {
+        try {
+          console.log('🔔 Showing immediate notification as fallback/primary');
+          const notification = new Notification(payload.title, {
+            body: payload.body,
+            icon: payload.icon || '/icon-192x192.png',
+            badge: payload.badge || '/icon-96x96.png',
+            tag: payload.tag,
+            requireInteraction: payload.requireInteraction,
+            actions: payload.actions || []
+          });
 
-      console.log(`✅ Notification sent to role: ${userRole}`, payload);
-      return true;
+          // Handle notification click
+          notification.onclick = () => {
+            this.handleNotificationClick(notificationData);
+            notification.close();
+          };
+
+          // Auto-close after 5 seconds for non-interactive notifications
+          if (!payload.requireInteraction) {
+            setTimeout(() => {
+              notification.close();
+            }, 5000);
+          }
+          
+          notificationSent = true;
+        } catch (immediateError) {
+          console.warn('⚠️ Immediate notification failed:', immediateError);
+        }
+      }
+      
+      if (notificationSent) {
+        console.log(`✅ Notification sent to role: ${userRole}`, payload);
+        return true;
+      } else {
+        console.error('❌ All notification methods failed');
+        return false;
+      }
     } catch (error) {
       console.error('❌ Failed to send notification:', error);
       return false;
@@ -385,6 +423,36 @@ class RoleBasedNotificationService {
       bytes[i] = binaryString.charCodeAt(i);
     }
     return bytes;
+  }
+
+  // Check if PWA is installed
+  private isPWAInstalled(): boolean {
+    return window.matchMedia('(display-mode: standalone)').matches || 
+           (window.navigator as any).standalone || 
+           document.referrer.includes('android-app://');
+  }
+
+  // Test immediate notification
+  private async testImmediateNotification(): Promise<void> {
+    try {
+      console.log('🧪 Testing immediate notification...');
+      const notification = new Notification('📱 PharmaLync Notifications', {
+        body: 'Notifications are now enabled! You will receive alerts for OTP and payment events.',
+        icon: '/icon-192x192.png',
+        badge: '/icon-96x96.png',
+        tag: 'test-enabled',
+        requireInteraction: false
+      });
+
+      // Auto-close after 3 seconds
+      setTimeout(() => {
+        notification.close();
+      }, 3000);
+
+      console.log('✅ Test notification sent successfully');
+    } catch (error) {
+      console.error('❌ Failed to send test notification:', error);
+    }
   }
 }
 
