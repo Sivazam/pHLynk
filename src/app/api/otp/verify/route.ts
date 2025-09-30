@@ -674,8 +674,10 @@ export async function POST(request: NextRequest) {
             if (lineWorkerDoc.exists()) {
               const lineWorkerData = lineWorkerDoc.data();
               console.log('🔍 Debug - lineWorkerData:', lineWorkerData);
-              const lineWorkerName = lineWorkerData.name || lineWorkerData.displayName || 'Line Worker';
+              // Use the actual display name from the line worker document
+              const lineWorkerName = lineWorkerData.displayName || lineWorkerData.name || 'Line Worker';
               console.log('🔍 Debug - lineWorkerName:', lineWorkerName);
+              console.log('🔧 IMPORTANT - Using actual line worker displayName:', lineWorkerName);
               
               // Get retailer details for area information
               const retailerRef = doc(db, 'retailers', payment.retailerId);
@@ -711,19 +713,19 @@ export async function POST(request: NextRequest) {
               }
               console.log('🔍 Debug - Final retailerArea:', retailerArea);
               
-              // Get wholesaler name from wholesaler document
+              // Get wholesaler name from TENANTS collection (tenantId = wholesaler document ID)
               let wholesalerName = 'Wholesaler';
-              console.log('🔍 Debug - lineWorkerData.wholesalerId:', lineWorkerData.wholesalerId);
-              if (lineWorkerData.wholesalerId) {
-                const wholesalerRef = doc(db, 'users', lineWorkerData.wholesalerId);
+              console.log('🔍 Debug - lineWorkerData.tenantId:', lineWorkerData.tenantId);
+              if (lineWorkerData.tenantId) {
+                const wholesalerRef = doc(db, 'tenants', lineWorkerData.tenantId);
                 const wholesalerDoc = await getDoc(wholesalerRef);
                 
                 if (wholesalerDoc.exists()) {
                   const wholesalerData = wholesalerDoc.data();
-                  console.log('🔍 Debug - wholesalerData:', wholesalerData);
-                  wholesalerName = wholesalerData.displayName || wholesalerData.name || 'Wholesaler';
+                  console.log('🔍 Debug - wholesalerData from tenants:', wholesalerData);
+                  wholesalerName = wholesalerData.name || 'Wholesaler';
                 } else {
-                  console.log('🔍 Debug - wholesalerDoc does not exist');
+                  console.log('🔍 Debug - wholesalerDoc does not exist in tenants collection');
                 }
               } else {
                 console.log('🔍 Debug - lineWorkerData has no wholesalerId');
@@ -766,6 +768,7 @@ export async function POST(request: NextRequest) {
                         paymentId: paymentId,
                         amount: payment.totalPaid,
                         lineWorkerName,
+                        lineWorkerId: payment.lineWorkerId, // Add line worker ID for reliable lookup
                         retailerName: retailerUser.name || 'Retailer',
                         retailerArea,
                         wholesalerName,
@@ -845,7 +848,7 @@ export async function POST(request: NextRequest) {
               console.log('🚀 INITIATING WHOLESALER SMS - Sending payment notification to wholesaler...');
               console.log('🚨 CRITICAL DEBUG - About to call getHttpsCallable for sendWholesalerPaymentSMS');
               console.log('🔍 Debug - lineWorkerData:', lineWorkerData ? 'EXISTS' : 'MISSING');
-              console.log('🔍 Debug - lineWorkerData.wholesalerId:', lineWorkerData?.wholesalerId || 'MISSING');
+              console.log('🔍 Debug - lineWorkerData.tenantId:', lineWorkerData?.tenantId || 'MISSING');
               console.log('🔍 Debug - lineWorkerData full object:', JSON.stringify(lineWorkerData, null, 2));
               
               try {
@@ -855,10 +858,10 @@ export async function POST(request: NextRequest) {
                 console.log('🚨 CRITICAL DEBUG - getHttpsCallable for wholesaler returned successfully');
                 console.log('🔧 Debug - sendWholesalerSMSFunction type:', typeof sendWholesalerSMSFunction);
                 
-                if (lineWorkerData.wholesalerId) {
-                  console.log('🔍 Debug - wholesalerId found:', lineWorkerData.wholesalerId);
-                  console.log('🔍 Debug - About to fetch wholesaler document...');
-                  const wholesalerRef = doc(db, 'users', lineWorkerData.wholesalerId);
+                if (lineWorkerData.tenantId) {
+                  console.log('🔍 Debug - tenantId found (this is the wholesaler ID):', lineWorkerData.tenantId);
+                  console.log('🔍 Debug - About to fetch wholesaler document from TENANTS collection...');
+                  const wholesalerRef = doc(db, 'tenants', lineWorkerData.tenantId);
                   const wholesalerDoc = await getDoc(wholesalerRef);
                   console.log('🔍 Debug - wholesalerDoc.exists():', wholesalerDoc.exists());
                   
@@ -893,6 +896,7 @@ export async function POST(request: NextRequest) {
                             paymentId: paymentId,
                             amount: payment.totalPaid,
                             lineWorkerName,
+                            lineWorkerId: payment.lineWorkerId, // Add line worker ID for reliable lookup
                             retailerName: retailerUser.name || 'Retailer',
                             retailerArea,
                             wholesalerName: wholesalerName, // Use the already computed wholesalerName variable for consistency
@@ -1037,7 +1041,9 @@ export async function POST(request: NextRequest) {
             
             if (lineWorkerDoc.exists()) {
               const lineWorkerData = lineWorkerDoc.data();
-              const lineWorkerName = lineWorkerData.name || 'Line Worker';
+              // Use the actual display name from the line worker document
+              const lineWorkerName = lineWorkerData.displayName || lineWorkerData.name || 'Line Worker';
+              console.log('🔧 IMPORTANT - Using actual line worker displayName:', lineWorkerName);
               
               // Get wholesaler info (assuming line worker has wholesalerId field)
               if (lineWorkerData.wholesalerId) {

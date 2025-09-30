@@ -37,6 +37,12 @@ function validateSMSInput(data: any) {
     throw new functions.https.HttpsError('invalid-argument', 'Invalid or missing collectionDate');
   }
   
+  // lineWorkerId is optional (for backwards compatibility)
+  if (data.lineWorkerId && typeof data.lineWorkerId !== 'string') {
+    console.error('❌ CLOUD FUNCTION - Invalid lineWorkerId:', data.lineWorkerId);
+    throw new functions.https.HttpsError('invalid-argument', 'Invalid lineWorkerId');
+  }
+  
   console.log('✅ CLOUD FUNCTION - Input validation passed');
 }
 
@@ -306,7 +312,7 @@ export const sendWholesalerPaymentSMS = functions.https.onCall(async (request: a
     
     console.log('📤 Extracted data:', JSON.stringify(data, null, 2));
     
-    // Input validation
+    // Input validation - updated to accept lineWorkerId as optional
     validateSMSInput(data);
     
     // Rate limiting (by IP or user ID)
@@ -318,70 +324,124 @@ export const sendWholesalerPaymentSMS = functions.https.onCall(async (request: a
       paymentId: data.paymentId,
       amount: data.amount,
       lineWorkerName: data.lineWorkerName,
+      lineWorkerId: data.lineWorkerId,
       caller: context.auth ? context.auth.uid : 'NEXTJS_API',
       ip: context.rawRequest?.ip
     });
 
-    // CRITICAL FIX: Find the SPECIFIC line worker who made the payment
-    const lineWorkerQuery = await admin.firestore()
-      .collection('users')
-      .where('roles', 'array-contains', 'LINE_WORKER')
-      .where('displayName', '==', data.lineWorkerName) // Use the actual line worker name
-      .limit(1)
-      .get();
-
-    if (lineWorkerQuery.empty) {
-      throw new functions.https.HttpsError(
-        'not-found',
-        `Line worker '${data.lineWorkerName}' not found in the system`
-      );
-    }
-
-    const lineWorkerData = lineWorkerQuery.docs[0].data();
+    let lineWorkerData;
     
-    if (!lineWorkerData.wholesalerId) {
+    // ENHANCED: Try to find line worker by ID first (more reliable), then by name
+    if (data.lineWorkerId) {
+      console.log('🔧 CLOUD FUNCTION - Finding line worker by ID:', data.lineWorkerId);
+      const lineWorkerDoc = await admin.firestore()
+        .collection('users')
+        .doc(data.lineWorkerId)
+        .get();
+      
+      if (lineWorkerDoc.exists) {
+        lineWorkerData = lineWorkerDoc.data();
+        if (lineWorkerData) {
+          console.log('✅ CLOUD FUNCTION - Found line worker by ID:', {
+            lineWorkerId: lineWorkerDoc.id,
+            lineWorkerName: lineWorkerData.displayName || lineWorkerData.name,
+            tenantId: lineWorkerData.tenantId,
+            wholesalerId: lineWorkerData.wholesalerId
+          });
+        }
+      } else {
+        console.log('⚠️ CLOUD FUNCTION - Line worker not found by ID, falling back to name search');
+      }
+    }
+    
+    // Fallback: Find by name if ID search failed or ID not provided
+    if (!lineWorkerData) {
+      console.log('🔧 CLOUD FUNCTION - Finding line worker by name:', data.lineWorkerName);
+      const lineWorkerQuery = await admin.firestore()
+        .collection('users')
+        .where('roles', 'array-contains', 'LINE_WORKER')
+        .where('displayName', '==', data.lineWorkerName)
+        .limit(1)
+        .get();
+
+      if (lineWorkerQuery.empty) {
+        // Try with 'name' field as well
+        console.log('🔧 CLOUD FUNCTION - Trying with "name" field instead of "displayName"');
+        const nameQuery = await admin.firestore()
+          .collection('users')
+          .where('roles', 'array-contains', 'LINE_WORKER')
+          .where('name', '==', data.lineWorkerName)
+          .limit(1)
+          .get();
+        
+        if (nameQuery.empty) {
+          throw new functions.https.HttpsError(
+            'not-found',
+            `Line worker '${data.lineWorkerName}' not found in the system`
+          );
+        }
+        
+        lineWorkerData = nameQuery.docs[0].data();
+        console.log('✅ CLOUD FUNCTION - Found line worker by name field:', {
+          lineWorkerId: nameQuery.docs[0].id,
+          lineWorkerName: lineWorkerData.displayName || lineWorkerData.name,
+          tenantId: lineWorkerData.tenantId,
+          wholesalerId: lineWorkerData.wholesalerId
+        });
+      } else {
+        lineWorkerData = lineWorkerQuery.docs[0].data();
+        console.log('✅ CLOUD FUNCTION - Found line worker by displayName:', {
+          lineWorkerId: lineWorkerQuery.docs[0].id,
+          lineWorkerName: lineWorkerData.displayName || lineWorkerData.name,
+          tenantId: lineWorkerData.tenantId,
+          wholesalerId: lineWorkerData.wholesalerId
+        });
+      }
+    }
+    
+    // CRITICAL FIX: Use tenantId as wholesaler identifier (tenantId = wholesaler document ID)
+    const wholesalerId = lineWorkerData.tenantId || lineWorkerData.wholesalerId;
+    
+    if (!wholesalerId) {
       throw new functions.https.HttpsError(
         'failed-precondition',
-        `Line worker '${data.lineWorkerName}' is not assigned to any wholesaler`
+        `Line worker '${data.lineWorkerName}' is not assigned to any wholesaler (missing tenantId/wholesalerId)`
       );
     }
-
-    console.log('🔧 CLOUD FUNCTION - Found correct line worker:', {
-      lineWorkerId: lineWorkerQuery.docs[0].id,
-      lineWorkerName: lineWorkerData.displayName || lineWorkerData.name,
-      wholesalerId: lineWorkerData.wholesalerId
-    });
     
-  // Get wholesaler info
+    console.log('🔧 CLOUD FUNCTION - Using wholesaler/tenant ID:', wholesalerId);
+    
+  // Get wholesaler info from TENANTS collection (not users collection)
   const wholesalerDoc = await admin.firestore()
-    .collection('users')
-    .doc(lineWorkerData.wholesalerId)
+    .collection('tenants')
+    .doc(wholesalerId)
     .get();
 
   if (!wholesalerDoc.exists) {
     throw new functions.https.HttpsError(
       'not-found',
-      `Wholesaler not found for ID: ${lineWorkerData.wholesalerId}`
+      `Wholesaler/Tenant not found for ID: ${wholesalerId}`
     );
   }
 
   const wholesalerData = wholesalerDoc.data();
   
-  if (!wholesalerData || !wholesalerData.phone) {
+  if (!wholesalerData || !wholesalerData.contactPhone) {
     throw new functions.https.HttpsError(
       'failed-precondition',
-      `Wholesaler phone number not found for wholesaler: ${lineWorkerData.wholesalerId}`
+      `Wholesaler contact phone not found for wholesaler: ${wholesalerId}`
     );
   }
 
   console.log('🔧 CLOUD FUNCTION - Found wholesaler details:', {
     wholesalerId: wholesalerDoc.id,
-    wholesalerName: wholesalerData.displayName || wholesalerData.name,
-    wholesalerPhone: wholesalerData.phone
+    wholesalerName: wholesalerData.name,
+    wholesalerPhone: wholesalerData.contactPhone,
+    wholesalerEmail: wholesalerData.contactEmail
   });
 
   // Validate and format phone number
-  const formattedPhone = validatePhoneNumber(wholesalerData.phone);
+  const formattedPhone = validatePhoneNumber(wholesalerData.contactPhone);
   
   // Prepare SMS variables - Order MUST match DLT template exactly
   // Template: "Payment Update: {#var#}/- has been recorded in the PharmaLync system from {#var#}, {#var#}. Collected by Line man {#var#} on behalf of {#var#} on {#var#}."
@@ -392,7 +452,7 @@ export const sendWholesalerPaymentSMS = functions.https.onCall(async (request: a
   const retailerName = data.retailerName || 'Retailer';
   const retailerArea = data.retailerArea || 'Unknown Area';
   const lineWorkerName = data.lineWorkerName || 'Line Worker';
-  const wholesalerName = data.wholesalerName || (wholesalerData.displayName || wholesalerData.name || 'Wholesaler');
+  const wholesalerName = data.wholesalerName || (wholesalerData.name || 'Wholesaler'); // Use name from tenants collection
   const collectionDate = data.collectionDate || new Date().toLocaleDateString('en-IN');
   
   const variablesValues: string[] = [
