@@ -7,6 +7,7 @@ export class NotificationService {
   private static instance: NotificationService;
   private notifications: Map<string, NotificationItem[]> = new Map(); // tenantId -> notifications[]
   private listeners: Set<(notifications: NotificationItem[]) => void> = new Set();
+  private currentUserRole: string = 'unknown';
 
   private constructor() {
     // Initialize empty notifications - no sample data
@@ -18,6 +19,17 @@ export class NotificationService {
       NotificationService.instance = new NotificationService();
     }
     return NotificationService.instance;
+  }
+
+  // Set the current user role for role-based notifications
+  setRole(role: string): void {
+    this.currentUserRole = role.toLowerCase();
+    console.log(`🔐 Notification service: Set current user role to ${this.currentUserRole}`);
+  }
+
+  // Get the current user role
+  getCurrentRole(): string {
+    return this.currentUserRole;
   }
 
   // Add a new notification
@@ -426,6 +438,25 @@ export class NotificationService {
         console.error('Error in notification listener:', error);
       }
     });
+  }
+
+  // Send PWA notification using role-based service
+  async sendNotification(userRole: string, notificationData: any): Promise<boolean> {
+    try {
+      // Import the role-based notification service
+      const { roleBasedNotificationService } = await import('@/services/role-based-notification-service');
+      
+      // Set the role if not already set
+      if (this.currentUserRole === 'unknown') {
+        this.setRole(userRole);
+      }
+      
+      // Send the notification using role-based service
+      return await roleBasedNotificationService.sendNotificationToRole(notificationData);
+    } catch (error) {
+      console.error('❌ Failed to send PWA notification:', error);
+      return false;
+    }
   }
 }
 

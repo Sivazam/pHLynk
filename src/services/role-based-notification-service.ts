@@ -153,6 +153,14 @@ class RoleBasedNotificationService {
     }
   }
 
+  async sendTestNotification(): Promise<boolean> {
+    return this.sendNotificationToRole({
+      type: 'test',
+      targetRole: 'all',
+      data: {}
+    });
+  }
+
   async sendNotificationToRole(notificationData: NotificationData): Promise<boolean> {
     if (!this.isSupported) {
       console.warn('⚠️ Notifications not supported');

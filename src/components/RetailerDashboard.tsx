@@ -387,6 +387,9 @@ export function RetailerDashboard() {
           // Also check for completed payments that should close OTP popup
           checkCompletedPayments();
           
+          // Sync OTPs with Firestore to ensure consistency
+          syncOTPsFromFirestore();
+          
           // Cleanup old shown popups to prevent memory leaks (keep only last 50)
           setShownCompletedPaymentPopups(prev => {
             if (prev.size > 50) {
@@ -402,6 +405,48 @@ export function RetailerDashboard() {
       return () => clearInterval(refreshInterval);
     }
   }, [retailer, tenantId, mainLoadingState.loadingState.isLoading]);
+
+  // Sync OTPs from Firestore to ensure consistency
+  const syncOTPsFromFirestore = async () => {
+    if (!retailer || !tenantId) return;
+    
+    try {
+      const retailerRef = doc(db, 'retailers', retailer.id);
+      const retailerDoc = await getDoc(retailerRef);
+      
+      if (retailerDoc.exists()) {
+        const retailerData = retailerDoc.data();
+        const activeOTPsFromFirestore = retailerData.activeOTPs || [];
+        
+        // Get valid OTPs from Firestore
+        const validOTPsFromFirestore = activeOTPsFromFirestore.filter((otp: any) => {
+          const expiresAt = otp.expiresAt.toDate();
+          const isExpired = expiresAt <= new Date();
+          return !isExpired && !otp.isUsed;
+        });
+        
+        // Get current active OTPs
+        const currentActiveOTPs = getActiveOTPsForRetailer(retailer.id);
+        const firestorePaymentIds = new Set(validOTPsFromFirestore.map((otp: any) => otp.paymentId));
+        
+        // Remove OTPs that are no longer valid in Firestore
+        const otpsToRemove = currentActiveOTPs.filter(otp => !firestorePaymentIds.has(otp.paymentId));
+        
+        if (otpsToRemove.length > 0) {
+          console.log('🔄 Sync: Removing invalid OTPs:', otpsToRemove.length);
+          otpsToRemove.forEach(otp => {
+            removeActiveOTP(otp.paymentId);
+          });
+          
+          // Update the state
+          const updatedActiveOTPs = getActiveOTPsForRetailer(retailer.id);
+          setActiveOTPs(updatedActiveOTPs);
+        }
+      }
+    } catch (error) {
+      console.error('❌ Error syncing OTPs from Firestore:', error);
+    }
+  };
 
   // Check for completed payments and close OTP popup if needed
   const checkCompletedPayments = async () => {
@@ -525,6 +570,9 @@ export function RetailerDashboard() {
       setNotificationTenantId(correctTenantId);
       console.log('🔔 Setting up retailer notifications with tenantId:', correctTenantId);
       
+      // Set the user role for notifications
+      notificationService.setRole('RETAILER');
+      
       realtimeNotificationService.startListening(
         retailerId,
         'RETAILER',
@@ -574,6 +622,17 @@ export function RetailerDashboard() {
           // Get current active OTPs to compare
           const currentActiveOTPs = getActiveOTPsForRetailer(retailerId);
           const currentPaymentIds = new Set(currentActiveOTPs.map(otp => otp.paymentId));
+          
+          // Check for OTPs that should be removed (used/expired in Firestore but still in local store)
+          const firestorePaymentIds = new Set(validOTPsFromFirestore.map((otp: any) => otp.paymentId));
+          const otpsToRemove = currentActiveOTPs.filter(otp => !firestorePaymentIds.has(otp.paymentId));
+          
+          if (otpsToRemove.length > 0) {
+            console.log('🗑️ Removing OTPs that are no longer valid in Firestore:', otpsToRemove.length);
+            otpsToRemove.forEach(otp => {
+              removeActiveOTP(otp.paymentId);
+            });
+          }
           
           // Only add OTPs that we don't already have
           const newOTPs = validOTPsFromFirestore.filter((otp: any) => 
@@ -642,8 +701,8 @@ export function RetailerDashboard() {
       // Set up real-time payment completion listener
       const paymentsRef = collection(db, 'payments');
       const paymentQuery = query(paymentsRef, where('retailerId', '==', retailerId));
-      const paymentUnsubscribeFunc = onSnapshot(paymentQuery, (snapshot) => {
-        snapshot.docChanges().forEach((change) => {
+      const paymentUnsubscribeFunc = onSnapshot(paymentQuery, async (snapshot) => {
+        snapshot.docChanges().forEach(async (change) => {
           if (change.type === 'modified') {
             const paymentData = change.doc.data();
             const paymentId = change.doc.id;
@@ -675,6 +734,24 @@ export function RetailerDashboard() {
                   removeActiveOTP(paymentId);
                   const updatedActiveOTPs = getActiveOTPsForRetailer(retailerId);
                   setActiveOTPs(updatedActiveOTPs);
+                  
+                  // Send notification
+                  try {
+                    await notificationService.sendNotification('RETAILER', {
+                      type: 'payment_completed',
+                      targetRole: 'retailer',
+                      data: {
+                        paymentId,
+                        amount: paymentData.totalPaid,
+                        lineWorkerName: paymentData.lineWorkerName || 'Line Worker',
+                        retailerId,
+                        completedAt
+                      }
+                    });
+                    console.log('🔔 Payment completion notification sent successfully');
+                  } catch (notifError) {
+                    console.error('❌ Failed to send payment completion notification:', notifError);
+                  }
                   
                   // Add to completed payments list
                   const completedPayment = {
