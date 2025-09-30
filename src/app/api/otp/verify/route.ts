@@ -642,6 +642,8 @@ export async function POST(request: NextRequest) {
       // CRITICAL DEBUG: Add logging right before SMS sending
       console.log('🚨 CRITICAL DEBUG - About to send SMS notifications');
       console.log('🚨 CRITICAL DEBUG - PaymentId:', paymentId);
+      console.log('🚨 CRITICAL DEBUG - Code reached SMS section successfully');
+      console.log('🚨 CRITICAL DEBUG - Starting SMS notification process');
       
       // Send payment confirmation SMS to both retailer and wholesaler using Firebase Functions
       console.log('🚀 PAYMENT SUCCESSFUL - Sending SMS notifications to both retailer and wholesaler...');
@@ -724,10 +726,12 @@ export async function POST(request: NextRequest) {
               
               // Send SMS to retailer using Firebase Function
               console.log('🚀 INITIATING RETAILER SMS - Sending payment confirmation to retailer...');
+              console.log('🚨 CRITICAL DEBUG - About to call getHttpsCallable for sendRetailerPaymentSMS');
               let retailerSMSSuccess = false;
               try {
                 const sendRetailerSMSFunction = await getHttpsCallable('sendRetailerPaymentSMS');
                 console.log('📞 Firebase Function is available and ready to call');
+                console.log('🚨 CRITICAL DEBUG - getHttpsCallable returned successfully');
                 
                 if (retailerUser.phone) {
                   console.log('🚀 ABOUT TO CALL FIREBASE FUNCTION - sendRetailerPaymentSMS');
@@ -830,6 +834,7 @@ export async function POST(request: NextRequest) {
               
               // Send SMS to wholesaler using Firebase Function (independent of retailer SMS result)
               console.log('🚀 INITIATING WHOLESALER SMS - Sending payment notification to wholesaler...');
+              console.log('🚨 CRITICAL DEBUG - About to call getHttpsCallable for sendWholesalerPaymentSMS');
               console.log('🔍 Debug - lineWorkerData:', lineWorkerData ? 'EXISTS' : 'MISSING');
               console.log('🔍 Debug - lineWorkerData.wholesalerId:', lineWorkerData?.wholesalerId || 'MISSING');
               console.log('🔍 Debug - lineWorkerData full object:', JSON.stringify(lineWorkerData, null, 2));
@@ -838,6 +843,7 @@ export async function POST(request: NextRequest) {
                 console.log('🔧 Debug - Attempting to get sendWholesalerPaymentSMS function...');
                 const sendWholesalerSMSFunction = await getHttpsCallable('sendWholesalerPaymentSMS');
                 console.log('📞 Wholesaler Firebase Function is available and ready to call');
+                console.log('🚨 CRITICAL DEBUG - getHttpsCallable for wholesaler returned successfully');
                 console.log('🔧 Debug - sendWholesalerSMSFunction type:', typeof sendWholesalerSMSFunction);
                 
                 if (lineWorkerData.wholesalerId) {

@@ -106,16 +106,19 @@ export async function callFirebaseFunction(functionName: string, data: any, retr
       
       // Check if this is callable function format (has 'data' property)
       if (data && typeof data === 'object' && data.data && typeof data.data === 'object') {
-        console.log(`🔧 Detected callable function format, unwrapping 'data' property`);
-        requestData = data.data;
+        console.log(`🔧 Detected callable function format, keeping 'data' property for HTTP call`);
+        // For HTTP calls to Firebase callable functions, we need to keep the data wrapped
+        requestData = data;  // Keep the original structure with 'data' property
       } else {
-        console.log(`🔧 Using direct data format for HTTP call`);
+        console.log(`🔧 Wrapping data in 'data' property for callable function format`);
+        requestData = { data: data };  // Wrap in data property for callable functions
       }
       
       console.log(`🔧 Data processing for HTTP call:`);
       console.log(`📥 Original data structure:`, JSON.stringify(data, null, 2));
       console.log(`📤 Processed request data:`, JSON.stringify(requestData, null, 2));
       console.log(`📤 Had 'data' property:`, !!(data && typeof data === 'object' && data.data));
+      console.log(`🚨 CRITICAL DEBUG - Final HTTP request body:`, JSON.stringify(requestData, null, 2));
       
       console.log(`📤 Making HTTP request to: ${functionUrl}`);
       console.log(`📤 Request headers:`, {
