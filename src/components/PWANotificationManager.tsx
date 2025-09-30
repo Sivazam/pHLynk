@@ -21,6 +21,11 @@ export function PWANotificationManager({ userRole, className }: PWANotificationM
   const [showSettings, setShowSettings] = useState(false);
 
   useEffect(() => {
+    // Set the user role in the notification service
+    if (userRole) {
+      roleBasedNotificationService.setCurrentRole(userRole);
+    }
+
     // Check notification support and permission status
     const checkNotificationStatus = () => {
       const supported = roleBasedNotificationService.isNotificationSupported();
@@ -133,11 +138,14 @@ export function PWANotificationManager({ userRole, className }: PWANotificationM
 
     setIsLoading(true);
     try {
+      console.log('🧪 Sending test notification...');
       const sent = await roleBasedNotificationService.sendTestNotification();
       if (sent) {
         toast.success('Test notification sent!');
+        console.log('✅ Test notification sent successfully');
       } else {
         toast.error('Failed to send test notification');
+        console.error('❌ Test notification failed');
       }
     } catch (error) {
       console.error('Error sending test notification:', error);
@@ -145,6 +153,20 @@ export function PWANotificationManager({ userRole, className }: PWANotificationM
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // Debug function to check notification status
+  const debugNotificationStatus = () => {
+    console.log('🔍 PWA Notification Debug Info:', {
+      isSupported,
+      hasPermission,
+      isSubscribed,
+      userRole,
+      notificationPermission: typeof Notification !== 'undefined' ? Notification.permission : 'Not supported',
+      serviceWorkerSupported: 'serviceWorker' in navigator,
+      pushManagerSupported: 'PushManager' in window,
+      currentUserRole: roleBasedNotificationService.getCurrentUserRole()
+    });
   };
 
   // Don't render anything if notifications are not supported
@@ -311,6 +333,15 @@ export function PWANotificationManager({ userRole, className }: PWANotificationM
                   Send Test Notification
                 </>
               )}
+            </Button>
+
+            <Button
+              onClick={debugNotificationStatus}
+              variant="ghost"
+              size="sm"
+              className="w-full text-xs"
+            >
+              🐛 Debug Status (Check Console)
             </Button>
           </div>
         )}

@@ -436,7 +436,9 @@ export async function POST(request: NextRequest) {
       await updateDoc(paymentRef, {
         state: 'COMPLETED',
         verifiedAt: verificationTime,
-        verificationMethod: 'OTP'
+        verificationMethod: 'OTP',
+        'timeline.completedAt': Timestamp.fromDate(verificationTime),
+        updatedAt: new Date()
       });
 
       // Clean up OTP

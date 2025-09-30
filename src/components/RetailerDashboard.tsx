@@ -424,7 +424,7 @@ export function RetailerDashboard() {
         if (!payment.completedAt) return false;
         const now = new Date();
         const timeSinceCompletion = now.getTime() - payment.completedAt.getTime();
-        return timeSinceCompletion < 60000; // Within last minute
+        return timeSinceCompletion < 5 * 60 * 1000; // Within last 5 minutes
       });
       
       if (recentCompletedPayments.length > 0) {
@@ -447,7 +447,7 @@ export function RetailerDashboard() {
           setNewCompletedPayment({
             amount: latestPayment.totalPaid || 0,
             paymentId: latestPayment.id,
-            lineWorkerName: 'Line Worker', // We'll fetch this separately if needed
+            lineWorkerName: latestPayment.lineWorkerName || 'Line Worker',
             completedAt: latestPayment.completedAt
           });
           setShowSettlementPopup(true);
@@ -656,16 +656,17 @@ export function RetailerDashboard() {
               if (completedAt) {
                 const now = new Date();
                 const timeSinceCompletion = now.getTime() - completedAt.getTime();
-                const thirtySecondsInMs = 30 * 1000; // Extended window to 30 seconds
+                const fiveMinutesInMs = 5 * 60 * 1000; // Extended window to 5 minutes
                 
                 console.log('🎉 Payment completion detected:', {
                   paymentId,
                   timeSinceCompletion,
-                  withinWindow: timeSinceCompletion < thirtySecondsInMs
+                  withinWindow: timeSinceCompletion < fiveMinutesInMs
                 });
                 
-                if (timeSinceCompletion < thirtySecondsInMs) {
-                  console.log('🎉 Recent payment completion detected, closing OTP popup and showing success');
+                // Only show success popup if we haven't already shown it for this payment
+                if (!shownCompletedPaymentPopups.has(paymentId)) {
+                  console.log('🎉 Showing success popup for completed payment:', paymentId);
                   
                   // Close OTP popup if it's open
                   setShowOTPPopup(false);
@@ -685,9 +686,6 @@ export function RetailerDashboard() {
                   setShowSettlementPopup(true);
                   setTriggerConfetti(true);
                   
-                  // Add to shown OTP popups
-                  setShownOTPpopups(prev => new Set(prev).add(paymentId));
-                  
                   // Add to shown completed payment popups
                   setShownCompletedPaymentPopups(prev => new Set(prev).add(paymentId));
                   
@@ -705,6 +703,8 @@ export function RetailerDashboard() {
                   setTimeout(() => {
                     setTriggerConfetti(false);
                   }, 5000);
+                } else {
+                  console.log('🔔 Success popup already shown for payment:', paymentId);
                 }
               }
             }

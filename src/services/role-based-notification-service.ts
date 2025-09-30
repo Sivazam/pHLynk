@@ -24,6 +24,7 @@ class RoleBasedNotificationService {
   private static instance: RoleBasedNotificationService;
   private serviceWorkerRegistration: ServiceWorkerRegistration | null = null;
   isSupported: boolean = false;
+  private currentUserRole: string = 'unknown';
 
   private constructor() {
     this.initializeServiceWorker();
@@ -36,17 +37,53 @@ class RoleBasedNotificationService {
     return RoleBasedNotificationService.instance;
   }
 
+  // Method to set the current user role (called from frontend components)
+  setCurrentRole(role: string): void {
+    this.currentUserRole = role.toLowerCase();
+    console.log(`🔐 Set current user role: ${this.currentUserRole}`);
+  }
+
   private async initializeServiceWorker() {
     if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
       try {
+        console.log('🔧 Initializing service worker for notifications...');
+        
+        // Register service worker
         this.serviceWorkerRegistration = await navigator.serviceWorker.register('/sw.js');
+        console.log('✅ Service worker registered:', this.serviceWorkerRegistration);
+        
+        // Wait for service worker to be active
+        if (this.serviceWorkerRegistration.active) {
+          console.log('✅ Service worker is already active');
+        } else {
+          console.log('⏳ Waiting for service worker to become active...');
+          await new Promise((resolve) => {
+            const listener = () => {
+              if (this.serviceWorkerRegistration?.active) {
+                console.log('✅ Service worker became active');
+                resolve(true);
+              }
+            };
+            this.serviceWorkerRegistration?.addEventListener('controllerchange', listener);
+            // Fallback timeout
+            setTimeout(() => {
+              console.log('⏰ Service worker activation timeout');
+              resolve(true);
+            }, 3000);
+          });
+        }
+        
         this.isSupported = 'Notification' in window && 'PushManager' in window;
-        console.log('✅ Role-based notification service initialized');
+        console.log('✅ Role-based notification service initialized', {
+          supported: this.isSupported,
+          hasActiveWorker: !!this.serviceWorkerRegistration?.active
+        });
       } catch (error) {
         console.error('❌ Failed to initialize service worker:', error);
         this.isSupported = false;
       }
     } else {
+      console.warn('⚠️ Service workers not supported in this environment');
       this.isSupported = false;
     }
   }
@@ -101,12 +138,12 @@ class RoleBasedNotificationService {
       return false;
     }
 
-    // Get current user role from localStorage or auth context
-    const currentUserRole = this.getCurrentUserRole();
+    // Get current user role from stored value or detect it
+    const userRole = this.currentUserRole !== 'unknown' ? this.currentUserRole : this.getCurrentUserRole();
     
     // Check if current user should receive this notification
-    if (!this.shouldUserReceiveNotification(notificationData.targetRole, currentUserRole)) {
-      console.log(`🔕 Notification filtered out - User role: ${currentUserRole}, Target: ${notificationData.targetRole}`);
+    if (!this.shouldUserReceiveNotification(notificationData.targetRole, userRole)) {
+      console.log(`🔕 Notification filtered out - User role: ${userRole}, Target: ${notificationData.targetRole}`);
       return false;
     }
 
@@ -114,31 +151,47 @@ class RoleBasedNotificationService {
     const payload = this.createNotificationPayload(notificationData);
     
     try {
+      console.log('📱 Sending notification:', { userRole, targetRole: notificationData.targetRole, payload });
+      
       // Send notification via service worker for background support
-      if (this.serviceWorkerRegistration) {
-        // Send message to service worker
-        this.serviceWorkerRegistration.active?.postMessage({
+      if (this.serviceWorkerRegistration && this.serviceWorkerRegistration.active) {
+        console.log('📡 Sending message to service worker');
+        this.serviceWorkerRegistration.active.postMessage({
           type: 'SHOW_NOTIFICATION',
           payload
         });
+      } else {
+        console.warn('⚠️ Service worker not active, using fallback');
       }
 
-      // Also show immediate notification for active users
-      const notification = new Notification(payload.title, {
-        body: payload.body,
-        icon: payload.icon || '/icon-192x192.png',
-        badge: payload.badge || '/icon-96x96.png',
-        tag: payload.tag,
-        requireInteraction: payload.requireInteraction
-      });
+      // Also show immediate notification for active users (fallback)
+      if (Notification.permission === 'granted') {
+        console.log('🔔 Showing immediate notification as fallback');
+        const notification = new Notification(payload.title, {
+          body: payload.body,
+          icon: payload.icon || '/icon-192x192.png',
+          badge: payload.badge || '/icon-96x96.png',
+          tag: payload.tag,
+          requireInteraction: payload.requireInteraction
+        });
 
-      // Handle notification click
-      notification.onclick = () => {
-        this.handleNotificationClick(notificationData);
-        notification.close();
-      };
+        // Handle notification click
+        notification.onclick = () => {
+          this.handleNotificationClick(notificationData);
+          notification.close();
+        };
 
-      console.log(`✅ Notification sent to role: ${currentUserRole}`, payload);
+        // Auto-close after 5 seconds for non-interactive notifications
+        if (!payload.requireInteraction) {
+          setTimeout(() => {
+            notification.close();
+          }, 5000);
+        }
+      } else {
+        console.warn('⚠️ Notification permission not granted');
+      }
+
+      console.log(`✅ Notification sent to role: ${userRole}`, payload);
       return true;
     } catch (error) {
       console.error('❌ Failed to send notification:', error);
@@ -152,8 +205,12 @@ class RoleBasedNotificationService {
       return true;
     }
     
+    // Normalize roles to lowercase for comparison
+    const normalizedTargetRole = targetRole.toLowerCase();
+    const normalizedUserRole = userRole.toLowerCase();
+    
     // Only send to users with matching role
-    return targetRole === userRole;
+    return normalizedTargetRole === normalizedUserRole;
   }
 
   private getCurrentUserRole(): string {
@@ -162,7 +219,31 @@ class RoleBasedNotificationService {
       const userData = localStorage.getItem('user');
       if (userData) {
         const user = JSON.parse(userData);
-        return user.role || 'unknown';
+        
+        // Check if user is a retailer
+        if (user.isRetailer) {
+          return 'retailer';
+        }
+        
+        // Check roles array for other user types
+        if (user.roles && Array.isArray(user.roles)) {
+          // Convert role names to lowercase for consistency
+          const role = user.roles[0]?.toLowerCase();
+          if (role) {
+            return role;
+          }
+        }
+        
+        // Fallback to role property if it exists
+        if (user.role) {
+          return user.role.toLowerCase();
+        }
+      }
+      
+      // Additional check: if we have retailerId in localStorage, assume retailer
+      const retailerId = localStorage.getItem('retailerId');
+      if (retailerId) {
+        return 'retailer';
       }
     } catch (error) {
       console.warn('⚠️ Could not determine user role:', error);
