@@ -100,14 +100,12 @@ export async function callFirebaseFunction(functionName: string, data: any, retr
       const functionUrl = `https://us-central1-${firebaseConfig.projectId}.cloudfunctions.net/${functionName}`;
       
       // Firebase Functions expect the data to be sent directly for HTTP calls
-      // If the data has a 'data' property (from callable function format), unwrap it
-      // If the data is already the direct parameters, use it as-is
+      // For callable functions, we need to structure the data as { data: {...} }
       let requestData = data;
       
-      // Check if this is callable function format (has 'data' property)
+      // Check if this is already in callable function format (has 'data' property)
       if (data && typeof data === 'object' && data.data && typeof data.data === 'object') {
-        console.log(`🔧 Detected callable function format, keeping 'data' property for HTTP call`);
-        // For HTTP calls to Firebase callable functions, we need to keep the data wrapped
+        console.log(`🔧 Data already has 'data' property, using as-is for callable function`);
         requestData = data;  // Keep the original structure with 'data' property
       } else {
         console.log(`🔧 Wrapping data in 'data' property for callable function format`);
@@ -117,17 +115,9 @@ export async function callFirebaseFunction(functionName: string, data: any, retr
       console.log(`🔧 Data processing for HTTP call:`);
       console.log(`📥 Original data structure:`, JSON.stringify(data, null, 2));
       console.log(`📤 Processed request data:`, JSON.stringify(requestData, null, 2));
-      console.log(`📤 Had 'data' property:`, !!(data && typeof data === 'object' && data.data));
       console.log(`🚨 CRITICAL DEBUG - Final HTTP request body:`, JSON.stringify(requestData, null, 2));
       
       console.log(`📤 Making HTTP request to: ${functionUrl}`);
-      console.log(`📤 Request headers:`, {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization'
-      });
-      console.log(`📤 Request body:`, JSON.stringify(requestData, null, 2));
       
       // Make the HTTP request with timeout
       const controller = new AbortController();
@@ -137,9 +127,6 @@ export async function callFirebaseFunction(functionName: string, data: any, retr
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type, Authorization'
         },
         body: JSON.stringify(requestData),
         signal: controller.signal
@@ -149,11 +136,20 @@ export async function callFirebaseFunction(functionName: string, data: any, retr
       
       console.log(`📤 Response status:`, response.status);
       console.log(`📤 Response status text:`, response.statusText);
-      console.log(`📤 Response headers:`, Object.fromEntries(response.headers.entries()));
       
       if (!response.ok) {
         const errorText = await response.text();
         console.error(`❌ HTTP error! status: ${response.status}, response:`, errorText);
+        
+        // Try to parse error as JSON for more details
+        let errorDetails = null;
+        try {
+          errorDetails = JSON.parse(errorText);
+          console.error(`❌ Parsed error details:`, errorDetails);
+        } catch (parseError) {
+          console.error(`❌ Could not parse error as JSON:`, errorText);
+        }
+        
         throw new Error(`HTTP error! status: ${response.status}, response: ${errorText}`);
       }
       

@@ -40,24 +40,35 @@ const admin = __importStar(require("firebase-admin"));
 admin.initializeApp();
 // Input validation helper
 function validateSMSInput(data) {
+    console.log('🔧 CLOUD FUNCTION - Validating input data:', JSON.stringify(data, null, 2));
+    if (!data) {
+        throw new functions.https.HttpsError('invalid-argument', 'Request data is missing');
+    }
     if (!data.retailerId || typeof data.retailerId !== 'string') {
+        console.error('❌ CLOUD FUNCTION - Invalid retailerId:', data.retailerId);
         throw new functions.https.HttpsError('invalid-argument', 'Invalid or missing retailerId');
     }
     if (!data.paymentId || typeof data.paymentId !== 'string') {
+        console.error('❌ CLOUD FUNCTION - Invalid paymentId:', data.paymentId);
         throw new functions.https.HttpsError('invalid-argument', 'Invalid or missing paymentId');
     }
     if (!data.amount || typeof data.amount !== 'number' || data.amount <= 0) {
+        console.error('❌ CLOUD FUNCTION - Invalid amount:', data.amount);
         throw new functions.https.HttpsError('invalid-argument', 'Invalid amount');
     }
     if (!data.lineWorkerName || typeof data.lineWorkerName !== 'string') {
+        console.error('❌ CLOUD FUNCTION - Invalid lineWorkerName:', data.lineWorkerName);
         throw new functions.https.HttpsError('invalid-argument', 'Invalid or missing lineWorkerName');
     }
     if (!data.retailerName || typeof data.retailerName !== 'string') {
+        console.error('❌ CLOUD FUNCTION - Invalid retailerName:', data.retailerName);
         throw new functions.https.HttpsError('invalid-argument', 'Invalid or missing retailerName');
     }
     if (!data.collectionDate || typeof data.collectionDate !== 'string') {
+        console.error('❌ CLOUD FUNCTION - Invalid collectionDate:', data.collectionDate);
         throw new functions.https.HttpsError('invalid-argument', 'Invalid or missing collectionDate');
     }
+    console.log('✅ CLOUD FUNCTION - Input validation passed');
 }
 // Rate limiting helper
 async function checkRateLimit(identifier, maxRequests = 10, windowMs = 60000) {
@@ -108,8 +119,27 @@ function getFast2SMSConfig() {
 exports.sendRetailerPaymentSMS = functions.https.onCall(async (request) => {
     var _a, _b, _c, _d;
     try {
-        const { data } = request;
-        const context = request;
+        console.log('🚀 CLOUD FUNCTION TRIGGERED - sendRetailerPaymentSMS');
+        console.log('📥 Full request object:', JSON.stringify(request, null, 2));
+        // Handle both callable function format and direct HTTP format
+        let data, context;
+        if (request.data && typeof request.data === 'object') {
+            // Callable function format
+            console.log('📋 Using callable function format');
+            data = request.data;
+            context = request;
+        }
+        else if (request && typeof request === 'object' && !request.auth) {
+            // Direct HTTP format
+            console.log('🌐 Using direct HTTP format');
+            data = request;
+            context = { auth: null, rawRequest: { ip: 'unknown' } };
+        }
+        else {
+            console.error('❌ Unknown request format:', typeof request);
+            throw new functions.https.HttpsError('invalid-argument', 'Invalid request format');
+        }
+        console.log('📤 Extracted data:', JSON.stringify(data, null, 2));
         // Input validation
         validateSMSInput(data);
         // Rate limiting (by IP or user ID)
@@ -141,13 +171,20 @@ exports.sendRetailerPaymentSMS = functions.https.onCall(async (request) => {
         // Prepare SMS variables - Order MUST match DLT template exactly
         // Template: "Collection Acknowledgement: An amount of {#var#}/- from {#var#}, {#var#} has been updated in PharmaLync as payment towards goods supplied by {#var#}. Collected by Line man {#var#} on {#var#}."
         // Variables: 1=Amount, 2=Retailer Name, 3=Retailer Area, 4=Wholesaler Name, 5=Line Worker Name, 6=Date
+        // Ensure we have all required variables with proper fallbacks
+        const amount = data.amount.toString();
+        const retailerName = retailerUser.name || data.retailerName || 'Retailer';
+        const retailerArea = data.retailerArea || retailerUser.address || 'Unknown Area';
+        const wholesalerName = data.wholesalerName || 'Wholesaler';
+        const lineWorkerName = data.lineWorkerName || 'Line Worker';
+        const collectionDate = data.collectionDate || new Date().toLocaleDateString('en-IN');
         const variablesValues = [
-            data.amount.toString(), // {#var#} - payment amount
-            retailerUser.name || data.retailerName, // {#var#} - retailer name
-            data.retailerArea || retailerUser.address, // {#var#} - retailer area (use passed data first, fallback to retailerUser.address)
-            data.wholesalerName, // {#var#} - wholesaler name (goods supplied by)
-            data.lineWorkerName, // {#var#} - line worker name
-            data.collectionDate // {#var#} - collection date
+            amount, // {#var#} - payment amount
+            retailerName, // {#var#} - retailer name
+            retailerArea, // {#var#} - retailer area
+            wholesalerName, // {#var#} - wholesaler name (goods supplied by)
+            lineWorkerName, // {#var#} - line worker name
+            collectionDate // {#var#} - collection date
         ];
         console.log('🔧 CLOUD FUNCTION - SMS Variables being used:', {
             amount: variablesValues[0],
@@ -216,8 +253,27 @@ exports.sendRetailerPaymentSMS = functions.https.onCall(async (request) => {
 exports.sendWholesalerPaymentSMS = functions.https.onCall(async (request) => {
     var _a, _b, _c, _d;
     try {
-        const { data } = request;
-        const context = request;
+        console.log('🚀 CLOUD FUNCTION TRIGGERED - sendWholesalerPaymentSMS');
+        console.log('📥 Full request object:', JSON.stringify(request, null, 2));
+        // Handle both callable function format and direct HTTP format
+        let data, context;
+        if (request.data && typeof request.data === 'object') {
+            // Callable function format
+            console.log('📋 Using callable function format');
+            data = request.data;
+            context = request;
+        }
+        else if (request && typeof request === 'object' && !request.auth) {
+            // Direct HTTP format
+            console.log('🌐 Using direct HTTP format');
+            data = request;
+            context = { auth: null, rawRequest: { ip: 'unknown' } };
+        }
+        else {
+            console.error('❌ Unknown request format:', typeof request);
+            throw new functions.https.HttpsError('invalid-argument', 'Invalid request format');
+        }
+        console.log('📤 Extracted data:', JSON.stringify(data, null, 2));
         // Input validation
         validateSMSInput(data);
         // Rate limiting (by IP or user ID)
@@ -272,13 +328,20 @@ exports.sendWholesalerPaymentSMS = functions.https.onCall(async (request) => {
         // Prepare SMS variables - Order MUST match DLT template exactly
         // Template: "Payment Update: {#var#}/- has been recorded in the PharmaLync system from {#var#}, {#var#}. Collected by Line man {#var#} on behalf of {#var#} on {#var#}."
         // Variables: 1=Amount, 2=Retailer Name, 3=Retailer Area, 4=Line Worker Name, 5=Wholesaler Name, 6=Date
+        // Ensure we have all required variables with proper fallbacks
+        const amount = data.amount.toString();
+        const retailerName = data.retailerName || 'Retailer';
+        const retailerArea = data.retailerArea || 'Unknown Area';
+        const lineWorkerName = data.lineWorkerName || 'Line Worker';
+        const wholesalerName = data.wholesalerName || (wholesalerData.displayName || wholesalerData.name || 'Wholesaler');
+        const collectionDate = data.collectionDate || new Date().toLocaleDateString('en-IN');
         const variablesValues = [
-            data.amount.toString(), // {#var#} - payment amount
-            data.retailerName, // {#var#} - retailer name
-            data.retailerArea, // {#var#} - retailer area
-            data.lineWorkerName, // {#var#} - line worker name
-            data.wholesalerName, // {#var#} - wholesaler name (on behalf of)
-            data.collectionDate // {#var#} - collection date
+            amount, // {#var#} - payment amount
+            retailerName, // {#var#} - retailer name
+            retailerArea, // {#var#} - retailer area
+            lineWorkerName, // {#var#} - line worker name
+            wholesalerName, // {#var#} - wholesaler name (on behalf of)
+            collectionDate // {#var#} - collection date
         ];
         console.log('🔧 CLOUD FUNCTION - WHOLESALER SMS Variables being used:', {
             amount: variablesValues[0],
