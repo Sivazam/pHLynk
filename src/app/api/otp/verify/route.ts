@@ -392,6 +392,7 @@ export async function POST(request: NextRequest) {
       // CRITICAL DEBUG: Add logging right after successful verification
       console.log('🚨 CRITICAL DEBUG - OTP verification successful, about to update payment state');
       console.log('🚨 CRITICAL DEBUG - PaymentId:', paymentId);
+      console.log('🚨 CRITICAL DEBUG - ENTERING SUCCESS PATH - This should be visible if OTP is correct');
       console.log('🚨 CRITICAL DEBUG - About to call getPaymentWithCorrectTenant for payment update');
       
       // Use Cloud Function to verify OTP (more secure) - if available
@@ -637,7 +638,15 @@ export async function POST(request: NextRequest) {
       }
       
       // Comprehensive OTP cleanup - remove from all locations
-      await comprehensiveOTPCleanup(paymentId);
+      console.log('🚨 CRITICAL DEBUG - About to start comprehensiveOTPCleanup');
+      try {
+        await comprehensiveOTPCleanup(paymentId);
+        console.log('🚨 CRITICAL DEBUG - comprehensiveOTPCleanup completed successfully');
+      } catch (cleanupError) {
+        console.error('❌ Error in comprehensiveOTPCleanup:', cleanupError);
+        console.log('🚨 CRITICAL DEBUG - Continuing with SMS despite cleanup error');
+        // Don't fail the entire process if cleanup fails
+      }
       
       // CRITICAL DEBUG: Add logging right before SMS sending
       console.log('🚨 CRITICAL DEBUG - About to send SMS notifications');
@@ -991,9 +1000,11 @@ export async function POST(request: NextRequest) {
         }
       } catch (smsError) {
         console.error('❌ Error sending payment confirmation SMS:', smsError);
+        console.log('🚨 CRITICAL DEBUG - SMS section failed, but returning success anyway');
         // Don't fail the verification if SMS sending fails
       }
       
+      console.log('🚨 CRITICAL DEBUG - ABOUT TO RETURN SUCCESS RESPONSE');
       return NextResponse.json({
         success: true,
         message: 'OTP verified successfully',
