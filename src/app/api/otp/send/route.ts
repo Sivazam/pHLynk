@@ -8,7 +8,6 @@ import { otpStore, sendOTPToRetailer, cleanupExpiredOTPs, addActiveOTP } from '@
 import { RetailerAuthService } from '@/services/retailer-auth';
 import { retailerService } from '@/services/firestore';
 import { Timestamp as FirebaseTimestamp } from 'firebase/firestore';
-import { roleBasedNotificationService } from '@/services/role-based-notification-service';
 
 interface OTPRequest {
   retailerId: string;
@@ -185,24 +184,30 @@ export async function POST(request: NextRequest) {
     const sent = sendOTPToRetailer(retailerUser.phone, otpData.code, amount);
     console.log('📤 OTP send result:', sent);
     
-    // Send PWA push notification to RETAILER ONLY
-    try {
-      const notificationSent = await roleBasedNotificationService.sendOTPToRetailer({
-        otp: otpData.code,
-        amount,
-        paymentId,
-        retailerName: retailerUser.name,
-        lineWorkerName: lineWorkerName || 'Line Worker'
-      });
-      
-      if (notificationSent) {
-        console.log('📱 PWA OTP notification sent to retailer only');
-      } else {
-        console.log('⚠️ PWA OTP notification failed, but OTP was generated');
+    // Send PWA push notification to RETAILER ONLY (client-side only)
+    // Skip notification on server side - notifications will be handled by client
+    if (typeof window !== 'undefined') {
+      try {
+        const { roleBasedNotificationService } = await import('@/services/role-based-notification-service');
+        const notificationSent = await roleBasedNotificationService.sendOTPToRetailer({
+          otp: otpData.code,
+          amount,
+          paymentId,
+          retailerName: retailerUser.name,
+          lineWorkerName: lineWorkerName || 'Line Worker'
+        });
+        
+        if (notificationSent) {
+          console.log('📱 PWA OTP notification sent to retailer only');
+        } else {
+          console.log('⚠️ PWA OTP notification failed, but OTP was generated');
+        }
+      } catch (notificationError) {
+        console.error('❌ Error sending PWA OTP notification:', notificationError);
+        // Don't fail the request if notification fails
       }
-    } catch (notificationError) {
-      console.error('❌ Error sending PWA OTP notification:', notificationError);
-      // Don't fail the request if notification fails
+    } else {
+      console.log('🖥️ Server environment - skipping PWA notification (will be handled by client)');
     }
     
     if (!sent) {

@@ -8,7 +8,6 @@ import { db } from '@/lib/firebase';
 import { RetailerAuthService } from '@/services/retailer-auth';
 import { retailerService, paymentService } from '@/services/firestore';
 import { fast2SMSService, Fast2SMSService } from '@/services/fast2sms-service';
-import { roleBasedNotificationService } from '@/services/role-based-notification-service';
 import { Retailer } from '@/types';
 import { logger } from '@/lib/logger';
 import { callFirebaseFunction } from '@/lib/firebase';
@@ -475,24 +474,29 @@ export async function POST(request: NextRequest) {
         collectionDate
       });
 
-      // Send PWA push notification for payment completion
-      try {
-        console.log('📱 Sending PWA payment completion notification...');
-        const pwaNotificationSent = await roleBasedNotificationService.sendPaymentCompletedToAll({
-          amount: payment.totalPaid,
-          paymentId: paymentId,
-          retailerName: retailerUser.name,
-          lineWorkerName: lineWorkerName
-        });
-        
-        if (pwaNotificationSent) {
-          console.log('✅ PWA payment completion notification sent successfully');
-        } else {
-          console.log('⚠️ PWA payment completion notification failed, but payment was verified');
+      // Send PWA push notification for payment completion (client-side only)
+      if (typeof window !== 'undefined') {
+        try {
+          console.log('📱 Sending PWA payment completion notification...');
+          const { roleBasedNotificationService } = await import('@/services/role-based-notification-service');
+          const pwaNotificationSent = await roleBasedNotificationService.sendPaymentCompletedToAll({
+            amount: payment.totalPaid,
+            paymentId: paymentId,
+            retailerName: retailerUser.name,
+            lineWorkerName: lineWorkerName
+          });
+          
+          if (pwaNotificationSent) {
+            console.log('✅ PWA payment completion notification sent successfully');
+          } else {
+            console.log('⚠️ PWA payment completion notification failed, but payment was verified');
+          }
+        } catch (pwaNotificationError) {
+          console.error('❌ Error sending PWA payment completion notification:', pwaNotificationError);
+          // Don't fail the request if PWA notification fails
         }
-      } catch (pwaNotificationError) {
-        console.error('❌ Error sending PWA payment completion notification:', pwaNotificationError);
-        // Don't fail the request if PWA notification fails
+      } else {
+        console.log('🖥️ Server environment - skipping PWA notification (will be handled by client)');
       }
 
       const endTime = Date.now();
