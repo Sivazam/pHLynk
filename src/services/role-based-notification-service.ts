@@ -256,7 +256,6 @@ class RoleBasedNotificationService {
       requireInteraction: payload.requireInteraction,
       // Mobile-specific enhancements
       silent: false,
-      vibrate: [200, 100, 200], // Vibration pattern for mobile
       // Add actions for mobile
       actions: payload.actions || []
     };
@@ -273,6 +272,11 @@ class RoleBasedNotificationService {
     }
 
     const notification = new Notification(payload.title, notificationOptions);
+
+    // Trigger vibration for mobile devices (if supported)
+    if (this.isMobileDevice() && 'vibrate' in navigator) {
+      navigator.vibrate([200, 100, 200]);
+    }
 
     // Handle notification click
     notification.onclick = () => {
