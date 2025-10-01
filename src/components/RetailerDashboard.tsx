@@ -373,6 +373,36 @@ export function RetailerDashboard() {
       setDataFetchProgress(0);
       fetchRetailerData(retailerId);
     }
+    
+    // Clean up expired OTPs on mount to prevent them from showing
+    if (retailerId) {
+      const currentActiveOTPs = getActiveOTPsForRetailer(retailerId);
+      const validOTPs = currentActiveOTPs.filter(otp => {
+        const now = new Date();
+        const isExpired = otp.expiresAt <= now;
+        return !isExpired;
+      });
+      
+      if (validOTPs.length < currentActiveOTPs.length) {
+        console.log('🧹 Cleaning up expired OTPs on mount:', {
+          total: currentActiveOTPs.length,
+          valid: validOTPs.length,
+          expired: currentActiveOTPs.length - validOTPs.length
+        });
+        
+        // Remove expired OTPs from the store
+        currentActiveOTPs.forEach(otp => {
+          const now = new Date();
+          const isExpired = otp.expiresAt <= now;
+          if (isExpired) {
+            removeActiveOTP(otp.paymentId);
+          }
+        });
+        
+        // Update state with only valid OTPs
+        setActiveOTPs(validOTPs);
+      }
+    }
   }, []); // Empty dependency array - runs only once on mount
 
   // Periodic refresh for OTP data - ensures we don't miss any real-time updates
@@ -389,6 +419,34 @@ export function RetailerDashboard() {
           
           // Sync OTPs with Firestore to ensure consistency
           syncOTPsFromFirestore();
+          
+          // Clean up expired OTPs periodically
+          const currentActiveOTPs = getActiveOTPsForRetailer(retailer.id);
+          const validOTPs = currentActiveOTPs.filter(otp => {
+            const now = new Date();
+            const isExpired = otp.expiresAt <= now;
+            return !isExpired;
+          });
+          
+          if (validOTPs.length < currentActiveOTPs.length) {
+            console.log('🧹 Periodic cleanup of expired OTPs:', {
+              total: currentActiveOTPs.length,
+              valid: validOTPs.length,
+              expired: currentActiveOTPs.length - validOTPs.length
+            });
+            
+            // Remove expired OTPs from the store
+            currentActiveOTPs.forEach(otp => {
+              const now = new Date();
+              const isExpired = otp.expiresAt <= now;
+              if (isExpired) {
+                removeActiveOTP(otp.paymentId);
+              }
+            });
+            
+            // Update state with only valid OTPs
+            setActiveOTPs(validOTPs);
+          }
           
           // Cleanup old shown popups to prevent memory leaks (keep only last 50)
           setShownCompletedPaymentPopups(prev => {
@@ -475,8 +533,11 @@ export function RetailerDashboard() {
       if (recentCompletedPayments.length > 0) {
         console.log('🔍 Found recent completed payments:', recentCompletedPayments.length);
         
-        // Close OTP popup if it's open
+        // Close OTP popup immediately
         setShowOTPPopup(false);
+        
+        // Clear any new payment data to prevent OTP popup from reappearing
+        setNewPayment(null);
         
         // Remove OTPs from active display for completed payments
         recentCompletedPayments.forEach(payment => {
@@ -661,10 +722,13 @@ export function RetailerDashboard() {
           console.log('📊 Updated active OTPs count after real-time sync:', updatedActiveOTPs.length);
           setActiveOTPs(updatedActiveOTPs);
           
-          // Show popup for the latest OTP if not already shown
+          // Show popup for the latest OTP if not already shown and not expired
           if (validOTPsFromFirestore.length > 0) {
             const latestOTP = validOTPsFromFirestore[validOTPsFromFirestore.length - 1];
-            if (!shownOTPpopups.has(latestOTP.paymentId)) {
+            const now = new Date();
+            const isExpired = latestOTP.expiresAt.toDate() <= now;
+            
+            if (!shownOTPpopups.has(latestOTP.paymentId) && !isExpired) {
               console.log('🆕 Showing popup for new OTP:', latestOTP.paymentId);
               setNewPayment({
                 ...latestOTP,
@@ -688,6 +752,8 @@ export function RetailerDashboard() {
               
               // Add to shown popups
               setShownOTPpopups(prev => new Set(prev).add(latestOTP.paymentId));
+            } else if (isExpired) {
+              console.log('⏰ Skipping expired OTP popup:', latestOTP.paymentId);
             }
           }
         }
@@ -727,13 +793,16 @@ export function RetailerDashboard() {
                 if (!shownCompletedPaymentPopups.has(paymentId)) {
                   console.log('🎉 Showing success popup for completed payment:', paymentId);
                   
-                  // Close OTP popup if it's open
+                  // Close OTP popup immediately
                   setShowOTPPopup(false);
                   
                   // Remove the OTP from active display
                   removeActiveOTP(paymentId);
                   const updatedActiveOTPs = getActiveOTPsForRetailer(retailerId);
                   setActiveOTPs(updatedActiveOTPs);
+                  
+                  // Clear any new payment data to prevent OTP popup from reappearing
+                  setNewPayment(null);
                   
                   // Send notification
                   try {
@@ -1674,7 +1743,15 @@ Thank you for your payment!
         </div>
 
       {/* OTP Verification Popup */}
-      <Dialog open={showOTPPopup} onOpenChange={setShowOTPPopup}>
+      <Dialog open={showOTPPopup} onOpenChange={(open) => {
+        if (!open) {
+          // Dialog is being closed, clean up state
+          setShowOTPPopup(false);
+          setNewPayment(null);
+        } else {
+          setShowOTPPopup(true);
+        }
+      }}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -1744,7 +1821,17 @@ Thank you for your payment!
       </Dialog>
 
       {/* Payment Completed Popup */}
-      <Dialog open={showSettlementPopup} onOpenChange={setShowSettlementPopup}>
+      <Dialog open={showSettlementPopup} onOpenChange={(open) => {
+        if (!open) {
+          // Dialog is being closed, clean up state
+          setShowSettlementPopup(false);
+          setShowOTPPopup(false); // Ensure OTP popup is also closed
+          setNewCompletedPayment(null);
+          setNewPayment(null);
+        } else {
+          setShowSettlementPopup(true);
+        }
+      }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Payment Completed Successfully!</DialogTitle>
@@ -1776,12 +1863,24 @@ Thank you for your payment!
               
               <Button
                 onClick={() => {
+                  // Close payment success popup
                   setShowSettlementPopup(false);
+                  
+                  // Ensure OTP popup is also closed
+                  setShowOTPPopup(false);
+                  
+                  // Clear the completed payment data
                   setNewCompletedPayment(null);
+                  
+                  // Clear any new payment data
+                  setNewPayment(null);
+                  
                   // Refresh dashboard data when closing the popup
                   setTimeout(() => {
                     console.log('🔄 Refreshing dashboard data after closing payment completion popup');
-                    fetchRetailerData(retailer!.id);
+                    if (retailer) {
+                      fetchRetailerData(retailer.id);
+                    }
                   }, 500);
                 }}
                 className="w-full"
