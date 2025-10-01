@@ -1,3 +1,6 @@
+// Force dynamic rendering
+export const dynamic = "force-dynamic";
+
 import { NextRequest, NextResponse } from 'next/server';
 import { getSecurityStatus, otpStore } from '@/lib/otp-store';
 import { RetailerAuthService } from '@/services/retailer-auth';

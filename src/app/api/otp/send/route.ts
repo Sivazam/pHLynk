@@ -1,3 +1,6 @@
+// Force dynamic rendering
+export const dynamic = "force-dynamic";
+
 import { NextRequest, NextResponse } from 'next/server';
 import { doc, getDoc, collection, query, where, getDocs, updateDoc, arrayUnion, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';

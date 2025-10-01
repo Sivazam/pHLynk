@@ -5,6 +5,9 @@ import { ChevronDown, ChevronUp, HelpCircle, Shield, Users, CreditCard, Smartpho
 import Image from 'next/image';
 import Link from 'next/link';
 
+// Force dynamic rendering
+export const dynamic = 'force-dynamic';
+
 const faqCategories = [
   {
     id: 'general',

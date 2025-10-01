@@ -405,14 +405,6 @@ class RoleBasedNotificationService {
     });
   }
 
-  async sendTestNotification(): Promise<boolean> {
-    return this.sendNotificationToRole({
-      type: 'test',
-      targetRole: 'all',
-      data: {}
-    });
-  }
-
   hasPermission(): boolean {
     return typeof Notification !== 'undefined' && Notification.permission === 'granted';
   }

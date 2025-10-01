@@ -1,3 +1,6 @@
+// Force dynamic rendering
+export const dynamic = "force-dynamic";
+
 import { NextRequest, NextResponse } from 'next/server';
 import { otpStore, cleanupExpiredOTPs, removeActiveOTP, addCompletedPayment, checkSecurityLimits, recordFailedAttempt, resetSecurityTracking, getSecurityStatus } from '@/lib/otp-store';
 import { doc, getDoc, updateDoc, collection, query, where, getDocs, Timestamp, writeBatch } from 'firebase/firestore';
