@@ -160,7 +160,9 @@ export function PWANotificationManager({ userRole, className }: PWANotificationM
     const isPWA = window.matchMedia('(display-mode: standalone)').matches;
     const isStandalone = (window.navigator as any).standalone;
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    const isAndroid = /Android/.test(navigator.userAgent);
     const isChrome = /Chrome/.test(navigator.userAgent) && /Google Inc/.test(navigator.vendor);
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
     
     console.log('🔍 PWA Notification Debug Info:', {
       isSupported,
@@ -175,25 +177,46 @@ export function PWANotificationManager({ userRole, className }: PWANotificationM
         isPWA,
         isStandalone,
         isIOS,
+        isAndroid,
+        isMobile,
         isChrome,
         userAgent: navigator.userAgent
       }
     });
     
-    // Show user-friendly status
+    // Show user-friendly status with platform-specific guidance
     if (isIOS) {
-      toast.info('iOS detected: Make sure you added this app to Home Screen for full PWA features');
+      if (isPWA) {
+        toast.success('iOS PWA detected! Notifications should work if enabled in Settings.');
+      } else {
+        toast.info('iOS detected: Add to Home Screen for full PWA features. Tap Share → Add to Home Screen');
+      }
+    } else if (isAndroid) {
+      if (isPWA) {
+        toast.success('Android PWA detected! Full notification support available.');
+      } else {
+        toast.info('Android detected: Look for the install icon in the address bar to install as PWA');
+      }
     } else if (isChrome && !isPWA) {
-      toast.info('Chrome detected: Look for the install icon (+) in the address bar to install as PWA');
+      toast.info('Chrome detected: Look for the install icon (⊕) in the address bar to install as PWA');
     } else if (hasPermission) {
       toast.success('Notifications are enabled and working!');
     } else {
       toast.warning('Please enable notifications to receive OTP and payment alerts');
     }
+    
+    // Test notification if permission is granted
+    if (hasPermission) {
+      setTimeout(() => {
+        sendTestNotification();
+      }, 1000);
+    }
   };
 
   // Check platform and show appropriate guidance
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+  const isAndroid = /Android/.test(navigator.userAgent);
+  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
   const isPWA = window.matchMedia('(display-mode: standalone)').matches;
   const isChrome = /Chrome/.test(navigator.userAgent) && /Google Inc/.test(navigator.vendor);
 
@@ -398,13 +421,35 @@ export function PWANotificationManager({ userRole, className }: PWANotificationM
                 <li>Tap Share → Add to Home Screen</li>
                 <li>Enable notifications in Settings → Notifications</li>
                 <li>Check Settings → Safari → Website Settings</li>
+                <li>Ensure app is installed as PWA for full functionality</li>
               </ul>
             </div>
           )}
           
-          {isChrome && !isPWA && (
+          {isIOS && isPWA && (
             <div className="mt-2 p-2 bg-green-50 rounded text-green-700">
-              <p className="font-medium">Chrome Users:</p>
+              <p className="font-medium">✅ iOS PWA Installed</p>
+              <p>Full notification support available. Check Settings if notifications don't appear.</p>
+            </div>
+          )}
+          
+          {isAndroid && !isPWA && (
+            <div className="mt-2 p-2 bg-orange-50 rounded text-orange-700">
+              <p className="font-medium">Android Users:</p>
+              <p>Look for the install icon in the address bar to install as PWA for better notification support</p>
+            </div>
+          )}
+          
+          {isAndroid && isPWA && (
+            <div className="mt-2 p-2 bg-green-50 rounded text-green-700">
+              <p className="font-medium">✅ Android PWA Installed</p>
+              <p>Full notification support with vibration and sound enabled</p>
+            </div>
+          )}
+          
+          {isChrome && !isPWA && !isMobile && (
+            <div className="mt-2 p-2 bg-green-50 rounded text-green-700">
+              <p className="font-medium">Chrome Desktop Users:</p>
               <p>Look for the install icon (⊕) in the address bar to install as PWA for better notification support</p>
             </div>
           )}
@@ -412,7 +457,7 @@ export function PWANotificationManager({ userRole, className }: PWANotificationM
           {isPWA && (
             <div className="mt-2 p-2 bg-purple-50 rounded text-purple-700">
               <p className="font-medium">✅ PWA Installed</p>
-              <p>Full notification support is available</p>
+              <p>Full notification support available with background notifications</p>
             </div>
           )}
         </div>

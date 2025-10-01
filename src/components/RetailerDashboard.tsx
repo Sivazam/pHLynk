@@ -84,8 +84,22 @@ export function RetailerDashboard() {
     lineWorkerName: string;
     completedAt: Date;
   } | null>(null);
-  const [shownOTPpopups, setShownOTPpopups] = useState<Set<string>>(new Set());
-  const [shownCompletedPaymentPopups, setShownCompletedPaymentPopups] = useState<Set<string>>(new Set());
+  const [shownOTPpopups, setShownOTPpopups] = useState<Set<string>>(() => {
+    // Load from localStorage on component mount
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('shownOTPpopups');
+      return stored ? new Set(JSON.parse(stored)) : new Set();
+    }
+    return new Set();
+  });
+  const [shownCompletedPaymentPopups, setShownCompletedPaymentPopups] = useState<Set<string>>(() => {
+    // Load from localStorage on component mount
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('shownCompletedPaymentPopups');
+      return stored ? new Set(JSON.parse(stored)) : new Set();
+    }
+    return new Set();
+  });
   const [notificationCount, setNotificationCount] = useState(0);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [paymentTab, setPaymentTab] = useState('completed');
@@ -101,6 +115,79 @@ export function RetailerDashboard() {
   
   // Success celebration state
   const [triggerConfetti, setTriggerConfetti] = useState(false);
+  const [confettiTimeout, setConfettiTimeout] = useState<NodeJS.Timeout | null>(null);
+  
+  // Helper function to trigger confetti with proper cleanup
+  const triggerConfettiWithCleanup = () => {
+    // Clear any existing timeout
+    if (confettiTimeout) {
+      clearTimeout(confettiTimeout);
+      setConfettiTimeout(null);
+    }
+    
+    // Trigger confetti
+    setTriggerConfetti(true);
+    
+    // Set timeout to hide confetti after 5 seconds
+    const timeout = setTimeout(() => {
+      setTriggerConfetti(false);
+      setConfettiTimeout(null);
+    }, 5000);
+    
+    setConfettiTimeout(timeout);
+  };
+  
+  // Helper functions to manage shown popups with localStorage persistence
+  const addToShownOTPpopups = (paymentId: string) => {
+    setShownOTPpopups(prev => {
+      const newSet = new Set(prev).add(paymentId);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('shownOTPpopups', JSON.stringify(Array.from(newSet)));
+      }
+      return newSet;
+    });
+  };
+  
+  const addToShownCompletedPaymentPopups = (paymentId: string) => {
+    setShownCompletedPaymentPopups(prev => {
+      const newSet = new Set(prev).add(paymentId);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('shownCompletedPaymentPopups', JSON.stringify(Array.from(newSet)));
+      }
+      return newSet;
+    });
+  };
+  
+  // Clean up old shown popups periodically (keep only last 24 hours)
+  const cleanupOldPopups = () => {
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    
+    // For OTP popups, we can clean them up since they expire quickly anyway
+    setShownOTPpopups(prev => {
+      if (prev.size > 100) { // Keep only last 100 to prevent memory issues
+        const newArray = Array.from(prev).slice(-100);
+        const newSet = new Set(newArray);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('shownOTPpopups', JSON.stringify(Array.from(newSet)));
+        }
+        return newSet;
+      }
+      return prev;
+    });
+    
+    // For completed payment popups, clean up old ones
+    setShownCompletedPaymentPopups(prev => {
+      if (prev.size > 100) { // Keep only last 100 to prevent memory issues
+        const newArray = Array.from(prev).slice(-100);
+        const newSet = new Set(newArray);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('shownCompletedPaymentPopups', JSON.stringify(Array.from(newSet)));
+        }
+        return newSet;
+      }
+      return prev;
+    });
+  };
   
   // Manual refresh function for OTP data
   const refreshOTPData = async () => {
@@ -184,7 +271,7 @@ export function RetailerDashboard() {
             setShowOTPPopup(true);
             
             // Add to shown popups
-            setShownOTPpopups(prev => new Set(prev).add(latestOTP.paymentId));
+            addToShownOTPpopups(latestOTP.paymentId);
           }
         } else {
           console.log('📝 No new OTPs found during manual refresh');
@@ -347,6 +434,12 @@ export function RetailerDashboard() {
         otpUnsubscribe();
         setOtpUnsubscribe(null);
       }
+      
+      // Clean up confetti timeout
+      if (confettiTimeout) {
+        clearTimeout(confettiTimeout);
+        setConfettiTimeout(null);
+      }
     };
   }, [user]);
 
@@ -403,6 +496,9 @@ export function RetailerDashboard() {
         setActiveOTPs(validOTPs);
       }
     }
+    
+    // Clean up old popup history on mount
+    cleanupOldPopups();
   }, []); // Empty dependency array - runs only once on mount
 
   // Periodic refresh for OTP data - ensures we don't miss any real-time updates
@@ -448,15 +544,8 @@ export function RetailerDashboard() {
             setActiveOTPs(validOTPs);
           }
           
-          // Cleanup old shown popups to prevent memory leaks (keep only last 50)
-          setShownCompletedPaymentPopups(prev => {
-            if (prev.size > 50) {
-              const newArray = Array.from(prev);
-              const keepLast50 = newArray.slice(-50);
-              return new Set(keepLast50);
-            }
-            return prev;
-          });
+          // Cleanup old shown popups to prevent memory leaks
+          cleanupOldPopups();
         }
       }, 5000); // Check every 5 seconds as a fallback
 
@@ -557,15 +646,10 @@ export function RetailerDashboard() {
             completedAt: latestPayment.completedAt
           });
           setShowSettlementPopup(true);
-          setTriggerConfetti(true);
+          triggerConfettiWithCleanup();
           
           // Add to shown completed payment popups FIRST to prevent re-showing
-          setShownCompletedPaymentPopups(prev => new Set(prev).add(latestPayment.id));
-          
-          // Hide confetti after 5 seconds
-          setTimeout(() => {
-            setTriggerConfetti(false);
-          }, 5000);
+          addToShownCompletedPaymentPopups(latestPayment.id);
           
           // Refresh dashboard data to show updated stats
           setTimeout(() => {
@@ -839,10 +923,10 @@ export function RetailerDashboard() {
                     completedAt: completedAt
                   });
                   setShowSettlementPopup(true);
-                  setTriggerConfetti(true);
+                  triggerConfettiWithCleanup();
                   
                   // Add to shown completed payment popups
-                  setShownCompletedPaymentPopups(prev => new Set(prev).add(paymentId));
+                  addToShownCompletedPaymentPopups(paymentId);
                   
                   // Play success sound if available
                   try {
@@ -853,11 +937,6 @@ export function RetailerDashboard() {
                   } catch (error) {
                     console.log('🔇 Could not play success sound:', error);
                   }
-                  
-                  // Hide confetti after 5 seconds
-                  setTimeout(() => {
-                    setTriggerConfetti(false);
-                  }, 5000);
                   
                   // Refresh payments data to update recent transactions
                   setTimeout(() => {
@@ -1061,15 +1140,10 @@ export function RetailerDashboard() {
         const latestCompleted = newCompleted[newCompleted.length - 1];
         setNewCompletedPayment(latestCompleted);
         setShowSettlementPopup(true);
-        setTriggerConfetti(true);
+        triggerConfettiWithCleanup();
         
         // Add to shown completed payment popups
-        setShownCompletedPaymentPopups(prev => new Set(prev).add(latestCompleted.paymentId));
-        
-        // Hide confetti after 5 seconds
-        setTimeout(() => {
-          setTriggerConfetti(false);
-        }, 5000);
+        addToShownCompletedPaymentPopups(latestCompleted.paymentId);
       }
       
       setDataFetchProgress(100);

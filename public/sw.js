@@ -88,8 +88,16 @@ self.addEventListener('push', event => {
       tag: data.tag || 'default',
       requireInteraction: data.requireInteraction || false,
       actions: data.actions || [],
-      data: data.data || {}
+      data: data.data || {},
+      // Mobile-specific enhancements
+      silent: false,
+      vibrate: [200, 100, 200] // Vibration pattern for mobile
     };
+    
+    // Add sound if supported
+    if ('sound' in Notification.prototype) {
+      options.sound = '/notification-sound.mp3';
+    }
     
     // Customize for OTP notifications
     if (data.type === 'otp') {
@@ -111,9 +119,16 @@ self.addEventListener('push', event => {
     }
     
     // Customize for payment completion
-    if (data.type === 'payment-completed') {
+    if (data.type === 'payment-completed' || data.type === 'payment_completed') {
       options.body = `✅ Payment of ₹${data.amount} completed successfully`;
       options.tag = `payment-${data.paymentId}`;
+      options.requireInteraction = false;
+    }
+    
+    // Customize for test notifications
+    if (data.type === 'test') {
+      options.body = '📱 This is a test notification from pHLynk';
+      options.tag = 'test-notification';
       options.requireInteraction = false;
     }
     
@@ -210,19 +225,35 @@ self.addEventListener('message', event => {
     
     const payload = event.data.payload;
     
+    // Enhanced notification options for mobile
+    const notificationOptions = {
+      body: payload.body,
+      icon: payload.icon || '/icon-192x192.png',
+      badge: payload.badge || '/icon-96x96.png',
+      tag: payload.tag,
+      requireInteraction: payload.requireInteraction || false,
+      actions: payload.actions || [],
+      data: {
+        type: event.data.type,
+        originalData: event.data.originalData
+      },
+      // Mobile-specific enhancements
+      silent: false,
+      vibrate: [200, 100, 200] // Vibration pattern for mobile
+    };
+    
+    // Add sound if supported
+    if ('sound' in Notification.prototype) {
+      notificationOptions.sound = '/notification-sound.mp3';
+    }
+    
+    // Additional mobile-specific handling
+    if (payload.tag && payload.tag.includes('otp')) {
+      notificationOptions.requireInteraction = true;
+    }
+    
     event.waitUntil(
-      self.registration.showNotification(payload.title, {
-        body: payload.body,
-        icon: payload.icon || '/icon-192x192.png',
-        badge: payload.badge || '/icon-96x96.png',
-        tag: payload.tag,
-        requireInteraction: payload.requireInteraction || false,
-        actions: payload.actions || [],
-        data: {
-          type: event.data.type,
-          originalData: event.data.originalData
-        }
-      })
+      self.registration.showNotification(payload.title, notificationOptions)
     );
   }
   

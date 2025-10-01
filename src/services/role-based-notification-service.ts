@@ -185,58 +185,51 @@ class RoleBasedNotificationService {
         targetRole: notificationData.targetRole, 
         payload,
         isPWA: this.isPWAInstalled(),
-        hasServiceWorker: !!this.serviceWorkerRegistration?.active
+        hasServiceWorker: !!this.serviceWorkerRegistration?.active,
+        userAgent: navigator.userAgent,
+        isMobile: this.isMobileDevice()
       });
       
-      // Enhanced notification sending with fallbacks
+      // Enhanced notification sending with mobile-specific handling
       let notificationSent = false;
       
-      // Try service worker first (best for PWA)
-      if (this.serviceWorkerRegistration && this.serviceWorkerRegistration.active) {
-        try {
-          console.log('📡 Sending message to service worker');
-          this.serviceWorkerRegistration.active.postMessage({
-            type: 'SHOW_NOTIFICATION',
-            payload
-          });
-          notificationSent = true;
-        } catch (swError) {
-          console.warn('⚠️ Service worker notification failed:', swError);
-        }
-      }
-      
-      // Fallback to immediate notification (works in browser and PWA)
-      if (Notification.permission === 'granted') {
-        try {
-          console.log('🔔 Showing immediate notification as fallback/primary');
-          
-          // Create notification options with proper typing
-          const notificationOptions: NotificationOptions = {
-            body: payload.body,
-            icon: payload.icon || '/icon-192x192.png',
-            badge: payload.badge || '/icon-96x96.png',
-            tag: payload.tag,
-            requireInteraction: payload.requireInteraction
-          };
-
-          const notification = new Notification(payload.title, notificationOptions);
-
-          // Handle notification click
-          notification.onclick = () => {
-            this.handleNotificationClick(notificationData);
-            notification.close();
-          };
-
-          // Auto-close after 5 seconds for non-interactive notifications
-          if (!payload.requireInteraction) {
-            setTimeout(() => {
-              notification.close();
-            }, 5000);
+      // For mobile devices, prioritize immediate notifications
+      if (this.isMobileDevice()) {
+        console.log('📱 Mobile device detected - using immediate notification strategy');
+        
+        if (Notification.permission === 'granted') {
+          try {
+            const notification = this.createMobileOptimizedNotification(payload, notificationData);
+            notificationSent = true;
+            console.log('✅ Mobile notification sent successfully');
+          } catch (mobileError) {
+            console.warn('⚠️ Mobile notification failed:', mobileError);
           }
-          
-          notificationSent = true;
-        } catch (immediateError) {
-          console.warn('⚠️ Immediate notification failed:', immediateError);
+        }
+      } else {
+        // For desktop, try service worker first
+        if (this.serviceWorkerRegistration && this.serviceWorkerRegistration.active) {
+          try {
+            console.log('📡 Sending message to service worker');
+            this.serviceWorkerRegistration.active.postMessage({
+              type: 'SHOW_NOTIFICATION',
+              payload
+            });
+            notificationSent = true;
+          } catch (swError) {
+            console.warn('⚠️ Service worker notification failed:', swError);
+          }
+        }
+        
+        // Fallback to immediate notification
+        if (!notificationSent && Notification.permission === 'granted') {
+          try {
+            console.log('🔔 Showing immediate notification as fallback');
+            const notification = this.createMobileOptimizedNotification(payload, notificationData);
+            notificationSent = true;
+          } catch (immediateError) {
+            console.warn('⚠️ Immediate notification failed:', immediateError);
+          }
         }
       }
       
@@ -251,6 +244,56 @@ class RoleBasedNotificationService {
       console.error('❌ Failed to send notification:', error);
       return false;
     }
+  }
+
+  private createMobileOptimizedNotification(payload: PWANotificationPayload, notificationData: NotificationData): Notification {
+    // Enhanced notification options for mobile devices
+    const notificationOptions: NotificationOptions = {
+      body: payload.body,
+      icon: payload.icon || '/icon-192x192.png',
+      badge: payload.badge || '/icon-96x96.png',
+      tag: payload.tag,
+      requireInteraction: payload.requireInteraction,
+      // Mobile-specific enhancements
+      silent: false,
+      vibrate: [200, 100, 200], // Vibration pattern for mobile
+      // Add actions for mobile
+      actions: payload.actions || []
+    };
+
+    // Add mobile-specific enhancements
+    if (this.isMobileDevice()) {
+      // For mobile, ensure the notification is more interactive
+      notificationOptions.requireInteraction = notificationData.type === 'otp';
+      
+      // Add sound for mobile (if supported)
+      if ('sound' in Notification.prototype) {
+        (notificationOptions as any).sound = '/notification-sound.mp3';
+      }
+    }
+
+    const notification = new Notification(payload.title, notificationOptions);
+
+    // Handle notification click
+    notification.onclick = () => {
+      this.handleNotificationClick(notificationData);
+      notification.close();
+    };
+
+    // Auto-close after appropriate time
+    const autoCloseTime = this.isMobileDevice() ? 7000 : 5000; // Longer for mobile
+    if (!payload.requireInteraction) {
+      setTimeout(() => {
+        notification.close();
+      }, autoCloseTime);
+    }
+
+    return notification;
+  }
+
+  private isMobileDevice(): boolean {
+    const userAgent = navigator.userAgent;
+    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent);
   }
 
   private shouldUserReceiveNotification(targetRole: string, userRole: string): boolean {
