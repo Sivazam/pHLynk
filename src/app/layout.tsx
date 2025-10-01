@@ -85,8 +85,8 @@ export default function RootLayout({
             __html: `
               // PWA Detection and Loading Screen with Cache Busting
               (function() {
-                // Stable version identifier - only change when actual updates are deployed
-                const APP_VERSION = 'pHLynk-v3-1.0.0';
+                // Stable version identifier - UPDATE THIS FOR EACH DEPLOYMENT
+                const APP_VERSION = 'pHLynk-v3-1.1.0';
                 
                 // Check if running as PWA (standalone mode)
                 const isPWA = window.matchMedia('(display-mode: standalone)').matches || 

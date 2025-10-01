@@ -335,7 +335,8 @@ export function RetailerDashboard() {
       }
     } catch (error) {
       console.error('🧪 Test OTP notification error:', error);
-      alert('❌ Test OTP notification error: ' + error.message);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      alert('❌ Test OTP notification error: ' + errorMessage);
     }
   };
   const [wholesalerNames, setWholesalerNames] = useState<Record<string, string>>({});
@@ -1614,7 +1615,7 @@ Thank you for your payment!
                             {activeOTPs.filter(otp => {
                               const timeLeft = otpCountdowns.get(otp.paymentId) || 0;
                               const isExpired = timeLeft <= 0;
-                              const isCompleted = completedPaymentsData.some(cp => cp.paymentId === otp.paymentId);
+                              const isCompleted = completedPayments.some(cp => cp.paymentId === otp.paymentId);
                               return !isExpired && !isCompleted;
                             }).length}
                           </div>
@@ -1640,7 +1641,7 @@ Thank you for your payment!
                     {activeOTPs.length > 0 && activeOTPs.some(otp => {
                       const timeLeft = otpCountdowns.get(otp.paymentId) || 0;
                       const isExpired = timeLeft <= 0;
-                      const isCompleted = completedPaymentsData.some(cp => cp.paymentId === otp.paymentId);
+                      const isCompleted = completedPayments.some(cp => cp.paymentId === otp.paymentId);
                       return !isExpired && !isCompleted;
                     }) && (
                       <Card>
@@ -1659,7 +1660,7 @@ Thank you for your payment!
                             {activeOTPs.filter(otp => {
                               const timeLeft = otpCountdowns.get(otp.paymentId) || 0;
                               const isExpired = timeLeft <= 0;
-                              const isCompleted = completedPaymentsData.some(cp => cp.paymentId === otp.paymentId);
+                              const isCompleted = completedPayments.some(cp => cp.paymentId === otp.paymentId);
                               return !isExpired && !isCompleted;
                             }).map((otp) => {
                               const timeLeft = otpCountdowns.get(otp.paymentId) || 0;
