@@ -308,7 +308,36 @@ export function RetailerDashboard() {
 
   const [activeNav, setActiveNav] = useState('overview');
 
-  // Helper functions to get additional data
+  // Test notification function for debugging
+  const testOTPNotification = async () => {
+    console.log('🧪 Testing OTP notification manually...');
+    
+    try {
+      const result = await notificationService.sendNotification('RETAILER', {
+        type: 'otp',
+        targetRole: 'retailer',
+        data: {
+          paymentId: 'test-payment-' + Date.now(),
+          otp: '123456',
+          amount: 1000,
+          lineWorkerName: 'Test Line Worker',
+          retailerId: retailer?.id || '',
+          createdAt: new Date()
+        }
+      });
+      
+      console.log('🧪 Test OTP notification result:', result);
+      
+      if (result) {
+        alert('✅ Test OTP notification sent successfully! Check your notification panel and console.');
+      } else {
+        alert('❌ Test OTP notification failed. Check console for details.');
+      }
+    } catch (error) {
+      console.error('🧪 Test OTP notification error:', error);
+      alert('❌ Test OTP notification error: ' + error.message);
+    }
+  };
   const [wholesalerNames, setWholesalerNames] = useState<Record<string, string>>({});
   const [lineWorkerNames, setLineWorkerNames] = useState<Record<string, string>>({});
 
@@ -891,12 +920,24 @@ export function RetailerDashboard() {
           setActiveOTPs(updatedActiveOTPs);
           
           // Show popup for the latest OTP if not already shown and not expired
+          // IMPORTANT: Don't show popup if payment is already completed for this OTP
           if (validOTPsFromFirestore.length > 0) {
             const latestOTP = validOTPsFromFirestore[validOTPsFromFirestore.length - 1];
             const now = new Date();
             const isExpired = latestOTP.expiresAt.toDate() <= now;
             
-            if (!shownOTPpopups.has(latestOTP.paymentId) && !isExpired) {
+            // Check if this payment is already completed
+            const isPaymentCompleted = completedPaymentsData.some(cp => cp.paymentId === latestOTP.paymentId);
+            
+            console.log('🔍 Checking OTP popup conditions:', {
+              paymentId: latestOTP.paymentId,
+              alreadyShown: shownOTPpopups.has(latestOTP.paymentId),
+              isExpired,
+              isPaymentCompleted,
+              showOTPPopup: showOTPPopup
+            });
+            
+            if (!shownOTPpopups.has(latestOTP.paymentId) && !isExpired && !isPaymentCompleted && !showOTPPopup) {
               console.log('🆕 Showing popup for new OTP:', latestOTP.paymentId);
               setNewPayment({
                 ...latestOTP,
@@ -918,10 +959,16 @@ export function RetailerDashboard() {
               });
               setShowOTPPopup(true);
               
-              // Add to shown popups
-              setShownOTPpopups(prev => new Set(prev).add(latestOTP.paymentId));
+              // Add to shown popups using helper function
+              addToShownOTPpopups(latestOTP.paymentId);
             } else if (isExpired) {
               console.log('⏰ Skipping expired OTP popup:', latestOTP.paymentId);
+            } else if (isPaymentCompleted) {
+              console.log('✅ Skipping OTP popup for completed payment:', latestOTP.paymentId);
+            } else if (shownOTPpopups.has(latestOTP.paymentId)) {
+              console.log('📝 Skipping already shown OTP popup:', latestOTP.paymentId);
+            } else if (showOTPPopup) {
+              console.log('📝 Skipping OTP popup - already showing one');
             }
           }
         }
@@ -1494,6 +1541,16 @@ Thank you for your payment!
                   <RefreshCw className={`h-4 w-4 mr-2 ${mainLoadingState.loadingState.isRefreshing ? 'animate-spin' : ''}`} />
                   Refresh
                 </Button>
+                
+                {/* Debug button for testing notifications */}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={testOTPNotification}
+                  className="text-xs"
+                >
+                  🧪 Test OTP
+                </Button>
               </div>
             </div>
 
@@ -1553,7 +1610,14 @@ Thank you for your payment!
                           </div>
                         </CardHeader>
                         <CardContent>
-                          <div className="text-2xl font-bold text-gray-900">{activeOTPs.length}</div>
+                          <div className="text-2xl font-bold text-gray-900">
+                            {activeOTPs.filter(otp => {
+                              const timeLeft = otpCountdowns.get(otp.paymentId) || 0;
+                              const isExpired = timeLeft <= 0;
+                              const isCompleted = completedPaymentsData.some(cp => cp.paymentId === otp.paymentId);
+                              return !isExpired && !isCompleted;
+                            }).length}
+                          </div>
                           <p className="text-xs text-gray-500">Pending verification</p>
                         </CardContent>
                       </Card>
@@ -1573,7 +1637,12 @@ Thank you for your payment!
                     </div>
 
                     {/* Active OTP Cards - Clickable to reopen popup */}
-                    {activeOTPs.length > 0 && (
+                    {activeOTPs.length > 0 && activeOTPs.some(otp => {
+                      const timeLeft = otpCountdowns.get(otp.paymentId) || 0;
+                      const isExpired = timeLeft <= 0;
+                      const isCompleted = completedPaymentsData.some(cp => cp.paymentId === otp.paymentId);
+                      return !isExpired && !isCompleted;
+                    }) && (
                       <Card>
                         <CardHeader>
                           <CardTitle className="flex items-center gap-2">
@@ -1587,7 +1656,12 @@ Thank you for your payment!
                         </CardHeader>
                         <CardContent>
                           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                            {activeOTPs.map((otp) => {
+                            {activeOTPs.filter(otp => {
+                              const timeLeft = otpCountdowns.get(otp.paymentId) || 0;
+                              const isExpired = timeLeft <= 0;
+                              const isCompleted = completedPaymentsData.some(cp => cp.paymentId === otp.paymentId);
+                              return !isExpired && !isCompleted;
+                            }).map((otp) => {
                               const timeLeft = otpCountdowns.get(otp.paymentId) || 0;
                               const isExpired = timeLeft <= 0;
                               

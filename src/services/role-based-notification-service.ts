@@ -49,13 +49,24 @@ class RoleBasedNotificationService {
   }
 
   private async initializeServiceWorker() {
+    console.log('🔧 Initializing service worker for notifications...', {
+      hasServiceWorker: 'serviceWorker' in navigator,
+      hasNotification: 'Notification' in window,
+      hasPushManager: 'PushManager' in window
+    });
+
     if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
       try {
-        console.log('🔧 Initializing service worker for notifications...');
+        console.log('🔧 Registering service worker...');
         
         // Register service worker
         this.serviceWorkerRegistration = await navigator.serviceWorker.register('/sw.js');
-        console.log('✅ Service worker registered:', this.serviceWorkerRegistration);
+        console.log('✅ Service worker registered:', {
+          scope: this.serviceWorkerRegistration.scope,
+          active: !!this.serviceWorkerRegistration.active,
+          installing: !!this.serviceWorkerRegistration.installing,
+          waiting: !!this.serviceWorkerRegistration.waiting
+        });
         
         // Wait for service worker to be active
         if (this.serviceWorkerRegistration.active) {
@@ -81,14 +92,18 @@ class RoleBasedNotificationService {
         this.isSupported = 'Notification' in window && 'PushManager' in window;
         console.log('✅ Role-based notification service initialized', {
           supported: this.isSupported,
-          hasActiveWorker: !!this.serviceWorkerRegistration?.active
+          hasActiveWorker: !!this.serviceWorkerRegistration?.active,
+          notificationPermission: typeof Notification !== 'undefined' ? Notification.permission : 'undefined'
         });
       } catch (error) {
         console.error('❌ Failed to initialize service worker:', error);
         this.isSupported = false;
       }
     } else {
-      console.warn('⚠️ Service workers not supported in this environment');
+      console.warn('⚠️ Service workers not supported in this environment', {
+        hasWindow: typeof window !== 'undefined',
+        hasServiceWorker: 'serviceWorker' in navigator
+      });
       this.isSupported = false;
     }
   }
@@ -162,6 +177,13 @@ class RoleBasedNotificationService {
   }
 
   async sendNotificationToRole(notificationData: NotificationData): Promise<boolean> {
+    console.log('🚀 sendNotificationToRole called:', {
+      notificationData,
+      isSupported: this.isSupported,
+      currentUserRole: this.currentUserRole,
+      permission: typeof Notification !== 'undefined' ? Notification.permission : 'undefined'
+    });
+
     if (!this.isSupported) {
       console.warn('⚠️ Notifications not supported');
       return false;
@@ -208,6 +230,8 @@ class RoleBasedNotificationService {
         } catch (directError) {
           console.warn('⚠️ Direct notification failed:', directError);
         }
+      } else {
+        console.warn('⚠️ Notification permission not granted:', Notification.permission);
       }
       
       // Strategy 2: Service worker notification (if direct failed)
