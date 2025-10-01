@@ -22,12 +22,19 @@ export function PWANotificationManager({ userRole, className }: PWANotificationM
 
   useEffect(() => {
     // Set the user role in the notification service
-    if (userRole) {
+    if (userRole && roleBasedNotificationService) {
       roleBasedNotificationService.setCurrentRole(userRole);
     }
 
     // Check notification support and permission status
     const checkNotificationStatus = () => {
+      if (!roleBasedNotificationService) {
+        setIsSupported(false);
+        setHasPermission(false);
+        setIsSubscribed(false);
+        return;
+      }
+      
       const supported = roleBasedNotificationService.isNotificationSupported();
       const hasPermission = roleBasedNotificationService.hasPermission();
       
@@ -69,7 +76,7 @@ export function PWANotificationManager({ userRole, className }: PWANotificationM
   }, [userRole]);
 
   const requestPermission = async () => {
-    if (!isSupported) {
+    if (!isSupported || !roleBasedNotificationService) {
       toast.error('Push notifications are not supported in this browser');
       return;
     }
@@ -131,7 +138,7 @@ export function PWANotificationManager({ userRole, className }: PWANotificationM
   };
 
   const sendTestNotification = async () => {
-    if (!isSupported || !hasPermission) {
+    if (!isSupported || !hasPermission || !roleBasedNotificationService) {
       toast.error('Please enable notifications first');
       return;
     }
@@ -172,7 +179,7 @@ export function PWANotificationManager({ userRole, className }: PWANotificationM
       notificationPermission: typeof Notification !== 'undefined' ? Notification.permission : 'Not supported',
       serviceWorkerSupported: 'serviceWorker' in navigator,
       pushManagerSupported: 'PushManager' in window,
-      currentUserRole: roleBasedNotificationService.getCurrentRole(),
+      currentUserRole: roleBasedNotificationService?.getCurrentRole() || 'unknown',
       platform: {
         isPWA,
         isStandalone,

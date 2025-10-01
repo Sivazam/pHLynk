@@ -189,18 +189,22 @@ export async function POST(request: NextRequest) {
     if (typeof window !== 'undefined') {
       try {
         const { roleBasedNotificationService } = await import('@/services/role-based-notification-service');
-        const notificationSent = await roleBasedNotificationService.sendOTPToRetailer({
-          otp: otpData.code,
-          amount,
-          paymentId,
-          retailerName: retailerUser.name,
-          lineWorkerName: lineWorkerName || 'Line Worker'
-        });
-        
-        if (notificationSent) {
-          console.log('📱 PWA OTP notification sent to retailer only');
+        if (roleBasedNotificationService) {
+          const notificationSent = await roleBasedNotificationService.sendOTPToRetailer({
+            otp: otpData.code,
+            amount,
+            paymentId,
+            retailerName: retailerUser.name,
+            lineWorkerName: lineWorkerName || 'Line Worker'
+          });
+          
+          if (notificationSent) {
+            console.log('📱 PWA OTP notification sent to retailer only');
+          } else {
+            console.log('⚠️ PWA OTP notification failed, but OTP was generated');
+          }
         } else {
-          console.log('⚠️ PWA OTP notification failed, but OTP was generated');
+          console.log('🖥️ Role-based notification service not available on server');
         }
       } catch (notificationError) {
         console.error('❌ Error sending PWA OTP notification:', notificationError);

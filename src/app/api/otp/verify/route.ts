@@ -479,17 +479,21 @@ export async function POST(request: NextRequest) {
         try {
           console.log('📱 Sending PWA payment completion notification...');
           const { roleBasedNotificationService } = await import('@/services/role-based-notification-service');
-          const pwaNotificationSent = await roleBasedNotificationService.sendPaymentCompletedToAll({
-            amount: payment.totalPaid,
-            paymentId: paymentId,
-            retailerName: retailerUser.name,
-            lineWorkerName: lineWorkerName
-          });
-          
-          if (pwaNotificationSent) {
-            console.log('✅ PWA payment completion notification sent successfully');
+          if (roleBasedNotificationService) {
+            const pwaNotificationSent = await roleBasedNotificationService.sendPaymentCompletedToAll({
+              amount: payment.totalPaid,
+              paymentId: paymentId,
+              retailerName: retailerUser.name,
+              lineWorkerName: lineWorkerName
+            });
+            
+            if (pwaNotificationSent) {
+              console.log('✅ PWA payment completion notification sent successfully');
+            } else {
+              console.log('⚠️ PWA payment completion notification failed, but payment was verified');
+            }
           } else {
-            console.log('⚠️ PWA payment completion notification failed, but payment was verified');
+            console.log('🖥️ Role-based notification service not available on server');
           }
         } catch (pwaNotificationError) {
           console.error('❌ Error sending PWA payment completion notification:', pwaNotificationError);

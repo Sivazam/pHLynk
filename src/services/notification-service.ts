@@ -446,6 +446,12 @@ export class NotificationService {
       // Import the role-based notification service
       const { roleBasedNotificationService } = await import('@/services/role-based-notification-service');
       
+      // Check if service is available (client-side only)
+      if (!roleBasedNotificationService) {
+        console.warn('🖥️ Role-based notification service not available on server side');
+        return false;
+      }
+      
       // Set the role if not already set
       if (this.currentUserRole === 'unknown') {
         this.setRole(userRole);

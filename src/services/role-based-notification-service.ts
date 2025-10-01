@@ -27,7 +27,13 @@ class RoleBasedNotificationService {
   private currentUserRole: string = 'unknown';
 
   private constructor() {
-    this.initializeServiceWorker();
+    // Only initialize on client side
+    if (typeof window !== 'undefined') {
+      this.initializeServiceWorker();
+    } else {
+      console.warn('🖥️ RoleBasedNotificationService: Server environment detected - skipping initialization');
+      this.isSupported = false;
+    }
   }
 
   static getInstance(): RoleBasedNotificationService {
@@ -641,5 +647,7 @@ class RoleBasedNotificationService {
   }
 }
 
-// Export singleton instance
-export const roleBasedNotificationService = RoleBasedNotificationService.getInstance();
+// Export singleton instance with lazy initialization (client-side only)
+export const roleBasedNotificationService = typeof window !== 'undefined' 
+  ? RoleBasedNotificationService.getInstance() 
+  : null;

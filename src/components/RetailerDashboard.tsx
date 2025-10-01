@@ -657,7 +657,9 @@ export function RetailerDashboard() {
     // Check for missed notifications on mount
     if (typeof window !== 'undefined') {
       import('@/services/role-based-notification-service').then(({ roleBasedNotificationService }) => {
-        roleBasedNotificationService.checkMissedNotifications();
+        if (roleBasedNotificationService) {
+          roleBasedNotificationService.checkMissedNotifications();
+        }
       });
     }
     
