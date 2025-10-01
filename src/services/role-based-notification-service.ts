@@ -255,9 +255,7 @@ class RoleBasedNotificationService {
       tag: payload.tag,
       requireInteraction: payload.requireInteraction,
       // Mobile-specific enhancements
-      silent: false,
-      // Add actions for mobile
-      actions: payload.actions || []
+      silent: false
     };
 
     // Add mobile-specific enhancements
@@ -272,6 +270,12 @@ class RoleBasedNotificationService {
     }
 
     const notification = new Notification(payload.title, notificationOptions);
+
+    // Add actions if supported and available
+    if (payload.actions && payload.actions.length > 0 && 'actions' in Notification.prototype) {
+      // Type assertion for actions support
+      (notification as any).actions = payload.actions;
+    }
 
     // Trigger vibration for mobile devices (if supported)
     if (this.isMobileDevice() && 'vibrate' in navigator) {
