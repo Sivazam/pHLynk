@@ -187,57 +187,68 @@ class RoleBasedNotificationService {
         isPWA: this.isPWAInstalled(),
         hasServiceWorker: !!this.serviceWorkerRegistration?.active,
         userAgent: navigator.userAgent,
-        isMobile: this.isMobileDevice()
+        isMobile: this.isMobileDevice(),
+        permission: Notification.permission
       });
       
-      // Enhanced notification sending with mobile-specific handling
+      // Enhanced notification sending with multiple fallback strategies
       let notificationSent = false;
       
-      // For mobile devices, prioritize immediate notifications
-      if (this.isMobileDevice()) {
-        console.log('📱 Mobile device detected - using immediate notification strategy');
-        
-        if (Notification.permission === 'granted') {
-          try {
-            const notification = this.createMobileOptimizedNotification(payload, notificationData);
-            notificationSent = true;
-            console.log('✅ Mobile notification sent successfully');
-          } catch (mobileError) {
-            console.warn('⚠️ Mobile notification failed:', mobileError);
-          }
+      // Strategy 1: Direct notification (most reliable for mobile)
+      if (Notification.permission === 'granted') {
+        try {
+          console.log('🔔 Strategy 1: Trying direct notification');
+          const notification = this.createMobileOptimizedNotification(payload, notificationData);
+          notificationSent = true;
+          console.log('✅ Direct notification sent successfully');
+          
+          // Store in fallback storage for redundancy
+          this.storeFallbackNotification(payload, notificationData);
+          
+        } catch (directError) {
+          console.warn('⚠️ Direct notification failed:', directError);
         }
-      } else {
-        // For desktop, try service worker first
-        if (this.serviceWorkerRegistration && this.serviceWorkerRegistration.active) {
-          try {
-            console.log('📡 Sending message to service worker');
-            this.serviceWorkerRegistration.active.postMessage({
-              type: 'SHOW_NOTIFICATION',
-              payload
-            });
-            notificationSent = true;
-          } catch (swError) {
-            console.warn('⚠️ Service worker notification failed:', swError);
-          }
+      }
+      
+      // Strategy 2: Service worker notification (if direct failed)
+      if (!notificationSent && this.serviceWorkerRegistration && this.serviceWorkerRegistration.active) {
+        try {
+          console.log('📡 Strategy 2: Trying service worker notification');
+          this.serviceWorkerRegistration.active.postMessage({
+            type: 'SHOW_NOTIFICATION',
+            payload,
+            originalData: notificationData
+          });
+          notificationSent = true;
+          console.log('✅ Service worker notification sent successfully');
+          
+          // Store in fallback storage for redundancy
+          this.storeFallbackNotification(payload, notificationData);
+          
+        } catch (swError) {
+          console.warn('⚠️ Service worker notification failed:', swError);
         }
-        
-        // Fallback to immediate notification
-        if (!notificationSent && Notification.permission === 'granted') {
-          try {
-            console.log('🔔 Showing immediate notification as fallback');
-            const notification = this.createMobileOptimizedNotification(payload, notificationData);
-            notificationSent = true;
-          } catch (immediateError) {
-            console.warn('⚠️ Immediate notification failed:', immediateError);
-          }
-        }
+      }
+      
+      // Strategy 3: In-app notification fallback
+      if (!notificationSent) {
+        console.log('📱 Strategy 3: Using in-app notification fallback');
+        this.createInAppNotification(payload, notificationData);
+        notificationSent = true;
+        console.log('✅ In-app notification created successfully');
+      }
+      
+      // Strategy 4: Audio alert fallback for critical notifications
+      if (notificationData.type === 'otp' && this.isMobileDevice()) {
+        console.log('🔊 Strategy 4: Playing audio alert for OTP');
+        this.playNotificationSound();
       }
       
       if (notificationSent) {
         console.log(`✅ Notification sent to role: ${userRole}`, payload);
         return true;
       } else {
-        console.error('❌ All notification methods failed');
+        console.error('❌ All notification strategies failed');
         return false;
       }
     } catch (error) {
@@ -506,6 +517,102 @@ class RoleBasedNotificationService {
       console.log('✅ Test notification sent successfully');
     } catch (error) {
       console.error('❌ Failed to send test notification:', error);
+    }
+  }
+
+  // Fallback notification storage for redundancy
+  private storeFallbackNotification(payload: PWANotificationPayload, notificationData: NotificationData): void {
+    try {
+      const fallbackNotifications = JSON.parse(localStorage.getItem('fallbackNotifications') || '[]');
+      fallbackNotifications.push({
+        payload,
+        notificationData,
+        timestamp: new Date().toISOString(),
+        shown: false
+      });
+      
+      // Keep only last 10 notifications
+      if (fallbackNotifications.length > 10) {
+        fallbackNotifications.splice(0, fallbackNotifications.length - 10);
+      }
+      
+      localStorage.setItem('fallbackNotifications', JSON.stringify(fallbackNotifications));
+      console.log('📝 Notification stored in fallback storage');
+    } catch (error) {
+      console.warn('⚠️ Failed to store fallback notification:', error);
+    }
+  }
+
+  // Create in-app notification as fallback
+  private createInAppNotification(payload: PWANotificationPayload, notificationData: NotificationData): void {
+    try {
+      // Create a custom event for in-app notification
+      const event = new CustomEvent('inAppNotification', {
+        detail: {
+          payload,
+          notificationData,
+          timestamp: new Date().toISOString()
+        }
+      });
+      
+      window.dispatchEvent(event);
+      console.log('📱 In-app notification event dispatched');
+      
+      // Also store for when user returns to the app
+      this.storeFallbackNotification(payload, notificationData);
+      
+    } catch (error) {
+      console.warn('⚠️ Failed to create in-app notification:', error);
+    }
+  }
+
+  // Play notification sound as fallback
+  private playNotificationSound(): void {
+    try {
+      // Create audio context for sound
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      
+      oscillator.frequency.value = 800; // 800Hz tone
+      oscillator.type = 'sine';
+      
+      gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+      
+      oscillator.start(audioContext.currentTime);
+      oscillator.stop(audioContext.currentTime + 0.5);
+      
+      console.log('🔊 Notification sound played');
+    } catch (error) {
+      console.warn('⚠️ Failed to play notification sound:', error);
+    }
+  }
+
+  // Check for and show missed notifications
+  checkMissedNotifications(): void {
+    try {
+      const fallbackNotifications = JSON.parse(localStorage.getItem('fallbackNotifications') || '[]');
+      const unseenNotifications = fallbackNotifications.filter(n => !n.shown);
+      
+      if (unseenNotifications.length > 0) {
+        console.log(`📱 Found ${unseenNotifications.length} missed notifications`);
+        
+        unseenNotifications.forEach((notification, index) => {
+          setTimeout(() => {
+            this.createInAppNotification(notification.payload, notification.notificationData);
+          }, index * 1000); // Show notifications with 1-second delay
+        });
+        
+        // Mark all as shown
+        fallbackNotifications.forEach(n => n.shown = true);
+        localStorage.setItem('fallbackNotifications', JSON.stringify(fallbackNotifications));
+      }
+    } catch (error) {
+      console.warn('⚠️ Failed to check missed notifications:', error);
     }
   }
 }

@@ -90,8 +90,7 @@ self.addEventListener('push', event => {
       actions: data.actions || [],
       data: data.data || {},
       // Mobile-specific enhancements
-      silent: false,
-      vibrate: [200, 100, 200] // Vibration pattern for mobile
+      silent: false
     };
     
     // Add sound if supported
@@ -134,6 +133,12 @@ self.addEventListener('push', event => {
     
     event.waitUntil(
       self.registration.showNotification(data.title || 'PharmaLync', options)
+        .then(() => {
+          // Trigger vibration on mobile devices after notification is shown
+          if ('vibrate' in self && 'vibrate' in self.registration) {
+            self.registration.vibrate([200, 100, 200]);
+          }
+        })
     );
   }
 });
@@ -238,8 +243,7 @@ self.addEventListener('message', event => {
         originalData: event.data.originalData
       },
       // Mobile-specific enhancements
-      silent: false,
-      vibrate: [200, 100, 200] // Vibration pattern for mobile
+      silent: false
     };
     
     // Add sound if supported
@@ -254,6 +258,12 @@ self.addEventListener('message', event => {
     
     event.waitUntil(
       self.registration.showNotification(payload.title, notificationOptions)
+        .then(() => {
+          // Trigger vibration on mobile devices after notification is shown
+          if ('vibrate' in self && 'vibrate' in self.registration) {
+            self.registration.vibrate([200, 100, 200]);
+          }
+        })
     );
   }
   

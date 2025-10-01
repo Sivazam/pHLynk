@@ -449,56 +449,61 @@ export function RetailerDashboard() {
       timestamp: new Date().toISOString()
     });
     
-    // Check if we already have a retailerId from the main useEffect
-    let retailerId: string | undefined = user?.retailerId;
-    if (!retailerId) {
-      const storedRetailerId = localStorage.getItem('retailerId');
-      console.log('📝 Backup init: Using stored retailerId from localStorage:', storedRetailerId);
-      if (storedRetailerId) {
-        retailerId = storedRetailerId;
+    // Wait a bit for localStorage states to be properly initialized before doing anything
+    const initTimeout = setTimeout(() => {
+      // Check if we already have a retailerId from the main useEffect
+      let retailerId: string | undefined = user?.retailerId;
+      if (!retailerId) {
+        const storedRetailerId = localStorage.getItem('retailerId');
+        console.log('📝 Backup init: Using stored retailerId from localStorage:', storedRetailerId);
+        if (storedRetailerId) {
+          retailerId = storedRetailerId;
+        }
       }
-    }
-    
-    // If we have a retailerId but no data is loaded yet, trigger data fetch
-    if (retailerId && !retailer && !mainLoadingState.loadingState.isLoading) {
-      console.log('🔄 Backup init: Triggering data fetch for retailerId:', retailerId);
-      mainLoadingState.setLoading(true);
-      setDataFetchProgress(0);
-      fetchRetailerData(retailerId);
-    }
-    
-    // Clean up expired OTPs on mount to prevent them from showing
-    if (retailerId) {
-      const currentActiveOTPs = getActiveOTPsForRetailer(retailerId);
-      const validOTPs = currentActiveOTPs.filter(otp => {
-        const now = new Date();
-        const isExpired = otp.expiresAt <= now;
-        return !isExpired;
-      });
       
-      if (validOTPs.length < currentActiveOTPs.length) {
-        console.log('🧹 Cleaning up expired OTPs on mount:', {
-          total: currentActiveOTPs.length,
-          valid: validOTPs.length,
-          expired: currentActiveOTPs.length - validOTPs.length
-        });
-        
-        // Remove expired OTPs from the store
-        currentActiveOTPs.forEach(otp => {
+      // If we have a retailerId but no data is loaded yet, trigger data fetch
+      if (retailerId && !retailer && !mainLoadingState.loadingState.isLoading) {
+        console.log('🔄 Backup init: Triggering data fetch for retailerId:', retailerId);
+        mainLoadingState.setLoading(true);
+        setDataFetchProgress(0);
+        fetchRetailerData(retailerId);
+      }
+      
+      // Clean up expired OTPs on mount to prevent them from showing
+      if (retailerId) {
+        const currentActiveOTPs = getActiveOTPsForRetailer(retailerId);
+        const validOTPs = currentActiveOTPs.filter(otp => {
           const now = new Date();
           const isExpired = otp.expiresAt <= now;
-          if (isExpired) {
-            removeActiveOTP(otp.paymentId);
-          }
+          return !isExpired;
         });
         
-        // Update state with only valid OTPs
-        setActiveOTPs(validOTPs);
+        if (validOTPs.length < currentActiveOTPs.length) {
+          console.log('🧹 Cleaning up expired OTPs on mount:', {
+            total: currentActiveOTPs.length,
+            valid: validOTPs.length,
+            expired: currentActiveOTPs.length - validOTPs.length
+          });
+          
+          // Remove expired OTPs from the store
+          currentActiveOTPs.forEach(otp => {
+            const now = new Date();
+            const isExpired = otp.expiresAt <= now;
+            if (isExpired) {
+              removeActiveOTP(otp.paymentId);
+            }
+          });
+          
+          // Update state with only valid OTPs
+          setActiveOTPs(validOTPs);
+        }
       }
-    }
+      
+      // Clean up old popup history on mount
+      cleanupOldPopups();
+    }, 500); // Wait 500ms for localStorage states to initialize
     
-    // Clean up old popup history on mount
-    cleanupOldPopups();
+    return () => clearTimeout(initTimeout);
   }, []); // Empty dependency array - runs only once on mount
 
   // Periodic refresh for OTP data - ensures we don't miss any real-time updates
@@ -552,6 +557,85 @@ export function RetailerDashboard() {
       return () => clearInterval(refreshInterval);
     }
   }, [retailer, tenantId, mainLoadingState.loadingState.isLoading]);
+
+  // In-app notification listener for fallback notifications
+  useEffect(() => {
+    const handleInAppNotification = (event: CustomEvent) => {
+      console.log('📱 Received in-app notification:', event.detail);
+      
+      const { payload, notificationData } = event.detail;
+      
+      // Check if this is an OTP notification
+      if (notificationData.type === 'otp') {
+        const otpData = notificationData.data;
+        
+        // Check if we've already shown this OTP
+        if (!shownOTPpopups.has(otpData.paymentId)) {
+          console.log('🆕 Showing OTP from in-app notification:', otpData.paymentId);
+          
+          setNewPayment({
+            ...otpData,
+            id: otpData.paymentId,
+            retailerId: retailer?.id || '',
+            retailerName: retailer?.name || '',
+            lineWorkerId: '',
+            totalPaid: otpData.amount,
+            method: 'CASH' as any,
+            state: 'OTP_SENT' as any,
+            evidence: [],
+            tenantId: tenantId || '',
+            timeline: {
+              initiatedAt: { toDate: () => otpData.createdAt || new Date() } as any,
+              otpSentAt: { toDate: () => otpData.createdAt || new Date() } as any,
+            },
+            createdAt: { toDate: () => otpData.createdAt || new Date() } as any,
+            updatedAt: { toDate: () => otpData.createdAt || new Date() } as any,
+          });
+          setShowOTPPopup(true);
+          
+          // Add to shown popups
+          addToShownOTPpopups(otpData.paymentId);
+        }
+      }
+      
+      // Check if this is a payment completed notification
+      if (notificationData.type === 'payment_completed') {
+        const paymentData = notificationData.data;
+        
+        // Check if we've already shown this payment
+        if (!shownCompletedPaymentPopups.has(paymentData.paymentId)) {
+          console.log('🆕 Showing payment completion from in-app notification:', paymentData.paymentId);
+          
+          setNewCompletedPayment({
+            paymentId: paymentData.paymentId,
+            amount: paymentData.amount,
+            lineWorkerName: paymentData.lineWorkerName,
+            completedAt: paymentData.completedAt
+          });
+          setShowSettlementPopup(true);
+          triggerConfettiWithCleanup();
+          
+          // Add to shown popups
+          addToShownCompletedPaymentPopups(paymentData.paymentId);
+        }
+      }
+    };
+
+    // Add event listener
+    window.addEventListener('inAppNotification', handleInAppNotification as EventListener);
+    
+    // Check for missed notifications on mount
+    if (typeof window !== 'undefined') {
+      import('@/services/role-based-notification-service').then(({ roleBasedNotificationService }) => {
+        roleBasedNotificationService.checkMissedNotifications();
+      });
+    }
+    
+    // Cleanup
+    return () => {
+      window.removeEventListener('inAppNotification', handleInAppNotification as EventListener);
+    };
+  }, [retailer, tenantId, shownOTPpopups, shownCompletedPaymentPopups]);
 
   // Sync OTPs from Firestore to ensure consistency
   const syncOTPsFromFirestore = async () => {
@@ -1106,33 +1190,50 @@ export function RetailerDashboard() {
       setCompletedPayments(completedPaymentsData);
       
       // Check for new OTPs and show popup (use the updated activeOTPs state)
-      const finalActiveOTPs = getActiveOTPsForRetailer(retailerId);
-      const newOTPs = finalActiveOTPs.filter(otp => !shownOTPpopups.has(otp.paymentId));
-      if (newOTPs.length > 0) {
-        const latestOTP = newOTPs[newOTPs.length - 1];
-        setNewPayment({
-          ...latestOTP,
-          id: latestOTP.paymentId,
-          retailerId: retailerId,
-          retailerName: retailerData.name,
-          lineWorkerId: '',
-          totalPaid: latestOTP.amount,
-          method: 'CASH' as any,
-          state: 'OTP_SENT' as any,
-          evidence: [],
-          tenantId: retailerData.tenantId || '',
-          timeline: {
-            initiatedAt: { toDate: () => latestOTP.createdAt } as any,
-            otpSentAt: { toDate: () => latestOTP.createdAt } as any,
-          },
-          createdAt: { toDate: () => latestOTP.createdAt } as any,
-          updatedAt: { toDate: () => latestOTP.createdAt } as any,
+      // Add a small delay to ensure shownOTPpopups is fully initialized
+      setTimeout(() => {
+        const finalActiveOTPs = getActiveOTPsForRetailer(retailerId);
+        console.log('🔍 Checking for new OTPs after data fetch:', {
+          finalActiveOTPs: finalActiveOTPs.length,
+          shownOTPpopups: shownOTPpopups.size,
+          paymentIds: finalActiveOTPs.map(otp => otp.paymentId)
         });
-        setShowOTPPopup(true);
         
-        // Add to shown popups
-        setShownOTPpopups(prev => new Set(prev).add(latestOTP.paymentId));
-      }
+        const newOTPs = finalActiveOTPs.filter(otp => {
+          const alreadyShown = shownOTPpopups.has(otp.paymentId);
+          console.log(`📝 OTP ${otp.paymentId} already shown:`, alreadyShown);
+          return !alreadyShown;
+        });
+        
+        if (newOTPs.length > 0) {
+          const latestOTP = newOTPs[newOTPs.length - 1];
+          console.log('🆕 Showing popup for new OTP found after data fetch:', latestOTP.paymentId);
+          setNewPayment({
+            ...latestOTP,
+            id: latestOTP.paymentId,
+            retailerId: retailerId,
+            retailerName: retailerData.name,
+            lineWorkerId: '',
+            totalPaid: latestOTP.amount,
+            method: 'CASH' as any,
+            state: 'OTP_SENT' as any,
+            evidence: [],
+            tenantId: retailerData.tenantId || '',
+            timeline: {
+              initiatedAt: { toDate: () => latestOTP.createdAt } as any,
+              otpSentAt: { toDate: () => latestOTP.createdAt } as any,
+            },
+            createdAt: { toDate: () => latestOTP.createdAt } as any,
+            updatedAt: { toDate: () => latestOTP.createdAt } as any,
+          });
+          setShowOTPPopup(true);
+          
+          // Add to shown popups using the helper function
+          addToShownOTPpopups(latestOTP.paymentId);
+        } else {
+          console.log('📝 No new OTPs to show after data fetch');
+        }
+      }, 200); // Small delay to ensure state is settled
       
       // Check for new completed payments and show settlement popup
       const newCompleted = completedPaymentsData.filter(cp => !shownCompletedPaymentPopups.has(cp.paymentId));
