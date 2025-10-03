@@ -58,116 +58,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           // Small delay before Firestore call
           await new Promise(resolve => setTimeout(resolve, 150));
           
-          // Try to fetch user data from users collection first
-          const userDoc = await getDoc(doc(db, COLLECTIONS.USERS, firebaseUser.uid));
-          
-          updateProgress(50, 'Validating user permissions...');
-          
-          // Small delay for validation
-          await new Promise(resolve => setTimeout(resolve, 200));
-          
-          if (userDoc.exists()) {
-            updateProgress(70, 'Validating user permissions...');
+          // Check if this is a retailer user by phone number first
+          let isRetailerUser = false;
+          if (firebaseUser.phoneNumber) {
+            const phone = firebaseUser.phoneNumber.replace('+91', '').replace(/\D/g, '');
+            const retailerUid = `retailer_${phone}`;
+            const retailerUserDoc = await getDoc(doc(db, 'retailerUsers', retailerUid));
             
-            const userData = userDoc.data() as User;
-            
-            // Check if user is active
-            if (!userData.active) {
-              console.error('User account is inactive:', firebaseUser.uid);
-              updateProgress(90, 'Account inactive...');
-              await new Promise(resolve => setTimeout(resolve, 150));
-              setUser(null);
-              return;
-            }
-            
-            // For wholesaler admins and line workers, check tenant status
-            if (userData.roles.includes('WHOLESALER_ADMIN') || userData.roles.includes('LINE_WORKER')) {
-              if (!userData.tenantId) {
-                console.error('User missing tenantId:', firebaseUser.uid);
-                updateProgress(90, 'Account configuration error...');
-                await new Promise(resolve => setTimeout(resolve, 150));
-                setUser(null);
-                return;
-              }
+            if (retailerUserDoc.exists()) {
+              isRetailerUser = true;
+              updateProgress(70, 'Loading retailer profile...');
               
-              // Fetch tenant document to check status
-              const tenantDoc = await getDoc(doc(db, COLLECTIONS.TENANTS, userData.tenantId));
-              if (!tenantDoc.exists()) {
-                console.error('Tenant not found:', userData.tenantId);
-                updateProgress(90, 'Account configuration error...');
-                await new Promise(resolve => setTimeout(resolve, 150));
-                setUser(null);
-                return;
-              }
+              const retailerData = retailerUserDoc.data();
               
-              const tenantData = tenantDoc.data();
-              if (tenantData.status !== 'ACTIVE') {
-                console.error('Tenant account is not active:', userData.tenantId, 'Status:', tenantData.status);
-                updateProgress(90, 'Account pending approval...');
-                await new Promise(resolve => setTimeout(resolve, 150));
+              // For retailer users, check if the retailer document exists and is valid
+              // Retailers don't have an 'active' field - they use 'isActive' field
+              const retailerDoc = await getDoc(doc(db, COLLECTIONS.RETAILERS, retailerData.retailerId));
+              if (retailerDoc.exists()) {
+                // Check retailer user isActive status (not 'active')
+                // Retailer users have isActive field, not active field
+                if (retailerData.hasOwnProperty('isActive') && !retailerData.isActive) {
+                  console.error('Retailer account is inactive:', firebaseUser.uid);
+                  updateProgress(90, 'Retailer account inactive...');
+                  setUser(null);
+                  return;
+                }
                 
-                // Create user object with tenant status instead of setting to null
-                const authUser: AuthUser = {
-                  uid: firebaseUser.uid,
-                  email: firebaseUser.email!,
-                  displayName: firebaseUser.displayName || userData.displayName,
-                  photoURL: firebaseUser.photoURL || undefined,
-                  tenantId: userData.tenantId,
-                  tenantStatus: tenantData.status,
-                  roles: userData.roles,
-                  assignedAreas: userData.assignedAreas,
-                  assignedZips: userData.assignedZips
-                };
-                
-                updateProgress(95, 'Almost ready...');
-                await new Promise(resolve => setTimeout(resolve, 150));
-                updateProgress(100, 'Complete');
-                setUser(authUser);
-                return;
-              }
-            }
-            
-            updateProgress(85, 'Setting up dashboard...');
-            
-            const authUser: AuthUser = {
-              uid: firebaseUser.uid,
-              email: firebaseUser.email!,
-              displayName: firebaseUser.displayName || userData.displayName,
-              photoURL: firebaseUser.photoURL || undefined,
-              tenantId: userData.tenantId,
-              tenantStatus: 'ACTIVE',
-              roles: userData.roles,
-              assignedAreas: userData.assignedAreas,
-              assignedZips: userData.assignedZips
-            };
-            
-            updateProgress(95, 'Almost ready...');
-            
-            // Final delay before completing
-            await new Promise(resolve => setTimeout(resolve, 150));
-            
-            updateProgress(100, 'Complete');
-            setUser(authUser);
-          } else {
-            // If not found in users collection, try retailerUsers collection
-            updateProgress(40, 'Checking retailer account...');
-            
-            // Check if this is a retailer user by phone number
-            if (firebaseUser.phoneNumber) {
-              const phone = firebaseUser.phoneNumber.replace('+91', '').replace(/\D/g, '');
-              const retailerUid = `retailer_${phone}`;
-              const retailerUserDoc = await getDoc(doc(db, 'retailerUsers', retailerUid));
-              
-              if (retailerUserDoc.exists()) {
-                updateProgress(70, 'Loading retailer profile...');
-                
-                const retailerData = retailerUserDoc.data();
                 const authUser: AuthUser = {
                   uid: firebaseUser.uid,
                   email: firebaseUser.email || `retailer_${phone}@pharmalynk.local`,
                   displayName: retailerData.name || 'Retailer',
                   photoURL: firebaseUser.photoURL || undefined,
                   tenantId: retailerData.tenantId,
+                  tenantStatus: 'ACTIVE',
                   roles: ['RETAILER'], // Retailer users always have RETAILER role
                   isRetailer: true,
                   retailerId: retailerData.retailerId,
@@ -183,18 +106,116 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 await new Promise(resolve => setTimeout(resolve, 150));
                 
                 updateProgress(95, 'Almost ready...');
+                updateProgress(100, 'Complete');
                 setUser(authUser);
+                return;
               } else {
-                // User exists in Auth but not in either collection
-                console.error('User exists in Auth but not in users or retailerUsers collection');
-                updateProgress(90, 'Setting up guest access...');
+                console.error('Retailer document not found for retailerId:', retailerData.retailerId);
+                updateProgress(90, 'Retailer account not found...');
                 setUser(null);
+                return;
               }
+            }
+          }
+          
+          // If not a retailer user, try to fetch user data from users collection
+          if (!isRetailerUser) {
+            const userDoc = await getDoc(doc(db, COLLECTIONS.USERS, firebaseUser.uid));
+            
+            updateProgress(50, 'Validating user permissions...');
+            
+            // Small delay for validation
+            await new Promise(resolve => setTimeout(resolve, 200));
+            
+            if (userDoc.exists()) {
+              updateProgress(70, 'Validating user permissions...');
+              
+              const userData = userDoc.data() as User;
+              
+              // Check if user is active (only for non-retailer users)
+              if (!userData.active) {
+                console.error('User account is inactive:', firebaseUser.uid);
+                updateProgress(90, 'Account inactive...');
+                await new Promise(resolve => setTimeout(resolve, 150));
+                setUser(null);
+                return;
+              }
+            
+              // For wholesaler admins and line workers, check tenant status
+              if (userData.roles.includes('WHOLESALER_ADMIN') || userData.roles.includes('LINE_WORKER')) {
+                if (!userData.tenantId) {
+                  console.error('User missing tenantId:', firebaseUser.uid);
+                  updateProgress(90, 'Account configuration error...');
+                  await new Promise(resolve => setTimeout(resolve, 150));
+                  setUser(null);
+                  return;
+                }
+                
+                // Fetch tenant document to check status
+                const tenantDoc = await getDoc(doc(db, COLLECTIONS.TENANTS, userData.tenantId));
+                if (!tenantDoc.exists()) {
+                  console.error('Tenant not found:', userData.tenantId);
+                  updateProgress(90, 'Account configuration error...');
+                  await new Promise(resolve => setTimeout(resolve, 150));
+                  setUser(null);
+                  return;
+                }
+                
+                const tenantData = tenantDoc.data();
+                if (tenantData.status !== 'ACTIVE') {
+                  console.error('Tenant account is not active:', userData.tenantId, 'Status:', tenantData.status);
+                  updateProgress(90, 'Account pending approval...');
+                  await new Promise(resolve => setTimeout(resolve, 150));
+                  
+                  // Create user object with tenant status instead of setting to null
+                  const authUser: AuthUser = {
+                    uid: firebaseUser.uid,
+                    email: firebaseUser.email!,
+                    displayName: firebaseUser.displayName || userData.displayName,
+                    photoURL: firebaseUser.photoURL || undefined,
+                    tenantId: userData.tenantId,
+                    tenantStatus: tenantData.status,
+                    roles: userData.roles,
+                    assignedAreas: userData.assignedAreas,
+                    assignedZips: userData.assignedZips
+                  };
+                  
+                  updateProgress(95, 'Almost ready...');
+                  await new Promise(resolve => setTimeout(resolve, 150));
+                  updateProgress(100, 'Complete');
+                  setUser(authUser);
+                  return;
+                }
+              }
+              
+              updateProgress(85, 'Setting up dashboard...');
+              
+              const authUser: AuthUser = {
+                uid: firebaseUser.uid,
+                email: firebaseUser.email!,
+                displayName: firebaseUser.displayName || userData.displayName,
+                photoURL: firebaseUser.photoURL || undefined,
+                tenantId: userData.tenantId,
+                tenantStatus: 'ACTIVE',
+                roles: userData.roles,
+                assignedAreas: userData.assignedAreas,
+                assignedZips: userData.assignedZips
+              };
+              
+              updateProgress(95, 'Almost ready...');
+              
+              // Final delay before completing
+              await new Promise(resolve => setTimeout(resolve, 150));
+              
+              updateProgress(100, 'Complete');
+              setUser(authUser);
+              return;
             } else {
-              // User exists in Auth but no phone number and not in users collection
-              console.error('User exists in Auth but no phone number and not in users collection');
+              // User not found in users collection and not a retailer user
+              console.error('User exists in Auth but not in users collection');
               updateProgress(90, 'Setting up guest access...');
               setUser(null);
+              return;
             }
           }
         } else {

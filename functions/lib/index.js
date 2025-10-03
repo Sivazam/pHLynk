@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.processSMSResponse = exports.sendWholesalerPaymentSMS = exports.sendRetailerPaymentSMS = void 0;
+exports.sendTestFCMNotification = exports.sendPaymentCompletionNotification = exports.sendOTPNotification = exports.processSMSResponse = exports.sendWholesalerPaymentSMS = exports.sendRetailerPaymentSMS = void 0;
 const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
 // Initialize Firebase Admin
@@ -529,6 +529,348 @@ exports.processSMSResponse = functions.https.onCall(async (data, context) => {
             throw error;
         }
         throw new functions.https.HttpsError('internal', 'Failed to process SMS response', error instanceof Error ? error.message : 'Unknown error');
+    }
+});
+// ===== FCM NOTIFICATION FUNCTIONS =====
+// Helper function to get user's FCM token
+async function getFCMTokenForUser(userId) {
+    try {
+        const userDoc = await admin.firestore().collection('users').doc(userId).get();
+        if (userDoc.exists) {
+            const userData = userDoc.data();
+            return (userData === null || userData === void 0 ? void 0 : userData.fcmToken) || null;
+        }
+        return null;
+    }
+    catch (error) {
+        console.error('❌ Error getting FCM token for user:', userId, error);
+        return null;
+    }
+}
+// Send FCM notification for OTP
+exports.sendOTPNotification = functions.https.onCall(async (request) => {
+    var _a;
+    try {
+        console.log('🚀 FCM CLOUD FUNCTION TRIGGERED - sendOTPNotification');
+        console.log('📥 Full request object:', JSON.stringify(request, null, 2));
+        let data, context;
+        if (request.data && typeof request.data === 'object') {
+            // Callable function format
+            data = request.data;
+            context = request;
+        }
+        else if (request && typeof request === 'object' && !request.auth) {
+            // Direct HTTP format
+            data = request;
+            context = { auth: null, rawRequest: { ip: 'unknown' } };
+        }
+        else {
+            throw new functions.https.HttpsError('invalid-argument', 'Invalid request format');
+        }
+        console.log('📤 Extracted data:', JSON.stringify(data, null, 2));
+        // Input validation
+        if (!data.retailerId || typeof data.retailerId !== 'string') {
+            throw new functions.https.HttpsError('invalid-argument', 'Invalid or missing retailerId');
+        }
+        if (!data.otp || typeof data.otp !== 'string') {
+            throw new functions.https.HttpsError('invalid-argument', 'Invalid or missing OTP');
+        }
+        if (!data.amount || typeof data.amount !== 'number') {
+            throw new functions.https.HttpsError('invalid-argument', 'Invalid or missing amount');
+        }
+        if (!data.paymentId || typeof data.paymentId !== 'string') {
+            throw new functions.https.HttpsError('invalid-argument', 'Invalid or missing paymentId');
+        }
+        if (!data.lineWorkerName || typeof data.lineWorkerName !== 'string') {
+            throw new functions.https.HttpsError('invalid-argument', 'Invalid or missing lineWorkerName');
+        }
+        console.log('📱 FCM - OTP Notification Request:', {
+            retailerId: data.retailerId,
+            paymentId: data.paymentId,
+            amount: data.amount,
+            otp: data.otp,
+            lineWorkerName: data.lineWorkerName,
+            caller: context.auth ? context.auth.uid : 'NEXTJS_API'
+        });
+        // Get retailer user details
+        const retailerUsersQuery = await admin.firestore()
+            .collection('retailerUsers')
+            .where('retailerId', '==', data.retailerId)
+            .limit(1)
+            .get();
+        if (retailerUsersQuery.empty) {
+            throw new functions.https.HttpsError('not-found', `Retailer user not found for retailerId: ${data.retailerId}`);
+        }
+        const retailerUser = retailerUsersQuery.docs[0];
+        const retailerUserId = retailerUser.id;
+        // Get FCM token for retailer user
+        const fcmToken = await getFCMTokenForUser(retailerUserId);
+        if (!fcmToken) {
+            console.warn('⚠️ FCM token not found for retailer user:', retailerUserId);
+            return {
+                success: false,
+                error: 'FCM token not found',
+                fallbackToSMS: true
+            };
+        }
+        // Create FCM message
+        const message = {
+            notification: {
+                title: '🔐 Payment OTP Required',
+                body: `OTP: ${data.otp} for ₹${data.amount.toLocaleString()} by ${data.lineWorkerName}`,
+            },
+            data: {
+                type: 'otp',
+                otp: data.otp,
+                amount: data.amount.toString(),
+                paymentId: data.paymentId,
+                retailerId: data.retailerId,
+                lineWorkerName: data.lineWorkerName,
+                tag: `otp-${data.paymentId}`,
+                requireInteraction: 'true'
+            },
+            token: fcmToken,
+            android: {
+                priority: 'high',
+                notification: {
+                    priority: 'high',
+                    defaultSound: true,
+                    defaultVibrateTimings: true
+                }
+            },
+            apns: {
+                payload: {
+                    aps: {
+                        sound: 'default',
+                        badge: 1,
+                        contentAvailable: true
+                    }
+                }
+            }
+        };
+        // Send FCM message
+        const response = await admin.messaging().send(message);
+        console.log('✅ FCM OTP notification sent successfully:', response);
+        // Log FCM delivery
+        await admin.firestore().collection('fcmLogs').add({
+            type: 'OTP_NOTIFICATION',
+            retailerId: data.retailerId,
+            paymentId: data.paymentId,
+            userId: retailerUserId,
+            token: fcmToken.substring(0, 8) + '...',
+            status: 'SENT',
+            messageId: response,
+            sentBy: ((_a = context.auth) === null || _a === void 0 ? void 0 : _a.uid) || 'NEXTJS_API',
+            sentAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        return {
+            success: true,
+            messageId: response,
+            type: 'fcm_sent'
+        };
+    }
+    catch (error) {
+        console.error('❌ FCM CLOUD FUNCTION - Error sending OTP notification:', error);
+        if (error instanceof functions.https.HttpsError) {
+            throw error;
+        }
+        throw new functions.https.HttpsError('internal', 'Failed to send OTP notification', error instanceof Error ? error.message : 'Unknown error');
+    }
+});
+// Send FCM notification for payment completion
+exports.sendPaymentCompletionNotification = functions.https.onCall(async (request) => {
+    var _a;
+    try {
+        console.log('🚀 FCM CLOUD FUNCTION TRIGGERED - sendPaymentCompletionNotification');
+        console.log('📥 Full request object:', JSON.stringify(request, null, 2));
+        let data, context;
+        if (request.data && typeof request.data === 'object') {
+            // Callable function format
+            data = request.data;
+            context = request;
+        }
+        else if (request && typeof request === 'object' && !request.auth) {
+            // Direct HTTP format
+            data = request;
+            context = { auth: null, rawRequest: { ip: 'unknown' } };
+        }
+        else {
+            throw new functions.https.HttpsError('invalid-argument', 'Invalid request format');
+        }
+        console.log('📤 Extracted data:', JSON.stringify(data, null, 2));
+        // Input validation
+        if (!data.retailerId || typeof data.retailerId !== 'string') {
+            throw new functions.https.HttpsError('invalid-argument', 'Invalid or missing retailerId');
+        }
+        if (!data.amount || typeof data.amount !== 'number') {
+            throw new functions.https.HttpsError('invalid-argument', 'Invalid or missing amount');
+        }
+        if (!data.paymentId || typeof data.paymentId !== 'string') {
+            throw new functions.https.HttpsError('invalid-argument', 'Invalid or missing paymentId');
+        }
+        console.log('📱 FCM - Payment Completion Notification Request:', {
+            retailerId: data.retailerId,
+            paymentId: data.paymentId,
+            amount: data.amount,
+            caller: context.auth ? context.auth.uid : 'NEXTJS_API'
+        });
+        // Get retailer user details
+        const retailerUsersQuery = await admin.firestore()
+            .collection('retailerUsers')
+            .where('retailerId', '==', data.retailerId)
+            .limit(1)
+            .get();
+        if (retailerUsersQuery.empty) {
+            throw new functions.https.HttpsError('not-found', `Retailer user not found for retailerId: ${data.retailerId}`);
+        }
+        const retailerUser = retailerUsersQuery.docs[0];
+        const retailerUserId = retailerUser.id;
+        // Get FCM token for retailer user
+        const fcmToken = await getFCMTokenForUser(retailerUserId);
+        if (!fcmToken) {
+            console.warn('⚠️ FCM token not found for retailer user:', retailerUserId);
+            return {
+                success: false,
+                error: 'FCM token not found',
+                fallbackToSMS: true
+            };
+        }
+        // Create FCM message
+        const message = {
+            notification: {
+                title: '✅ Payment Completed',
+                body: `Payment of ₹${data.amount.toLocaleString()} completed successfully`,
+            },
+            data: {
+                type: 'payment_completed',
+                amount: data.amount.toString(),
+                paymentId: data.paymentId,
+                retailerId: data.retailerId,
+                tag: `payment-${data.paymentId}`,
+                requireInteraction: 'false'
+            },
+            token: fcmToken,
+            android: {
+                priority: 'normal',
+                notification: {
+                    priority: 'default',
+                    defaultSound: true
+                }
+            },
+            apns: {
+                payload: {
+                    aps: {
+                        sound: 'default',
+                        badge: 1
+                    }
+                }
+            }
+        };
+        // Send FCM message
+        const response = await admin.messaging().send(message);
+        console.log('✅ FCM Payment completion notification sent successfully:', response);
+        // Log FCM delivery
+        await admin.firestore().collection('fcmLogs').add({
+            type: 'PAYMENT_COMPLETION_NOTIFICATION',
+            retailerId: data.retailerId,
+            paymentId: data.paymentId,
+            userId: retailerUserId,
+            token: fcmToken.substring(0, 8) + '...',
+            status: 'SENT',
+            messageId: response,
+            sentBy: ((_a = context.auth) === null || _a === void 0 ? void 0 : _a.uid) || 'NEXTJS_API',
+            sentAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        return {
+            success: true,
+            messageId: response,
+            type: 'fcm_sent'
+        };
+    }
+    catch (error) {
+        console.error('❌ FCM CLOUD FUNCTION - Error sending payment completion notification:', error);
+        if (error instanceof functions.https.HttpsError) {
+            throw error;
+        }
+        throw new functions.https.HttpsError('internal', 'Failed to send payment completion notification', error instanceof Error ? error.message : 'Unknown error');
+    }
+});
+// Send test FCM notification
+exports.sendTestFCMNotification = functions.https.onCall(async (request) => {
+    var _a;
+    try {
+        console.log('🚀 FCM CLOUD FUNCTION TRIGGERED - sendTestFCMNotification');
+        let data, context;
+        if (request.data && typeof request.data === 'object') {
+            data = request.data;
+            context = request;
+        }
+        else if (request && typeof request === 'object' && !request.auth) {
+            data = request;
+            context = { auth: null, rawRequest: { ip: 'unknown' } };
+        }
+        else {
+            throw new functions.https.HttpsError('invalid-argument', 'Invalid request format');
+        }
+        if (!((_a = context.auth) === null || _a === void 0 ? void 0 : _a.uid)) {
+            throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+        }
+        const userId = context.auth.uid;
+        const fcmToken = await getFCMTokenForUser(userId);
+        if (!fcmToken) {
+            throw new functions.https.HttpsError('not-found', 'FCM token not found for user');
+        }
+        const message = {
+            notification: {
+                title: '📱 Test Notification',
+                body: 'This is a test FCM notification from pHLynk',
+            },
+            data: {
+                type: 'test',
+                tag: 'test-notification',
+                requireInteraction: 'false'
+            },
+            token: fcmToken,
+            android: {
+                priority: 'normal',
+                notification: {
+                    priority: 'default',
+                    defaultSound: true
+                }
+            },
+            apns: {
+                payload: {
+                    aps: {
+                        sound: 'default',
+                        badge: 1
+                    }
+                }
+            }
+        };
+        const response = await admin.messaging().send(message);
+        console.log('✅ Test FCM notification sent successfully:', response);
+        // Log test notification
+        await admin.firestore().collection('fcmLogs').add({
+            type: 'TEST_NOTIFICATION',
+            userId: userId,
+            token: fcmToken.substring(0, 8) + '...',
+            status: 'SENT',
+            messageId: response,
+            sentBy: userId,
+            sentAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        return {
+            success: true,
+            messageId: response,
+            message: 'Test notification sent successfully'
+        };
+    }
+    catch (error) {
+        console.error('❌ FCM CLOUD FUNCTION - Error sending test notification:', error);
+        if (error instanceof functions.https.HttpsError) {
+            throw error;
+        }
+        throw new functions.https.HttpsError('internal', 'Failed to send test notification', error instanceof Error ? error.message : 'Unknown error');
     }
 });
 //# sourceMappingURL=index.js.map

@@ -646,7 +646,7 @@ async function getFCMTokenForUser(userId: string): Promise<string | null> {
     
     if (userDoc.exists) {
       const userData = userDoc.data();
-      return userData.fcmToken || null;
+      return userData?.fcmToken || null;
     }
     
     return null;
@@ -751,9 +751,9 @@ export const sendOTPNotification = functions.https.onCall(async (request: any) =
       },
       token: fcmToken,
       android: {
-        priority: 'high',
+        priority: 'high' as const,
         notification: {
-          priority: 'high',
+          priority: 'high' as const,
           defaultSound: true,
           defaultVibrateTimings: true
         }
@@ -892,9 +892,9 @@ export const sendPaymentCompletionNotification = functions.https.onCall(async (r
       },
       token: fcmToken,
       android: {
-        priority: 'normal',
+        priority: 'normal' as const,
         notification: {
-          priority: 'normal',
+          priority: 'default' as const,
           defaultSound: true
         }
       },
@@ -986,9 +986,9 @@ export const sendTestFCMNotification = functions.https.onCall(async (request: an
       },
       token: fcmToken,
       android: {
-        priority: 'normal',
+        priority: 'normal' as const,
         notification: {
-          priority: 'normal',
+          priority: 'default' as const,
           defaultSound: true
         }
       },
