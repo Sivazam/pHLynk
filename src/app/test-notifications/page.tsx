@@ -178,11 +178,16 @@ export default function TestNotificationsPage() {
   const testFCMConfiguration = async () => {
     setIsLoading(true);
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+
       const response = await fetch('/api/fcm/send-test-v1', {
         method: 'GET',
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal
       });
 
+      clearTimeout(timeoutId);
       const result = await response.json();
       
       if (response.ok) {
@@ -199,8 +204,13 @@ export default function TestNotificationsPage() {
       }
     } catch (error) {
       console.error('FCM v1 configuration check failed:', error);
-      toast.error('FCM v1 configuration check failed');
-      addTestResult('FCM v1 Configuration', 'error', error instanceof Error ? error.message : 'Unknown error');
+      if (error instanceof Error && error.name === 'AbortError') {
+        toast.error('FCM v1 configuration check timed out');
+        addTestResult('FCM v1 Configuration', 'error', 'Request timed out');
+      } else {
+        toast.error('FCM v1 configuration check failed');
+        addTestResult('FCM v1 Configuration', 'error', error instanceof Error ? error.message : 'Unknown error');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -209,6 +219,9 @@ export default function TestNotificationsPage() {
   const testFCMV1Direct = async () => {
     setIsLoading(true);
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+
       const response = await fetch('/api/fcm/send-test-v1', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -217,9 +230,11 @@ export default function TestNotificationsPage() {
           title: '🧪 FCM v1 Direct Test',
           body: 'This is a direct test of the FCM v1 API',
           data: { type: 'test', timestamp: Date.now().toString() }
-        })
+        }),
+        signal: controller.signal
       });
 
+      clearTimeout(timeoutId);
       const result = await response.json();
       
       if (response.ok) {
@@ -240,8 +255,13 @@ export default function TestNotificationsPage() {
       }
     } catch (error) {
       console.error('FCM v1 Direct test failed:', error);
-      toast.error('FCM v1 Direct test failed');
-      addTestResult('FCM v1 Direct', 'error', error instanceof Error ? error.message : 'Unknown error');
+      if (error instanceof Error && error.name === 'AbortError') {
+        toast.error('FCM v1 Direct test timed out');
+        addTestResult('FCM v1 Direct', 'error', 'Request timed out');
+      } else {
+        toast.error('FCM v1 Direct test failed');
+        addTestResult('FCM v1 Direct', 'error', error instanceof Error ? error.message : 'Unknown error');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -250,6 +270,9 @@ export default function TestNotificationsPage() {
   const testFCMNotification = async () => {
     setIsLoading(true);
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+
       const response = await fetch('/api/fcm/send-test', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -258,9 +281,11 @@ export default function TestNotificationsPage() {
           title: '🧪 FCM v1 Test',
           body: 'This is a test FCM v1 notification',
           data: { type: 'test', timestamp: Date.now().toString() }
-        })
+        }),
+        signal: controller.signal
       });
 
+      clearTimeout(timeoutId);
       const result = await response.json();
       
       if (response.ok) {
@@ -281,8 +306,13 @@ export default function TestNotificationsPage() {
       }
     } catch (error) {
       console.error('FCM v1 test failed:', error);
-      toast.error('FCM v1 test failed');
-      addTestResult('FCM v1 Test', 'error', error instanceof Error ? error.message : 'Unknown error');
+      if (error instanceof Error && error.name === 'AbortError') {
+        toast.error('FCM v1 test timed out');
+        addTestResult('FCM v1 Test', 'error', 'Request timed out');
+      } else {
+        toast.error('FCM v1 test failed');
+        addTestResult('FCM v1 Test', 'error', error instanceof Error ? error.message : 'Unknown error');
+      }
     } finally {
       setIsLoading(false);
     }
