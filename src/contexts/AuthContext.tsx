@@ -122,7 +122,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               
               updateProgress(95, 'Almost ready...');
               updateProgress(100, 'Complete');
+              console.log('🎯 About to call setUser with retailer AuthUser:', authUser);
               setUser(authUser);
+              console.log('✅ setUser called successfully for retailer');
               return;
             } else {
               console.log('❌ No retailer found in Retailer collection');
@@ -250,7 +252,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                   
                   updateProgress(95, 'Almost ready...');
                   updateProgress(100, 'Complete');
+                  console.log('🎯 About to call setUser with fallback AuthUser:', authUser);
                   setUser(authUser);
+                  console.log('✅ setUser called successfully for fallback retailer');
                   return;
                 } else {
                   console.log('❌ No retailer found by Firebase UID match');
@@ -386,14 +390,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await new Promise(resolve => setTimeout(resolve, 100));
         updateProgress(100, 'Complete');
       } catch (error) {
-        console.error('Error fetching user data:', error);
+        console.error('❌ Error in authentication flow:', error);
+        console.error('❌ Error details:', {
+          message: error instanceof Error ? error.message : 'Unknown error',
+          stack: error instanceof Error ? error.stack : 'No stack trace',
+          firebaseUser: firebaseUser ? { uid: firebaseUser.uid, email: firebaseUser.email, phone: firebaseUser.phoneNumber } : null
+        });
         updateProgress(90, 'Recovering from error...');
         await new Promise(resolve => setTimeout(resolve, 200));
         setUser(null);
         updateProgress(100, 'Complete');
       }
       
+      console.log('🔄 About to call setLoading(false)');
       setLoading(false);
+      console.log('✅ setLoading(false) called successfully');
     });
 
     // Set up a fallback progress mechanism in case Firebase doesn't respond
