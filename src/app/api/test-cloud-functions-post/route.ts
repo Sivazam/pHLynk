@@ -5,7 +5,14 @@ import { NextResponse } from "next/server";
 
 // Test cloud function with actual POST request (matching real implementation)
 export async function POST() {
-  const results = [];
+  const results: Array<{
+    functionName: string;
+    url: string;
+    status: string;
+    httpStatus?: number;
+    message: string;
+    error?: string;
+  }> = [];
   let reachable = 0;
   let unreachable = 0;
   let serverErrors = 0;
