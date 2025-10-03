@@ -1,3 +1,6 @@
+// Force dynamic rendering
+export const dynamic = "force-dynamic";
+
 import { NextResponse } from "next/server";
 
 // List of deployed cloud functions to test

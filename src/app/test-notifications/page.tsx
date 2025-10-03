@@ -144,7 +144,7 @@ export default function TestNotificationsPage() {
   const testCloudFunction = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch('/api/test-cloud-functions', {
+      const response = await fetch('/api/test-functions-cloud', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({})
