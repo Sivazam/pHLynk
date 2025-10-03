@@ -90,6 +90,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                   updateProgress(90, 'Retailer account inactive...');
                   await new Promise(resolve => setTimeout(resolve, 150));
                   setUser(null);
+                  console.log('🔄 About to call setLoading(false) - inactive retailer');
+                  setLoading(false);
+                  console.log('✅ setLoading(false) called successfully - inactive retailer');
                   return;
                 }
                 
@@ -125,7 +128,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 console.log('🎯 About to call setUser for retailer');
                 setUser(authUser);
                 console.log('✅ setUser called successfully for retailer');
-                console.log('🔄 Retailer auth complete, should skip to setLoading(false)');
+                console.log('🔄 About to call setLoading(false) - retailer flow');
+                setLoading(false);
+                console.log('✅ setLoading(false) called successfully - retailer flow');
+                console.log('🔄 Retailer auth complete');
                 return;
               } else {
                 console.log('❌ No retailer found in Retailer collection');
@@ -164,6 +170,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               updateProgress(90, 'Account inactive...');
               await new Promise(resolve => setTimeout(resolve, 150));
               setUser(null);
+              console.log('🔄 About to call setLoading(false) - inactive user');
+              setLoading(false);
+              console.log('✅ setLoading(false) called successfully - inactive user');
               return;
             }
             
@@ -174,6 +183,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 updateProgress(90, 'Account configuration error...');
                 await new Promise(resolve => setTimeout(resolve, 150));
                 setUser(null);
+                console.log('🔄 About to call setLoading(false) - missing tenantId');
+                setLoading(false);
+                console.log('✅ setLoading(false) called successfully - missing tenantId');
                 return;
               }
               
@@ -184,6 +196,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 updateProgress(90, 'Account configuration error...');
                 await new Promise(resolve => setTimeout(resolve, 150));
                 setUser(null);
+                console.log('🔄 About to call setLoading(false) - tenant not found');
+                setLoading(false);
+                console.log('✅ setLoading(false) called successfully - tenant not found');
                 return;
               }
               
@@ -210,6 +225,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 await new Promise(resolve => setTimeout(resolve, 150));
                 updateProgress(100, 'Complete');
                 setUser(authUser);
+                console.log('🔄 About to call setLoading(false) - inactive tenant');
+                setLoading(false);
+                console.log('✅ setLoading(false) called successfully - inactive tenant');
                 return;
               }
             }
