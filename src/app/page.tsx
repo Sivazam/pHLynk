@@ -73,6 +73,11 @@ export default function Home() {
         setShowIntro(true);
         console.log('Intro carousel reset for testing', { context: 'Debug' });
       }
+      // Debug shortcut to open Firebase test page
+      if (e.ctrlKey && e.shiftKey && e.key === 'F') {
+        window.open('/firebase-test', '_blank');
+        console.log('Opening Firebase test page', { context: 'Debug' });
+      }
     };
     
     window.addEventListener('keydown', handleKeyPress);

@@ -474,6 +474,32 @@ export async function POST(request: NextRequest) {
         collectionDate
       });
 
+      // Send FCM notification for payment completion
+      try {
+        console.log('📱 Sending FCM payment completion notification...');
+        const fcmResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/fcm/send-payment-completion`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            retailerId: payment.retailerId,
+            amount: payment.totalPaid,
+            paymentId: paymentId
+          })
+        });
+
+        if (fcmResponse.ok) {
+          const fcmResult = await fcmResponse.json();
+          console.log('✅ FCM payment completion notification sent successfully:', fcmResult);
+        } else {
+          console.warn('⚠️ FCM payment completion notification failed:', fcmResponse.status);
+        }
+      } catch (fcmError) {
+        console.warn('⚠️ Error sending FCM payment completion notification:', fcmError);
+        // Don't fail the request if FCM fails
+      }
+
       // Send PWA push notification for payment completion (client-side only)
       if (typeof window !== 'undefined') {
         try {

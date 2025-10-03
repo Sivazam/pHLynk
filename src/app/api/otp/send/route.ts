@@ -184,6 +184,34 @@ export async function POST(request: NextRequest) {
     const sent = sendOTPToRetailer(retailerUser.phone, otpData.code, amount);
     console.log('📤 OTP send result:', sent);
     
+    // Send FCM notification to retailer
+    try {
+      console.log('📱 Sending FCM OTP notification...');
+      const fcmResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/fcm/send-otp`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          retailerId,
+          otp: otpData.code,
+          amount,
+          paymentId,
+          lineWorkerName: lineWorkerName || 'Line Worker'
+        })
+      });
+
+      if (fcmResponse.ok) {
+        const fcmResult = await fcmResponse.json();
+        console.log('✅ FCM OTP notification sent successfully:', fcmResult);
+      } else {
+        console.warn('⚠️ FCM OTP notification failed:', fcmResponse.status);
+      }
+    } catch (fcmError) {
+      console.warn('⚠️ Error sending FCM OTP notification:', fcmError);
+      // Don't fail the request if FCM fails
+    }
+
     // Send PWA push notification to RETAILER ONLY (client-side only)
     // Skip notification on server side - notifications will be handled by client
     if (typeof window !== 'undefined') {
