@@ -33,10 +33,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const timeoutId = setTimeout(() => {
       if (loading) {
         console.warn('Auth loading timeout - forcing loading state to false');
+        console.warn('This might indicate an issue with the authentication flow');
         setLoading(false);
-        updateProgress(100, 'Complete');
+        updateProgress(100, 'Complete - Timeout reached');
       }
-    }, 10000); // 10 second timeout
+    }, 15000); // Increased to 15 seconds to allow for retailer user lookup
 
     // Initialize progress immediately
     updateProgress(5, 'Initializing application...');
@@ -55,6 +56,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (firebaseUser) {
           updateProgress(30, 'Loading user profile...');
           
+          console.log('🔍 Firebase user details:', {
+            uid: firebaseUser.uid,
+            email: firebaseUser.email,
+            phoneNumber: firebaseUser.phoneNumber,
+            displayName: firebaseUser.displayName
+          });
+          
           // Small delay before Firestore call
           await new Promise(resolve => setTimeout(resolve, 150));
           
@@ -62,59 +70,200 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           let isRetailerUser = false;
           if (firebaseUser.phoneNumber) {
             const phone = firebaseUser.phoneNumber.replace('+91', '').replace(/\D/g, '');
-            const retailerUid = `retailer_${phone}`;
-            const retailerUserDoc = await getDoc(doc(db, 'retailerUsers', retailerUid));
+            console.log('🔍 Looking for retailer user with phone number:', phone);
             
-            if (retailerUserDoc.exists()) {
+            // Method 1: Look directly in Retailer collection (as per requirement)
+            console.log('🔍 Checking Retailer collection for phone:', phone);
+            
+            const { collection, query, where, getDocs } = await import('firebase/firestore');
+            const retailersRef = collection(db, COLLECTIONS.RETAILERS);
+            const retailerQuery = query(retailersRef, where('phone', '==', phone));
+            const retailerSnapshot = await getDocs(retailerQuery);
+            
+            if (!retailerSnapshot.empty) {
               isRetailerUser = true;
+              console.log('✅ Found retailer in Retailer collection');
               updateProgress(70, 'Loading retailer profile...');
               
-              const retailerData = retailerUserDoc.data();
+              const retailerDoc = retailerSnapshot.docs[0];
+              const retailerData = retailerDoc.data();
+              console.log('📋 Retailer data:', retailerData);
               
-              // For retailer users, check if the retailer document exists and is valid
-              // Retailers don't have an 'active' field - they use 'isActive' field
-              const retailerDoc = await getDoc(doc(db, COLLECTIONS.RETAILERS, retailerData.retailerId));
-              if (retailerDoc.exists()) {
-                // Check retailer user isActive status (not 'active')
-                // Retailer users have isActive field, not active field
-                if (retailerData.hasOwnProperty('isActive') && !retailerData.isActive) {
-                  console.error('Retailer account is inactive:', firebaseUser.uid);
-                  updateProgress(90, 'Retailer account inactive...');
-                  setUser(null);
-                  return;
-                }
-                
-                const authUser: AuthUser = {
-                  uid: firebaseUser.uid,
-                  email: firebaseUser.email || `retailer_${phone}@pharmalynk.local`,
-                  displayName: retailerData.name || 'Retailer',
-                  photoURL: firebaseUser.photoURL || undefined,
-                  tenantId: retailerData.tenantId,
-                  tenantStatus: 'ACTIVE',
-                  roles: ['RETAILER'], // Retailer users always have RETAILER role
-                  isRetailer: true,
-                  retailerId: retailerData.retailerId,
-                  phone: retailerData.phone
-                };
-                
-                // Also store retailerId in localStorage for backward compatibility
-                localStorage.setItem('retailerId', retailerData.retailerId);
-                
-                updateProgress(85, 'Setting up retailer dashboard...');
-                
-                // Final delay before completing
-                await new Promise(resolve => setTimeout(resolve, 150));
-                
-                updateProgress(95, 'Almost ready...');
-                updateProgress(100, 'Complete');
-                setUser(authUser);
-                return;
-              } else {
-                console.error('Retailer document not found for retailerId:', retailerData.retailerId);
-                updateProgress(90, 'Retailer account not found...');
+              // Check if retailer is active
+              if (retailerData.hasOwnProperty('isActive') && !retailerData.isActive) {
+                console.error('Retailer account is inactive:', firebaseUser.uid);
+                updateProgress(90, 'Retailer account inactive...');
                 setUser(null);
                 return;
               }
+              
+              const authUser: AuthUser = {
+                uid: firebaseUser.uid,
+                email: firebaseUser.email || `retailer_${phone}@pharmalynk.local`,
+                displayName: retailerData.name || retailerData.businessName || 'Retailer',
+                photoURL: firebaseUser.photoURL || undefined,
+                tenantId: retailerData.tenantId,
+                tenantStatus: 'ACTIVE',
+                roles: ['RETAILER'],
+                isRetailer: true,
+                retailerId: retailerDoc.id, // Use document ID
+                phone: retailerData.phone
+              };
+              
+              console.log('🎯 Created AuthUser for retailer:', authUser);
+              
+              // Store retailerId in localStorage
+              localStorage.setItem('retailerId', retailerDoc.id);
+              
+              updateProgress(85, 'Setting up retailer dashboard...');
+              
+              // Final delay before completing
+              await new Promise(resolve => setTimeout(resolve, 150));
+              
+              updateProgress(95, 'Almost ready...');
+              updateProgress(100, 'Complete');
+              setUser(authUser);
+              return;
+            } else {
+              console.log('❌ No retailer found in Retailer collection');
+            }
+          } else {
+            console.log('❌ Firebase user has no phone number, trying alternative retailer lookup methods');
+            
+            // Fallback: Try to find retailer user by checking if this Firebase user UID matches any retailer user
+            // This can happen if the user was created through a different flow
+            try {
+              console.log('🔍 Trying fallback retailer user lookup...');
+              
+              // Method 1: Check if user has email that might match a retailer
+              if (firebaseUser.email) {
+                console.log('🔍 Checking email-based retailer lookup for:', firebaseUser.email);
+                // Try to find retailer user by email (though retailers might not have emails)
+              }
+              
+              // Method 2: Try to find retailer user by matching the Firebase UID pattern
+              // Sometimes the Firebase UID might directly match a retailer user UID
+              console.log('🔍 Checking if Firebase UID matches retailer user pattern:', firebaseUser.uid);
+              
+              // Method 3: Try to find retailer by phone number if we can derive it from Firebase UID
+              if (firebaseUser.uid.startsWith('retailer_')) {
+                const derivedPhone = firebaseUser.uid.replace('retailer_', '');
+                console.log('🔍 Derived phone from UID:', derivedPhone);
+                
+                console.log('🔍 Trying fallback retailer lookup with derived phone:', derivedPhone);
+                
+                // Query the Retailer collection with the derived phone number
+                const { collection, query, where, getDocs } = await import('firebase/firestore');
+                const retailersRef = collection(db, COLLECTIONS.RETAILERS);
+                const fallbackQuery = query(retailersRef, where('phone', '==', derivedPhone));
+                const fallbackQuerySnapshot = await getDocs(fallbackQuery);
+                
+                if (!fallbackQuerySnapshot.empty) {
+                  console.log('✅ Found retailer through fallback method!');
+                  isRetailerUser = true;
+                  
+                  const fallbackRetailerDoc = fallbackQuerySnapshot.docs[0];
+                  const retailerData = fallbackRetailerDoc.data();
+                  console.log('📋 Fallback retailer data:', retailerData);
+                  
+                  // Check if retailer is active
+                  if (retailerData.hasOwnProperty('isActive') && !retailerData.isActive) {
+                    console.error('Retailer account is inactive:', firebaseUser.uid);
+                    updateProgress(90, 'Retailer account inactive...');
+                    setUser(null);
+                    return;
+                  }
+                  
+                  const authUser: AuthUser = {
+                    uid: firebaseUser.uid,
+                    email: firebaseUser.email || `retailer_${derivedPhone}@pharmalynk.local`,
+                    displayName: retailerData.name || 'Retailer',
+                    photoURL: firebaseUser.photoURL || undefined,
+                    tenantId: retailerData.tenantId,
+                    tenantStatus: 'ACTIVE',
+                    roles: ['RETAILER'],
+                    isRetailer: true,
+                    retailerId: fallbackRetailerDoc.id, // Use document ID
+                    phone: retailerData.phone
+                  };
+                  
+                  console.log('🎯 Created AuthUser for retailer through fallback:', authUser);
+                  
+                  localStorage.setItem('retailerId', fallbackRetailerDoc.id);
+                  
+                  updateProgress(85, 'Setting up retailer dashboard...');
+                  await new Promise(resolve => setTimeout(resolve, 150));
+                  
+                  updateProgress(95, 'Almost ready...');
+                  updateProgress(100, 'Complete');
+                  setUser(authUser);
+                  return;
+                } else {
+                  console.log('❌ Fallback retailer lookup failed');
+                }
+              }
+              
+              // Method 4: Try to find retailer by matching Firebase UID with uid field in Retailer collection
+              console.log('🔍 Trying to find retailer by Firebase UID match...');
+              try {
+                // Query Retailer collection to find any document where uid field matches Firebase UID
+                const { collection, query, where, getDocs } = await import('firebase/firestore');
+                const retailersRef = collection(db, COLLECTIONS.RETAILERS);
+                const uidQuery = query(retailersRef, where('uid', '==', firebaseUser.uid));
+                const uidQuerySnapshot = await getDocs(uidQuery);
+                
+                if (!uidQuerySnapshot.empty) {
+                  console.log('✅ Found retailer by Firebase UID match!');
+                  const retailerDoc = uidQuerySnapshot.docs[0];
+                  isRetailerUser = true;
+                  
+                  const retailerData = retailerDoc.data();
+                  console.log('📋 Retailer data found by UID match:', retailerData);
+                  
+                  // Check if retailer is active
+                  if (retailerData.hasOwnProperty('isActive') && !retailerData.isActive) {
+                    console.error('Retailer account is inactive:', firebaseUser.uid);
+                    updateProgress(90, 'Retailer account inactive...');
+                    setUser(null);
+                    return;
+                  }
+                  
+                  const authUser: AuthUser = {
+                    uid: firebaseUser.uid,
+                    email: firebaseUser.email || `retailer_${retailerData.phone}@pharmalynk.local`,
+                    displayName: retailerData.name || 'Retailer',
+                    photoURL: firebaseUser.photoURL || undefined,
+                    tenantId: retailerData.tenantId,
+                    tenantStatus: 'ACTIVE',
+                    roles: ['RETAILER'],
+                    isRetailer: true,
+                    retailerId: retailerDoc.id, // Use document ID
+                    phone: retailerData.phone
+                  };
+                  
+                  console.log('🎯 Created AuthUser for retailer by UID match:', authUser);
+                  
+                  localStorage.setItem('retailerId', retailerDoc.id);
+                  
+                  updateProgress(85, 'Setting up retailer dashboard...');
+                  await new Promise(resolve => setTimeout(resolve, 150));
+                  
+                  updateProgress(95, 'Almost ready...');
+                  updateProgress(100, 'Complete');
+                  setUser(authUser);
+                  return;
+                } else {
+                  console.log('❌ No retailer found by Firebase UID match');
+                }
+              } catch (uidMatchError) {
+                console.error('❌ Error finding retailer by UID match:', uidMatchError);
+              }
+              
+              // Method 5: No more fallback methods, proceed to regular user flow
+              console.log('🔍 No phone number found, proceeding to regular user flow...');
+              
+            } catch (fallbackError) {
+              console.error('❌ Fallback retailer lookup failed:', fallbackError);
             }
           }
           

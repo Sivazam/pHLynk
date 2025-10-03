@@ -25,7 +25,7 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage, COLLECTIONS, ROLES } from '@/lib/firebase';
 import { toMillis, toDate, compareTimestamps } from '@/lib/timestamp-utils';
 import { logger } from '@/lib/logger';
-import { RetailerAuthService } from './retailer-auth';
+
 import { 
   Tenant, 
   User, 
@@ -398,29 +398,15 @@ export class RetailerService extends FirestoreService<Retailer> {
       phone: data.phone,
       address: data.address,
       areaId: data.areaId,
-      zipcodes: data.zipcodes
+      zipcodes: data.zipcodes,
+      // Add verification fields for first login
+      isVerified: false,
+      verificationStatus: 'pending',
+      isActive: true,
+      lastLoginAt: null
     } as Omit<Retailer, 'id' | 'createdAt' | 'updatedAt'>, tenantId);
 
-    // Create retailer user account for login
-    try {
-      const retailerData: Retailer = {
-        id: retailerId,
-        tenantId: tenantId,
-        name: data.name,
-        phone: data.phone,
-        address: data.address,
-        areaId: data.areaId,
-        zipcodes: data.zipcodes,
-        createdAt: Timestamp.now(),
-        updatedAt: Timestamp.now()
-      };
-
-      await RetailerAuthService.createRetailerUser(retailerData, tenantId);
-      logger.success('Retailer user account created for', data.phone, { context: 'RetailerService' });
-    } catch (error) {
-      logger.error('Error creating retailer user account', error, { context: 'RetailerService' });
-      // Don't throw here - the retailer was created successfully
-    }
+    logger.success('Retailer created with pending verification for', data.phone, { context: 'RetailerService' });
 
     return retailerId;
   }

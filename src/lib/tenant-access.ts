@@ -10,7 +10,7 @@ import { User, AuthUser } from '@/types';
 export async function checkUserTenantAccess(user: User | AuthUser): Promise<boolean> {
   try {
     // If user is a retailer, they always have access if active
-    // Retailers use 'isActive' field in retailerUsers collection, but AuthUser doesn't have this
+    // Retailers use 'isActive' field in Retailer collection, but AuthUser doesn't have this
     if (user.roles.includes('RETAILER')) {
       // For retailer users in AuthUser format, we can't check isActive since it's not included
       // We'll assume they are active since they passed authentication
@@ -93,7 +93,7 @@ export async function getUserTenantStatus(user: User | AuthUser): Promise<string
 export async function checkDashboardAccess(user: User | AuthUser): Promise<{ hasAccess: boolean; reason?: string }> {
   try {
     // For retailer users, they always have access if they exist
-    // Retailers use 'isActive' field in retailerUsers collection, but AuthUser doesn't have this
+    // Retailers use 'isActive' field in Retailer collection, but AuthUser doesn't have this
     if (user.roles.includes('RETAILER')) {
       // For retailer users in AuthUser format, we can't check isActive since it's not included
       // We'll assume they are active since they passed authentication

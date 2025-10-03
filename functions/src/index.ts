@@ -155,23 +155,22 @@ export const sendRetailerPaymentSMS = functions.https.onCall(async (request: any
       ip: context.rawRequest?.ip
     });
 
-    // Get retailer user details with better error handling
-    const retailerUsersQuery = await admin.firestore()
-      .collection('retailerUsers')
-      .where('retailerId', '==', data.retailerId)
-      .limit(1)
+    // Get retailer details from Retailer collection
+    const retailerDoc = await admin.firestore()
+      .collection('Retailer')
+      .doc(data.retailerId)
       .get();
 
-    if (retailerUsersQuery.empty) {
+    if (!retailerDoc.exists) {
       throw new functions.https.HttpsError(
         'not-found',
-        `Retailer user not found for retailerId: ${data.retailerId}`
+        `Retailer not found for retailerId: ${data.retailerId}`
       );
     }
 
-    const retailerUser = retailerUsersQuery.docs[0].data();
+    const retailerUser = retailerDoc.data();
     
-    if (!retailerUser.phone) {
+    if (!retailerUser || !retailerUser.phone) {
       throw new functions.https.HttpsError(
         'failed-precondition',
         `Retailer phone number not found for retailerId: ${data.retailerId}`
@@ -704,28 +703,34 @@ export const sendOTPNotification = functions.https.onCall(async (request: any) =
       caller: context.auth ? context.auth.uid : 'NEXTJS_API'
     });
 
-    // Get retailer user details
-    const retailerUsersQuery = await admin.firestore()
-      .collection('retailerUsers')
-      .where('retailerId', '==', data.retailerId)
-      .limit(1)
+    // Get retailer details from Retailer collection
+    const retailerDoc = await admin.firestore()
+      .collection('Retailer')
+      .doc(data.retailerId)
       .get();
 
-    if (retailerUsersQuery.empty) {
+    if (!retailerDoc.exists) {
       throw new functions.https.HttpsError(
         'not-found',
-        `Retailer user not found for retailerId: ${data.retailerId}`
+        `Retailer not found for retailerId: ${data.retailerId}`
       );
     }
 
-    const retailerUser = retailerUsersQuery.docs[0];
-    const retailerUserId = retailerUser.id;
+    const retailerUser = retailerDoc.data();
+    const retailerUserId = retailerDoc.id; // Use document ID as user ID
     
-    // Get FCM token for retailer user
+    if (!retailerUser) {
+      throw new functions.https.HttpsError(
+        'not-found',
+        `Retailer data not found for retailerId: ${data.retailerId}`
+      );
+    }
+    
+    // Get FCM token for retailer
     const fcmToken = await getFCMTokenForUser(retailerUserId);
     
     if (!fcmToken) {
-      console.warn('⚠️ FCM token not found for retailer user:', retailerUserId);
+      console.warn('⚠️ FCM token not found for retailer:', retailerUserId);
       return {
         success: false,
         error: 'FCM token not found',
@@ -847,28 +852,34 @@ export const sendPaymentCompletionNotification = functions.https.onCall(async (r
       caller: context.auth ? context.auth.uid : 'NEXTJS_API'
     });
 
-    // Get retailer user details
-    const retailerUsersQuery = await admin.firestore()
-      .collection('retailerUsers')
-      .where('retailerId', '==', data.retailerId)
-      .limit(1)
+    // Get retailer details from Retailer collection
+    const retailerDoc = await admin.firestore()
+      .collection('Retailer')
+      .doc(data.retailerId)
       .get();
 
-    if (retailerUsersQuery.empty) {
+    if (!retailerDoc.exists) {
       throw new functions.https.HttpsError(
         'not-found',
-        `Retailer user not found for retailerId: ${data.retailerId}`
+        `Retailer not found for retailerId: ${data.retailerId}`
       );
     }
 
-    const retailerUser = retailerUsersQuery.docs[0];
-    const retailerUserId = retailerUser.id;
+    const retailerUser = retailerDoc.data();
+    const retailerUserId = retailerDoc.id; // Use document ID as user ID
     
-    // Get FCM token for retailer user
+    if (!retailerUser) {
+      throw new functions.https.HttpsError(
+        'not-found',
+        `Retailer data not found for retailerId: ${data.retailerId}`
+      );
+    }
+    
+    // Get FCM token for retailer
     const fcmToken = await getFCMTokenForUser(retailerUserId);
     
     if (!fcmToken) {
-      console.warn('⚠️ FCM token not found for retailer user:', retailerUserId);
+      console.warn('⚠️ FCM token not found for retailer:', retailerUserId);
       return {
         success: false,
         error: 'FCM token not found',

@@ -59,6 +59,13 @@ export interface Retailer extends BaseDocument {
   gstNumber?: string;
   paymentTerms?: string;
   
+  // Verification fields for first login
+  isVerified?: boolean;
+  verificationStatus?: 'pending' | 'verified' | 'inactive';
+  isActive?: boolean;
+  lastLoginAt?: Timestamp;
+  uid?: string; // Firebase Auth UID for login
+  
   // Active OTPs for this retailer
   activeOTPs?: Array<{
     paymentId: string;
