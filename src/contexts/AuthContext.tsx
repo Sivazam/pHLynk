@@ -125,6 +125,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 console.log('🎯 About to call setUser for retailer');
                 setUser(authUser);
                 console.log('✅ setUser called successfully for retailer');
+                console.log('🔄 Retailer auth complete, should skip to setLoading(false)');
                 return;
               } else {
                 console.log('❌ No retailer found in Retailer collection');
@@ -275,7 +276,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         updateProgress(100, 'Complete');
       }
       
+      console.log('🔄 About to call setLoading(false) - main flow');
       setLoading(false);
+      console.log('✅ setLoading(false) called successfully - main flow');
     });
 
     // Set up a fallback progress mechanism in case Firebase doesn't respond
