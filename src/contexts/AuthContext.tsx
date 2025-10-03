@@ -125,11 +125,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               console.log('🎯 About to call setUser with retailer AuthUser:', authUser);
               setUser(authUser);
               console.log('✅ setUser called successfully for retailer');
-              return;
+              // Don't return here - let the flow continue to setLoading(false)
             } else {
               console.log('❌ No retailer found in Retailer collection');
             }
-          } else {
+            
+            // If retailer was found and authenticated, skip the rest of the auth flow
+            if (isRetailerUser) {
+              console.log('✅ Retailer authentication complete, skipping regular user flow');
+              // Continue to setLoading(false) at the end
+            } else {
             console.log('❌ Firebase user has no phone number, trying alternative retailer lookup methods');
             
             // Fallback: Try to find retailer user by checking if this Firebase user UID matches any retailer user
@@ -255,7 +260,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                   console.log('🎯 About to call setUser with fallback AuthUser:', authUser);
                   setUser(authUser);
                   console.log('✅ setUser called successfully for fallback retailer');
-                  return;
+                  // Don't return here - let the flow continue to setLoading(false)
                 } else {
                   console.log('❌ No retailer found by Firebase UID match');
                 }
@@ -371,6 +376,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               return;
             }
           }
+        } // Close the else block for non-retailer users
         } else {
           console.log('👋 No Firebase user - setting user to null');
           updateProgress(40, 'Preparing guest interface...');
