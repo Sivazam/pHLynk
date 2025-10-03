@@ -399,11 +399,12 @@ export class RetailerService extends FirestoreService<Retailer> {
       address: data.address,
       areaId: data.areaId,
       zipcodes: data.zipcodes,
+      tenantId: tenantId, // Add required tenantId
       // Add verification fields for first login
       isVerified: false,
       verificationStatus: 'pending',
       isActive: true,
-      lastLoginAt: null
+      lastLoginAt: undefined // Use undefined instead of null
     } as Omit<Retailer, 'id' | 'createdAt' | 'updatedAt'>, tenantId);
 
     logger.success('Retailer created with pending verification for', data.phone, { context: 'RetailerService' });

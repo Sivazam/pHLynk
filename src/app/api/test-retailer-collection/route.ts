@@ -32,7 +32,7 @@ export async function GET() {
     
     console.log(`🔍 Search for phone ${testPhone}: Found ${phoneSnapshot.size} matches`);
     
-    let phoneMatch = null;
+    let phoneMatch: any = null;
     if (!phoneSnapshot.empty) {
       const phoneDoc = phoneSnapshot.docs[0];
       phoneMatch = {

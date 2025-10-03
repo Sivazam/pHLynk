@@ -80,7 +80,13 @@ export async function GET() {
     const retailersRef = collection(db, COLLECTIONS.RETAILERS);
     const retailersSnapshot = await getDocs(retailersRef);
     
-    const retailers = [];
+    const retailers: Array<{
+      id: string;
+      name: any;
+      phone: any;
+      isActive: any;
+      tenantId: any;
+    }> = [];
     retailersSnapshot.forEach((doc) => {
       const data = doc.data();
       retailers.push({
