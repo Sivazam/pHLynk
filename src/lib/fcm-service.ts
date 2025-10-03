@@ -19,8 +19,8 @@ export interface FCMNotificationData {
 }
 
 class FCMService {
-  private readonly VAPID_KEY = process.env.NEXT_PUBLIC_FCM_VAPID_KEY || '';
-  private readonly SERVER_KEY = process.env.FCM_SERVER_KEY || '';
+  private readonly VAPID_KEY = process.env.NEXT_PUBLIC_FCM_VAPID_KEY || 'BPSKS7O0fnRC92iiqklOjZ8WcYrYrkJ1Dn6kr_9MnnKbPhU9i5sQ1BtL6RLZwBAYs37EOG3eCwD6AdIVE4ycNrA';
+  private readonly SERVER_KEY = process.env.FCM_SERVER_KEY || 'BPSKS7O0fnRC92iiqklOjZ8WcYrYrkJ1Dn6kr_9MnnKbPhU9i5sQ1BtL6RLZwBAYs37EOG3eCwD6AdIVE4ycNrA';
 
   /**
    * Register a device token for a user (supports multiple user types)

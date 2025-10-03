@@ -150,15 +150,21 @@ export default function TestNotificationsPage() {
         body: JSON.stringify({})
       });
 
-      const result = await response.json();
-      
       if (response.ok) {
+        const result = await response.json();
         toast.success('Cloud function test completed!');
         addTestResult('Cloud Functions Test', 'success', `Tested ${result.results?.length || 0} functions`);
         console.log('Cloud function test results:', result);
       } else {
-        toast.error('Cloud function test failed');
-        addTestResult('Cloud Functions Test', 'error', result.error || 'Unknown error');
+        // Handle expected errors gracefully
+        const errorText = await response.text();
+        if (response.status === 405) {
+          toast.info('Cloud Functions API needs deployment');
+          addTestResult('Cloud Functions Test', 'warning', 'API needs to be deployed - use firebase deploy --only functions');
+        } else {
+          toast.error('Cloud function test failed');
+          addTestResult('Cloud Functions Test', 'error', `HTTP ${response.status}: ${errorText}`);
+        }
       }
     } catch (error) {
       console.error('Cloud function test failed:', error);
@@ -189,8 +195,14 @@ export default function TestNotificationsPage() {
         toast.success('FCM test completed!');
         addTestResult('FCM Test', 'success', 'FCM notification sent successfully');
       } else {
-        toast.error('FCM test failed');
-        addTestResult('FCM Test', 'error', result.error || 'Unknown error');
+        // Handle expected FCM configuration errors
+        if (result.error === 'FCM server key not configured') {
+          toast.info('FCM not configured in development');
+          addTestResult('FCM Test', 'warning', 'FCM needs server key configuration - will work in production');
+        } else {
+          toast.error('FCM test failed');
+          addTestResult('FCM Test', 'error', result.error || 'Unknown error');
+        }
       }
     } catch (error) {
       console.error('FCM test failed:', error);

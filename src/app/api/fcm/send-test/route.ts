@@ -55,7 +55,38 @@ export async function POST(request: NextRequest) {
       body: JSON.stringify(message)
     });
 
-    const responseData = await response.json();
+    // Handle response - check if it's JSON or HTML
+    let responseData;
+    const contentType = response.headers.get('content-type');
+    
+    if (contentType && contentType.includes('application/json')) {
+      responseData = await response.json();
+    } else {
+      const textResponse = await response.text();
+      console.error('FCM API returned non-JSON response:', textResponse);
+      
+      // Check if it's the legacy API issue
+      if (response.status === 404) {
+        return NextResponse.json(
+          { 
+            error: 'FCM legacy API not available. The provided key may be for FCM v1 API.',
+            details: 'Consider using Firebase Admin SDK or check your FCM configuration.',
+            status: response.status,
+            keyProvided: serverKey ? serverKey.substring(0, 20) + '...' : 'none'
+          },
+          { status: 400 }
+        );
+      }
+      
+      return NextResponse.json(
+        { 
+          error: 'FCM API returned invalid response',
+          details: textResponse.substring(0, 200),
+          status: response.status
+        },
+        { status: 400 }
+      );
+    }
 
     if (response.ok && responseData.success === 1) {
       return NextResponse.json({
