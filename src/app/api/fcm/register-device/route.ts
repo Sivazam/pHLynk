@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { fcmV1Service } from '@/lib/fcm-v1-service';
+import { fcmService } from '@/lib/fcm-service';
 
 interface RegisterDeviceRequest {
   retailerId?: string;
@@ -37,13 +38,26 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // For now, just validate the token format and return success
-    // In a real implementation, you would store this in a database
+    // Register device using the FCM service (this actually stores in database)
+    const registrationResult = await fcmService.registerDevice(
+      targetUserId, 
+      deviceToken, 
+      userAgent || 'unknown', 
+      userType
+    );
+    
+    if (!registrationResult.success) {
+      return NextResponse.json(
+        { error: registrationResult.message },
+        { status: 400 }
+      );
+    }
+    
     console.log(`📱 Device registered: ${targetUserId} (${userType}) with token: ${deviceToken.substring(0, 20)}...`);
     
     return NextResponse.json({
       success: true,
-      message: 'Device registered successfully with FCM v1',
+      message: registrationResult.message,
       userId: targetUserId,
       userType,
       tokenPreview: deviceToken.substring(0, 20) + '...'

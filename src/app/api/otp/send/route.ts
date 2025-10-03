@@ -82,40 +82,10 @@ export async function POST(request: NextRequest) {
     console.log('Line Worker Name:', lineWorkerName);
     console.log('Retailer User Data:', retailerUser);
 
-    // Use Cloud Function to generate OTP (more secure) - if available
+    // Use Cloud Function to send OTP notification
     let otpData;
     try {
-      // Try to use Firebase Functions if available (server-side only)
-      const functionsModule = await import('firebase/functions');
-      if (typeof window === 'undefined') {
-        const { getFunctions, httpsCallable } = functionsModule;
-        const functionsInstance = getFunctions();
-        const generateOTPFunction = httpsCallable(functionsInstance, 'generateOTP');
-        
-        const result = await generateOTPFunction({
-          retailerId,
-          paymentId,
-          amount,
-          lineWorkerName: lineWorkerName || 'Line Worker'
-        });
-
-        console.log('🔐 Cloud Function result:', result.data);
-
-        const data = result.data as any;
-        if (data && data.success) {
-          otpData = data;
-          console.log('✅ OTP generated successfully via cloud function');
-        } else {
-          throw new Error(data?.error || 'Failed to generate OTP via cloud function');
-        }
-      } else {
-        throw new Error('Firebase Functions not available in this environment');
-      }
-    } catch (cloudFunctionError) {
-      console.error('❌ Error calling cloud function:', cloudFunctionError);
-      
-      // Fallback to local generation if cloud function fails
-      console.log('⚠️ Falling back to local OTP generation');
+      // Generate OTP locally first
       const { generateOTP } = await import('@/lib/otp-store');
       const otp = generateOTP();
       const expiresAt = new Date(Date.now() + 7 * 60 * 1000);
@@ -129,7 +99,7 @@ export async function POST(request: NextRequest) {
         retailerPhone: retailerUser.phone
       };
       
-      // Store OTP locally for fallback
+      // Store OTP locally
       otpStore.set(paymentId, {
         code: otp,
         expiresAt,
@@ -139,6 +109,42 @@ export async function POST(request: NextRequest) {
         consecutiveFailures: 0,
         breachDetected: false
       });
+
+      console.log('📝 Locally generated OTP:', otp);
+
+      // Now call the actual cloud function to send notification
+      try {
+        const cloudFunctionResponse = await fetch('https://us-central1-pharmalynkk.cloudfunctions.net/sendOTPNotification', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            retailerId,
+            retailerName: retailerUser.name,
+            retailerPhone: retailerUser.phone,
+            otp,
+            amount,
+            paymentId,
+            lineWorkerName: lineWorkerName || 'Line Worker',
+            tenantId: retailerUser.tenantId
+          })
+        });
+
+        if (cloudFunctionResponse.ok) {
+          const cloudResult = await cloudFunctionResponse.json();
+          console.log('✅ Cloud function sendOTPNotification called successfully:', cloudResult);
+        } else {
+          console.warn('⚠️ Cloud function sendOTPNotification failed:', cloudFunctionResponse.status);
+        }
+      } catch (cloudFunctionError) {
+        console.error('❌ Error calling sendOTPNotification cloud function:', cloudFunctionError);
+        // Don't fail the request if cloud function fails
+      }
+
+    } catch (error) {
+      console.error('❌ Error in OTP generation process:', error);
+      throw error;
     }
 
     console.log('📝 OTP generated:', otpData.code);
