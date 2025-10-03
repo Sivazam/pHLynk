@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { fcmV1Service } from '@/lib/fcm-v1-service';
 
 interface SendTestRequest {
   token: string;
@@ -19,93 +20,46 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const serverKey = process.env.FCM_SERVER_KEY;
-    
-    if (!serverKey) {
+    // Check FCM v1 configuration
+    const configStatus = fcmV1Service.getConfigStatus();
+    if (!configStatus.configured) {
       return NextResponse.json(
-        { error: 'FCM server key not configured' },
+        { 
+          error: 'FCM v1 service is not properly configured',
+          missing: configStatus.missing,
+          suggestion: 'Please set FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, and FIREBASE_PRIVATE_KEY in your environment variables'
+        },
         { status: 500 }
       );
     }
 
-    const message = {
-      to: token,
-      notification: {
-        title,
-        body: notificationBody,
-        icon: '/icon-192x192.png',
-        badge: '/icon-96x96.png',
-        tag: 'test-notification',
-        requireInteraction: false
-      },
-      data: data || {
-        type: 'test',
-        timestamp: Date.now().toString()
-      },
+    // Use FCM v1 service
+    const result = await fcmV1Service.sendNotification(token, title, notificationBody, data, {
       priority: 'high',
-      timeToLive: 2419200 // 28 days
-    };
-
-    const response = await fetch('https://fcm.googleapis.com/fcm/send', {
-      method: 'POST',
-      headers: {
-        'Authorization': `key=${serverKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(message)
+      icon: '/icon-192x192.png',
+      badge: '/icon-96x96.png',
+      tag: 'test-notification',
+      requireInteraction: false
     });
 
-    // Handle response - check if it's JSON or HTML
-    let responseData;
-    const contentType = response.headers.get('content-type');
-    
-    if (contentType && contentType.includes('application/json')) {
-      responseData = await response.json();
-    } else {
-      const textResponse = await response.text();
-      console.error('FCM API returned non-JSON response:', textResponse);
-      
-      // Check if it's the legacy API issue
-      if (response.status === 404) {
-        return NextResponse.json(
-          { 
-            error: 'FCM legacy API not available. The provided key may be for FCM v1 API.',
-            details: 'Consider using Firebase Admin SDK or check your FCM configuration.',
-            status: response.status,
-            keyProvided: serverKey ? serverKey.substring(0, 20) + '...' : 'none'
-          },
-          { status: 400 }
-        );
-      }
-      
-      return NextResponse.json(
-        { 
-          error: 'FCM API returned invalid response',
-          details: textResponse.substring(0, 200),
-          status: response.status
-        },
-        { status: 400 }
-      );
-    }
-
-    if (response.ok && responseData.success === 1) {
+    if (result.success) {
       return NextResponse.json({
         success: true,
-        message: 'Test notification sent successfully',
-        messageId: responseData.results?.[0]?.message_id
+        message: 'Test notification sent successfully via FCM v1',
+        messageId: result.messageId
       });
     } else {
-      console.error('FCM Test API Error:', responseData);
+      console.error('FCM v1 Test API Error:', result.error);
       return NextResponse.json(
         { 
-          error: 'Failed to send test notification',
-          details: responseData 
+          error: 'Failed to send test notification via FCM v1',
+          details: result.error
         },
         { status: 400 }
       );
     }
   } catch (error) {
-    console.error('Error in FCM send-test API:', error);
+    console.error('Error in FCM v1 send-test API:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

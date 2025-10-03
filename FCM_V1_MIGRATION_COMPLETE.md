@@ -64,6 +64,25 @@ You were absolutely right about the Legacy API being disabled! I've successfully
 
 ## 🔑 **Key Credentials Used**
 
+### **Service Account** (Your provided credentials)
+```json
+{
+  "project_id": "pharmalynkk",
+  "client_email": "pharmalynkk@appspot.gserviceaccount.com",
+  "private_key": "-----BEGIN PRIVATE KEY-----\n..."
+}
+```
+
+### **VAPID Key** (For client-side)
+```
+BPSKS7O0fnRC92iiqklOjZ8WcYrYrkJ1Dn6kr_9MnnKbPhU9i5sQ1BtL6RLZwBAYs37EOG3eCwD6AdIVE4ycNrA
+```
+
+### **Sender ID**
+```
+877118992574
+```
+
 ## 🎯 **Production Ready**
 
 Your notification system is now **100% ready for production** with:

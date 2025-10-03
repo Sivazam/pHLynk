@@ -175,16 +175,16 @@ export default function TestNotificationsPage() {
     }
   };
 
-  const testFCMNotification = async () => {
+  const testFCMV1Direct = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch('/api/fcm/send-test', {
+      const response = await fetch('/api/fcm/send-test-v1', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          token: 'test-token',
-          title: '🧪 FCM Test',
-          body: 'This is a test FCM notification',
+          token: 'test-token-for-validation',
+          title: '🧪 FCM v1 Direct Test',
+          body: 'This is a direct test of the FCM v1 API',
           data: { type: 'test', timestamp: Date.now().toString() }
         })
       });
@@ -192,22 +192,59 @@ export default function TestNotificationsPage() {
       const result = await response.json();
       
       if (response.ok) {
-        toast.success('FCM test completed!');
-        addTestResult('FCM Test', 'success', 'FCM notification sent successfully');
+        toast.success('FCM v1 Direct test completed!');
+        addTestResult('FCM v1 Direct', 'success', 'Direct FCM v1 API test successful');
       } else {
-        // Handle expected FCM configuration errors
-        if (result.error === 'FCM server key not configured') {
-          toast.info('FCM not configured in development');
-          addTestResult('FCM Test', 'warning', 'FCM needs server key configuration - will work in production');
+        if (result.error && result.error.includes('not properly configured')) {
+          toast.info('FCM v1 not configured');
+          addTestResult('FCM v1 Direct', 'warning', `FCM v1 needs configuration: ${result.missing?.join(', ') || 'Unknown'}`);
         } else {
-          toast.error('FCM test failed');
-          addTestResult('FCM Test', 'error', result.error || 'Unknown error');
+          toast.error('FCM v1 Direct test failed');
+          addTestResult('FCM v1 Direct', 'error', result.error || 'Unknown error');
         }
       }
     } catch (error) {
-      console.error('FCM test failed:', error);
-      toast.error('FCM test failed');
-      addTestResult('FCM Test', 'error', error instanceof Error ? error.message : 'Unknown error');
+      console.error('FCM v1 Direct test failed:', error);
+      toast.error('FCM v1 Direct test failed');
+      addTestResult('FCM v1 Direct', 'error', error instanceof Error ? error.message : 'Unknown error');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const testFCMNotification = async () => {
+    setIsLoading(true);
+    try {
+      const response = await fetch('/api/fcm/send-test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: 'test-token-for-validation',
+          title: '🧪 FCM v1 Test',
+          body: 'This is a test FCM v1 notification',
+          data: { type: 'test', timestamp: Date.now().toString() }
+        })
+      });
+
+      const result = await response.json();
+      
+      if (response.ok) {
+        toast.success('FCM v1 test completed!');
+        addTestResult('FCM v1 Test', 'success', 'FCM v1 notification sent successfully');
+      } else {
+        // Handle expected FCM configuration errors
+        if (result.error && result.error.includes('not properly configured')) {
+          toast.info('FCM v1 not configured');
+          addTestResult('FCM v1 Test', 'warning', `FCM v1 needs configuration: ${result.missing?.join(', ') || 'Unknown'}`);
+        } else {
+          toast.error('FCM v1 test failed');
+          addTestResult('FCM v1 Test', 'error', result.error || 'Unknown error');
+        }
+      }
+    } catch (error) {
+      console.error('FCM v1 test failed:', error);
+      toast.error('FCM v1 test failed');
+      addTestResult('FCM v1 Test', 'error', error instanceof Error ? error.message : 'Unknown error');
     } finally {
       setIsLoading(false);
     }
@@ -307,11 +344,18 @@ export default function TestNotificationsPage() {
               {isLoading ? 'Testing...' : 'Test Cloud Functions'}
             </Button>
             <Button 
+              onClick={testFCMV1Direct}
+              disabled={isLoading}
+              variant="outline"
+            >
+              {isLoading ? 'Testing...' : 'Test FCM v1 Direct'}
+            </Button>
+            <Button 
               onClick={testFCMNotification}
               disabled={isLoading}
               variant="outline"
             >
-              {isLoading ? 'Testing...' : 'Test FCM'}
+              {isLoading ? 'Testing...' : 'Test FCM v1'}
             </Button>
             <Button 
               onClick={clearResults}

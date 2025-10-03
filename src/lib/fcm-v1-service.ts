@@ -216,7 +216,7 @@ class FCMv1Service {
       requireInteraction?: boolean;
     }
   ): Promise<{ success: boolean; successCount: number; failureCount: number; results: Array<{ success: boolean; messageId?: string; error?: string }> }> {
-    const results = [];
+    const results: Array<{ success: boolean; messageId?: string; error?: string }> = [];
     let successCount = 0;
     let failureCount = 0;
 
@@ -250,7 +250,7 @@ class FCMv1Service {
    * Get configuration status
    */
   getConfigStatus(): { configured: boolean; missing: string[] } {
-    const missing = [];
+    const missing: string[] = [];
     if (!this.projectId) missing.push('FIREBASE_PROJECT_ID');
     if (!this.clientEmail) missing.push('FIREBASE_CLIENT_EMAIL');
     if (!this.privateKey) missing.push('FIREBASE_PRIVATE_KEY');
