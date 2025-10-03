@@ -7,6 +7,21 @@ import { NextRequest, NextResponse } from 'next/server';
  * Test API route to verify Firebase Functions connectivity
  * This helps diagnose cloud function triggering issues
  */
+export async function GET() {
+  return NextResponse.json({
+    message: 'Cloud Functions Test API',
+    usage: 'POST to test Firebase Functions connectivity',
+    testFunctions: [
+      'sendWholesalerPaymentSMS',
+      'sendRetailerPaymentSMS', 
+      'processSMSResponse',
+      'sendOTPNotification',
+      'sendTestFCMNotification',
+      'sendPaymentCompletionNotification'
+    ]
+  });
+}
+
 export async function POST(request: NextRequest) {
   try {
     const firebaseConfig = {
@@ -16,7 +31,10 @@ export async function POST(request: NextRequest) {
     const testUrls = [
       'sendWholesalerPaymentSMS',
       'sendRetailerPaymentSMS',
-      'processSMSResponse'
+      'processSMSResponse',
+      'sendOTPNotification',
+      'sendTestFCMNotification',
+      'sendPaymentCompletionNotification'
     ];
 
     console.log('🧪 Testing Firebase Functions connectivity...\n');
