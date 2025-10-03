@@ -655,8 +655,8 @@ async function getFCMTokenForUser(userId: string): Promise<string | null> {
   }
 }
 
-// Send FCM notification for OTP
-export const sendOTPNotification = functions.https.onRequest(async (req, res) => {
+// Send FCM notification for OTP (HTTP version)
+export const sendOTPNotificationHTTP = functions.https.onRequest(async (req, res) => {
   try {
     console.log('🚀 FCM CLOUD FUNCTION TRIGGERED - sendOTPNotification');
     console.log('📥 Request method:', req.method);
@@ -974,8 +974,8 @@ export const sendPaymentCompletionNotification = functions.https.onCall(async (r
   }
 });
 
-// Send test FCM notification
-export const sendTestFCMNotification = functions.https.onRequest(async (req, res) => {
+// Send test FCM notification (HTTP version)
+export const sendTestFCMNotificationHTTP = functions.https.onRequest(async (req, res) => {
   try {
     console.log('🚀 FCM CLOUD FUNCTION TRIGGERED - sendTestFCMNotification');
     console.log('📥 Request method:', req.method);

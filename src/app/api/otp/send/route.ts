@@ -114,7 +114,7 @@ export async function POST(request: NextRequest) {
 
       // Now call the actual cloud function to send notification
       try {
-        const cloudFunctionResponse = await fetch('https://us-central1-pharmalynkk.cloudfunctions.net/sendOTPNotification', {
+        const cloudFunctionResponse = await fetch('https://us-central1-pharmalynkk.cloudfunctions.net/sendOTPNotificationHTTP', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

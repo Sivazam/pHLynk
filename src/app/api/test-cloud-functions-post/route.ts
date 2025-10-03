@@ -34,7 +34,7 @@ export async function POST() {
       tenantId: 'test-tenant-id'
     };
 
-    const response = await fetch('https://us-central1-pharmalynkk.cloudfunctions.net/sendOTPNotification', {
+    const response = await fetch('https://us-central1-pharmalynkk.cloudfunctions.net/sendOTPNotificationHTTP', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -48,8 +48,8 @@ export async function POST() {
       console.log(`✅ sendOTPNotification POST request successful (${response.status})`);
       reachable++;
       results.push({
-        functionName: 'sendOTPNotification',
-        url: 'https://us-central1-pharmalynkk.cloudfunctions.net/sendOTPNotification',
+        functionName: 'sendOTPNotificationHTTP',
+        url: 'https://us-central1-pharmalynkk.cloudfunctions.net/sendOTPNotificationHTTP',
         status: 'reachable',
         httpStatus: response.status,
         message: `POST request successful - cloud function working correctly`
@@ -58,8 +58,8 @@ export async function POST() {
       console.log(`⚠️ sendOTPNotification returned ${response.status} (may be expected for test data)`);
       reachable++; // Still count as reachable since it responded
       results.push({
-        functionName: 'sendOTPNotification',
-        url: 'https://us-central1-pharmalynkk.cloudfunctions.net/sendOTPNotification',
+        functionName: 'sendOTPNotificationHTTP',
+        url: 'https://us-central1-pharmalynkk.cloudfunctions.net/sendOTPNotificationHTTP',
         status: 'reachable',
         httpStatus: response.status,
         message: `Function responded to POST (test data validation expected)`
@@ -88,7 +88,7 @@ export async function POST() {
       data: { type: 'test', timestamp: Date.now().toString() }
     };
 
-    const response = await fetch('https://us-central1-pharmalynkk.cloudfunctions.net/sendTestFCMNotification', {
+    const response = await fetch('https://us-central1-pharmalynkk.cloudfunctions.net/sendTestFCMNotificationHTTP', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -102,8 +102,8 @@ export async function POST() {
       console.log(`✅ sendTestFCMNotification POST request successful (${response.status})`);
       reachable++;
       results.push({
-        functionName: 'sendTestFCMNotification',
-        url: 'https://us-central1-pharmalynkk.cloudfunctions.net/sendTestFCMNotification',
+        functionName: 'sendTestFCMNotificationHTTP',
+        url: 'https://us-central1-pharmalynkk.cloudfunctions.net/sendTestFCMNotificationHTTP',
         status: 'reachable',
         httpStatus: response.status,
         message: `POST request successful - cloud function working correctly`
@@ -112,8 +112,8 @@ export async function POST() {
       console.log(`⚠️ sendTestFCMNotification returned ${response.status} (may be expected for test data)`);
       reachable++; // Still count as reachable since it responded
       results.push({
-        functionName: 'sendTestFCMNotification',
-        url: 'https://us-central1-pharmalynkk.cloudfunctions.net/sendTestFCMNotification',
+        functionName: 'sendTestFCMNotificationHTTP',
+        url: 'https://us-central1-pharmalynkk.cloudfunctions.net/sendTestFCMNotificationHTTP',
         status: 'reachable',
         httpStatus: response.status,
         message: `Function responded to POST (test data validation expected)`

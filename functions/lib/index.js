@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.sendTestFCMNotification = exports.sendPaymentCompletionNotification = exports.sendOTPNotification = exports.processSMSResponse = exports.sendWholesalerPaymentSMS = exports.sendRetailerPaymentSMS = void 0;
+exports.sendTestFCMNotificationHTTP = exports.sendPaymentCompletionNotification = exports.sendOTPNotificationHTTP = exports.processSMSResponse = exports.sendWholesalerPaymentSMS = exports.sendRetailerPaymentSMS = void 0;
 const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
 // Initialize Firebase Admin
@@ -546,8 +546,8 @@ async function getFCMTokenForUser(userId) {
         return null;
     }
 }
-// Send FCM notification for OTP
-exports.sendOTPNotification = functions.https.onRequest(async (req, res) => {
+// Send FCM notification for OTP (HTTP version)
+exports.sendOTPNotificationHTTP = functions.https.onRequest(async (req, res) => {
     try {
         console.log('🚀 FCM CLOUD FUNCTION TRIGGERED - sendOTPNotification');
         console.log('📥 Request method:', req.method);
@@ -821,8 +821,8 @@ exports.sendPaymentCompletionNotification = functions.https.onCall(async (reques
         throw new functions.https.HttpsError('internal', 'Failed to send payment completion notification', error instanceof Error ? error.message : 'Unknown error');
     }
 });
-// Send test FCM notification
-exports.sendTestFCMNotification = functions.https.onRequest(async (req, res) => {
+// Send test FCM notification (HTTP version)
+exports.sendTestFCMNotificationHTTP = functions.https.onRequest(async (req, res) => {
     try {
         console.log('🚀 FCM CLOUD FUNCTION TRIGGERED - sendTestFCMNotification');
         console.log('📥 Request method:', req.method);
