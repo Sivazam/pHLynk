@@ -82,6 +82,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 
                 const retailerDoc = querySnapshot.docs[0];
                 const retailerData = retailerDoc.data();
+                console.log('📋 Retailer data:', retailerData);
                 
                 // Check if retailer is active
                 if (retailerData.hasOwnProperty('isActive') && !retailerData.isActive) {
@@ -92,6 +93,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                   return;
                 }
                 
+                console.log('🎯 Creating AuthUser for retailer...');
                 const authUser: AuthUser = {
                   uid: firebaseUser.uid,
                   email: firebaseUser.email || `retailer_${phone}@pharmalynk.local`,
@@ -105,23 +107,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                   phone: retailerData.phone
                 };
                 
+                console.log('🎯 Created AuthUser:', authUser);
+                
                 // Also store retailerId in localStorage for backward compatibility
                 localStorage.setItem('retailerId', retailerDoc.id);
+                console.log('✅ Stored retailerId in localStorage');
                 
                 updateProgress(85, 'Setting up retailer dashboard...');
+                console.log('📊 Progress updated to 85%');
                 
                 // Final delay before completing
                 await new Promise(resolve => setTimeout(resolve, 150));
+                console.log('⏱️ Final delay completed');
                 
                 updateProgress(95, 'Almost ready...');
                 updateProgress(100, 'Complete');
+                console.log('🎯 About to call setUser for retailer');
                 setUser(authUser);
+                console.log('✅ setUser called successfully for retailer');
                 return;
               } else {
                 console.log('❌ No retailer found in Retailer collection');
               }
             } catch (error) {
-              console.error('Error checking retailer collection:', error);
+              console.error('❌ Error checking retailer collection:', error);
+              console.error('❌ Error details:', {
+                message: error instanceof Error ? error.message : 'Unknown error',
+                stack: error instanceof Error ? error.stack : 'No stack trace',
+                phone: phone,
+                firebaseUid: firebaseUser.uid
+              });
             }
           }
           
@@ -244,7 +259,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await new Promise(resolve => setTimeout(resolve, 100));
         updateProgress(100, 'Complete');
       } catch (error) {
-        console.error('Error fetching user data:', error);
+        console.error('❌ Error in authentication flow:', error);
+        console.error('❌ Error details:', {
+          message: error instanceof Error ? error.message : 'Unknown error',
+          stack: error instanceof Error ? error.stack : 'No stack trace',
+          firebaseUser: firebaseUser ? { 
+            uid: firebaseUser.uid, 
+            email: firebaseUser.email, 
+            phone: firebaseUser.phoneNumber 
+          } : null
+        });
         updateProgress(90, 'Recovering from error...');
         await new Promise(resolve => setTimeout(resolve, 200));
         setUser(null);
