@@ -655,6 +655,42 @@ async function getFCMTokenForUser(userId: string): Promise<string | null> {
   }
 }
 
+// Simple debug function to test HTTP functionality
+export const debugTest = functions.https.onRequest(async (req, res) => {
+  try {
+    console.log('🚀 DEBUG TEST FUNCTION TRIGGERED');
+    console.log('📥 Request method:', req.method);
+    console.log('📥 Request body:', JSON.stringify(req.body, null, 2));
+    
+    // Only allow POST requests
+    if (req.method !== 'POST') {
+      console.error('❌ Invalid method:', req.method);
+      res.status(405).json({ error: 'Method not allowed. Use POST.' });
+      return;
+    }
+
+    // Handle CORS
+    res.set('Access-Control-Allow-Origin', '*');
+    res.set('Access-Control-Allow-Methods', 'POST');
+    res.set('Access-Control-Allow-Headers', 'Content-Type');
+    
+    res.status(200).json({
+      success: true,
+      message: 'Debug test function working correctly',
+      timestamp: new Date().toISOString(),
+      receivedData: req.body
+    });
+    
+  } catch (error) {
+    console.error('❌ Debug test error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Debug test failed',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
 // Send FCM notification for OTP (HTTP version)
 export const sendOTPNotificationHTTP = functions.https.onRequest(async (req, res) => {
   try {
@@ -736,26 +772,62 @@ export const sendOTPNotificationHTTP = functions.https.onRequest(async (req, res
     }
 
     const retailerUser = retailerDoc.data();
-    const retailerUserId = retailerDoc.id; // Use document ID as user ID
     
     if (!retailerUser) {
       console.error('❌ Retailer data not found for retailerId:', data.retailerId);
       res.status(404).json({ error: 'Retailer data not found' });
       return;
     }
+
+    // Get FCM token for retailer - try multiple approaches
+    let fcmToken = null;
+    let retailerUserId = null;
     
-    // Get FCM token for retailer
-    const fcmToken = await getFCMTokenForUser(retailerUserId);
+    // Approach 1: Try document ID as user ID
+    retailerUserId = retailerDoc.id;
+    console.log('🔧 Trying document ID as user ID:', retailerUserId);
+    fcmToken = await getFCMTokenForUser(retailerUserId);
+    
+    // Approach 2: Try phone number as user ID if approach 1 fails
+    if (!fcmToken && retailerUser.phone) {
+      retailerUserId = retailerUser.phone.replace(/\D/g, ''); // Clean phone number
+      console.log('🔧 Trying phone number as user ID:', retailerUserId);
+      fcmToken = await getFCMTokenForUser(retailerUserId);
+    }
+    
+    // Approach 3: Try looking up user by retailer reference
+    if (!fcmToken && retailerUser.userId) {
+      retailerUserId = retailerUser.userId;
+      console.log('🔧 Trying retailer.userId as user ID:', retailerUserId);
+      fcmToken = await getFCMTokenForUser(retailerUserId);
+    }
     
     if (!fcmToken) {
-      console.warn('⚠️ FCM token not found for retailer:', retailerUserId);
+      console.warn('⚠️ FCM token not found for retailer after all approaches:', {
+        retailerId: data.retailerId,
+        documentId: retailerDoc.id,
+        phone: retailerUser.phone,
+        userId: retailerUser.userId
+      });
       res.status(200).json({
         success: false,
         error: 'FCM token not found',
-        fallbackToSMS: true
+        fallbackToSMS: true,
+        details: {
+          triedDocumentId: retailerDoc.id,
+          triedPhone: retailerUser.phone,
+          triedUserId: retailerUser.userId
+        }
       });
       return;
     }
+
+    console.log('✅ Found FCM token for retailer using:', {
+      retailerId: data.retailerId,
+      userId: retailerUserId,
+      approach: retailerUserId === retailerDoc.id ? 'documentId' : 
+               retailerUserId === retailerUser.phone?.replace(/\D/g, '') ? 'phone' : 'userId'
+    });
 
     // Create FCM message
     const message = {

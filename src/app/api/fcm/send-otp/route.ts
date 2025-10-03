@@ -26,11 +26,11 @@ export async function POST(request: NextRequest) {
     try {
       const { doc, getDoc } = await import('firebase/firestore');
       const { db } = await import('@/lib/firebase');
-      const retailerRef = doc(db, 'retailers', retailerId);
+      const retailerRef = doc(db, 'Retailer', retailerId);
       const retailerDoc = await getDoc(retailerRef);
       
       if (retailerDoc.exists()) {
-        retailerName = retailerDoc.data()?.businessName || retailerDoc.data()?.name || retailerName;
+        retailerName = retailerDoc.data()?.name || retailerDoc.data()?.businessName || retailerName;
       }
     } catch (error) {
       console.warn('Error fetching retailer name:', error);

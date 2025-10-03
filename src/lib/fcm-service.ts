@@ -32,9 +32,9 @@ class FCMService {
     userType: 'retailer' | 'line_worker' | 'wholesaler' | 'super_admin' = 'retailer'
   ): Promise<{ success: boolean; message: string }> {
     try {
-      // For backward compatibility, if userType is retailer, use retailers collection
+      // For backward compatibility, if userType is retailer, use Retailer collection
       if (userType === 'retailer') {
-        const retailerRef = doc(db, 'retailers', userId);
+  <arg_value>        const retailerRef = doc(db, 'Retailer', userId);
         const retailerDoc = await getDoc(retailerRef);
 
         if (!retailerDoc.exists()) {
@@ -111,9 +111,9 @@ class FCMService {
     userType: 'retailer' | 'line_worker' | 'wholesaler' | 'super_admin' = 'retailer'
   ): Promise<{ success: boolean; message: string }> {
     try {
-      // For backward compatibility, if userType is retailer, use retailers collection
+      // For backward compatibility, if userType is retailer, use Retailer collection
       if (userType === 'retailer') {
-        const retailerRef = doc(db, 'retailers', userId);
+  <arg_value>        const retailerRef = doc(db, 'Retailer', userId);
         const retailerDoc = await getDoc(retailerRef);
 
         if (!retailerDoc.exists()) {

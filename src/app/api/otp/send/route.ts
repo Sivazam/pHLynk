@@ -114,28 +114,33 @@ export async function POST(request: NextRequest) {
 
       // Now call the actual cloud function to send notification
       try {
-        const cloudFunctionResponse = await fetch('https://us-central1-pharmalynkk.cloudfunctions.net/sendOTPNotificationHTTP', {
+        const cloudFunctionResponse = await fetch('https://us-central1-pharmalync-retailer-app.cloudfunctions.net/sendOTPNotificationHTTP', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
             retailerId,
-            retailerName: retailerUser.name,
-            retailerPhone: retailerUser.phone,
             otp,
             amount,
             paymentId,
-            lineWorkerName: lineWorkerName || 'Line Worker',
-            tenantId: retailerUser.tenantId
+            lineWorkerName: lineWorkerName || 'Line Worker'
           })
         });
 
         if (cloudFunctionResponse.ok) {
           const cloudResult = await cloudFunctionResponse.json();
           console.log('✅ Cloud function sendOTPNotification called successfully:', cloudResult);
+          
+          // Handle fallback to SMS if FCM failed
+          if (!cloudResult.success && cloudResult.fallbackToSMS) {
+            console.log('🔄 FCM failed, falling back to SMS notification');
+            // The existing SMS logic below will handle this
+          }
         } else {
           console.warn('⚠️ Cloud function sendOTPNotification failed:', cloudFunctionResponse.status);
+          const errorText = await cloudFunctionResponse.text();
+          console.warn('Error details:', errorText);
         }
       } catch (cloudFunctionError) {
         console.error('❌ Error calling sendOTPNotification cloud function:', cloudFunctionError);
