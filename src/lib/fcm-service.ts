@@ -34,7 +34,7 @@ class FCMService {
     try {
       // For backward compatibility, if userType is retailer, use Retailer collection
       if (userType === 'retailer') {
-  <arg_value>        const retailerRef = doc(db, 'Retailer', userId);
+        const retailerRef = doc(db, 'Retailer', userId);
         const retailerDoc = await getDoc(retailerRef);
 
         if (!retailerDoc.exists()) {
@@ -113,7 +113,7 @@ class FCMService {
     try {
       // For backward compatibility, if userType is retailer, use Retailer collection
       if (userType === 'retailer') {
-  <arg_value>        const retailerRef = doc(db, 'Retailer', userId);
+        const retailerRef = doc(db, 'Retailer', userId);
         const retailerDoc = await getDoc(retailerRef);
 
         if (!retailerDoc.exists()) {
@@ -154,7 +154,7 @@ class FCMService {
    */
   async getRetailerDevices(retailerId: string): Promise<FCMDevice[]> {
     try {
-      const retailerRef = doc(db, 'retailers', retailerId);
+      const retailerRef = doc(db, 'Retailer', retailerId);
       const retailerDoc = await getDoc(retailerRef);
 
       if (!retailerDoc.exists()) {
@@ -181,7 +181,7 @@ class FCMService {
       );
 
       if (activeDevices.length !== devices.length) {
-        const retailerRef = doc(db, 'retailers', retailerId);
+        const retailerRef = doc(db, 'Retailer', retailerId);
         await updateDoc(retailerRef, { fcmDevices: activeDevices });
         console.log(`Cleaned up ${devices.length - activeDevices.length} inactive devices for retailer ${retailerId}`);
       }
