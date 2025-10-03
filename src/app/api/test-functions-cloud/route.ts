@@ -31,6 +31,15 @@ const DEPLOYED_FUNCTIONS = [
   }
 ];
 
+interface FunctionTestResult {
+  functionName: string;
+  url: string;
+  status: 'reachable' | 'error' | 'unreachable';
+  httpStatus?: number;
+  error?: string;
+  message: string;
+}
+
 export async function GET() {
   return NextResponse.json({ 
     message: "Cloud Functions Test API",
@@ -39,7 +48,7 @@ export async function GET() {
 }
 
 export async function POST() {
-  const results = [];
+  const results: FunctionTestResult[] = [];
   let reachable = 0;
   let unreachable = 0;
   let serverErrors = 0;
