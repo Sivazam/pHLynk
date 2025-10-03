@@ -1,5 +1,5 @@
 import { db } from '@/lib/firebase';
-import { doc, getDoc, updateDoc, arrayUnion, arrayRemove, collection, query, where, getDocs } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, arrayUnion, arrayRemove, collection, query, where, getDocs, setDoc } from 'firebase/firestore';
 
 export interface FCMDevice {
   token: string;
@@ -23,42 +23,78 @@ class FCMService {
   private readonly SERVER_KEY = process.env.FCM_SERVER_KEY || '';
 
   /**
-   * Register a device token for a retailer
+   * Register a device token for a user (supports multiple user types)
    */
-  async registerDevice(retailerId: string, deviceToken: string, userAgent: string = 'unknown'): Promise<{ success: boolean; message: string }> {
+  async registerDevice(
+    userId: string, 
+    deviceToken: string, 
+    userAgent: string = 'unknown',
+    userType: 'retailer' | 'line_worker' | 'wholesaler' | 'super_admin' = 'retailer'
+  ): Promise<{ success: boolean; message: string }> {
     try {
-      const retailerRef = doc(db, 'retailers', retailerId);
-      const retailerDoc = await getDoc(retailerRef);
+      // For backward compatibility, if userType is retailer, use retailers collection
+      if (userType === 'retailer') {
+        const retailerRef = doc(db, 'retailers', userId);
+        const retailerDoc = await getDoc(retailerRef);
 
-      if (!retailerDoc.exists()) {
-        return { success: false, message: 'Retailer not found' };
-      }
+        if (!retailerDoc.exists()) {
+          return { success: false, message: 'Retailer not found' };
+        }
 
-      const device: FCMDevice = {
-        token: deviceToken,
-        userAgent,
-        registeredAt: new Date(),
-        lastActive: new Date()
-      };
+        const device: FCMDevice = {
+          token: deviceToken,
+          userAgent,
+          registeredAt: new Date(),
+          lastActive: new Date()
+        };
 
-      // Check if device already exists
-      const existingDevices = retailerDoc.data()?.fcmDevices || [];
-      const deviceExists = existingDevices.some((d: FCMDevice) => d.token === deviceToken);
+        // Check if device already exists
+        const existingDevices = retailerDoc.data()?.fcmDevices || [];
+        const deviceExists = existingDevices.some((d: FCMDevice) => d.token === deviceToken);
 
-      if (deviceExists) {
-        // Update last active timestamp
-        const updatedDevices = existingDevices.map((d: FCMDevice) =>
-          d.token === deviceToken ? { ...d, lastActive: new Date() } : d
-        );
-        
-        await updateDoc(retailerRef, { fcmDevices: updatedDevices });
-        return { success: true, message: 'Device updated successfully' };
+        if (deviceExists) {
+          // Update last active timestamp
+          const updatedDevices = existingDevices.map((d: FCMDevice) =>
+            d.token === deviceToken ? { ...d, lastActive: new Date() } : d
+          );
+          
+          await updateDoc(retailerRef, { fcmDevices: updatedDevices });
+          return { success: true, message: 'Device updated successfully' };
+        } else {
+          // Add new device
+          await updateDoc(retailerRef, {
+            fcmDevices: arrayUnion(device)
+          });
+          return { success: true, message: 'Device registered successfully' };
+        }
       } else {
-        // Add new device
-        await updateDoc(retailerRef, {
-          fcmDevices: arrayUnion(device)
-        });
-        return { success: true, message: 'Device registered successfully' };
+        // For other user types, use the new fcmTokens collection
+        const tokenRef = doc(db, 'fcmTokens', `${userId}_${deviceToken.slice(-10)}`);
+        const tokenDoc = await getDoc(tokenRef);
+
+        const tokenData = {
+          userId,
+          userType,
+          token: deviceToken,
+          userAgent,
+          active: true,
+          registeredAt: new Date(),
+          lastActive: new Date()
+        };
+
+        if (tokenDoc.exists()) {
+          // Update existing token
+          await updateDoc(tokenRef, { 
+            lastActive: new Date(),
+            active: true,
+            userAgent 
+          });
+          return { success: true, message: 'Device updated successfully' };
+        } else {
+          // Create new token document
+          await setDoc(tokenRef, tokenData);
+          return { success: true, message: 'Device registered successfully' };
+        }
       }
     } catch (error) {
       console.error('Error registering FCM device:', error);
@@ -67,27 +103,45 @@ class FCMService {
   }
 
   /**
-   * Unregister a device token for a retailer
+   * Unregister a device token for a user (supports multiple user types)
    */
-  async unregisterDevice(retailerId: string, deviceToken: string): Promise<{ success: boolean; message: string }> {
+  async unregisterDevice(
+    userId: string, 
+    deviceToken: string,
+    userType: 'retailer' | 'line_worker' | 'wholesaler' | 'super_admin' = 'retailer'
+  ): Promise<{ success: boolean; message: string }> {
     try {
-      const retailerRef = doc(db, 'retailers', retailerId);
-      const retailerDoc = await getDoc(retailerRef);
+      // For backward compatibility, if userType is retailer, use retailers collection
+      if (userType === 'retailer') {
+        const retailerRef = doc(db, 'retailers', userId);
+        const retailerDoc = await getDoc(retailerRef);
 
-      if (!retailerDoc.exists()) {
-        return { success: false, message: 'Retailer not found' };
-      }
+        if (!retailerDoc.exists()) {
+          return { success: false, message: 'Retailer not found' };
+        }
 
-      const existingDevices = retailerDoc.data()?.fcmDevices || [];
-      const deviceToRemove = existingDevices.find((d: FCMDevice) => d.token === deviceToken);
+        const existingDevices = retailerDoc.data()?.fcmDevices || [];
+        const deviceToRemove = existingDevices.find((d: FCMDevice) => d.token === deviceToken);
 
-      if (deviceToRemove) {
-        await updateDoc(retailerRef, {
-          fcmDevices: arrayRemove(deviceToRemove)
-        });
-        return { success: true, message: 'Device unregistered successfully' };
+        if (deviceToRemove) {
+          await updateDoc(retailerRef, {
+            fcmDevices: arrayRemove(deviceToRemove)
+          });
+          return { success: true, message: 'Device unregistered successfully' };
+        } else {
+          return { success: false, message: 'Device not found' };
+        }
       } else {
-        return { success: false, message: 'Device not found' };
+        // For other user types, use the fcmTokens collection
+        const tokenRef = doc(db, 'fcmTokens', `${userId}_${deviceToken.slice(-10)}`);
+        const tokenDoc = await getDoc(tokenRef);
+
+        if (tokenDoc.exists()) {
+          await updateDoc(tokenRef, { active: false });
+          return { success: true, message: 'Device unregistered successfully' };
+        } else {
+          return { success: false, message: 'Device not found' };
+        }
       }
     } catch (error) {
       console.error('Error unregistering FCM device:', error);

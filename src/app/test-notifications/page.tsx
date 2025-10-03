@@ -72,11 +72,7 @@ export default function TestNotificationsPage() {
         icon: '/icon-192x192.png',
         badge: '/icon-96x96.png',
         tag: 'direct-test',
-        requireInteraction: true,
-        actions: [
-          { action: 'view', title: 'View' },
-          { action: 'dismiss', title: 'Dismiss' }
-        ]
+        requireInteraction: true
       });
 
       notification.onclick = () => {
@@ -89,7 +85,7 @@ export default function TestNotificationsPage() {
     } catch (error) {
       console.error('Direct notification failed:', error);
       toast.error('Direct notification failed');
-      addTestResult('Direct Notification', 'error', error.message);
+      addTestResult('Direct Notification', 'error', error instanceof Error ? error.message : 'Unknown error');
     }
   };
 
@@ -111,7 +107,7 @@ export default function TestNotificationsPage() {
     } catch (error) {
       console.error('Service worker notification failed:', error);
       toast.error('Service worker notification failed');
-      addTestResult('Service Worker Notification', 'error', error.message);
+      addTestResult('Service Worker Notification', 'error', error instanceof Error ? error.message : 'Unknown error');
     }
   };
 
@@ -125,6 +121,10 @@ export default function TestNotificationsPage() {
       // Import and test the role-based notification service
       const { roleBasedNotificationService } = await import('@/services/role-based-notification-service');
       
+      if (!roleBasedNotificationService) {
+        throw new Error('Role-based notification service not available');
+      }
+      
       const result = await roleBasedNotificationService.sendTestNotification();
       
       if (result) {
@@ -137,7 +137,7 @@ export default function TestNotificationsPage() {
     } catch (error) {
       console.error('Role-based notification failed:', error);
       toast.error('Role-based notification failed');
-      addTestResult('Role-based Notification', 'error', error.message);
+      addTestResult('Role-based Notification', 'error', error instanceof Error ? error.message : 'Unknown error');
     }
   };
 
@@ -163,7 +163,7 @@ export default function TestNotificationsPage() {
     } catch (error) {
       console.error('Cloud function test failed:', error);
       toast.error('Cloud function test failed');
-      addTestResult('Cloud Functions Test', 'error', error.message);
+      addTestResult('Cloud Functions Test', 'error', error instanceof Error ? error.message : 'Unknown error');
     } finally {
       setIsLoading(false);
     }
@@ -195,7 +195,7 @@ export default function TestNotificationsPage() {
     } catch (error) {
       console.error('FCM test failed:', error);
       toast.error('FCM test failed');
-      addTestResult('FCM Test', 'error', error.message);
+      addTestResult('FCM Test', 'error', error instanceof Error ? error.message : 'Unknown error');
     } finally {
       setIsLoading(false);
     }
