@@ -37,7 +37,7 @@ function initializeFirebaseApp() {
 /**
  * Get Firebase Messaging instance
  */
-function getMessagingInstance() {
+export function getMessagingInstance() {
   if (!messagingInstance && typeof window !== 'undefined') {
     try {
       const app = initializeFirebaseApp();
