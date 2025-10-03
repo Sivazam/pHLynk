@@ -547,41 +547,57 @@ async function getFCMTokenForUser(userId) {
     }
 }
 // Send FCM notification for OTP
-exports.sendOTPNotification = functions.https.onCall(async (request) => {
-    var _a;
+exports.sendOTPNotification = functions.https.onRequest(async (req, res) => {
     try {
         console.log('🚀 FCM CLOUD FUNCTION TRIGGERED - sendOTPNotification');
-        console.log('📥 Full request object:', JSON.stringify(request, null, 2));
-        let data, context;
-        if (request.data && typeof request.data === 'object') {
-            // Callable function format
-            data = request.data;
-            context = request;
+        console.log('📥 Request method:', req.method);
+        console.log('📥 Request headers:', JSON.stringify(req.headers, null, 2));
+        // Only allow POST requests
+        if (req.method !== 'POST') {
+            console.error('❌ Invalid method:', req.method);
+            res.status(405).json({ error: 'Method not allowed. Use POST.' });
+            return;
         }
-        else if (request && typeof request === 'object' && !request.auth) {
-            // Direct HTTP format
-            data = request;
-            context = { auth: null, rawRequest: { ip: 'unknown' } };
+        // Handle CORS
+        res.set('Access-Control-Allow-Origin', '*');
+        res.set('Access-Control-Allow-Methods', 'POST');
+        res.set('Access-Control-Allow-Headers', 'Content-Type');
+        let data;
+        // Parse request body
+        if (req.body && typeof req.body === 'object') {
+            data = req.body;
         }
         else {
-            throw new functions.https.HttpsError('invalid-argument', 'Invalid request format');
+            console.error('❌ Request body is missing or invalid:', req.body);
+            res.status(400).json({ error: 'Request body is missing or invalid' });
+            return;
         }
         console.log('📤 Extracted data:', JSON.stringify(data, null, 2));
         // Input validation
         if (!data.retailerId || typeof data.retailerId !== 'string') {
-            throw new functions.https.HttpsError('invalid-argument', 'Invalid or missing retailerId');
+            console.error('❌ Invalid retailerId:', data.retailerId);
+            res.status(400).json({ error: 'Invalid or missing retailerId' });
+            return;
         }
         if (!data.otp || typeof data.otp !== 'string') {
-            throw new functions.https.HttpsError('invalid-argument', 'Invalid or missing OTP');
+            console.error('❌ Invalid OTP:', data.otp);
+            res.status(400).json({ error: 'Invalid or missing OTP' });
+            return;
         }
         if (!data.amount || typeof data.amount !== 'number') {
-            throw new functions.https.HttpsError('invalid-argument', 'Invalid or missing amount');
+            console.error('❌ Invalid amount:', data.amount);
+            res.status(400).json({ error: 'Invalid or missing amount' });
+            return;
         }
         if (!data.paymentId || typeof data.paymentId !== 'string') {
-            throw new functions.https.HttpsError('invalid-argument', 'Invalid or missing paymentId');
+            console.error('❌ Invalid paymentId:', data.paymentId);
+            res.status(400).json({ error: 'Invalid or missing paymentId' });
+            return;
         }
         if (!data.lineWorkerName || typeof data.lineWorkerName !== 'string') {
-            throw new functions.https.HttpsError('invalid-argument', 'Invalid or missing lineWorkerName');
+            console.error('❌ Invalid lineWorkerName:', data.lineWorkerName);
+            res.status(400).json({ error: 'Invalid or missing lineWorkerName' });
+            return;
         }
         console.log('📱 FCM - OTP Notification Request:', {
             retailerId: data.retailerId,
@@ -589,7 +605,7 @@ exports.sendOTPNotification = functions.https.onCall(async (request) => {
             amount: data.amount,
             otp: data.otp,
             lineWorkerName: data.lineWorkerName,
-            caller: context.auth ? context.auth.uid : 'NEXTJS_API'
+            caller: 'NEXTJS_API'
         });
         // Get retailer details from Retailer collection
         const retailerDoc = await admin.firestore()
@@ -597,22 +613,27 @@ exports.sendOTPNotification = functions.https.onCall(async (request) => {
             .doc(data.retailerId)
             .get();
         if (!retailerDoc.exists) {
-            throw new functions.https.HttpsError('not-found', `Retailer not found for retailerId: ${data.retailerId}`);
+            console.error('❌ Retailer not found for retailerId:', data.retailerId);
+            res.status(404).json({ error: 'Retailer not found' });
+            return;
         }
         const retailerUser = retailerDoc.data();
         const retailerUserId = retailerDoc.id; // Use document ID as user ID
         if (!retailerUser) {
-            throw new functions.https.HttpsError('not-found', `Retailer data not found for retailerId: ${data.retailerId}`);
+            console.error('❌ Retailer data not found for retailerId:', data.retailerId);
+            res.status(404).json({ error: 'Retailer data not found' });
+            return;
         }
         // Get FCM token for retailer
         const fcmToken = await getFCMTokenForUser(retailerUserId);
         if (!fcmToken) {
             console.warn('⚠️ FCM token not found for retailer:', retailerUserId);
-            return {
+            res.status(200).json({
                 success: false,
                 error: 'FCM token not found',
                 fallbackToSMS: true
-            };
+            });
+            return;
         }
         // Create FCM message
         const message = {
@@ -661,21 +682,23 @@ exports.sendOTPNotification = functions.https.onCall(async (request) => {
             token: fcmToken.substring(0, 8) + '...',
             status: 'SENT',
             messageId: response,
-            sentBy: ((_a = context.auth) === null || _a === void 0 ? void 0 : _a.uid) || 'NEXTJS_API',
+            sentBy: 'NEXTJS_API',
             sentAt: admin.firestore.FieldValue.serverTimestamp()
         });
-        return {
+        console.log('✅ FCM OTP notification sent successfully:', response);
+        res.status(200).json({
             success: true,
             messageId: response,
             type: 'fcm_sent'
-        };
+        });
     }
     catch (error) {
         console.error('❌ FCM CLOUD FUNCTION - Error sending OTP notification:', error);
-        if (error instanceof functions.https.HttpsError) {
-            throw error;
-        }
-        throw new functions.https.HttpsError('internal', 'Failed to send OTP notification', error instanceof Error ? error.message : 'Unknown error');
+        res.status(500).json({
+            success: false,
+            error: 'Failed to send OTP notification',
+            details: error instanceof Error ? error.message : 'Unknown error'
+        });
     }
 });
 // Send FCM notification for payment completion
@@ -799,41 +822,52 @@ exports.sendPaymentCompletionNotification = functions.https.onCall(async (reques
     }
 });
 // Send test FCM notification
-exports.sendTestFCMNotification = functions.https.onCall(async (request) => {
-    var _a;
+exports.sendTestFCMNotification = functions.https.onRequest(async (req, res) => {
     try {
         console.log('🚀 FCM CLOUD FUNCTION TRIGGERED - sendTestFCMNotification');
-        let data, context;
-        if (request.data && typeof request.data === 'object') {
-            data = request.data;
-            context = request;
+        console.log('📥 Request method:', req.method);
+        // Only allow POST requests
+        if (req.method !== 'POST') {
+            console.error('❌ Invalid method:', req.method);
+            res.status(405).json({ error: 'Method not allowed. Use POST.' });
+            return;
         }
-        else if (request && typeof request === 'object' && !request.auth) {
-            data = request;
-            context = { auth: null, rawRequest: { ip: 'unknown' } };
+        // Handle CORS
+        res.set('Access-Control-Allow-Origin', '*');
+        res.set('Access-Control-Allow-Methods', 'POST');
+        res.set('Access-Control-Allow-Headers', 'Content-Type');
+        let data;
+        // Parse request body
+        if (req.body && typeof req.body === 'object') {
+            data = req.body;
         }
         else {
-            throw new functions.https.HttpsError('invalid-argument', 'Invalid request format');
+            console.error('❌ Request body is missing or invalid:', req.body);
+            res.status(400).json({ error: 'Request body is missing or invalid' });
+            return;
         }
-        if (!((_a = context.auth) === null || _a === void 0 ? void 0 : _a.uid)) {
-            throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+        console.log('📤 Extracted data:', JSON.stringify(data, null, 2));
+        // For test function, we don't require authentication
+        // But we need either a token or userId to send to
+        const fcmToken = data.token || null;
+        const userId = data.userId || null;
+        let targetToken = fcmToken;
+        if (!targetToken && userId) {
+            targetToken = await getFCMTokenForUser(userId);
         }
-        const userId = context.auth.uid;
-        const fcmToken = await getFCMTokenForUser(userId);
-        if (!fcmToken) {
-            throw new functions.https.HttpsError('not-found', 'FCM token not found for user');
+        if (!targetToken) {
+            console.error('❌ No FCM token provided or found');
+            res.status(400).json({ error: 'FCM token not provided or found' });
+            return;
         }
         const message = {
             notification: {
-                title: '📱 Test Notification',
-                body: 'This is a test FCM notification from pHLynk',
+                title: data.title || '📱 Test Notification',
+                body: data.body || 'This is a test FCM notification from pHLynk',
             },
-            data: {
-                type: 'test',
-                tag: 'test-notification',
-                requireInteraction: 'false'
-            },
-            token: fcmToken,
+            data: Object.assign({ type: 'test', tag: 'test-notification', requireInteraction: 'false' }, data.data // Allow custom data
+            ),
+            token: targetToken,
             android: {
                 priority: 'normal',
                 notification: {
@@ -856,24 +890,25 @@ exports.sendTestFCMNotification = functions.https.onCall(async (request) => {
         await admin.firestore().collection('fcmLogs').add({
             type: 'TEST_NOTIFICATION',
             userId: userId,
-            token: fcmToken.substring(0, 8) + '...',
+            token: targetToken.substring(0, 8) + '...',
             status: 'SENT',
             messageId: response,
-            sentBy: userId,
+            sentBy: userId || 'API_CALL',
             sentAt: admin.firestore.FieldValue.serverTimestamp()
         });
-        return {
+        res.status(200).json({
             success: true,
             messageId: response,
             message: 'Test notification sent successfully'
-        };
+        });
     }
     catch (error) {
         console.error('❌ FCM CLOUD FUNCTION - Error sending test notification:', error);
-        if (error instanceof functions.https.HttpsError) {
-            throw error;
-        }
-        throw new functions.https.HttpsError('internal', 'Failed to send test notification', error instanceof Error ? error.message : 'Unknown error');
+        res.status(500).json({
+            success: false,
+            error: 'Failed to send test notification',
+            details: error instanceof Error ? error.message : 'Unknown error'
+        });
     }
 });
 //# sourceMappingURL=index.js.map

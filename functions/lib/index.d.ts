@@ -30,19 +30,7 @@ export declare const processSMSResponse: functions.https.CallableFunction<any, P
     messages?: undefined;
     messageId?: undefined;
 }>, unknown>;
-export declare const sendOTPNotification: functions.https.CallableFunction<any, Promise<{
-    success: boolean;
-    error: string;
-    fallbackToSMS: boolean;
-    messageId?: undefined;
-    type?: undefined;
-} | {
-    success: boolean;
-    messageId: string;
-    type: string;
-    error?: undefined;
-    fallbackToSMS?: undefined;
-}>, unknown>;
+export declare const sendOTPNotification: functions.https.HttpsFunction;
 export declare const sendPaymentCompletionNotification: functions.https.CallableFunction<any, Promise<{
     success: boolean;
     error: string;
@@ -56,8 +44,4 @@ export declare const sendPaymentCompletionNotification: functions.https.Callable
     error?: undefined;
     fallbackToSMS?: undefined;
 }>, unknown>;
-export declare const sendTestFCMNotification: functions.https.CallableFunction<any, Promise<{
-    success: boolean;
-    messageId: string;
-    message: string;
-}>, unknown>;
+export declare const sendTestFCMNotification: functions.https.HttpsFunction;
