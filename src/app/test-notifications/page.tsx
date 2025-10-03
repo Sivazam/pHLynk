@@ -181,7 +181,7 @@ export default function TestNotificationsPage() {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
 
-      const response = await fetch('/api/fcm/send-test-v1', {
+      const response = await fetch('/api/fcm/check-config', {
         method: 'GET',
         headers: { 'Content-Type': 'application/json' },
         signal: controller.signal
