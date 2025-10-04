@@ -245,15 +245,65 @@ class FCMService {
   }
 
   /**
-   * Send notification to a specific device token
+   * Send notification to a specific device token using direct Firebase Admin SDK
    */
   private async sendToDevice(deviceToken: string, notification: FCMNotificationData): Promise<{ success: boolean; error?: string }> {
     try {
-      if (!this.SERVER_KEY) {
-        console.warn('⚠️ FCM_SERVER_KEY not configured - cannot send notifications');
-        return { success: false, error: 'FCM_NOT_CONFIGURED' };
-      }
+      // Use the direct FCM API for OTP notifications
+      console.log('📱 Attempting to send notification via direct FCM API...');
+      
+      // Check if this is an OTP notification
+      if (notification.data?.type === 'otp') {
+        const directApiUrl = '/api/fcm/send-otp-direct';
+        
+        const response = await fetch(`http://localhost:3000${directApiUrl}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            retailerId: notification.data.retailerId,
+            otp: notification.data.otp,
+            amount: parseFloat(notification.data.amount || '0'),
+            paymentId: notification.data.paymentId || '',
+            lineWorkerName: notification.data.lineWorkerName || 'Line Worker'
+          })
+        });
 
+        if (response.ok) {
+          const result = await response.json();
+          console.log('✅ OTP notification sent via direct FCM API:', result);
+          return { success: true };
+        } else {
+          const error = await response.text();
+          console.error('❌ Direct FCM API error:', error);
+          return { success: false, error: 'DIRECT_FCM_API_ERROR' };
+        }
+      }
+      
+      // For non-OTP notifications, fallback to legacy API if available
+      if (this.SERVER_KEY && this.SERVER_KEY !== 'your_fcm_server_key_here') {
+        return this.sendViaLegacyAPI(deviceToken, notification);
+      }
+      
+      return { success: false, error: 'NO_CONFIGURED_SEND_METHOD' };
+    } catch (error) {
+      console.error('Error sending notification:', error);
+      
+      // Fallback to legacy API if server key is available
+      if (this.SERVER_KEY && this.SERVER_KEY !== 'your_fcm_server_key_here') {
+        return this.sendViaLegacyAPI(deviceToken, notification);
+      }
+      
+      return { success: false, error: 'NETWORK_ERROR' };
+    }
+  }
+
+  /**
+   * Legacy FCM API fallback (requires server key)
+   */
+  private async sendViaLegacyAPI(deviceToken: string, notification: FCMNotificationData): Promise<{ success: boolean; error?: string }> {
+    try {
       const message = {
         to: deviceToken,
         notification: {
@@ -287,7 +337,7 @@ class FCMService {
         return { success: false, error: responseData.results?.[0]?.error || 'UNKNOWN_ERROR' };
       }
     } catch (error) {
-      console.error('Error sending FCM notification:', error);
+      console.error('Error sending FCM notification via legacy API:', error);
       return { success: false, error: 'NETWORK_ERROR' };
     }
   }
@@ -318,7 +368,8 @@ export async function sendOTPViaFCM(
   otp: string,
   retailerName: string,
   paymentId?: string,
-  amount?: number
+  amount?: number,
+  lineWorkerName?: string
 ): Promise<{ success: boolean; message: string; sentCount?: number }> {
   const notification: FCMNotificationData = {
     title: '🔐 OTP Verification Required',
@@ -329,7 +380,8 @@ export async function sendOTPViaFCM(
       retailerId,
       paymentId: paymentId || '',
       amount: amount?.toString() || '',
-      retailerName
+      retailerName,
+      lineWorkerName: lineWorkerName || 'Line Worker'
     },
     icon: '/icon-192x192.png',
     tag: `otp-${paymentId || Date.now()}`,

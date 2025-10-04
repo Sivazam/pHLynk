@@ -1037,3 +1037,195 @@ export const sendTestFCMNotification = functions.https.onCall(async (request: an
   }
 });
 
+// FCM Notification Function
+export const sendFCMNotification = functions.https.onCall(async (request: any) => {
+  try {
+    console.log('🚀 CLOUD FUNCTION TRIGGERED - sendFCMNotification');
+    console.log('📥 Full request object:', JSON.stringify(request, null, 2));
+    
+    let data, context;
+    
+    if (request.data && typeof request.data === 'object') {
+      // Callable function format
+      console.log('📋 Using callable function format');
+      data = request.data;
+      context = request;
+    } else if (request && typeof request === 'object' && !request.auth) {
+      // Direct HTTP format
+      console.log('🌐 Using direct HTTP format');
+      data = request;
+      context = { auth: null, rawRequest: { ip: 'unknown' } };
+    } else {
+      console.error('❌ Unknown request format:', typeof request);
+      throw new functions.https.HttpsError('invalid-argument', 'Invalid request format');
+    }
+    
+    console.log('📤 Extracted data:', JSON.stringify(data, null, 2));
+    
+    // Input validation
+    if (!data.retailerId || typeof data.retailerId !== 'string') {
+      throw new functions.https.HttpsError('invalid-argument', 'Invalid or missing retailerId');
+    }
+    if (!data.notification || typeof data.notification !== 'object') {
+      throw new functions.https.HttpsError('invalid-argument', 'Invalid or missing notification object');
+    }
+    
+    const { retailerId, notification } = data;
+    
+    console.log('📱 FCM Notification Request:', {
+      retailerId,
+      title: notification.title,
+      body: notification.body,
+      caller: context.auth ? context.auth.uid : 'NEXTJS_API'
+    });
+
+    // Get retailer document
+    const retailerDoc = await admin.firestore()
+      .collection('retailers')
+      .doc(retailerId)
+      .get();
+
+    if (!retailerDoc.exists) {
+      throw new functions.https.HttpsError(
+        'not-found',
+        `Retailer not found: ${retailerId}`
+      );
+    }
+
+    const retailerData = retailerDoc.data();
+    const fcmDevices = retailerData?.fcmDevices || [];
+
+    if (fcmDevices.length === 0) {
+      console.log('⚠️ No FCM devices found for retailer:', retailerId);
+      return {
+        success: false,
+        message: 'No devices registered for this retailer',
+        deviceCount: 0
+      };
+    }
+
+    console.log(`📱 Found ${fcmDevices.length} FCM devices for retailer`);
+
+    // Filter active devices (last active within 30 days)
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const activeDevices = fcmDevices.filter((device: any) => {
+      const lastActive = device.lastActive?.toDate?.() || new Date(device.lastActive);
+      return lastActive > thirtyDaysAgo;
+    });
+
+    console.log(`📱 ${activeDevices.length} active devices after filtering`);
+
+    if (activeDevices.length === 0) {
+      return {
+        success: false,
+        message: 'No active devices found for this retailer',
+        deviceCount: 0
+      };
+    }
+
+    // Prepare notification message
+    const message = {
+      notification: {
+        title: notification.title,
+        body: notification.body,
+        icon: notification.icon || '/icon-192x192.png',
+        badge: '/badge-72x72.png',
+        tag: notification.tag,
+        clickAction: notification.clickAction
+      },
+      data: notification.data || {},
+      android: {
+        priority: 'high',
+        notification: {
+          sound: 'default',
+          clickAction: notification.clickAction
+        }
+      },
+      apns: {
+        payload: {
+          aps: {
+            sound: 'default',
+            badge: 1
+          }
+        }
+      }
+    };
+
+    let successCount = 0;
+    let failureCount = 0;
+    const results: any[] = [];
+
+    // Send to each device
+    for (const device of activeDevices) {
+      try {
+        console.log(`📤 Sending to device: ${device.token.substring(0, 20)}...`);
+        
+        const deviceMessage = {
+          ...message,
+          token: device.token
+        };
+
+        const response = await admin.messaging().send(deviceMessage);
+        console.log(`✅ Message sent successfully: ${response}`);
+        successCount++;
+        
+        results.push({
+          token: device.token.substring(0, 20) + '...',
+          success: true,
+          messageId: response
+        });
+        
+      } catch (error: any) {
+        console.error(`❌ Failed to send to device ${device.token.substring(0, 20)}...:`, error);
+        failureCount++;
+        
+        results.push({
+          token: device.token.substring(0, 20) + '...',
+          success: false,
+          error: error.message
+        });
+
+        // If device token is invalid, remove it
+        if (error.code === 'messaging/registration-token-not-registered' || 
+            error.code === 'messaging/invalid-registration-token') {
+          try {
+            await admin.firestore()
+              .collection('retailers')
+              .doc(retailerId)
+              .update({
+                fcmDevices: admin.firestore.FieldValue.arrayRemove(device)
+              });
+            console.log('🗑️ Removed invalid device token:', device.token.substring(0, 20) + '...');
+          } catch (removeError) {
+            console.error('Failed to remove invalid device:', removeError);
+          }
+        }
+      }
+    }
+
+    console.log(`📊 FCM sending complete: ${successCount} success, ${failureCount} failures`);
+
+    return {
+      success: successCount > 0,
+      message: `Sent to ${successCount} device(s), ${failureCount} failed`,
+      sentCount: successCount,
+      failedCount: failureCount,
+      deviceCount: activeDevices.length,
+      results
+    };
+
+  } catch (error) {
+    console.error('❌ CLOUD FUNCTION - Error sending FCM notification:', error);
+    
+    if (error instanceof functions.https.HttpsError) {
+      throw error;
+    }
+
+    throw new functions.https.HttpsError(
+      'internal',
+      'Failed to send FCM notification',
+      error instanceof Error ? error.message : 'Unknown error'
+    );
+  }
+});
+

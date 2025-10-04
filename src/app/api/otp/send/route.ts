@@ -162,31 +162,60 @@ export async function POST(request: NextRequest) {
     const sent = sendOTPToRetailer(retailerUser.phone, otpData.code, amount);
     console.log('📤 OTP send result:', sent);
     
-    // Send FCM notification to retailer
+    // Send FCM notification to retailer using cloud function
     try {
-      console.log('📱 Sending FCM OTP notification...');
-      const fcmResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/fcm/send-otp`, {
+      console.log('📱 Sending FCM OTP notification via cloud function...');
+      const fcmResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/fcm/send-notification`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           retailerId,
-          otp: otpData.code,
-          amount,
-          paymentId,
-          lineWorkerName: lineWorkerName || 'Line Worker'
+          title: '🔐 OTP Verification Required',
+          body: `Your OTP code is: ${otpData.code}`,
+          data: {
+            type: 'otp',
+            otp: otpData.code,
+            retailerId,
+            paymentId,
+            amount: amount.toString(),
+            retailerName: retailerUser.name,
+            lineWorkerName: lineWorkerName || 'Line Worker'
+          },
+          icon: '/icon-192x192.png',
+          tag: `otp-${paymentId}`,
+          clickAction: '/retailer/dashboard'
         })
       });
 
       if (fcmResponse.ok) {
         const fcmResult = await fcmResponse.json();
-        console.log('✅ FCM OTP notification sent successfully:', fcmResult);
+        console.log('✅ FCM OTP notification sent successfully via cloud function:', fcmResult);
       } else {
-        console.warn('⚠️ FCM OTP notification failed:', fcmResponse.status);
+        const errorText = await fcmResponse.text();
+        console.warn('⚠️ FCM OTP notification failed via cloud function:', fcmResponse.status, errorText);
+        
+        // Try fallback to local FCM service
+        try {
+          console.log('⚠️ Trying fallback to local FCM service...');
+          const { sendOTPViaFCM } = await import('@/lib/fcm-service');
+          const fallbackResult = await sendOTPViaFCM(retailerId, otpData.code, retailerUser.name, paymentId, amount);
+          
+          if (fallbackResult.success) {
+            console.log('✅ FCM OTP notification sent via local fallback:', fallbackResult);
+          } else {
+            console.warn('⚠️ Local FCM fallback also failed:', fallbackResult.message);
+            console.log('📱 FCM failed - OTP will be available in retailer dashboard');
+          }
+        } catch (fallbackError) {
+          console.warn('⚠️ Local FCM fallback error:', fallbackError);
+          console.log('📱 All FCM methods failed - OTP will be available in retailer dashboard');
+        }
       }
     } catch (fcmError) {
       console.warn('⚠️ Error sending FCM OTP notification:', fcmError);
+      console.log('📱 FCM error - OTP will be available in retailer dashboard');
       // Don't fail the request if FCM fails
     }
 
