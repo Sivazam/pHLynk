@@ -59,7 +59,76 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           // Small delay before Firestore call
           await new Promise(resolve => setTimeout(resolve, 150));
           
-          // Try to fetch user data from users collection first
+          // For phone-authenticated users (retailers), check retailerUsers collection first
+          if (firebaseUser.phoneNumber) {
+            updateProgress(40, 'Checking retailer account...');
+            
+            const phone = firebaseUser.phoneNumber.replace('+91', '').replace(/\D/g, '');
+            const retailerUid = `retailer_${phone}`;
+            const retailerUserDoc = await getDoc(doc(db, 'retailerUsers', retailerUid));
+            
+            if (retailerUserDoc.exists()) {
+              updateProgress(70, 'Loading retailer profile...');
+              
+              const retailerData = retailerUserDoc.data();
+              
+              // Check if retailer account is active
+              if (!retailerData.isActive) {
+                console.error('Retailer account is inactive:', firebaseUser.uid);
+                updateProgress(90, 'Account inactive...');
+                await new Promise(resolve => setTimeout(resolve, 150));
+                setUser(null);
+                return;
+              }
+              
+              const authUser: AuthUser = {
+                uid: firebaseUser.uid,
+                email: firebaseUser.email || `retailer_${phone}@pharmalynk.local`,
+                displayName: retailerData.name || 'Retailer',
+                photoURL: firebaseUser.photoURL || undefined,
+                tenantId: retailerData.tenantId,
+                roles: ['RETAILER'], // Retailer users always have RETAILER role
+                isRetailer: true,
+                retailerId: retailerData.retailerId,
+                phone: retailerData.phone
+              };
+              
+              // Also store retailerId in localStorage for backward compatibility
+              localStorage.setItem('retailerId', retailerData.retailerId);
+              
+              // 🔄 Initialize FCM for returning retailer users
+              try {
+                updateProgress(78, 'Setting up notifications...');
+                console.log('🔔 Initializing FCM for returning retailer user:', firebaseUser.uid);
+                
+                // Initialize FCM in background without blocking the UI
+                initializeFCM().then(fcmToken => {
+                  if (fcmToken) {
+                    console.log('✅ FCM initialized successfully for returning retailer user');
+                  } else {
+                    console.warn('⚠️ FCM initialization failed for returning retailer user');
+                  }
+                }).catch(error => {
+                  console.error('❌ FCM initialization error for returning retailer user:', error);
+                });
+              } catch (error) {
+                console.error('❌ Failed to initialize FCM for returning retailer user:', error);
+              }
+              
+              updateProgress(85, 'Setting up retailer dashboard...');
+              
+              // Final delay before completing
+              await new Promise(resolve => setTimeout(resolve, 150));
+              
+              updateProgress(95, 'Almost ready...');
+              setUser(authUser);
+              setLoading(false);
+              return;
+            }
+          }
+          
+          // For email-authenticated users (wholesaler admins, line workers, super admins), check users collection
+          updateProgress(50, 'Loading user profile...');
           const userDoc = await getDoc(doc(db, COLLECTIONS.USERS, firebaseUser.uid));
           
           updateProgress(50, 'Validating user permissions...');
@@ -169,82 +238,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             updateProgress(100, 'Complete');
             setUser(authUser);
           } else {
-            // If not found in users collection, try retailerUsers collection
-            updateProgress(40, 'Checking retailer account...');
-            
-            // Check if this is a retailer user by phone number
-            if (firebaseUser.phoneNumber) {
-              const phone = firebaseUser.phoneNumber.replace('+91', '').replace(/\D/g, '');
-              const retailerUid = `retailer_${phone}`;
-              const retailerUserDoc = await getDoc(doc(db, 'retailerUsers', retailerUid));
-              
-              if (retailerUserDoc.exists()) {
-                updateProgress(70, 'Loading retailer profile...');
-                
-                const retailerData = retailerUserDoc.data();
-                
-                // Check if retailer account is active
-                if (!retailerData.isActive) {
-                  console.error('Retailer account is inactive:', firebaseUser.uid);
-                  updateProgress(90, 'Account inactive...');
-                  await new Promise(resolve => setTimeout(resolve, 150));
-                  setUser(null);
-                  return;
-                }
-                
-                const authUser: AuthUser = {
-                  uid: firebaseUser.uid,
-                  email: firebaseUser.email || `retailer_${phone}@pharmalynk.local`,
-                  displayName: retailerData.name || 'Retailer',
-                  photoURL: firebaseUser.photoURL || undefined,
-                  tenantId: retailerData.tenantId,
-                  roles: ['RETAILER'], // Retailer users always have RETAILER role
-                  isRetailer: true,
-                  retailerId: retailerData.retailerId,
-                  phone: retailerData.phone
-                };
-                
-                // Also store retailerId in localStorage for backward compatibility
-                localStorage.setItem('retailerId', retailerData.retailerId);
-                
-                // 🔄 Initialize FCM for returning retailer users
-                try {
-                  updateProgress(78, 'Setting up notifications...');
-                  console.log('🔔 Initializing FCM for returning retailer user:', firebaseUser.uid);
-                  
-                  // Initialize FCM in background without blocking the UI
-                  initializeFCM().then(fcmToken => {
-                    if (fcmToken) {
-                      console.log('✅ FCM initialized successfully for returning retailer user');
-                    } else {
-                      console.warn('⚠️ FCM initialization failed for returning retailer user');
-                    }
-                  }).catch(error => {
-                    console.error('❌ FCM initialization error for returning retailer user:', error);
-                  });
-                } catch (error) {
-                  console.error('❌ Failed to initialize FCM for returning retailer user:', error);
-                }
-                
-                updateProgress(85, 'Setting up retailer dashboard...');
-                
-                // Final delay before completing
-                await new Promise(resolve => setTimeout(resolve, 150));
-                
-                updateProgress(95, 'Almost ready...');
-                setUser(authUser);
-              } else {
-                // User exists in Auth but not in either collection
-                console.error('User exists in Auth but not in users or retailerUsers collection');
-                updateProgress(90, 'Setting up guest access...');
-                setUser(null);
-              }
-            } else {
-              // User exists in Auth but no phone number and not in users collection
-              console.error('User exists in Auth but no phone number and not in users collection');
-              updateProgress(90, 'Setting up guest access...');
-              setUser(null);
-            }
+            // User exists in Auth but not in users collection and not a phone retailer
+            console.error('User exists in Auth but not in users collection');
+            updateProgress(90, 'Setting up guest access...');
+            setUser(null);
           }
         } else {
           console.log('👋 No Firebase user - setting user to null');
