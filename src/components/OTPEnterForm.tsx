@@ -354,7 +354,7 @@ export const OTPEnterForm: React.FC<OTPEnterFormProps> = ({
     } catch (error: any) {
       console.error('❌ Error verifying OTP:', error);
       // Don't automatically close the dialog on error, let the user try again
-      setError(error.message || 'Failed to verify OTP. Please try again.');
+      setError(error instanceof Error ? error.message : 'Failed to verify OTP. Please try again.');
     } finally {
       setIsVerifying(false); // Stop loading
     }
@@ -375,7 +375,7 @@ export const OTPEnterForm: React.FC<OTPEnterFormProps> = ({
         setCooldownTimeLeft(0); // Reset cooldown timer
       } catch (error: any) {
         console.warn('Failed to resend OTP:', error);
-        setError(error.message || 'Failed to resend OTP');
+        setError(error instanceof Error ? error.message : 'Failed to resend OTP');
         // Don't close the dialog on resend failure
       }
     }

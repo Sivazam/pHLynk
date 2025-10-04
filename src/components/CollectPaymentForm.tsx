@@ -110,7 +110,7 @@ const CollectPaymentFormComponent = ({
       }, 2000);
     } catch (error: any) {
       console.error('❌ Error collecting payment:', error);
-      const errorMessage = error.message || 'Failed to collect payment. Please try again.';
+      const errorMessage = error instanceof Error ? error.message : 'Failed to collect payment. Please try again.';
       setError(errorMessage);
       
       // Keep form open for user to retry

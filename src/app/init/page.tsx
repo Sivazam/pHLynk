@@ -65,7 +65,7 @@ export default function InitPage() {
     } catch (error: any) {
       setResult({
         success: false,
-        message: `Failed to create account: ${error.message}`
+        message: `Failed to create account: ${error instanceof Error ? error.message : 'Unknown error'}`
       });
     } finally {
       setLoading(false);

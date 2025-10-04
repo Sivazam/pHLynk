@@ -122,13 +122,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 }).catch(error => {
                   console.error('❌ FCM initialization error for returning retailer user:', {
                     retailerId: retailerData.retailerId,
-                    error: error.message
+                    error: error instanceof Error ? error.message : 'Unknown error'
                   });
                 });
               } catch (error) {
                 console.error('❌ Failed to initialize FCM for returning retailer user:', {
                   retailerId: retailerData.retailerId,
-                  error: error.message
+                  error: error instanceof Error ? error.message : 'Unknown error'
                 });
               }
               

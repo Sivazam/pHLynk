@@ -67,7 +67,7 @@ export default function FCMTestPage() {
       }
       
     } catch (error) {
-      addLog(`❌ Test failed: ${error.message}`);
+      addLog(`❌ Test failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsLoading(false);
     }
