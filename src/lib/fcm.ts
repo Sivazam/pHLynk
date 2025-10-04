@@ -62,7 +62,7 @@ export function isFCMSupported(): boolean {
   const hasServiceWorker = 'serviceWorker' in navigator;
   const hasPushManager = 'PushManager' in window;
   const hasNotification = 'Notification' in window;
-  const hasSenderId = process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID; // From environment variables
+  const hasSenderId = !!process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID; // From environment variables
 
   console.log('🔧 FCM Support Check:', {
     hasServiceWorker,
