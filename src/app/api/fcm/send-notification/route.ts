@@ -13,8 +13,8 @@ interface SendNotificationRequest {
 
 export async function POST(request: NextRequest) {
   try {
-    const body: SendNotificationRequest = await request.json();
-    const { retailerId, title, body, data, icon, tag, clickAction } = body;
+    const requestBody: SendNotificationRequest = await request.json();
+    const { retailerId, title, body, data, icon, tag, clickAction } = requestBody;
 
     if (!retailerId || !title || !body) {
       return NextResponse.json(
@@ -57,13 +57,16 @@ export async function POST(request: NextRequest) {
     console.log('⚠️ Cloud function failed, trying local FCM service...');
     
     try {
+      const requestBody: SendNotificationRequest = await request.json();
+      const { retailerId, data } = requestBody;
+      
       const { sendOTPViaFCM } = await import('@/lib/fcm-service');
       const result = await sendOTPViaFCM(
-        body.retailerId,
-        body.data?.otp || '000000',
-        body.data?.retailerName || 'Retailer',
-        body.data?.paymentId,
-        body.data?.amount ? parseFloat(body.data.amount) : undefined
+        retailerId,
+        data?.otp || '000000',
+        data?.retailerName || 'Retailer',
+        data?.paymentId,
+        data?.amount ? parseFloat(data.amount) : undefined
       );
 
       if (result.success) {

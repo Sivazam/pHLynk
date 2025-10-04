@@ -17,7 +17,11 @@ interface WebPushNotification {
   badge?: string;
   tag?: string;
   requireInteraction?: boolean;
-  actions?: NotificationAction[];
+  actions?: Array<{
+    action: string;
+    title: string;
+    icon?: string;
+  }>;
 }
 
 class WebPushService {
@@ -54,7 +58,7 @@ class WebPushService {
       // Subscribe to push notifications
       const subscription = await registration.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: this.urlBase64ToUint8Array(this.vapidPublicKey)
+        applicationServerKey: this.urlBase64ToUint8Array(this.vapidPublicKey) as any
       });
 
       console.log('✅ Web Push subscription successful:', subscription);
