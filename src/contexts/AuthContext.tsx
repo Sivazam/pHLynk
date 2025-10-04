@@ -182,6 +182,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 updateProgress(70, 'Loading retailer profile...');
                 
                 const retailerData = retailerUserDoc.data();
+                
+                // Check if retailer account is active
+                if (!retailerData.isActive) {
+                  console.error('Retailer account is inactive:', firebaseUser.uid);
+                  updateProgress(90, 'Account inactive...');
+                  await new Promise(resolve => setTimeout(resolve, 150));
+                  setUser(null);
+                  return;
+                }
+                
                 const authUser: AuthUser = {
                   uid: firebaseUser.uid,
                   email: firebaseUser.email || `retailer_${phone}@pharmalynk.local`,
