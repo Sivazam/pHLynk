@@ -102,7 +102,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 console.log('🔔 Initializing FCM for returning retailer user:', firebaseUser.uid);
                 
                 // Initialize FCM in background without blocking the UI
-                initializeFCM().then(fcmToken => {
+                initializeFCM(retailerData.retailerId).then(fcmToken => {
                   if (fcmToken) {
                     console.log('✅ FCM initialized successfully for returning retailer user');
                   } else {

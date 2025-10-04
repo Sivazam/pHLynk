@@ -166,7 +166,7 @@ export async function getFCMToken(): Promise<string | null> {
 /**
  * Initialize FCM and register device token
  */
-export async function initializeFCM(): Promise<string | null> {
+export async function initializeFCM(retailerId?: string): Promise<string | null> {
   try {
     if (!auth.currentUser) {
       console.warn('⚠️ User not authenticated, cannot initialize FCM');
@@ -194,13 +194,16 @@ export async function initializeFCM(): Promise<string | null> {
 
     // Register new token with backend
     try {
+      // Use provided retailerId or fall back to auth.currentUser.uid
+      const userId = retailerId || auth.currentUser.uid;
+      
       const response = await fetch('/api/fcm/register-device', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          retailerId: auth.currentUser.uid,
+          retailerId: userId,
           deviceToken: token,
           userAgent: navigator.userAgent,
           isNewUser: false, // Flag for returning users
