@@ -1,3 +1,5 @@
+import * as admin from 'firebase-admin';
+
 // Fixed getFCMTokenForUser function for retailer users
 async function getFCMTokenForUser(userId: string): Promise<string | null> {
   try {

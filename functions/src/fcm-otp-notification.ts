@@ -1,8 +1,57 @@
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 
-// Initialize Firebase Admin
-admin.initializeApp();
+// Initialize Firebase Admin with environment variables
+// Use the new APP_* variable names to avoid Firebase reserved prefixes
+function getServiceAccountConfig() {
+  // Try complete JSON config first
+  if (process.env.APP_FIREBASE_CONFIG) {
+    try {
+      const config = JSON.parse(process.env.APP_FIREBASE_CONFIG);
+      console.log('✅ Using APP_FIREBASE_CONFIG from environment');
+      return config;
+    } catch (error) {
+      console.warn('⚠️ Failed to parse APP_FIREBASE_CONFIG, falling back to individual variables');
+    }
+  }
+
+  // Fallback to individual variables
+  const serviceAccount = {
+    type: process.env.APP_SERVICE_ACCOUNT_TYPE || 'service_account',
+    project_id: process.env.APP_SERVICE_ACCOUNT_PROJECT_ID,
+    private_key_id: process.env.APP_SERVICE_ACCOUNT_PRIVATE_KEY_ID,
+    private_key: process.env.APP_SERVICE_ACCOUNT_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+    client_email: process.env.APP_SERVICE_ACCOUNT_CLIENT_EMAIL,
+    client_id: process.env.APP_SERVICE_ACCOUNT_CLIENT_ID,
+    auth_uri: process.env.APP_SERVICE_ACCOUNT_AUTH_URI,
+    token_uri: process.env.APP_SERVICE_ACCOUNT_TOKEN_URI,
+    auth_provider_x509_cert_url: process.env.APP_SERVICE_ACCOUNT_AUTH_PROVIDER_X509_CERT_URL,
+    client_x509_cert_url: process.env.APP_SERVICE_ACCOUNT_CLIENT_X509_CERT_URL,
+    universe_domain: process.env.APP_SERVICE_ACCOUNT_UNIVERSE_DOMAIN
+  };
+
+  // Validate required fields
+  if (serviceAccount.private_key && serviceAccount.client_email && serviceAccount.project_id) {
+    console.log('✅ Using individual APP_SERVICE_ACCOUNT_* variables');
+    return serviceAccount;
+  }
+
+  console.error('❌ No valid Firebase service account configuration found');
+  return null;
+}
+
+// Get service account config and initialize
+const serviceAccountConfig = getServiceAccountConfig();
+if (serviceAccountConfig) {
+  admin.initializeApp({
+    credential: admin.credential.cert(serviceAccountConfig)
+  });
+  console.log('✅ Firebase Admin initialized with service account');
+} else {
+  // Fallback to default initialization (uses GOOGLE_APPLICATION_CREDENTIALS)
+  admin.initializeApp();
+  console.log('⚠️ Firebase Admin initialized with default credentials');
+}
 
 // Enhanced FCM token lookup for retailer users
 async function getFCMTokenForRetailerUser(userId: string): Promise<string | null> {

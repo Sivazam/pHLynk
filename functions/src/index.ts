@@ -1,8 +1,57 @@
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 
-// Initialize Firebase Admin
-admin.initializeApp();
+// Initialize Firebase Admin with environment variables
+// Use the new APP_* variable names to avoid Firebase reserved prefixes
+function getServiceAccountConfig() {
+  // Try complete JSON config first
+  if (process.env.APP_FIREBASE_CONFIG) {
+    try {
+      const config = JSON.parse(process.env.APP_FIREBASE_CONFIG);
+      console.log('✅ Using APP_FIREBASE_CONFIG from environment');
+      return config;
+    } catch (error) {
+      console.warn('⚠️ Failed to parse APP_FIREBASE_CONFIG, falling back to individual variables');
+    }
+  }
+
+  // Fallback to individual variables
+  const serviceAccount = {
+    type: process.env.APP_SERVICE_ACCOUNT_TYPE || 'service_account',
+    project_id: process.env.APP_SERVICE_ACCOUNT_PROJECT_ID,
+    private_key_id: process.env.APP_SERVICE_ACCOUNT_PRIVATE_KEY_ID,
+    private_key: process.env.APP_SERVICE_ACCOUNT_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+    client_email: process.env.APP_SERVICE_ACCOUNT_CLIENT_EMAIL,
+    client_id: process.env.APP_SERVICE_ACCOUNT_CLIENT_ID,
+    auth_uri: process.env.APP_SERVICE_ACCOUNT_AUTH_URI,
+    token_uri: process.env.APP_SERVICE_ACCOUNT_TOKEN_URI,
+    auth_provider_x509_cert_url: process.env.APP_SERVICE_ACCOUNT_AUTH_PROVIDER_X509_CERT_URL,
+    client_x509_cert_url: process.env.APP_SERVICE_ACCOUNT_CLIENT_X509_CERT_URL,
+    universe_domain: process.env.APP_SERVICE_ACCOUNT_UNIVERSE_DOMAIN
+  };
+
+  // Validate required fields
+  if (serviceAccount.private_key && serviceAccount.client_email && serviceAccount.project_id) {
+    console.log('✅ Using individual APP_SERVICE_ACCOUNT_* variables');
+    return serviceAccount;
+  }
+
+  console.error('❌ No valid Firebase service account configuration found');
+  return null;
+}
+
+// Get service account config and initialize
+const serviceAccountConfig = getServiceAccountConfig();
+if (serviceAccountConfig) {
+  admin.initializeApp({
+    credential: admin.credential.cert(serviceAccountConfig)
+  });
+  console.log('✅ Firebase Admin initialized with service account');
+} else {
+  // Fallback to default initialization (uses GOOGLE_APPLICATION_CREDENTIALS)
+  admin.initializeApp();
+  console.log('⚠️ Firebase Admin initialized with default credentials');
+}
 
 // Input validation helper
 function validateSMSInput(data: any) {
@@ -91,22 +140,22 @@ function validatePhoneNumber(phone: string): string {
 
 // Fast2SMS configuration validation
 function getFast2SMSConfig() {
-  const fast2smsConfig = functions.config().fast2sms;
-  const fast2smsApiKey = fast2smsConfig?.api_key;
-  const senderId = fast2smsConfig?.sender_id || 'SNSYST';
-  const entityId = fast2smsConfig?.entity_id;
+  // Use environment variables instead of deprecated functions.config()
+  const fast2smsApiKey = process.env.FAST2SMS_API_KEY;
+  const senderId = process.env.FAST2SMS_SENDER_ID || 'SNSYST';
+  const entityId = process.env.FAST2SMS_ENTITY_ID;
   
   if (!fast2smsApiKey) {
     throw new functions.https.HttpsError(
       'failed-precondition',
-      'Fast2SMS API key not configured in Firebase Functions config'
+      'Fast2SMS API key not configured in environment variables'
     );
   }
   
   if (!entityId) {
     throw new functions.https.HttpsError(
       'failed-precondition',
-      'Fast2SMS entity ID not configured in Firebase Functions config'
+      'Fast2SMS entity ID not configured in environment variables'
     );
   }
   
@@ -1135,7 +1184,7 @@ export const sendFCMNotification = functions.https.onCall(async (request: any) =
       },
       data: notification.data || {},
       android: {
-        priority: 'high',
+        priority: 'high' as const,
         notification: {
           sound: 'default',
           clickAction: notification.clickAction

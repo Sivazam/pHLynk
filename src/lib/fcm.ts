@@ -6,12 +6,12 @@ import { auth } from '@/lib/firebase';
 
 // Firebase configuration - should match your existing config
 const firebaseConfig = {
-  apiKey: "AIzaSyAiuROMuOXyBTQ2tAn_7lCk8qBsKLcKBds",
-  authDomain: "pharmalynkk.firebaseapp.com",
-  projectId: "pharmalynkk",
-  storageBucket: "pharmalynkk.firebasestorage.app",
-  messagingSenderId: "877118992574",
-  appId: "1:877118992574:web:ca55290c721d1c4b18eeef"
+  apiKey: "AIzaSyCdOIhLQh9iYBXbE7dre2J9zsmCBuVdwwU",
+  authDomain: "plkapp-8c052.firebaseapp.com",
+  projectId: "plkapp-8c052",
+  storageBucket: "plkapp-8c052.firebasestorage.app",
+  messagingSenderId: "333526318951",
+  appId: "1:333526318951:web:a8f30f497e7060e264b9c2"
 };
 
 // Initialize Firebase app for messaging
@@ -62,7 +62,7 @@ export function isFCMSupported(): boolean {
   const hasServiceWorker = 'serviceWorker' in navigator;
   const hasPushManager = 'PushManager' in window;
   const hasNotification = 'Notification' in window;
-  const hasSenderId = "877118992574"; // Hardcoded sender ID
+  const hasSenderId = "333526318951"; // Hardcoded sender ID
 
   console.log('🔧 FCM Support Check:', {
     hasServiceWorker,

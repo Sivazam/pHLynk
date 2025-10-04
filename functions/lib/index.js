@@ -33,11 +33,59 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.generateOTPHTTP = exports.generateOTP = exports.sendTestFCMNotification = exports.sendPaymentCompletionNotification = exports.sendOTPNotification = exports.processSMSResponse = exports.sendWholesalerPaymentSMS = exports.sendRetailerPaymentSMS = void 0;
+exports.sendFCMNotification = exports.sendTestFCMNotification = exports.sendPaymentCompletionNotification = exports.sendOTPNotification = exports.processSMSResponse = exports.sendWholesalerPaymentSMS = exports.sendRetailerPaymentSMS = void 0;
 const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
-// Initialize Firebase Admin
-admin.initializeApp();
+// Initialize Firebase Admin with environment variables
+// Use the new APP_* variable names to avoid Firebase reserved prefixes
+function getServiceAccountConfig() {
+    var _a;
+    // Try complete JSON config first
+    if (process.env.APP_FIREBASE_CONFIG) {
+        try {
+            const config = JSON.parse(process.env.APP_FIREBASE_CONFIG);
+            console.log('✅ Using APP_FIREBASE_CONFIG from environment');
+            return config;
+        }
+        catch (error) {
+            console.warn('⚠️ Failed to parse APP_FIREBASE_CONFIG, falling back to individual variables');
+        }
+    }
+    // Fallback to individual variables
+    const serviceAccount = {
+        type: process.env.APP_SERVICE_ACCOUNT_TYPE || 'service_account',
+        project_id: process.env.APP_SERVICE_ACCOUNT_PROJECT_ID,
+        private_key_id: process.env.APP_SERVICE_ACCOUNT_PRIVATE_KEY_ID,
+        private_key: (_a = process.env.APP_SERVICE_ACCOUNT_PRIVATE_KEY) === null || _a === void 0 ? void 0 : _a.replace(/\\n/g, '\n'),
+        client_email: process.env.APP_SERVICE_ACCOUNT_CLIENT_EMAIL,
+        client_id: process.env.APP_SERVICE_ACCOUNT_CLIENT_ID,
+        auth_uri: process.env.APP_SERVICE_ACCOUNT_AUTH_URI,
+        token_uri: process.env.APP_SERVICE_ACCOUNT_TOKEN_URI,
+        auth_provider_x509_cert_url: process.env.APP_SERVICE_ACCOUNT_AUTH_PROVIDER_X509_CERT_URL,
+        client_x509_cert_url: process.env.APP_SERVICE_ACCOUNT_CLIENT_X509_CERT_URL,
+        universe_domain: process.env.APP_SERVICE_ACCOUNT_UNIVERSE_DOMAIN
+    };
+    // Validate required fields
+    if (serviceAccount.private_key && serviceAccount.client_email && serviceAccount.project_id) {
+        console.log('✅ Using individual APP_SERVICE_ACCOUNT_* variables');
+        return serviceAccount;
+    }
+    console.error('❌ No valid Firebase service account configuration found');
+    return null;
+}
+// Get service account config and initialize
+const serviceAccountConfig = getServiceAccountConfig();
+if (serviceAccountConfig) {
+    admin.initializeApp({
+        credential: admin.credential.cert(serviceAccountConfig)
+    });
+    console.log('✅ Firebase Admin initialized with service account');
+}
+else {
+    // Fallback to default initialization (uses GOOGLE_APPLICATION_CREDENTIALS)
+    admin.initializeApp();
+    console.log('⚠️ Firebase Admin initialized with default credentials');
+}
 // Input validation helper
 function validateSMSInput(data) {
     console.log('🔧 CLOUD FUNCTION - Validating input data:', JSON.stringify(data, null, 2));
@@ -108,15 +156,15 @@ function validatePhoneNumber(phone) {
 }
 // Fast2SMS configuration validation
 function getFast2SMSConfig() {
-    const fast2smsConfig = functions.config().fast2sms;
-    const fast2smsApiKey = fast2smsConfig === null || fast2smsConfig === void 0 ? void 0 : fast2smsConfig.api_key;
-    const senderId = (fast2smsConfig === null || fast2smsConfig === void 0 ? void 0 : fast2smsConfig.sender_id) || 'SNSYST';
-    const entityId = fast2smsConfig === null || fast2smsConfig === void 0 ? void 0 : fast2smsConfig.entity_id;
+    // Use environment variables instead of deprecated functions.config()
+    const fast2smsApiKey = process.env.FAST2SMS_API_KEY;
+    const senderId = process.env.FAST2SMS_SENDER_ID || 'SNSYST';
+    const entityId = process.env.FAST2SMS_ENTITY_ID;
     if (!fast2smsApiKey) {
-        throw new functions.https.HttpsError('failed-precondition', 'Fast2SMS API key not configured in Firebase Functions config');
+        throw new functions.https.HttpsError('failed-precondition', 'Fast2SMS API key not configured in environment variables');
     }
     if (!entityId) {
-        throw new functions.https.HttpsError('failed-precondition', 'Fast2SMS entity ID not configured in Firebase Functions config');
+        throw new functions.https.HttpsError('failed-precondition', 'Fast2SMS entity ID not configured in environment variables');
     }
     return { fast2smsApiKey, senderId, entityId };
 }
@@ -873,23 +921,26 @@ exports.sendTestFCMNotification = functions.https.onCall(async (request) => {
         throw new functions.https.HttpsError('internal', 'Failed to send test notification', error instanceof Error ? error.message : 'Unknown error');
     }
 });
-// Generate OTP function
-exports.generateOTP = functions.https.onCall(async (request) => {
+// FCM Notification Function
+exports.sendFCMNotification = functions.https.onCall(async (request) => {
     try {
-        console.log('🚀 CLOUD FUNCTION TRIGGERED - generateOTP');
+        console.log('🚀 CLOUD FUNCTION TRIGGERED - sendFCMNotification');
         console.log('📥 Full request object:', JSON.stringify(request, null, 2));
         let data, context;
         if (request.data && typeof request.data === 'object') {
             // Callable function format
+            console.log('📋 Using callable function format');
             data = request.data;
             context = request;
         }
         else if (request && typeof request === 'object' && !request.auth) {
             // Direct HTTP format
+            console.log('🌐 Using direct HTTP format');
             data = request;
             context = { auth: null, rawRequest: { ip: 'unknown' } };
         }
         else {
+            console.error('❌ Unknown request format:', typeof request);
             throw new functions.https.HttpsError('invalid-argument', 'Invalid request format');
         }
         console.log('📤 Extracted data:', JSON.stringify(data, null, 2));
@@ -897,179 +948,136 @@ exports.generateOTP = functions.https.onCall(async (request) => {
         if (!data.retailerId || typeof data.retailerId !== 'string') {
             throw new functions.https.HttpsError('invalid-argument', 'Invalid or missing retailerId');
         }
-        if (!data.paymentId || typeof data.paymentId !== 'string') {
-            throw new functions.https.HttpsError('invalid-argument', 'Invalid or missing paymentId');
+        if (!data.notification || typeof data.notification !== 'object') {
+            throw new functions.https.HttpsError('invalid-argument', 'Invalid or missing notification object');
         }
-        if (!data.amount || typeof data.amount !== 'number' || data.amount <= 0) {
-            throw new functions.https.HttpsError('invalid-argument', 'Invalid amount');
-        }
-        if (!data.lineWorkerName || typeof data.lineWorkerName !== 'string') {
-            throw new functions.https.HttpsError('invalid-argument', 'Invalid or missing lineWorkerName');
-        }
-        console.log('🔐 OTP Generation Request:', {
-            retailerId: data.retailerId,
-            paymentId: data.paymentId,
-            amount: data.amount,
-            lineWorkerName: data.lineWorkerName,
+        const { retailerId, notification } = data;
+        console.log('📱 FCM Notification Request:', {
+            retailerId,
+            title: notification.title,
+            body: notification.body,
             caller: context.auth ? context.auth.uid : 'NEXTJS_API'
         });
-        // Get retailer user details
-        const retailerUsersQuery = await admin.firestore()
-            .collection('retailerUsers')
-            .where('retailerId', '==', data.retailerId)
-            .limit(1)
+        // Get retailer document
+        const retailerDoc = await admin.firestore()
+            .collection('retailers')
+            .doc(retailerId)
             .get();
-        if (retailerUsersQuery.empty) {
-            throw new functions.https.HttpsError('not-found', `Retailer user not found for retailerId: ${data.retailerId}`);
+        if (!retailerDoc.exists) {
+            throw new functions.https.HttpsError('not-found', `Retailer not found: ${retailerId}`);
         }
-        const retailerUser = retailerUsersQuery.docs[0].data();
-        // Generate a 6-digit OTP
-        const otp = Math.floor(100000 + Math.random() * 900000).toString();
-        const otpId = `otp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-        const expiresAt = new Date(Date.now() + 7 * 60 * 1000); // 7 minutes
-        console.log('🔐 Generated OTP:', {
-            otpId,
-            otp: otp.substring(0, 2) + '****', // Log partially for security
-            expiresAt: expiresAt.toISOString(),
-            retailerId: data.retailerId,
-            paymentId: data.paymentId
-        });
-        // Store OTP in retailer document for persistence
-        try {
-            const retailerRef = admin.firestore().collection('retailers').doc(data.retailerId);
-            const otpDocumentData = {
-                paymentId: data.paymentId,
-                code: otp,
-                amount: data.amount,
-                lineWorkerName: data.lineWorkerName,
-                expiresAt: admin.firestore.Timestamp.fromDate(expiresAt),
-                createdAt: admin.firestore.Timestamp.now(),
-                isUsed: false,
-                otpId: otpId
+        const retailerData = retailerDoc.data();
+        const fcmDevices = (retailerData === null || retailerData === void 0 ? void 0 : retailerData.fcmDevices) || [];
+        if (fcmDevices.length === 0) {
+            console.log('⚠️ No FCM devices found for retailer:', retailerId);
+            return {
+                success: false,
+                message: 'No devices registered for this retailer',
+                deviceCount: 0
             };
-            await retailerRef.update({
-                activeOTPs: admin.firestore.FieldValue.arrayUnion(otpDocumentData)
-            });
-            console.log('✅ OTP stored in retailer document');
         }
-        catch (firestoreError) {
-            console.error('❌ Error storing OTP in retailer document:', firestoreError);
-            // Don't fail the request if storage fails
+        console.log(`📱 Found ${fcmDevices.length} FCM devices for retailer`);
+        // Filter active devices (last active within 30 days)
+        const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+        const activeDevices = fcmDevices.filter((device) => {
+            var _a, _b;
+            const lastActive = ((_b = (_a = device.lastActive) === null || _a === void 0 ? void 0 : _a.toDate) === null || _b === void 0 ? void 0 : _b.call(_a)) || new Date(device.lastActive);
+            return lastActive > thirtyDaysAgo;
+        });
+        console.log(`📱 ${activeDevices.length} active devices after filtering`);
+        if (activeDevices.length === 0) {
+            return {
+                success: false,
+                message: 'No active devices found for this retailer',
+                deviceCount: 0
+            };
         }
+        // Prepare notification message
+        const message = {
+            notification: {
+                title: notification.title,
+                body: notification.body,
+                icon: notification.icon || '/icon-192x192.png',
+                badge: '/badge-72x72.png',
+                tag: notification.tag,
+                clickAction: notification.clickAction
+            },
+            data: notification.data || {},
+            android: {
+                priority: 'high',
+                notification: {
+                    sound: 'default',
+                    clickAction: notification.clickAction
+                }
+            },
+            apns: {
+                payload: {
+                    aps: {
+                        sound: 'default',
+                        badge: 1
+                    }
+                }
+            }
+        };
+        let successCount = 0;
+        let failureCount = 0;
+        const results = [];
+        // Send to each device
+        for (const device of activeDevices) {
+            try {
+                console.log(`📤 Sending to device: ${device.token.substring(0, 20)}...`);
+                const deviceMessage = Object.assign(Object.assign({}, message), { token: device.token });
+                const response = await admin.messaging().send(deviceMessage);
+                console.log(`✅ Message sent successfully: ${response}`);
+                successCount++;
+                results.push({
+                    token: device.token.substring(0, 20) + '...',
+                    success: true,
+                    messageId: response
+                });
+            }
+            catch (error) {
+                console.error(`❌ Failed to send to device ${device.token.substring(0, 20)}...:`, error);
+                failureCount++;
+                results.push({
+                    token: device.token.substring(0, 20) + '...',
+                    success: false,
+                    error: error.message
+                });
+                // If device token is invalid, remove it
+                if (error.code === 'messaging/registration-token-not-registered' ||
+                    error.code === 'messaging/invalid-registration-token') {
+                    try {
+                        await admin.firestore()
+                            .collection('retailers')
+                            .doc(retailerId)
+                            .update({
+                            fcmDevices: admin.firestore.FieldValue.arrayRemove(device)
+                        });
+                        console.log('🗑️ Removed invalid device token:', device.token.substring(0, 20) + '...');
+                    }
+                    catch (removeError) {
+                        console.error('Failed to remove invalid device:', removeError);
+                    }
+                }
+            }
+        }
+        console.log(`📊 FCM sending complete: ${successCount} success, ${failureCount} failures`);
         return {
-            success: true,
-            otpId: otpId,
-            code: otp,
-            expiresAt: expiresAt.toISOString(),
-            retailerName: retailerUser.name,
-            retailerPhone: retailerUser.phone
+            success: successCount > 0,
+            message: `Sent to ${successCount} device(s), ${failureCount} failed`,
+            sentCount: successCount,
+            failedCount: failureCount,
+            deviceCount: activeDevices.length,
+            results
         };
     }
     catch (error) {
-        console.error('❌ CLOUD FUNCTION - Error generating OTP:', error);
+        console.error('❌ CLOUD FUNCTION - Error sending FCM notification:', error);
         if (error instanceof functions.https.HttpsError) {
             throw error;
         }
-        throw new functions.https.HttpsError('internal', 'Failed to generate OTP', error instanceof Error ? error.message : 'Unknown error');
-    }
-});
-// HTTP version of generateOTP for direct API calls
-exports.generateOTPHTTP = functions.https.onRequest(async (req, res) => {
-    try {
-        console.log('🚀 HTTP CLOUD FUNCTION TRIGGERED - generateOTPHTTP');
-        console.log('📥 Request method:', req.method);
-        console.log('📥 Request body:', JSON.stringify(req.body, null, 2));
-        if (req.method !== 'POST') {
-            res.status(405).json({ error: 'Method not allowed' });
-            return;
-        }
-        const data = req.body;
-        // Input validation
-        if (!data.retailerId || typeof data.retailerId !== 'string') {
-            res.status(400).json({ error: 'Invalid or missing retailerId' });
-            return;
-        }
-        if (!data.paymentId || typeof data.paymentId !== 'string') {
-            res.status(400).json({ error: 'Invalid or missing paymentId' });
-            return;
-        }
-        if (!data.amount || typeof data.amount !== 'number' || data.amount <= 0) {
-            res.status(400).json({ error: 'Invalid amount' });
-            return;
-        }
-        if (!data.lineWorkerName || typeof data.lineWorkerName !== 'string') {
-            res.status(400).json({ error: 'Invalid or missing lineWorkerName' });
-            return;
-        }
-        console.log('🔐 HTTP OTP Generation Request:', {
-            retailerId: data.retailerId,
-            paymentId: data.paymentId,
-            amount: data.amount,
-            lineWorkerName: data.lineWorkerName
-        });
-        // Get retailer user details
-        const retailerUsersQuery = await admin.firestore()
-            .collection('retailerUsers')
-            .where('retailerId', '==', data.retailerId)
-            .limit(1)
-            .get();
-        if (retailerUsersQuery.empty) {
-            res.status(404).json({ error: `Retailer user not found for retailerId: ${data.retailerId}` });
-            return;
-        }
-        const retailerUser = retailerUsersQuery.docs[0].data();
-        // Generate a 6-digit OTP
-        const otp = Math.floor(100000 + Math.random() * 900000).toString();
-        const otpId = `otp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-        const expiresAt = new Date(Date.now() + 7 * 60 * 1000); // 7 minutes
-        console.log('🔐 Generated OTP via HTTP:', {
-            otpId,
-            otp: otp.substring(0, 2) + '****', // Log partially for security
-            expiresAt: expiresAt.toISOString(),
-            retailerId: data.retailerId,
-            paymentId: data.paymentId
-        });
-        // Store OTP in retailer document for persistence
-        try {
-            const retailerRef = admin.firestore().collection('retailers').doc(data.retailerId);
-            const otpDocumentData = {
-                paymentId: data.paymentId,
-                code: otp,
-                amount: data.amount,
-                lineWorkerName: data.lineWorkerName,
-                expiresAt: admin.firestore.Timestamp.fromDate(expiresAt),
-                createdAt: admin.firestore.Timestamp.now(),
-                isUsed: false,
-                otpId: otpId
-            };
-            await retailerRef.update({
-                activeOTPs: admin.firestore.FieldValue.arrayUnion(otpDocumentData)
-            });
-            console.log('✅ HTTP OTP stored in retailer document');
-        }
-        catch (firestoreError) {
-            console.error('❌ Error storing HTTP OTP in retailer document:', firestoreError);
-            // Don't fail the request if storage fails
-        }
-        const response = {
-            success: true,
-            otpId: otpId,
-            code: otp,
-            expiresAt: expiresAt.toISOString(),
-            retailerName: retailerUser.name,
-            retailerPhone: retailerUser.phone
-        };
-        console.log('✅ HTTP OTP generation successful');
-        res.status(200).json(response);
-        return;
-    }
-    catch (error) {
-        console.error('❌ HTTP CLOUD FUNCTION - Error generating OTP:', error);
-        res.status(500).json({
-            error: 'Failed to generate OTP',
-            details: error instanceof Error ? error.message : 'Unknown error'
-        });
-        return;
+        throw new functions.https.HttpsError('internal', 'Failed to send FCM notification', error instanceof Error ? error.message : 'Unknown error');
     }
 });
 //# sourceMappingURL=index.js.map

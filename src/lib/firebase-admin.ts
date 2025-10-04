@@ -50,15 +50,15 @@ function getServiceAccountConfig() {
   // This simulates functions.config() for local development
   const firebaseServiceAccount = {
     type: "service_account",
-    project_id: "pharmalynkk",
-    private_key_id: "65010a437c32609cd3820291cac5518e3a737f4d",
-    private_key: "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDcmKzdis3NoztQ\nD+i7mkj6b+QfKXsNIdk443078h4J3uC2zxS6ALK6yqlcCZ6nhhdI08jR/ICZJTC1\nCqEufs/Z8i9k6R6sIHy0BmuMAB0eaxA56FdnGsxhYe4Ygql6Iia3whM5UEX3RBUE\nPVLX7b5GSb5d4+rYsU07g/siYmMif9EyMaLbtq2YIrN9ouTzginOb8/FH+Y5IHUG\nBdxnaIHV+GtlqG0B0KRrRgy5PuhzbSriwjB93JvfvNX167VVD3ofXCAL7t9cIOIM\nTZbKbO7A6DdFctq3y7w9lN1p7HW/9Xrz8F05RcYYlxoQq4v/IqBUBesQZZQqqaYl\n2oxlXwULAgMBAAECggEAGb2kXkL2JOAT6bxm1zf3pWbXuF3UwqwydsBE5XEpLtRX\nuxKK7pwU6asAUYG7MP0lS8A6whYJbiq4IPKulYhX+gHtTy8h/x/YrVZvx5RefCWD\nbTO+udnsrhMJVMmFESqvAz5IPqXZTt3I6LJnL6nJoYC1ZVX/xMKw/8LffnGl875o\nM0Whr+nf+veMgRRmR+YtSI8hveHMGSRawAd0xk8tWPPMRaSiZFl1f/nznhhO8xg7\nK7Wr5ttAY0rFKda7Qp06qOEJjnmtods0k9t5OZCcGW73OxmbYNRWx3HPL+LL4Etr\n6+CVZdgsprKj3BrFWguvIf4jn9QUsFJ3kBK/C8x2AQKBgQDdp7X/WpDHDa4ioQ0p\n1W/KrnmN/mUm8QtgH9oxuT5e1F4kvFNBoecMUXm3OrL6L1IIxFhW/c1a7XZVEDBi\nFgOfvHePSaW0Qpct0RZ9OQWh6Ne9GqNaDc9tUj+GMHDrspiEas4P0InTCW+lJ821\nGuV+V8rA3KqxpQbeZd87t6zMiwKBgQD+xvfS5iXWT3btRzsIeyQp1EVFmmxNlsHo\nw+gnGzUx+gsde5MTdl5XFmbqhtQon3/0CS8aAF3stAnrZZFgdSYlCJXiCC+5JERI\nfkEVhCFela4JTqVrM97Rb+wSaJ3wHdtQw9sXHpavf5EngtsoQT6LPmdMdcEG7hu+\nOYhpTGM5gQKBgD1QlF7T3bLCjQYVSP/mg+ssQoHN+otAKKZpiUEx/hfbZUOCOQGx\n2KkmrKXL/hCJIIc+UTWXNcROZep39PpdHpmEWApyE/1+YjWRXkg7itxT/cHY6ZES\nuuuB0gK7ybDZkaknpmLnjAit1o14KkZL72n4vSSGpk1H2lORGKR7VbirAoGBAI50\nafU+QkHGRNT/Uv62+813pxP3+D6Z4OppP9E94UyEZtqhUec79Bv1pq3TnaTpKf4l\ndHSxZ9MGB9XbAKJSXnWuiz/LHAQFRzjRf0qsiov8XUdO9icu5ZNtZS4V2Nl9mDdc\ni5AtxktypJLXE/s6H+JzjgaugLODR3fha2iVEZYBAoGAfJlVSV22o/CK9LhvoQea\npKxX0KMiRulTogtn0+5aNUYWPFQCXqfEJSWZPyynEcCY6/rRS4o/BpVn6IxNN4Gi\n3yHd2e5nJT9h9b2Ko1NrBNy/X3y6LlvcPJULwO4a7MlIYhi+pOlzjacaSXVFxbY+\nsPn0Si2BcqB4j9n/IOlfM1Q=\n-----END PRIVATE KEY-----\n",
-    client_email: "pharmalynkk@appspot.gserviceaccount.com",
-    client_id: "110188124710391853479",
+    project_id: "plkapp-8c052",
+    private_key_id: "YOUR_PRIVATE_KEY_ID",
+    private_key: "-----BEGIN PRIVATE KEY-----\nYOUR_PRIVATE_KEY_HERE\n-----END PRIVATE KEY-----\n",
+    client_email: "firebase-adminsdk-xxxxx@plkapp-8c052.iam.gserviceaccount.com",
+    client_id: "YOUR_CLIENT_ID",
     auth_uri: "https://accounts.google.com/o/oauth2/auth",
     token_uri: "https://oauth2.googleapis.com/token",
     auth_provider_x509_cert_url: "https://www.googleapis.com/oauth2/v1/certs",
-    client_x509_cert_url: "https://www.googleapis.com/robot/v1/metadata/x509/pharmalynkk%40appspot.gserviceaccount.com",
+    client_x509_cert_url: "https://www.googleapis.com/robot/v1/metadata/x509/firebase-adminsdk-xxxxx%40plkapp-8c052.iam.gserviceaccount.com",
     universe_domain: "googleapis.com"
   };
 
