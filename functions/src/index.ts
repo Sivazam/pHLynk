@@ -155,9 +155,9 @@ export const sendRetailerPaymentSMS = functions.https.onCall(async (request: any
       ip: context.rawRequest?.ip
     });
 
-    // Get retailer details from Retailer collection
+    // Get retailer details from retailers collection
     const retailerDoc = await admin.firestore()
-      .collection('Retailer')
+      .collection('retailers')
       .doc(data.retailerId)
       .get();
 
@@ -638,10 +638,65 @@ export const processSMSResponse = functions.https.onCall(async (data: any, conte
 
 // ===== FCM NOTIFICATION FUNCTIONS =====
 
-// Helper function to get user's FCM token
-async function getFCMTokenForUser(userId: string): Promise<string | null> {
+// Helper function to get user's FCM devices from their respective collection
+async function getFCMDevicesForUser(userId: string, userType: 'retailer' | 'wholesaler' | 'line_worker'): Promise<string[]> {
   try {
-    const userDoc = await admin.firestore().collection('users').doc(userId).get();
+    let collectionName: string;
+    
+    switch (userType) {
+      case 'retailer':
+        collectionName = 'retailers';
+        break;
+      case 'wholesaler':
+        collectionName = 'tenants';
+        break;
+      case 'line_worker':
+        collectionName = 'users';
+        break;
+      default:
+        throw new Error(`Unknown user type: ${userType}`);
+    }
+    
+    const userDoc = await admin.firestore().collection(collectionName).doc(userId).get();
+    
+    if (userDoc.exists) {
+      const userData = userDoc.data();
+      const fcmDevices = userData?.fcmDevices || [];
+      return fcmDevices.map((device: any) => device.token).filter((token: string) => token);
+    }
+    
+    return [];
+  } catch (error) {
+    console.error('❌ Error getting FCM devices for user:', userId, error);
+    return [];
+  }
+}
+
+// Helper function to get FCM token for retailer (backward compatibility - returns first available token)
+async function getFCMTokenForRetailer(retailerId: string): Promise<string | null> {
+  try {
+    // Try to get from retailers collection first (new architecture)
+    const retailerDoc = await admin.firestore().collection('retailers').doc(retailerId).get();
+    
+    if (retailerDoc.exists) {
+      const retailerData = retailerDoc.data();
+      const fcmDevices = retailerData?.fcmDevices || [];
+      
+      if (fcmDevices.length > 0) {
+        // Return the first active device token
+        const activeDevices = fcmDevices.filter((device: any) => {
+          const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+          return new Date(device.lastActive) > thirtyDaysAgo;
+        });
+        
+        if (activeDevices.length > 0) {
+          return activeDevices[0].token;
+        }
+      }
+    }
+    
+    // Fallback: Try old method (users collection with fcmToken field)
+    const userDoc = await admin.firestore().collection('users').doc(retailerId).get();
     
     if (userDoc.exists) {
       const userData = userDoc.data();
@@ -650,7 +705,7 @@ async function getFCMTokenForUser(userId: string): Promise<string | null> {
     
     return null;
   } catch (error) {
-    console.error('❌ Error getting FCM token for user:', userId, error);
+    console.error('❌ Error getting FCM token for retailer:', retailerId, error);
     return null;
   }
 }
@@ -788,28 +843,9 @@ export const sendOTPNotificationHTTP = functions.https.onRequest(async (req, res
       return;
     }
 
-    // Get FCM token for retailer - try multiple approaches
-    let fcmToken = null;
-    let retailerUserId = null;
-    
-    // Approach 1: Try document ID as user ID
-    retailerUserId = retailerDoc.id;
-    console.log('🔧 Trying document ID as user ID:', retailerUserId);
-    fcmToken = await getFCMTokenForUser(retailerUserId);
-    
-    // Approach 2: Try phone number as user ID if approach 1 fails
-    if (!fcmToken && retailerUser.phone) {
-      retailerUserId = retailerUser.phone.replace(/\D/g, ''); // Clean phone number
-      console.log('🔧 Trying phone number as user ID:', retailerUserId);
-      fcmToken = await getFCMTokenForUser(retailerUserId);
-    }
-    
-    // Approach 3: Try looking up user by retailer reference
-    if (!fcmToken && retailerUser.userId) {
-      retailerUserId = retailerUser.userId;
-      console.log('🔧 Trying retailer.userId as user ID:', retailerUserId);
-      fcmToken = await getFCMTokenForUser(retailerUserId);
-    }
+    // Get FCM token for retailer - use new architecture
+    console.log('🔧 Using new FCM architecture - looking for devices in retailers collection');
+    const fcmToken = await getFCMTokenForRetailer(data.retailerId);
     
     if (!fcmToken) {
       console.warn('⚠️ FCM token not found for retailer after all approaches:', {
@@ -833,9 +869,8 @@ export const sendOTPNotificationHTTP = functions.https.onRequest(async (req, res
 
     console.log('✅ Found FCM token for retailer using:', {
       retailerId: data.retailerId,
-      userId: retailerUserId,
-      approach: retailerUserId === retailerDoc.id ? 'documentId' : 
-               retailerUserId === retailerUser.phone?.replace(/\D/g, '') ? 'phone' : 'userId'
+      userId: data.retailerId,
+      approach: 'new-architecture-retailers-collection'
     });
 
     // Create FCM message
@@ -883,7 +918,7 @@ export const sendOTPNotificationHTTP = functions.https.onRequest(async (req, res
       type: 'OTP_NOTIFICATION',
       retailerId: data.retailerId,
       paymentId: data.paymentId,
-      userId: retailerUserId,
+      userId: data.retailerId,
       token: fcmToken.substring(0, 8) + '...',
       status: 'SENT',
       messageId: response,
@@ -950,9 +985,9 @@ export const sendPaymentCompletionNotification = functions.https.onCall(async (r
       caller: context.auth ? context.auth.uid : 'NEXTJS_API'
     });
 
-    // Get retailer details from Retailer collection
+    // Get retailer details from retailers collection
     const retailerDoc = await admin.firestore()
-      .collection('Retailer')
+      .collection('retailers')
       .doc(data.retailerId)
       .get();
 
@@ -973,11 +1008,12 @@ export const sendPaymentCompletionNotification = functions.https.onCall(async (r
       );
     }
     
-    // Get FCM token for retailer
-    const fcmToken = await getFCMTokenForUser(retailerUserId);
+    // Get FCM token for retailer - use new architecture
+    console.log('🔧 Using new FCM architecture - looking for devices in retailers collection');
+    const fcmToken = await getFCMTokenForRetailer(data.retailerId);
     
     if (!fcmToken) {
-      console.warn('⚠️ FCM token not found for retailer:', retailerUserId);
+      console.warn('⚠️ FCM token not found for retailer:', data.retailerId);
       return {
         success: false,
         error: 'FCM token not found',
@@ -1026,7 +1062,7 @@ export const sendPaymentCompletionNotification = functions.https.onCall(async (r
       type: 'PAYMENT_COMPLETION_NOTIFICATION',
       retailerId: data.retailerId,
       paymentId: data.paymentId,
-      userId: retailerUserId,
+      userId: data.retailerId,
       token: fcmToken.substring(0, 8) + '...',
       status: 'SENT',
       messageId: response,
@@ -1090,11 +1126,14 @@ export const sendTestFCMNotificationHTTP = functions.https.onRequest(async (req,
     // But we need either a token or userId to send to
     const fcmToken = data.token || null;
     const userId = data.userId || null;
+    const userType = data.userType || 'retailer'; // Default to retailer for backward compatibility
     
     let targetToken = fcmToken;
     
     if (!targetToken && userId) {
-      targetToken = await getFCMTokenForUser(userId);
+      console.log(`🔧 Getting FCM devices for ${userType}: ${userId}`);
+      const devices = await getFCMDevicesForUser(userId, userType as 'retailer' | 'wholesaler' | 'line_worker');
+      targetToken = devices.length > 0 ? devices[0] : null;
     }
     
     if (!targetToken) {
