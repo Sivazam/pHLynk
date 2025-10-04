@@ -63,7 +63,6 @@ export async function GET(request: NextRequest) {
             devices: devices.map((d: any) => ({
               token: d.token?.substring(0, 20) + '...',
               userAgent: d.userAgent,
-              userType: d.userType,
               registeredAt: d.registeredAt,
               lastActive: d.lastActive
             })),
@@ -98,7 +97,6 @@ export async function GET(request: NextRequest) {
         devices: devices.map(d => ({
           token: d.token?.substring(0, 20) + '...',
           userAgent: d.userAgent,
-          userType: d.userType,
           registeredAt: d.registeredAt,
           lastActive: d.lastActive
         })),

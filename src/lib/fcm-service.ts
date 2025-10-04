@@ -187,7 +187,7 @@ class FCMService {
       }
 
       // Clean up inactive devices before sending
-      await this.cleanupInactiveDevices(retailerId);
+      await this.cleanupInactiveDevices(retailerId, 'retailer');
       const activeDevices = await this.getRetailerDevices(retailerId);
 
       if (activeDevices.length === 0) {

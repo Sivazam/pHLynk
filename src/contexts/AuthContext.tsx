@@ -14,6 +14,7 @@ import {
 import { auth, db, COLLECTIONS, ROLES } from '@/lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import { AuthUser, AuthContextType, User } from '@/types';
+import { initializeFCM } from '@/lib/fcm';
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -141,6 +142,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               assignedZips: userData.assignedZips
             };
             
+            // 🔄 Initialize FCM for returning users
+            try {
+              updateProgress(88, 'Setting up notifications...');
+              console.log('🔔 Initializing FCM for returning user:', firebaseUser.uid);
+              
+              // Initialize FCM in background without blocking the UI
+              initializeFCM().then(fcmToken => {
+                if (fcmToken) {
+                  console.log('✅ FCM initialized successfully for returning user');
+                } else {
+                  console.warn('⚠️ FCM initialization failed for returning user');
+                }
+              }).catch(error => {
+                console.error('❌ FCM initialization error for returning user:', error);
+              });
+            } catch (error) {
+              console.error('❌ Failed to initialize FCM for returning user:', error);
+            }
+            
             updateProgress(95, 'Almost ready...');
             
             // Final delay before completing
@@ -176,6 +196,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 
                 // Also store retailerId in localStorage for backward compatibility
                 localStorage.setItem('retailerId', retailerData.retailerId);
+                
+                // 🔄 Initialize FCM for returning retailer users
+                try {
+                  updateProgress(78, 'Setting up notifications...');
+                  console.log('🔔 Initializing FCM for returning retailer user:', firebaseUser.uid);
+                  
+                  // Initialize FCM in background without blocking the UI
+                  initializeFCM().then(fcmToken => {
+                    if (fcmToken) {
+                      console.log('✅ FCM initialized successfully for returning retailer user');
+                    } else {
+                      console.warn('⚠️ FCM initialization failed for returning retailer user');
+                    }
+                  }).catch(error => {
+                    console.error('❌ FCM initialization error for returning retailer user:', error);
+                  });
+                } catch (error) {
+                  console.error('❌ Failed to initialize FCM for returning retailer user:', error);
+                }
                 
                 updateProgress(85, 'Setting up retailer dashboard...');
                 

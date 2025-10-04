@@ -183,7 +183,16 @@ export async function initializeFCM(): Promise<string | null> {
       return null;
     }
 
-    // Register device with backend
+    // Check if token is already registered
+    const isAlreadyRegistered = await checkIfTokenRegistered(token);
+    
+    if (isAlreadyRegistered) {
+      console.log('✅ FCM token already registered, updating last active');
+      await updateLastActive(token);
+      return token;
+    }
+
+    // Register new token with backend
     try {
       const response = await fetch('/api/fcm/register-device', {
         method: 'POST',
@@ -193,7 +202,9 @@ export async function initializeFCM(): Promise<string | null> {
         body: JSON.stringify({
           retailerId: auth.currentUser.uid,
           deviceToken: token,
-          userAgent: navigator.userAgent
+          userAgent: navigator.userAgent,
+          isNewUser: false, // Flag for returning users
+          timestamp: new Date().toISOString()
         })
       });
 
@@ -212,6 +223,57 @@ export async function initializeFCM(): Promise<string | null> {
   } catch (error) {
     console.error('❌ Error initializing FCM:', error);
     return null;
+  }
+}
+
+/**
+ * Check if token is already registered for this user
+ */
+async function checkIfTokenRegistered(token: string): Promise<boolean> {
+  try {
+    if (!auth.currentUser) return false;
+    
+    const response = await fetch('/api/fcm/check-token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        token: token,
+        userId: auth.currentUser.uid
+      })
+    });
+
+    if (response.ok) {
+      const result = await response.json();
+      return result.exists;
+    }
+    return false;
+  } catch (error) {
+    console.error('Error checking token registration:', error);
+    return false;
+  }
+}
+
+/**
+ * Update last active timestamp for existing token
+ */
+async function updateLastActive(token: string): Promise<void> {
+  try {
+    if (!auth.currentUser) return;
+    
+    await fetch('/api/fcm/update-last-active', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        token: token,
+        userId: auth.currentUser.uid
+      })
+    });
+  } catch (error) {
+    console.error('Error updating last active:', error);
   }
 }
 

@@ -5,12 +5,14 @@ interface RegisterDeviceRequest {
   retailerId: string;
   deviceToken: string;
   userAgent?: string;
+  isNewUser?: boolean;
+  timestamp?: string;
 }
 
 export async function POST(request: NextRequest) {
   try {
     const body: RegisterDeviceRequest = await request.json();
-    const { retailerId, deviceToken, userAgent } = body;
+    const { retailerId, deviceToken, userAgent, isNewUser = true, timestamp } = body;
 
     if (!retailerId || !deviceToken) {
       return NextResponse.json(
@@ -18,6 +20,12 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    console.log(`📱 Registering device for ${isNewUser ? 'new' : 'returning'} user:`, {
+      retailerId,
+      userAgent: userAgent?.substring(0, 50) + '...',
+      timestamp: timestamp || new Date().toISOString()
+    });
 
     // Check if FCM is properly configured
     if (!fcmService.isConfigured()) {
@@ -30,11 +38,15 @@ export async function POST(request: NextRequest) {
     const result = await fcmService.registerDevice(retailerId, deviceToken, userAgent);
 
     if (result.success) {
+      console.log(`✅ Device registered successfully for ${isNewUser ? 'new' : 'returning'} user:`, retailerId);
       return NextResponse.json({
         success: true,
-        message: result.message
+        message: result.message,
+        isNewUser,
+        timestamp: timestamp || new Date().toISOString()
       });
     } else {
+      console.warn(`⚠️ Device registration failed for ${isNewUser ? 'new' : 'returning'} user:`, result.message);
       return NextResponse.json(
         { error: result.message },
         { status: 400 }
