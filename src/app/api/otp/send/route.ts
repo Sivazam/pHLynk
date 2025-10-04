@@ -112,9 +112,17 @@ export async function POST(request: NextRequest) {
 
       console.log('📝 Locally generated OTP:', otp);
 
-      // Now call the actual cloud function to send notification
+      // Skip cloud function call for now and use local FCM service
+      console.log('📱 Using local FCM service instead of cloud function');
+      
+      // Optional: Try cloud function but don't fail if it hangs
       try {
-        const cloudFunctionResponse = await fetch('https://us-central1-pharmalync-retailer-app.cloudfunctions.net/sendOTPNotificationHTTP', {
+        const cloudFunctionController = new AbortController();
+        const cloudFunctionTimeout = setTimeout(() => {
+          cloudFunctionController.abort();
+        }, 5000); // 5 second timeout
+
+        const cloudFunctionResponse = await fetch('https://us-central1-pharmalynkk.cloudfunctions.net/sendOTPNotificationHTTP', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -125,8 +133,11 @@ export async function POST(request: NextRequest) {
             amount,
             paymentId,
             lineWorkerName: lineWorkerName || 'Line Worker'
-          })
+          }),
+          signal: cloudFunctionController.signal
         });
+
+        clearTimeout(cloudFunctionTimeout);
 
         if (cloudFunctionResponse.ok) {
           const cloudResult = await cloudFunctionResponse.json();
@@ -143,8 +154,12 @@ export async function POST(request: NextRequest) {
           console.warn('Error details:', errorText);
         }
       } catch (cloudFunctionError) {
-        console.error('❌ Error calling sendOTPNotification cloud function:', cloudFunctionError);
-        // Don't fail the request if cloud function fails
+        if (cloudFunctionError.name === 'AbortError') {
+          console.warn('⏰ Cloud function call timed out, using local FCM service');
+        } else {
+          console.error('❌ Error calling sendOTPNotification cloud function:', cloudFunctionError);
+        }
+        // Don't fail the request if cloud function fails or times out
       }
 
     } catch (error) {
