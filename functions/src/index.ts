@@ -768,9 +768,9 @@ export const sendOTPNotificationHTTP = functions.https.onRequest(async (req, res
       caller: 'NEXTJS_API'
     });
 
-    // Get retailer details from Retailer collection
+    // Get retailer details from retailers collection
     const retailerDoc = await admin.firestore()
-      .collection('Retailer')
+      .collection('retailers')
       .doc(data.retailerId)
       .get();
 

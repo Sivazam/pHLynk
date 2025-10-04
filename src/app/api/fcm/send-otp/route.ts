@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
     try {
       const { doc, getDoc } = await import('firebase/firestore');
       const { db } = await import('@/lib/firebase');
-      const retailerRef = doc(db, 'Retailer', retailerId);
+      const retailerRef = doc(db, 'retailers', retailerId);
       const retailerDoc = await getDoc(retailerRef);
       
       if (retailerDoc.exists()) {
