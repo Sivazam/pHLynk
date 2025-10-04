@@ -122,18 +122,22 @@ export async function POST(request: NextRequest) {
           cloudFunctionController.abort();
         }, 5000); // 5 second timeout
 
+        const cloudFunctionData = {
+          retailerId,
+          otp,
+          amount,
+          paymentId,
+          lineWorkerName: lineWorkerName || 'Line Worker'
+        };
+
+        console.log('📤 Sending to cloud function:', JSON.stringify(cloudFunctionData, null, 2));
+
         const cloudFunctionResponse = await fetch('https://us-central1-pharmalynkk.cloudfunctions.net/sendOTPNotificationHTTP', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({
-            retailerId,
-            otp,
-            amount,
-            paymentId,
-            lineWorkerName: lineWorkerName || 'Line Worker'
-          }),
+          body: JSON.stringify(cloudFunctionData),
           signal: cloudFunctionController.signal
         });
 
@@ -154,7 +158,7 @@ export async function POST(request: NextRequest) {
           console.warn('Error details:', errorText);
         }
       } catch (cloudFunctionError) {
-        if (cloudFunctionError.name === 'AbortError') {
+        if (cloudFunctionError instanceof Error && cloudFunctionError.name === 'AbortError') {
           console.warn('⏰ Cloud function call timed out, using local FCM service');
         } else {
           console.error('❌ Error calling sendOTPNotification cloud function:', cloudFunctionError);

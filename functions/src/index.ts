@@ -723,6 +723,15 @@ export const sendOTPNotificationHTTP = functions.https.onRequest(async (req, res
     
     console.log('📤 Extracted data:', JSON.stringify(data, null, 2));
     
+    // Log data types for debugging
+    console.log('🔍 Data types:', {
+      retailerId: typeof data.retailerId,
+      otp: typeof data.otp,
+      amount: typeof data.amount,
+      paymentId: typeof data.paymentId,
+      lineWorkerName: typeof data.lineWorkerName
+    });
+    
     // Input validation
     if (!data.retailerId || typeof data.retailerId !== 'string') {
       console.error('❌ Invalid retailerId:', data.retailerId);
