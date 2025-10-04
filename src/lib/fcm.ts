@@ -197,6 +197,14 @@ export async function initializeFCM(retailerId?: string): Promise<string | null>
       // Use provided retailerId or fall back to auth.currentUser.uid
       const userId = retailerId || auth.currentUser.uid;
       
+      console.log('🔔 Registering FCM device:', {
+        userId,
+        userIdType: retailerId ? 'retailerId' : 'auth.uid',
+        tokenLength: token.length,
+        tokenPrefix: token.substring(0, 20) + '...',
+        userAgent: navigator.userAgent.substring(0, 50) + '...'
+      });
+      
       const response = await fetch('/api/fcm/register-device', {
         method: 'POST',
         headers: {
@@ -211,12 +219,15 @@ export async function initializeFCM(retailerId?: string): Promise<string | null>
         })
       });
 
+      console.log('📡 FCM registration response status:', response.status);
+      
       if (response.ok) {
         const result = await response.json();
         console.log('✅ Device registered with FCM backend:', result);
         return token;
       } else {
-        console.warn('⚠️ Failed to register device with FCM backend:', response.status);
+        const errorResult = await response.json();
+        console.warn('⚠️ Failed to register device with FCM backend:', response.status, errorResult);
         return token; // Still return token even if backend registration fails
       }
     } catch (backendError) {

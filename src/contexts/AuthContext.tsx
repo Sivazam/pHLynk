@@ -99,20 +99,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               // 🔄 Initialize FCM for returning retailer users
               try {
                 updateProgress(78, 'Setting up notifications...');
-                console.log('🔔 Initializing FCM for returning retailer user:', firebaseUser.uid);
+                console.log('🔔 Initializing FCM for returning retailer user:', {
+                  authUid: firebaseUser.uid,
+                  retailerId: retailerData.retailerId,
+                  retailerName: retailerData.name,
+                  phone: retailerData.phone
+                });
                 
                 // Initialize FCM in background without blocking the UI
                 initializeFCM(retailerData.retailerId).then(fcmToken => {
                   if (fcmToken) {
-                    console.log('✅ FCM initialized successfully for returning retailer user');
+                    console.log('✅ FCM initialized successfully for returning retailer user:', {
+                      retailerId: retailerData.retailerId,
+                      tokenLength: fcmToken.length,
+                      tokenPrefix: fcmToken.substring(0, 20) + '...'
+                    });
                   } else {
-                    console.warn('⚠️ FCM initialization failed for returning retailer user');
+                    console.warn('⚠️ FCM initialization failed for returning retailer user:', {
+                      retailerId: retailerData.retailerId
+                    });
                   }
                 }).catch(error => {
-                  console.error('❌ FCM initialization error for returning retailer user:', error);
+                  console.error('❌ FCM initialization error for returning retailer user:', {
+                    retailerId: retailerData.retailerId,
+                    error: error.message
+                  });
                 });
               } catch (error) {
-                console.error('❌ Failed to initialize FCM for returning retailer user:', error);
+                console.error('❌ Failed to initialize FCM for returning retailer user:', {
+                  retailerId: retailerData.retailerId,
+                  error: error.message
+                });
               }
               
               updateProgress(85, 'Setting up retailer dashboard...');
