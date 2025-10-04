@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
     });
 
     // Step 2: If deviceToken provided, register it
-    let registrationResult = null;
+    let registrationResult: { success: boolean; message: string } | null = null;
     if (deviceToken) {
       console.log(`📱 Registering device token for ${testType}...`);
       registrationResult = await fcmService.registerDevice(
@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
     console.log(`📱 Current devices for ${testType}:`, devices.length);
 
     // Step 4: Send test notification if devices exist
-    let notificationResult = null;
+    let notificationResult: { success: boolean; message: string; sentCount?: number } | null = null;
     if (devices.length > 0) {
       console.log(`📤 Sending test notification to ${devices.length} device(s)...`);
       notificationResult = await fcmService.sendNotificationToUser(
