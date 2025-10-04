@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -10,8 +10,9 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useAuth } from '@/contexts/AuthContext';
-import { Loader2, Mail, Lock, Shield, Building2 } from 'lucide-react';
+import { Loader2, Mail, Lock, Shield, Building2, CheckCircle } from 'lucide-react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { StatusBarColor } from '../ui/StatusBarColor';
 
 const loginSchema = z.object({
@@ -32,6 +33,18 @@ export function LoginForm({ onToggleMode, onResetPassword, onShowRoleSelection, 
   const { login, loginWithGoogle } = useAuth();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const searchParams = useSearchParams();
+
+  // Check for success message in URL parameters
+  useEffect(() => {
+    const message = searchParams.get('message');
+    if (message) {
+      setSuccessMessage(decodeURIComponent(message));
+      // Clear the URL parameter after displaying the message
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, [searchParams]);
 
   const {
     register,
@@ -81,6 +94,13 @@ export function LoginForm({ onToggleMode, onResetPassword, onShowRoleSelection, 
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {successMessage && (
+            <Alert className="border-green-200 bg-green-50">
+              <CheckCircle className="h-4 w-4 text-green-600" />
+              <AlertDescription className="text-green-800">{successMessage}</AlertDescription>
+            </Alert>
+          )}
+          
           {error && (
             <Alert variant="destructive" className="border-red-200 bg-red-50">
               <AlertDescription className="text-red-800">{error}</AlertDescription>

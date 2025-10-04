@@ -15,12 +15,15 @@ import { TenantStatusScreen } from '@/components/TenantStatusScreen';
 import { useRouteProtection } from '@/hooks/use-route-protection';
 import { useState, useEffect } from 'react';
 import { hasSeenIntroCarousel, resetIntroCarousel } from '@/lib/intro-carousel';
+import { useSearchParams } from 'next/navigation';
 
 export default function Home() {
   const { user, loading, loadingProgress, loadingStage, hasRole } = useAuth();
   const [showRoleSelection, setShowRoleSelection] = useState(false);
   const [retailerId, setRetailerId] = useState<string | null>(null);
   const [showIntro, setShowIntro] = useState(false);
+  const searchParams = useSearchParams();
+  const successMessage = searchParams?.get('message');
 
   // Apply route protection to prevent back navigation after logout
   useRouteProtection();
@@ -124,7 +127,7 @@ export default function Home() {
 
   // Show login for non-authenticated users
   if (!user) {
-    return <AuthComponent onShowRoleSelection={() => setShowRoleSelection(true)} />;
+    return <AuthComponent onShowRoleSelection={() => setShowRoleSelection(true)} successMessage={successMessage} />;
   }
 
   // Show role selection if requested

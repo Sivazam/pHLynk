@@ -26,8 +26,12 @@ interface WholesalerSignupData {
 }
 
 export async function POST(request: NextRequest) {
+  console.log('🚀 Wholesaler signup API endpoint called');
+  
   try {
     const body = await request.json();
+    console.log('📥 Received signup data:', { businessName: body.businessName, email: body.email });
+    
     const {
       businessName,
       ownerName,
@@ -163,13 +167,14 @@ export async function POST(request: NextRequest) {
       });
 
     } catch (error) {
-      console.error('Error creating tenant/user documents:', error);
+      console.error('❌ Error creating tenant/user documents:', error);
       
       // Clean up: Delete the Firebase Auth user if document creation fails
       try {
         await user.delete();
+        console.log('🧹 Cleaned up Firebase Auth user due to document creation failure');
       } catch (deleteError) {
-        console.error('Error deleting Firebase Auth user during cleanup:', deleteError);
+        console.error('❌ Error deleting Firebase Auth user during cleanup:', deleteError);
       }
 
       return NextResponse.json(

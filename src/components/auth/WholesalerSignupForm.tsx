@@ -52,7 +52,17 @@ export function WholesalerSignupForm({ onSubmit, onBackToLogin, loading = false,
   const password = watch('password');
 
   const onFormSubmit = async (data: WholesalerSignupFormData) => {
-    await onSubmit(data);
+    console.log('🚀 Wholesaler signup form submitted:', data);
+    console.log('📤 Submitting to parent component...');
+    
+    try {
+      await onSubmit(data);
+      console.log('✅ Wholesaler signup completed successfully');
+    } catch (error) {
+      console.error('❌ Wholesaler signup failed:', error);
+      // Re-throw the error so the parent component can handle it
+      throw error;
+    }
   };
 
   return (
@@ -94,7 +104,10 @@ export function WholesalerSignupForm({ onSubmit, onBackToLogin, loading = false,
                 </Alert>
               )}
 
-              <form onSubmit={handleSubmit(onFormSubmit)} className="space-y-4">
+              <form onSubmit={handleSubmit((data) => {
+                console.log('📝 Form validation passed, submitting with data:', data);
+                onFormSubmit(data);
+              })} className="space-y-4">
                 {/* Business Information */}
                 <div className="space-y-4">
                   <div className="flex items-center space-x-2 mb-4">

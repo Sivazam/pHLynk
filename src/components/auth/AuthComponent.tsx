@@ -7,24 +7,46 @@ import { ResetPasswordForm } from './ResetPasswordForm';
 import { NetflixRoleSelection } from './NetflixRoleSelection';
 import Image from 'next/image';
 import { StatusBarColor } from '../ui/StatusBarColor';
+import { Alert, AlertDescription } from '../ui/alert';
+import { CheckCircle } from 'lucide-react';
 
 type AuthMode = 'login' | 'signup' | 'reset';
 type AuthView = 'roleSelection' | 'authForm';
 
 interface AuthComponentProps {
   onShowRoleSelection?: () => void;
+  successMessage?: string | null;
 }
 
-export function AuthComponent({ onShowRoleSelection }: AuthComponentProps) {
+export function AuthComponent({ onShowRoleSelection, successMessage }: AuthComponentProps) {
   const [mode, setMode] = useState<AuthMode>('login');
   const [view, setView] = useState<AuthView>('roleSelection');
   const [selectedRole, setSelectedRole] = useState<string | null>(null);
+  const [displaySuccessMessage, setDisplaySuccessMessage] = useState<string | null>(null);
 
   // Always start with Netflix role selection for unauthenticated users
   useEffect(() => {
     setView('roleSelection');
     setSelectedRole(null);
   }, []);
+
+  // Handle success message from URL params
+  useEffect(() => {
+    if (successMessage) {
+      setDisplaySuccessMessage(successMessage);
+      // Clear the URL parameter
+      const url = new URL(window.location.href);
+      url.searchParams.delete('message');
+      window.history.replaceState({}, '', url.toString());
+      
+      // Auto-hide the success message after 8 seconds
+      const timer = setTimeout(() => {
+        setDisplaySuccessMessage(null);
+      }, 8000);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [successMessage]);
 
   const toggleMode = () => {
     setMode(mode === 'login' ? 'signup' : 'login');
@@ -112,6 +134,16 @@ export function AuthComponent({ onShowRoleSelection }: AuthComponentProps) {
             ← Back to Role Selection
           </button>
         </div>
+
+        {/* Success Message */}
+        {displaySuccessMessage && (
+          <Alert className="mb-6 border-green-200 bg-green-50">
+            <CheckCircle className="h-4 w-4 text-green-600" />
+            <AlertDescription className="text-green-800">
+              {displaySuccessMessage}
+            </AlertDescription>
+          </Alert>
+        )}
 
         {/* Auth Forms */}
         {mode === 'login' && (

@@ -4,12 +4,12 @@ import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyAiuROMuOXyBTQ2tAn_7lCk8qBsKLcKBds",
-  authDomain: "pharmalynkk.firebaseapp.com",
-  projectId: "pharmalynkk",
-  storageBucket: "pharmalynkk.firebasestorage.app",
-  messagingSenderId: "877118992574",
-  appId: "1:877118992574:web:ca55290c721d1c4b18eeef"
+  apiKey: "AIzaSyCdOIhLQh9iYBXbE7dre2J9zsmCBuVdwwU",
+  authDomain: "plkapp-8c052.firebaseapp.com",
+  projectId: "plkapp-8c052",
+  storageBucket: "plkapp-8c052.firebasestorage.app",
+  messagingSenderId: "333526318951",
+  appId: "1:333526318951:web:a8f30f497e7060e264b9c2"
 };
 
 import { logger } from '@/lib/logger';
@@ -56,7 +56,7 @@ export async function callFirebaseFunction(functionName: string, data: any, retr
       
       // Get the Firebase project ID from the config
       const firebaseConfig = {
-        projectId: "pharmalynkk"
+        projectId: "plkapp-8c052"
       };
       
       // Construct the function URL
