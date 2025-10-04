@@ -5,13 +5,14 @@ importScripts('https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js')
 importScripts('https://www.gstatic.com/firebasejs/9.6.1/firebase-messaging-compat.js');
 
 // Firebase configuration (hardcoded for service worker)
+// Note: Service workers cannot access environment variables, so these values are required
 const firebaseConfig = {
-  apiKey: "AIzaSyAiuROMuOXyBTQ2tAn_7lCk8qBsKLcKBds",
-  authDomain: "pharmalynkk.firebaseapp.com",
-  projectId: "pharmalynkk",
-  storageBucket: "pharmalynkk.firebasestorage.app",
-  messagingSenderId: "877118992574",
-  appId: "1:877118992574:web:ca55290c721d1c4b18eeef"
+  apiKey: "AIzaSyCdOIhLQh9iYBXbE7dre2J9zsmCBuVdwwU",
+  authDomain: "plkapp-8c052.firebaseapp.com",
+  projectId: "plkapp-8c052",
+  storageBucket: "plkapp-8c052.firebasestorage.app",
+  messagingSenderId: "333526318951",
+  appId: "1:333526318951:web:a8f30f497e7060e264b9c2"
 };
 
 // Initialize Firebase in the service worker

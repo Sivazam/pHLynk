@@ -30,9 +30,9 @@ export class Fast2SMSService {
     return {
       // Note: API key should not be stored in frontend for security
       // This service is designed to work with Firebase Functions which have secure config
-      apiKey: process.env.NODE_ENV === 'development' ? process.env.fast2sms_api_key : undefined,
+      apiKey: process.env.NODE_ENV === 'development' ? process.env.FAST2SMS_API_KEY : undefined,
       senderId: 'SNSYST',
-      entityId: process.env.entityid
+      entityId: process.env.ENTITY_ID
     };
   }
 

@@ -6,12 +6,12 @@ import { auth } from '@/lib/firebase';
 
 // Firebase configuration - should match your existing config
 const firebaseConfig = {
-  apiKey: "AIzaSyAiuROMuOXyBTQ2tAn_7lCk8qBsKLcKBds",
-  authDomain: "pharmalynkk.firebaseapp.com",
-  projectId: "pharmalynkk",
-  storageBucket: "pharmalynkk.firebasestorage.app",
-  messagingSenderId: "877118992574",
-  appId: "1:877118992574:web:ca55290c721d1c4b18eeef"
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID
 };
 
 // Initialize Firebase app for messaging
@@ -62,7 +62,7 @@ export function isFCMSupported(): boolean {
   const hasServiceWorker = 'serviceWorker' in navigator;
   const hasPushManager = 'PushManager' in window;
   const hasNotification = 'Notification' in window;
-  const hasSenderId = "877118992574"; // Hardcoded sender ID
+  const hasSenderId = process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID; // From environment variables
 
   console.log('🔧 FCM Support Check:', {
     hasServiceWorker,
