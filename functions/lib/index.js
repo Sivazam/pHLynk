@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.sendTestFCMNotificationHTTP = exports.sendPaymentCompletionNotification = exports.sendOTPNotificationHTTP = exports.debugTest = exports.processSMSResponse = exports.sendWholesalerPaymentSMS = exports.sendRetailerPaymentSMS = void 0;
+exports.sendTestFCMNotification = exports.sendPaymentCompletionNotification = exports.sendOTPNotification = exports.processSMSResponse = exports.sendWholesalerPaymentSMS = exports.sendRetailerPaymentSMS = void 0;
 const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
 // Initialize Firebase Admin
@@ -158,16 +158,17 @@ exports.sendRetailerPaymentSMS = functions.https.onCall(async (request) => {
             caller: context.auth ? context.auth.uid : 'NEXTJS_API',
             ip: (_c = context.rawRequest) === null || _c === void 0 ? void 0 : _c.ip
         });
-        // Get retailer details from retailers collection
-        const retailerDoc = await admin.firestore()
-            .collection('retailers')
-            .doc(data.retailerId)
+        // Get retailer user details with better error handling
+        const retailerUsersQuery = await admin.firestore()
+            .collection('retailerUsers')
+            .where('retailerId', '==', data.retailerId)
+            .limit(1)
             .get();
-        if (!retailerDoc.exists) {
-            throw new functions.https.HttpsError('not-found', `Retailer not found for retailerId: ${data.retailerId}`);
+        if (retailerUsersQuery.empty) {
+            throw new functions.https.HttpsError('not-found', `Retailer user not found for retailerId: ${data.retailerId}`);
         }
-        const retailerUser = retailerDoc.data();
-        if (!retailerUser || !retailerUser.phone) {
+        const retailerUser = retailerUsersQuery.docs[0].data();
+        if (!retailerUser.phone) {
             throw new functions.https.HttpsError('failed-precondition', `Retailer phone number not found for retailerId: ${data.retailerId}`);
         }
         // Validate and format phone number
@@ -531,57 +532,10 @@ exports.processSMSResponse = functions.https.onCall(async (data, context) => {
     }
 });
 // ===== FCM NOTIFICATION FUNCTIONS =====
-// Helper function to get user's FCM devices from their respective collection
-async function getFCMDevicesForUser(userId, userType) {
+// Helper function to get user's FCM token
+async function getFCMTokenForUser(userId) {
     try {
-        let collectionName;
-        switch (userType) {
-            case 'retailer':
-                collectionName = 'retailers';
-                break;
-            case 'wholesaler':
-                collectionName = 'tenants';
-                break;
-            case 'line_worker':
-                collectionName = 'users';
-                break;
-            default:
-                throw new Error(`Unknown user type: ${userType}`);
-        }
-        const userDoc = await admin.firestore().collection(collectionName).doc(userId).get();
-        if (userDoc.exists) {
-            const userData = userDoc.data();
-            const fcmDevices = (userData === null || userData === void 0 ? void 0 : userData.fcmDevices) || [];
-            return fcmDevices.map((device) => device.token).filter((token) => token);
-        }
-        return [];
-    }
-    catch (error) {
-        console.error('❌ Error getting FCM devices for user:', userId, error);
-        return [];
-    }
-}
-// Helper function to get FCM token for retailer (backward compatibility - returns first available token)
-async function getFCMTokenForRetailer(retailerId) {
-    try {
-        // Try to get from retailers collection first (new architecture)
-        const retailerDoc = await admin.firestore().collection('retailers').doc(retailerId).get();
-        if (retailerDoc.exists) {
-            const retailerData = retailerDoc.data();
-            const fcmDevices = (retailerData === null || retailerData === void 0 ? void 0 : retailerData.fcmDevices) || [];
-            if (fcmDevices.length > 0) {
-                // Return the first active device token
-                const activeDevices = fcmDevices.filter((device) => {
-                    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-                    return new Date(device.lastActive) > thirtyDaysAgo;
-                });
-                if (activeDevices.length > 0) {
-                    return activeDevices[0].token;
-                }
-            }
-        }
-        // Fallback: Try old method (users collection with fcmToken field)
-        const userDoc = await admin.firestore().collection('users').doc(retailerId).get();
+        const userDoc = await admin.firestore().collection('users').doc(userId).get();
         if (userDoc.exists) {
             const userData = userDoc.data();
             return (userData === null || userData === void 0 ? void 0 : userData.fcmToken) || null;
@@ -589,102 +543,46 @@ async function getFCMTokenForRetailer(retailerId) {
         return null;
     }
     catch (error) {
-        console.error('❌ Error getting FCM token for retailer:', retailerId, error);
+        console.error('❌ Error getting FCM token for user:', userId, error);
         return null;
     }
 }
-// Simple debug function to test HTTP functionality
-exports.debugTest = functions.https.onRequest(async (req, res) => {
-    try {
-        console.log('🚀 DEBUG TEST FUNCTION TRIGGERED');
-        console.log('📥 Request method:', req.method);
-        console.log('📥 Request body:', JSON.stringify(req.body, null, 2));
-        // Only allow POST requests
-        if (req.method !== 'POST') {
-            console.error('❌ Invalid method:', req.method);
-            res.status(405).json({ error: 'Method not allowed. Use POST.' });
-            return;
-        }
-        // Handle CORS
-        res.set('Access-Control-Allow-Origin', '*');
-        res.set('Access-Control-Allow-Methods', 'POST');
-        res.set('Access-Control-Allow-Headers', 'Content-Type');
-        res.status(200).json({
-            success: true,
-            message: 'Debug test function working correctly',
-            timestamp: new Date().toISOString(),
-            receivedData: req.body
-        });
-    }
-    catch (error) {
-        console.error('❌ Debug test error:', error);
-        res.status(500).json({
-            success: false,
-            error: 'Debug test failed',
-            details: error instanceof Error ? error.message : 'Unknown error'
-        });
-    }
-});
-// Send FCM notification for OTP (HTTP version)
-exports.sendOTPNotificationHTTP = functions.https.onRequest(async (req, res) => {
+// Send FCM notification for OTP
+exports.sendOTPNotification = functions.https.onCall(async (request) => {
+    var _a;
     try {
         console.log('🚀 FCM CLOUD FUNCTION TRIGGERED - sendOTPNotification');
-        console.log('📥 Request method:', req.method);
-        console.log('📥 Request headers:', JSON.stringify(req.headers, null, 2));
-        // Only allow POST requests
-        if (req.method !== 'POST') {
-            console.error('❌ Invalid method:', req.method);
-            res.status(405).json({ error: 'Method not allowed. Use POST.' });
-            return;
+        console.log('📥 Full request object:', JSON.stringify(request, null, 2));
+        let data, context;
+        if (request.data && typeof request.data === 'object') {
+            // Callable function format
+            data = request.data;
+            context = request;
         }
-        // Handle CORS
-        res.set('Access-Control-Allow-Origin', '*');
-        res.set('Access-Control-Allow-Methods', 'POST');
-        res.set('Access-Control-Allow-Headers', 'Content-Type');
-        let data;
-        // Parse request body
-        if (req.body && typeof req.body === 'object') {
-            data = req.body;
+        else if (request && typeof request === 'object' && !request.auth) {
+            // Direct HTTP format
+            data = request;
+            context = { auth: null, rawRequest: { ip: 'unknown' } };
         }
         else {
-            console.error('❌ Request body is missing or invalid:', req.body);
-            res.status(400).json({ error: 'Request body is missing or invalid' });
-            return;
+            throw new functions.https.HttpsError('invalid-argument', 'Invalid request format');
         }
         console.log('📤 Extracted data:', JSON.stringify(data, null, 2));
-        // Log data types for debugging
-        console.log('🔍 Data types:', {
-            retailerId: typeof data.retailerId,
-            otp: typeof data.otp,
-            amount: typeof data.amount,
-            paymentId: typeof data.paymentId,
-            lineWorkerName: typeof data.lineWorkerName
-        });
         // Input validation
         if (!data.retailerId || typeof data.retailerId !== 'string') {
-            console.error('❌ Invalid retailerId:', data.retailerId);
-            res.status(400).json({ error: 'Invalid or missing retailerId' });
-            return;
+            throw new functions.https.HttpsError('invalid-argument', 'Invalid or missing retailerId');
         }
         if (!data.otp || typeof data.otp !== 'string') {
-            console.error('❌ Invalid OTP:', data.otp);
-            res.status(400).json({ error: 'Invalid or missing OTP' });
-            return;
+            throw new functions.https.HttpsError('invalid-argument', 'Invalid or missing OTP');
         }
         if (!data.amount || typeof data.amount !== 'number') {
-            console.error('❌ Invalid amount:', data.amount);
-            res.status(400).json({ error: 'Invalid or missing amount' });
-            return;
+            throw new functions.https.HttpsError('invalid-argument', 'Invalid or missing amount');
         }
         if (!data.paymentId || typeof data.paymentId !== 'string') {
-            console.error('❌ Invalid paymentId:', data.paymentId);
-            res.status(400).json({ error: 'Invalid or missing paymentId' });
-            return;
+            throw new functions.https.HttpsError('invalid-argument', 'Invalid or missing paymentId');
         }
         if (!data.lineWorkerName || typeof data.lineWorkerName !== 'string') {
-            console.error('❌ Invalid lineWorkerName:', data.lineWorkerName);
-            res.status(400).json({ error: 'Invalid or missing lineWorkerName' });
-            return;
+            throw new functions.https.HttpsError('invalid-argument', 'Invalid or missing lineWorkerName');
         }
         console.log('📱 FCM - OTP Notification Request:', {
             retailerId: data.retailerId,
@@ -692,51 +590,29 @@ exports.sendOTPNotificationHTTP = functions.https.onRequest(async (req, res) => 
             amount: data.amount,
             otp: data.otp,
             lineWorkerName: data.lineWorkerName,
-            caller: 'NEXTJS_API'
+            caller: context.auth ? context.auth.uid : 'NEXTJS_API'
         });
-        // Get retailer details from retailers collection
-        const retailerDoc = await admin.firestore()
-            .collection('retailers')
-            .doc(data.retailerId)
+        // Get retailer user details
+        const retailerUsersQuery = await admin.firestore()
+            .collection('retailerUsers')
+            .where('retailerId', '==', data.retailerId)
+            .limit(1)
             .get();
-        if (!retailerDoc.exists) {
-            console.error('❌ Retailer not found for retailerId:', data.retailerId);
-            res.status(404).json({ error: 'Retailer not found' });
-            return;
+        if (retailerUsersQuery.empty) {
+            throw new functions.https.HttpsError('not-found', `Retailer user not found for retailerId: ${data.retailerId}`);
         }
-        const retailerUser = retailerDoc.data();
-        if (!retailerUser) {
-            console.error('❌ Retailer data not found for retailerId:', data.retailerId);
-            res.status(404).json({ error: 'Retailer data not found' });
-            return;
-        }
-        // Get FCM token for retailer - use new architecture
-        console.log('🔧 Using new FCM architecture - looking for devices in retailers collection');
-        const fcmToken = await getFCMTokenForRetailer(data.retailerId);
+        const retailerUser = retailerUsersQuery.docs[0];
+        const retailerUserId = retailerUser.id;
+        // Get FCM token for retailer user
+        const fcmToken = await getFCMTokenForUser(retailerUserId);
         if (!fcmToken) {
-            console.warn('⚠️ FCM token not found for retailer after all approaches:', {
-                retailerId: data.retailerId,
-                documentId: retailerDoc.id,
-                phone: retailerUser.phone,
-                userId: retailerUser.userId
-            });
-            res.status(200).json({
+            console.warn('⚠️ FCM token not found for retailer user:', retailerUserId);
+            return {
                 success: false,
                 error: 'FCM token not found',
-                fallbackToSMS: true,
-                details: {
-                    triedDocumentId: retailerDoc.id,
-                    triedPhone: retailerUser.phone,
-                    triedUserId: retailerUser.userId
-                }
-            });
-            return;
+                fallbackToSMS: true
+            };
         }
-        console.log('✅ Found FCM token for retailer using:', {
-            retailerId: data.retailerId,
-            userId: data.retailerId,
-            approach: 'new-architecture-retailers-collection'
-        });
         // Create FCM message
         const message = {
             notification: {
@@ -780,27 +656,25 @@ exports.sendOTPNotificationHTTP = functions.https.onRequest(async (req, res) => 
             type: 'OTP_NOTIFICATION',
             retailerId: data.retailerId,
             paymentId: data.paymentId,
-            userId: data.retailerId,
+            userId: retailerUserId,
             token: fcmToken.substring(0, 8) + '...',
             status: 'SENT',
             messageId: response,
-            sentBy: 'NEXTJS_API',
+            sentBy: ((_a = context.auth) === null || _a === void 0 ? void 0 : _a.uid) || 'NEXTJS_API',
             sentAt: admin.firestore.FieldValue.serverTimestamp()
         });
-        console.log('✅ FCM OTP notification sent successfully:', response);
-        res.status(200).json({
+        return {
             success: true,
             messageId: response,
             type: 'fcm_sent'
-        });
+        };
     }
     catch (error) {
         console.error('❌ FCM CLOUD FUNCTION - Error sending OTP notification:', error);
-        res.status(500).json({
-            success: false,
-            error: 'Failed to send OTP notification',
-            details: error instanceof Error ? error.message : 'Unknown error'
-        });
+        if (error instanceof functions.https.HttpsError) {
+            throw error;
+        }
+        throw new functions.https.HttpsError('internal', 'Failed to send OTP notification', error instanceof Error ? error.message : 'Unknown error');
     }
 });
 // Send FCM notification for payment completion
@@ -840,24 +714,21 @@ exports.sendPaymentCompletionNotification = functions.https.onCall(async (reques
             amount: data.amount,
             caller: context.auth ? context.auth.uid : 'NEXTJS_API'
         });
-        // Get retailer details from retailers collection
-        const retailerDoc = await admin.firestore()
-            .collection('retailers')
-            .doc(data.retailerId)
+        // Get retailer user details
+        const retailerUsersQuery = await admin.firestore()
+            .collection('retailerUsers')
+            .where('retailerId', '==', data.retailerId)
+            .limit(1)
             .get();
-        if (!retailerDoc.exists) {
-            throw new functions.https.HttpsError('not-found', `Retailer not found for retailerId: ${data.retailerId}`);
+        if (retailerUsersQuery.empty) {
+            throw new functions.https.HttpsError('not-found', `Retailer user not found for retailerId: ${data.retailerId}`);
         }
-        const retailerUser = retailerDoc.data();
-        const retailerUserId = retailerDoc.id; // Use document ID as user ID
-        if (!retailerUser) {
-            throw new functions.https.HttpsError('not-found', `Retailer data not found for retailerId: ${data.retailerId}`);
-        }
-        // Get FCM token for retailer - use new architecture
-        console.log('🔧 Using new FCM architecture - looking for devices in retailers collection');
-        const fcmToken = await getFCMTokenForRetailer(data.retailerId);
+        const retailerUser = retailerUsersQuery.docs[0];
+        const retailerUserId = retailerUser.id;
+        // Get FCM token for retailer user
+        const fcmToken = await getFCMTokenForUser(retailerUserId);
         if (!fcmToken) {
-            console.warn('⚠️ FCM token not found for retailer:', data.retailerId);
+            console.warn('⚠️ FCM token not found for retailer user:', retailerUserId);
             return {
                 success: false,
                 error: 'FCM token not found',
@@ -903,7 +774,7 @@ exports.sendPaymentCompletionNotification = functions.https.onCall(async (reques
             type: 'PAYMENT_COMPLETION_NOTIFICATION',
             retailerId: data.retailerId,
             paymentId: data.paymentId,
-            userId: data.retailerId,
+            userId: retailerUserId,
             token: fcmToken.substring(0, 8) + '...',
             status: 'SENT',
             messageId: response,
@@ -924,56 +795,42 @@ exports.sendPaymentCompletionNotification = functions.https.onCall(async (reques
         throw new functions.https.HttpsError('internal', 'Failed to send payment completion notification', error instanceof Error ? error.message : 'Unknown error');
     }
 });
-// Send test FCM notification (HTTP version)
-exports.sendTestFCMNotificationHTTP = functions.https.onRequest(async (req, res) => {
+// Send test FCM notification
+exports.sendTestFCMNotification = functions.https.onCall(async (request) => {
+    var _a;
     try {
         console.log('🚀 FCM CLOUD FUNCTION TRIGGERED - sendTestFCMNotification');
-        console.log('📥 Request method:', req.method);
-        // Only allow POST requests
-        if (req.method !== 'POST') {
-            console.error('❌ Invalid method:', req.method);
-            res.status(405).json({ error: 'Method not allowed. Use POST.' });
-            return;
+        let data, context;
+        if (request.data && typeof request.data === 'object') {
+            data = request.data;
+            context = request;
         }
-        // Handle CORS
-        res.set('Access-Control-Allow-Origin', '*');
-        res.set('Access-Control-Allow-Methods', 'POST');
-        res.set('Access-Control-Allow-Headers', 'Content-Type');
-        let data;
-        // Parse request body
-        if (req.body && typeof req.body === 'object') {
-            data = req.body;
+        else if (request && typeof request === 'object' && !request.auth) {
+            data = request;
+            context = { auth: null, rawRequest: { ip: 'unknown' } };
         }
         else {
-            console.error('❌ Request body is missing or invalid:', req.body);
-            res.status(400).json({ error: 'Request body is missing or invalid' });
-            return;
+            throw new functions.https.HttpsError('invalid-argument', 'Invalid request format');
         }
-        console.log('📤 Extracted data:', JSON.stringify(data, null, 2));
-        // For test function, we don't require authentication
-        // But we need either a token or userId to send to
-        const fcmToken = data.token || null;
-        const userId = data.userId || null;
-        const userType = data.userType || 'retailer'; // Default to retailer for backward compatibility
-        let targetToken = fcmToken;
-        if (!targetToken && userId) {
-            console.log(`🔧 Getting FCM devices for ${userType}: ${userId}`);
-            const devices = await getFCMDevicesForUser(userId, userType);
-            targetToken = devices.length > 0 ? devices[0] : null;
+        if (!((_a = context.auth) === null || _a === void 0 ? void 0 : _a.uid)) {
+            throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
         }
-        if (!targetToken) {
-            console.error('❌ No FCM token provided or found');
-            res.status(400).json({ error: 'FCM token not provided or found' });
-            return;
+        const userId = context.auth.uid;
+        const fcmToken = await getFCMTokenForUser(userId);
+        if (!fcmToken) {
+            throw new functions.https.HttpsError('not-found', 'FCM token not found for user');
         }
         const message = {
             notification: {
-                title: data.title || '📱 Test Notification',
-                body: data.body || 'This is a test FCM notification from pHLynk',
+                title: '📱 Test Notification',
+                body: 'This is a test FCM notification from pHLynk',
             },
-            data: Object.assign({ type: 'test', tag: 'test-notification', requireInteraction: 'false' }, data.data // Allow custom data
-            ),
-            token: targetToken,
+            data: {
+                type: 'test',
+                tag: 'test-notification',
+                requireInteraction: 'false'
+            },
+            token: fcmToken,
             android: {
                 priority: 'normal',
                 notification: {
@@ -996,25 +853,24 @@ exports.sendTestFCMNotificationHTTP = functions.https.onRequest(async (req, res)
         await admin.firestore().collection('fcmLogs').add({
             type: 'TEST_NOTIFICATION',
             userId: userId,
-            token: targetToken.substring(0, 8) + '...',
+            token: fcmToken.substring(0, 8) + '...',
             status: 'SENT',
             messageId: response,
-            sentBy: userId || 'API_CALL',
+            sentBy: userId,
             sentAt: admin.firestore.FieldValue.serverTimestamp()
         });
-        res.status(200).json({
+        return {
             success: true,
             messageId: response,
             message: 'Test notification sent successfully'
-        });
+        };
     }
     catch (error) {
         console.error('❌ FCM CLOUD FUNCTION - Error sending test notification:', error);
-        res.status(500).json({
-            success: false,
-            error: 'Failed to send test notification',
-            details: error instanceof Error ? error.message : 'Unknown error'
-        });
+        if (error instanceof functions.https.HttpsError) {
+            throw error;
+        }
+        throw new functions.https.HttpsError('internal', 'Failed to send test notification', error instanceof Error ? error.message : 'Unknown error');
     }
 });
 //# sourceMappingURL=index.js.map

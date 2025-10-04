@@ -9,23 +9,12 @@ export interface BaseDocument {
   updatedAt: Timestamp;
 }
 
-// FCM Device interface for push notifications
-export interface FCMDevice {
-  token: string;
-  userAgent: string;
-  registeredAt: Date;
-  lastActive: Date;
-  userId?: string; // Optional: specific user ID for multi-user accounts
-  userType: 'wholesaler_admin' | 'retailer' | 'line_worker';
-}
-
 // Tenant
 export interface Tenant extends BaseDocument {
   name: string;
   status: keyof typeof TENANT_STATUSES;
   subscriptionStatus: string;
   plan: string;
-  fcmDevices?: FCMDevice[];
 }
 
 // User
@@ -38,7 +27,6 @@ export interface User extends BaseDocument {
   active: boolean;
   assignedAreas?: string[];
   assignedZips?: string[];
-  fcmDevices?: FCMDevice[];
 }
 
 // Area
@@ -71,13 +59,6 @@ export interface Retailer extends BaseDocument {
   gstNumber?: string;
   paymentTerms?: string;
   
-  // Verification fields for first login
-  isVerified?: boolean;
-  verificationStatus?: 'pending' | 'verified' | 'inactive';
-  isActive?: boolean;
-  lastLoginAt?: Timestamp;
-  uid?: string; // Firebase Auth UID for login
-  
   // Active OTPs for this retailer
   activeOTPs?: Array<{
     paymentId: string;
@@ -89,9 +70,6 @@ export interface Retailer extends BaseDocument {
     isUsed?: boolean;
     usedAt?: Timestamp;
   }>;
-  
-  // FCM Devices for push notifications
-  fcmDevices?: FCMDevice[];
 }
 
 // Summary interfaces for recent activity

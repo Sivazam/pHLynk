@@ -82,10 +82,40 @@ export async function POST(request: NextRequest) {
     console.log('Line Worker Name:', lineWorkerName);
     console.log('Retailer User Data:', retailerUser);
 
-    // Use Cloud Function to send OTP notification
+    // Use Cloud Function to generate OTP (more secure) - if available
     let otpData;
     try {
-      // Generate OTP locally first
+      // Try to use Firebase Functions if available (server-side only)
+      const functionsModule = await import('firebase/functions');
+      if (typeof window === 'undefined') {
+        const { getFunctions, httpsCallable } = functionsModule;
+        const functionsInstance = getFunctions();
+        const generateOTPFunction = httpsCallable(functionsInstance, 'generateOTP');
+        
+        const result = await generateOTPFunction({
+          retailerId,
+          paymentId,
+          amount,
+          lineWorkerName: lineWorkerName || 'Line Worker'
+        });
+
+        console.log('🔐 Cloud Function result:', result.data);
+
+        const data = result.data as any;
+        if (data && data.success) {
+          otpData = data;
+          console.log('✅ OTP generated successfully via cloud function');
+        } else {
+          throw new Error(data?.error || 'Failed to generate OTP via cloud function');
+        }
+      } else {
+        throw new Error('Firebase Functions not available in this environment');
+      }
+    } catch (cloudFunctionError) {
+      console.error('❌ Error calling cloud function:', cloudFunctionError);
+      
+      // Fallback to local generation if cloud function fails
+      console.log('⚠️ Falling back to local OTP generation');
       const { generateOTP } = await import('@/lib/otp-store');
       const otp = generateOTP();
       const expiresAt = new Date(Date.now() + 7 * 60 * 1000);
@@ -99,7 +129,7 @@ export async function POST(request: NextRequest) {
         retailerPhone: retailerUser.phone
       };
       
-      // Store OTP locally
+      // Store OTP locally for fallback
       otpStore.set(paymentId, {
         code: otp,
         expiresAt,
@@ -109,66 +139,6 @@ export async function POST(request: NextRequest) {
         consecutiveFailures: 0,
         breachDetected: false
       });
-
-      console.log('📝 Locally generated OTP:', otp);
-
-      // Skip cloud function call for now and use local FCM service
-      console.log('📱 Using local FCM service instead of cloud function');
-      
-      // Optional: Try cloud function but don't fail if it hangs
-      try {
-        const cloudFunctionController = new AbortController();
-        const cloudFunctionTimeout = setTimeout(() => {
-          cloudFunctionController.abort();
-        }, 5000); // 5 second timeout
-
-        const cloudFunctionData = {
-          retailerId,
-          otp,
-          amount,
-          paymentId,
-          lineWorkerName: lineWorkerName || 'Line Worker'
-        };
-
-        console.log('📤 Sending to cloud function:', JSON.stringify(cloudFunctionData, null, 2));
-
-        const cloudFunctionResponse = await fetch('https://us-central1-pharmalynkk.cloudfunctions.net/sendOTPNotificationHTTP', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(cloudFunctionData),
-          signal: cloudFunctionController.signal
-        });
-
-        clearTimeout(cloudFunctionTimeout);
-
-        if (cloudFunctionResponse.ok) {
-          const cloudResult = await cloudFunctionResponse.json();
-          console.log('✅ Cloud function sendOTPNotification called successfully:', cloudResult);
-          
-          // Handle fallback to SMS if FCM failed
-          if (!cloudResult.success && cloudResult.fallbackToSMS) {
-            console.log('🔄 FCM failed, falling back to SMS notification');
-            // The existing SMS logic below will handle this
-          }
-        } else {
-          console.warn('⚠️ Cloud function sendOTPNotification failed:', cloudFunctionResponse.status);
-          const errorText = await cloudFunctionResponse.text();
-          console.warn('Error details:', errorText);
-        }
-      } catch (cloudFunctionError) {
-        if (cloudFunctionError instanceof Error && cloudFunctionError.name === 'AbortError') {
-          console.warn('⏰ Cloud function call timed out, using local FCM service');
-        } else {
-          console.error('❌ Error calling sendOTPNotification cloud function:', cloudFunctionError);
-        }
-        // Don't fail the request if cloud function fails or times out
-      }
-
-    } catch (error) {
-      console.error('❌ Error in OTP generation process:', error);
-      throw error;
     }
 
     console.log('📝 OTP generated:', otpData.code);

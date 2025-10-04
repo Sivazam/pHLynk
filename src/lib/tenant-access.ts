@@ -1,29 +1,21 @@
 import { doc, getDoc } from 'firebase/firestore';
 import { db, COLLECTIONS, TENANT_STATUSES } from '@/lib/firebase';
-import { User, AuthUser } from '@/types';
+import { User } from '@/types';
 
 /**
  * Check if a user has access based on their tenant status
- * @param user The user object (can be User or AuthUser)
+ * @param user The user object to check
  * @returns Promise<boolean> True if user has access, false otherwise
  */
-export async function checkUserTenantAccess(user: User | AuthUser): Promise<boolean> {
+export async function checkUserTenantAccess(user: User): Promise<boolean> {
   try {
-    // If user is a retailer, they always have access if active
-    // Retailers use 'isActive' field in Retailer collection, but AuthUser doesn't have this
-    if (user.roles.includes('RETAILER')) {
-      // For retailer users in AuthUser format, we can't check isActive since it's not included
-      // We'll assume they are active since they passed authentication
-      return true;
-    }
-
     // If user is not a wholesaler admin or line worker, they have access
     if (!user.roles.includes('WHOLESALER_ADMIN') && !user.roles.includes('LINE_WORKER')) {
       return true;
     }
 
-    // Check if user is active (only for User type, not AuthUser)
-    if ('active' in user && !user.active) {
+    // Check if user is active
+    if (!user.active) {
       return false;
     }
 
@@ -51,17 +43,11 @@ export async function checkUserTenantAccess(user: User | AuthUser): Promise<bool
 
 /**
  * Get tenant status for a user
- * @param user The user object (can be User or AuthUser)
+ * @param user The user object
  * @returns Promise<string | null> Tenant status or null if not applicable
  */
-export async function getUserTenantStatus(user: User | AuthUser): Promise<string | null> {
+export async function getUserTenantStatus(user: User): Promise<string | null> {
   try {
-    // If user is a retailer, tenant status is not applicable
-    // Retailers don't have tenant status - they are always active
-    if (user.roles.includes('RETAILER')) {
-      return null;
-    }
-
     // If user is not a wholesaler admin or line worker, tenant status is not applicable
     if (!user.roles.includes('WHOLESALER_ADMIN') && !user.roles.includes('LINE_WORKER')) {
       return null;
@@ -87,31 +73,24 @@ export async function getUserTenantStatus(user: User | AuthUser): Promise<string
 
 /**
  * Check if a user can access dashboard based on their role and tenant status
- * @param user The user object (can be User or AuthUser)
+ * @param user The user object
  * @returns Promise<{ hasAccess: boolean; reason?: string }> Access check result
  */
-export async function checkDashboardAccess(user: User | AuthUser): Promise<{ hasAccess: boolean; reason?: string }> {
+export async function checkDashboardAccess(user: User): Promise<{ hasAccess: boolean; reason?: string }> {
   try {
-    // For retailer users, they always have access if they exist
-    // Retailers use 'isActive' field in Retailer collection, but AuthUser doesn't have this
+    // Check if user is active
+    if (!user.active) {
+      return { hasAccess: false, reason: 'User account is inactive' };
+    }
+
+    // For retailer users, they always have access if active
     if (user.roles.includes('RETAILER')) {
-      // For retailer users in AuthUser format, we can't check isActive since it's not included
-      // We'll assume they are active since they passed authentication
       return { hasAccess: true };
     }
 
     // For super admins, they always have access if active
     if (user.roles.includes('SUPER_ADMIN')) {
-      // Check if user is active (only for User type, not AuthUser)
-      if ('active' in user && !user.active) {
-        return { hasAccess: false, reason: 'User account is inactive' };
-      }
       return { hasAccess: true };
-    }
-
-    // Check if user is active (for wholesaler admins and line workers)
-    if ('active' in user && !user.active) {
-      return { hasAccess: false, reason: 'User account is inactive' };
     }
 
     // For wholesaler admins and line workers, check tenant status

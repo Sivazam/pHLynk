@@ -1,4 +1,4 @@
-import { auth, db, COLLECTIONS } from '@/lib/firebase';
+import { auth, db } from '@/lib/firebase';
 import { doc, getDoc, setDoc, updateDoc, serverTimestamp, collection, query, where, getDocs } from 'firebase/firestore';
 import { Retailer } from '@/types';
 
@@ -19,46 +19,69 @@ export interface RetailerUser {
 }
 
 export class RetailerAuthService {
-  // This method is deprecated - retailers are now created directly with verification fields
-  // Keeping for backward compatibility but updating to work with Retailer collection
+  // Create or update retailer user account when wholesale admin adds retailer
   static async createRetailerUser(retailerData: Retailer, tenantId: string): Promise<RetailerUser> {
     try {
-      console.log('🏪 Updating retailer with verification fields for:', retailerData.phone);
+      console.log('🏪 Creating retailer user account for:', retailerData.phone);
       
-      // Update the retailer document directly with verification fields
-      const retailerRef = doc(db, COLLECTIONS.RETAILERS, retailerData.id);
+      // Generate a unique user ID based on phone number
+      const uid = `retailer_${retailerData.phone.replace(/\D/g, '')}`;
       
-      await updateDoc(retailerRef, {
-        isVerified: false,
-        verificationStatus: 'pending',
-        isActive: true,
-        lastLoginAt: null,
-        uid: `retailer_${retailerData.phone.replace(/\D/g, '')}`,
-        email: retailerData.email || `retailer_${retailerData.phone}@pharmalynk.local`,
-        updatedAt: serverTimestamp()
-      });
+      // Check if user already exists
+      const userRef = doc(db, 'retailerUsers', uid);
+      const userDoc = await getDoc(userRef);
+      
+      if (userDoc.exists()) {
+        console.log('👤 Retailer user already exists, updating...');
+        await updateDoc(userRef, {
+          lastLoginAt: serverTimestamp(),
+          isActive: true,
+          retailerId: retailerData.id,
+          tenantId: tenantId,
+          name: retailerData.name,
+          phone: retailerData.phone,
+          email: retailerData.email || '',
+          address: retailerData.address || ''
+        });
+      } else {
+        console.log('🆕 Creating new retailer user...');
+        await setDoc(userRef, {
+          uid: uid,
+          phone: retailerData.phone,
+          retailerId: retailerData.id,
+          tenantId: tenantId,
+          name: retailerData.name,
+          email: retailerData.email || '',
+          address: retailerData.address || '',
+          createdAt: serverTimestamp(),
+          lastLoginAt: serverTimestamp(),
+          isActive: true,
+          isVerified: false,
+          verificationStatus: 'pending'
+        });
+      }
       
       const retailerUser: RetailerUser = {
-        id: retailerData.id,
-        uid: `retailer_${retailerData.phone.replace(/\D/g, '')}`,
+        id: uid,
+        uid: uid,
         phone: retailerData.phone,
         retailerId: retailerData.id,
         tenantId: tenantId,
         name: retailerData.name,
         email: retailerData.email,
         address: retailerData.address,
-        createdAt: retailerData.createdAt || serverTimestamp(),
-        lastLoginAt: null,
+        createdAt: serverTimestamp(),
+        lastLoginAt: serverTimestamp(),
         isActive: true,
         isVerified: false,
         verificationStatus: 'pending'
       };
       
-      console.log('✅ Retailer updated with verification fields:', retailerUser);
+      console.log('✅ Retailer user account created/updated:', retailerUser);
       return retailerUser;
       
     } catch (error) {
-      console.error('❌ Error updating retailer with verification fields:', error);
+      console.error('❌ Error creating retailer user:', error);
       throw error;
     }
   }
@@ -66,40 +89,32 @@ export class RetailerAuthService {
   // Get retailer user by phone number
   static async getRetailerUserByPhone(phone: string): Promise<RetailerUser | null> {
     try {
-      console.log('🔍 Looking for retailer with phone:', phone);
+      const uid = `retailer_${phone.replace(/\D/g, '')}`;
+      const userRef = doc(db, 'retailerUsers', uid);
+      const userDoc = await getDoc(userRef);
       
-      // Query the Retailer collection directly
-      const retailersRef = collection(db, COLLECTIONS.RETAILERS);
-      const q = query(retailersRef, where('phone', '==', phone));
-      const querySnapshot = await getDocs(q);
-      
-      if (!querySnapshot.empty) {
-        const retailerDoc = querySnapshot.docs[0];
-        const retailerData = retailerDoc.data();
-        
-        console.log('✅ Found retailer:', retailerData.name);
-        
+      if (userDoc.exists()) {
+        const userData = userDoc.data();
         return {
-          id: retailerDoc.id,
-          uid: retailerData.uid || `retailer_${phone.replace(/\D/g, '')}`,
-          phone: retailerData.phone,
-          retailerId: retailerDoc.id,
-          tenantId: retailerData.tenantId,
-          name: retailerData.name,
-          email: retailerData.email,
-          address: retailerData.address,
-          createdAt: retailerData.createdAt,
-          lastLoginAt: retailerData.lastLoginAt,
-          isActive: retailerData.isActive !== false, // Default to true if not set
-          isVerified: retailerData.isVerified || false,
-          verificationStatus: retailerData.verificationStatus || 'pending'
+          id: userDoc.id,
+          uid: userData.uid,
+          phone: userData.phone,
+          retailerId: userData.retailerId,
+          tenantId: userData.tenantId,
+          name: userData.name,
+          email: userData.email,
+          address: userData.address,
+          createdAt: userData.createdAt,
+          lastLoginAt: userData.lastLoginAt,
+          isActive: userData.isActive,
+          isVerified: userData.isVerified || false,
+          verificationStatus: userData.verificationStatus || 'pending'
         };
       }
       
-      console.log('❌ No retailer found with phone:', phone);
       return null;
     } catch (error) {
-      console.error('❌ Error getting retailer by phone:', error);
+      console.error('❌ Error getting retailer user by phone:', error);
       return null;
     }
   }
@@ -107,62 +122,52 @@ export class RetailerAuthService {
   // Get retailer user by retailer ID
   static async getRetailerUserByRetailerId(retailerId: string): Promise<RetailerUser | null> {
     try {
-      console.log('🔍 Getting retailer by ID:', retailerId);
+      console.log('🔍 Getting retailer user by retailer ID:', retailerId);
       
-      // Get the retailer document directly
-      const retailerRef = doc(db, COLLECTIONS.RETAILERS, retailerId);
-      const retailerDoc = await getDoc(retailerRef);
+      const usersRef = collection(db, 'retailerUsers');
+      const q = query(usersRef, where('retailerId', '==', retailerId));
+      const querySnapshot = await getDocs(q);
       
-      if (retailerDoc.exists()) {
-        const retailerData = retailerDoc.data();
+      if (!querySnapshot.empty) {
+        const userDoc = querySnapshot.docs[0];
+        const userData = userDoc.data();
         
         const retailerUser = {
-          id: retailerDoc.id,
-          uid: retailerData.uid || `retailer_${retailerData.phone?.replace(/\D/g, '') || 'unknown'}`,
-          phone: retailerData.phone,
-          retailerId: retailerDoc.id,
-          tenantId: retailerData.tenantId,
-          name: retailerData.name,
-          email: retailerData.email,
-          address: retailerData.address,
-          createdAt: retailerData.createdAt,
-          lastLoginAt: retailerData.lastLoginAt,
-          isActive: retailerData.isActive !== false,
-          isVerified: retailerData.isVerified || false,
-          verificationStatus: retailerData.verificationStatus || 'pending'
+          id: userDoc.id,
+          uid: userData.uid,
+          phone: userData.phone,
+          retailerId: userData.retailerId,
+          tenantId: userData.tenantId,
+          name: userData.name,
+          email: userData.email,
+          address: userData.address,
+          createdAt: userData.createdAt,
+          lastLoginAt: userData.lastLoginAt,
+          isActive: userData.isActive,
+          isVerified: userData.isVerified || false,
+          verificationStatus: userData.verificationStatus || 'pending'
         };
         
-        console.log('🔍 Returning retailer:', retailerUser.name);
+        console.log('🔍 Returning retailer user:', retailerUser);
         return retailerUser;
       }
       
-      console.log('🔍 No retailer found with ID:', retailerId);
+      console.log('🔍 No retailer user found for retailer ID:', retailerId);
       return null;
     } catch (error) {
-      console.error('❌ Error getting retailer by ID:', error);
+      console.error('❌ Error getting retailer user by retailer ID:', error);
       return null;
     }
   }
 
-  // Update retailer login timestamp
+  // Update retailer user login timestamp
   static async updateLastLogin(uid: string): Promise<void> {
     try {
-      console.log('📝 Updating last login for retailer UID:', uid);
-      
-      // Find retailer by UID and update lastLoginAt
-      const retailersRef = collection(db, COLLECTIONS.RETAILERS);
-      const q = query(retailersRef, where('uid', '==', uid));
-      const querySnapshot = await getDocs(q);
-      
-      if (!querySnapshot.empty) {
-        const retailerDoc = querySnapshot.docs[0];
-        await updateDoc(retailerDoc.ref, {
-          lastLoginAt: serverTimestamp()
-        });
-        console.log('📝 Updated last login for retailer:', retailerDoc.id);
-      } else {
-        console.log('❌ No retailer found with UID:', uid);
-      }
+      const userRef = doc(db, 'retailerUsers', uid);
+      await updateDoc(userRef, {
+        lastLoginAt: serverTimestamp()
+      });
+      console.log('📝 Updated last login for retailer user:', uid);
     } catch (error) {
       console.error('❌ Error updating last login:', error);
     }
@@ -171,62 +176,47 @@ export class RetailerAuthService {
   // Deactivate retailer user
   static async deactivateRetailerUser(uid: string): Promise<void> {
     try {
-      console.log('🔒 Deactivating retailer with UID:', uid);
-      
-      // Find retailer by UID and deactivate
-      const retailersRef = collection(db, COLLECTIONS.RETAILERS);
-      const q = query(retailersRef, where('uid', '==', uid));
-      const querySnapshot = await getDocs(q);
-      
-      if (!querySnapshot.empty) {
-        const retailerDoc = querySnapshot.docs[0];
-        await updateDoc(retailerDoc.ref, {
-          isActive: false,
-          lastLoginAt: serverTimestamp()
-        });
-        console.log('🔒 Deactivated retailer:', retailerDoc.id);
-      } else {
-        console.log('❌ No retailer found with UID:', uid);
-      }
+      const userRef = doc(db, 'retailerUsers', uid);
+      await updateDoc(userRef, {
+        isActive: false,
+        lastLoginAt: serverTimestamp()
+      });
+      console.log('🔒 Deactivated retailer user:', uid);
     } catch (error) {
-      console.error('❌ Error deactivating retailer:', error);
+      console.error('❌ Error deactivating retailer user:', error);
     }
   }
 
   // Get all retailer users for a tenant
   static async getRetailerUsersByTenant(tenantId: string): Promise<RetailerUser[]> {
     try {
-      console.log('🔍 Getting all retailers for tenant:', tenantId);
-      
-      // Query retailers directly for this tenant
-      const retailersRef = collection(db, COLLECTIONS.RETAILERS);
-      const q = query(retailersRef, where('tenantId', '==', tenantId));
+      const usersRef = collection(db, 'retailerUsers');
+      const q = query(usersRef, where('tenantId', '==', tenantId));
       const querySnapshot = await getDocs(q);
       
       const users: RetailerUser[] = [];
       querySnapshot.forEach((doc) => {
-        const retailerData = doc.data();
+        const userData = doc.data();
         users.push({
           id: doc.id,
-          uid: retailerData.uid || `retailer_${retailerData.phone?.replace(/\D/g, '') || 'unknown'}`,
-          phone: retailerData.phone,
-          retailerId: doc.id,
-          tenantId: retailerData.tenantId,
-          name: retailerData.name,
-          email: retailerData.email,
-          address: retailerData.address,
-          createdAt: retailerData.createdAt,
-          lastLoginAt: retailerData.lastLoginAt,
-          isActive: retailerData.isActive !== false,
-          isVerified: retailerData.isVerified || false,
-          verificationStatus: retailerData.verificationStatus || 'pending'
+          uid: userData.uid,
+          phone: userData.phone,
+          retailerId: userData.retailerId,
+          tenantId: userData.tenantId,
+          name: userData.name,
+          email: userData.email,
+          address: userData.address,
+          createdAt: userData.createdAt,
+          lastLoginAt: userData.lastLoginAt,
+          isActive: userData.isActive,
+          isVerified: userData.isVerified || false,
+          verificationStatus: userData.verificationStatus || 'pending'
         });
       });
       
-      console.log(`📊 Found ${users.length} retailers for tenant ${tenantId}`);
       return users;
     } catch (error) {
-      console.error('❌ Error getting retailers by tenant:', error);
+      console.error('❌ Error getting retailer users by tenant:', error);
       return [];
     }
   }
@@ -234,43 +224,40 @@ export class RetailerAuthService {
   // Verify retailer account after first OTP login
   static async verifyRetailerAccount(phone: string): Promise<RetailerUser | null> {
     try {
-      console.log('🔍 Verifying retailer account for phone:', phone);
+      const uid = `retailer_${phone.replace(/\D/g, '')}`;
+      const userRef = doc(db, 'retailerUsers', uid);
+      const userDoc = await getDoc(userRef);
       
-      // Find retailer by phone number
-      const retailersRef = collection(db, COLLECTIONS.RETAILERS);
-      const q = query(retailersRef, where('phone', '==', phone));
-      const querySnapshot = await getDocs(q);
-      
-      if (!querySnapshot.empty) {
-        const retailerDoc = querySnapshot.docs[0];
+      if (userDoc.exists()) {
+        console.log('🔍 Verifying retailer account for phone:', phone);
         
         // Update verification status
-        await updateDoc(retailerDoc.ref, {
+        await updateDoc(userRef, {
           isVerified: true,
           verificationStatus: 'verified',
           lastLoginAt: serverTimestamp()
         });
         
-        // Get updated retailer data
-        const updatedDoc = await getDoc(retailerDoc.ref);
-        const retailerData = updatedDoc.data();
+        // Get updated user data
+        const updatedDoc = await getDoc(userRef);
+        const userData = updatedDoc.data();
         
-        if (!retailerData) {
-          throw new Error('Retailer data not found after update');
+        if (!userData) {
+          throw new Error('User data not found after update');
         }
         
         const verifiedUser: RetailerUser = {
           id: updatedDoc.id,
-          uid: retailerData.uid || `retailer_${phone.replace(/\D/g, '')}`,
-          phone: retailerData.phone,
-          retailerId: updatedDoc.id,
-          tenantId: retailerData.tenantId,
-          name: retailerData.name,
-          email: retailerData.email,
-          address: retailerData.address,
-          createdAt: retailerData.createdAt,
-          lastLoginAt: retailerData.lastLoginAt,
-          isActive: retailerData.isActive !== false,
+          uid: userData.uid,
+          phone: userData.phone,
+          retailerId: userData.retailerId,
+          tenantId: userData.tenantId,
+          name: userData.name,
+          email: userData.email,
+          address: userData.address,
+          createdAt: userData.createdAt,
+          lastLoginAt: userData.lastLoginAt,
+          isActive: userData.isActive,
           isVerified: true,
           verificationStatus: 'verified'
         };
@@ -279,7 +266,6 @@ export class RetailerAuthService {
         return verifiedUser;
       }
       
-      console.log('❌ No retailer found with phone:', phone);
       return null;
     } catch (error) {
       console.error('❌ Error verifying retailer account:', error);
@@ -290,33 +276,29 @@ export class RetailerAuthService {
   // Check if retailer account exists and is pending verification
   static async getPendingRetailerByPhone(phone: string): Promise<RetailerUser | null> {
     try {
-      console.log('🔍 Checking for pending retailer with phone:', phone);
+      const uid = `retailer_${phone.replace(/\D/g, '')}`;
+      const userRef = doc(db, 'retailerUsers', uid);
+      const userDoc = await getDoc(userRef);
       
-      // Find retailer by phone number
-      const retailersRef = collection(db, COLLECTIONS.RETAILERS);
-      const q = query(retailersRef, where('phone', '==', phone));
-      const querySnapshot = await getDocs(q);
-      
-      if (!querySnapshot.empty) {
-        const retailerDoc = querySnapshot.docs[0];
-        const retailerData = retailerDoc.data();
+      if (userDoc.exists()) {
+        const userData = userDoc.data();
         
-        // Return retailer if it exists and is pending
-        if (retailerData.verificationStatus === 'pending') {
+        // Return user if it exists and is pending
+        if (userData.verificationStatus === 'pending') {
           return {
-            id: retailerDoc.id,
-            uid: retailerData.uid || `retailer_${phone.replace(/\D/g, '')}`,
-            phone: retailerData.phone,
-            retailerId: retailerDoc.id,
-            tenantId: retailerData.tenantId,
-            name: retailerData.name,
-            email: retailerData.email,
-            address: retailerData.address,
-            createdAt: retailerData.createdAt,
-            lastLoginAt: retailerData.lastLoginAt,
-            isActive: retailerData.isActive !== false,
-            isVerified: retailerData.isVerified || false,
-            verificationStatus: retailerData.verificationStatus || 'pending'
+            id: userDoc.id,
+            uid: userData.uid,
+            phone: userData.phone,
+            retailerId: userData.retailerId,
+            tenantId: userData.tenantId,
+            name: userData.name,
+            email: userData.email,
+            address: userData.address,
+            createdAt: userData.createdAt,
+            lastLoginAt: userData.lastLoginAt,
+            isActive: userData.isActive,
+            isVerified: userData.isVerified || false,
+            verificationStatus: userData.verificationStatus || 'pending'
           };
         }
       }

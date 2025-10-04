@@ -36,7 +36,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setLoading(false);
         updateProgress(100, 'Complete');
       }
-    }, 15000); // Increased to 15 seconds to allow for retailer user lookup
+    }, 10000); // 10 second timeout
 
     // Initialize progress immediately
     updateProgress(5, 'Initializing application...');
@@ -55,103 +55,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (firebaseUser) {
           updateProgress(30, 'Loading user profile...');
           
-          console.log('🔍 Firebase user details:', {
-            uid: firebaseUser.uid,
-            email: firebaseUser.email,
-            phoneNumber: firebaseUser.phoneNumber,
-            displayName: firebaseUser.displayName
-          });
-          
-          // Check if this is a retailer user by phone number first
-          if (firebaseUser.phoneNumber) {
-            console.log('🔍 Checking for retailer user with phone number');
-            updateProgress(40, 'Checking retailer account...');
-            
-            const phone = firebaseUser.phoneNumber.replace('+91', '').replace(/\D/g, '');
-            
-            try {
-              // Check the Retailer collection directly (new approach)
-              const { collection, query, where, getDocs } = await import('firebase/firestore');
-              const retailersRef = collection(db, COLLECTIONS.RETAILERS);
-              const q = query(retailersRef, where('phone', '==', phone));
-              const querySnapshot = await getDocs(q);
-              
-              if (!querySnapshot.empty) {
-                console.log('✅ Found retailer in Retailer collection');
-                updateProgress(70, 'Loading retailer profile...');
-                
-                const retailerDoc = querySnapshot.docs[0];
-                const retailerData = retailerDoc.data();
-                console.log('📋 Retailer data:', retailerData);
-                
-                // Check if retailer is active
-                if (retailerData.hasOwnProperty('isActive') && !retailerData.isActive) {
-                  console.error('Retailer account is inactive:', firebaseUser.uid);
-                  updateProgress(90, 'Retailer account inactive...');
-                  await new Promise(resolve => setTimeout(resolve, 150));
-                  setUser(null);
-                  console.log('🔄 About to call setLoading(false) - inactive retailer');
-                  setLoading(false);
-                  console.log('✅ setLoading(false) called successfully - inactive retailer');
-                  return;
-                }
-                
-                console.log('🎯 Creating AuthUser for retailer...');
-                const authUser: AuthUser = {
-                  uid: firebaseUser.uid,
-                  email: firebaseUser.email || `retailer_${phone}@pharmalynk.local`,
-                  displayName: retailerData.name || retailerData.businessName || 'Retailer',
-                  photoURL: firebaseUser.photoURL || undefined,
-                  tenantId: retailerData.tenantId,
-                  tenantStatus: 'ACTIVE',
-                  roles: ['RETAILER'], // Retailer users always have RETAILER role
-                  isRetailer: true,
-                  retailerId: retailerDoc.id, // Use document ID
-                  phone: retailerData.phone
-                };
-                
-                console.log('🎯 Created AuthUser:', authUser);
-                
-                // Also store retailerId in localStorage for backward compatibility
-                localStorage.setItem('retailerId', retailerDoc.id);
-                console.log('✅ Stored retailerId in localStorage');
-                
-                updateProgress(85, 'Setting up retailer dashboard...');
-                console.log('📊 Progress updated to 85%');
-                
-                // Final delay before completing
-                await new Promise(resolve => setTimeout(resolve, 150));
-                console.log('⏱️ Final delay completed');
-                
-                updateProgress(95, 'Almost ready...');
-                updateProgress(100, 'Complete');
-                console.log('🎯 About to call setUser for retailer');
-                setUser(authUser);
-                console.log('✅ setUser called successfully for retailer');
-                console.log('🔄 About to call setLoading(false) - retailer flow');
-                setLoading(false);
-                console.log('✅ setLoading(false) called successfully - retailer flow');
-                console.log('🔄 Retailer auth complete');
-                return;
-              } else {
-                console.log('❌ No retailer found in Retailer collection');
-              }
-            } catch (error) {
-              console.error('❌ Error checking retailer collection:', error);
-              console.error('❌ Error details:', {
-                message: error instanceof Error ? error.message : 'Unknown error',
-                stack: error instanceof Error ? error.stack : 'No stack trace',
-                phone: phone,
-                firebaseUid: firebaseUser.uid
-              });
-            }
-          }
-          
           // Small delay before Firestore call
           await new Promise(resolve => setTimeout(resolve, 150));
           
-          // Try to fetch user data from users collection (for email/password users)
-          console.log('🔍 Looking up user in users collection');
+          // Try to fetch user data from users collection first
           const userDoc = await getDoc(doc(db, COLLECTIONS.USERS, firebaseUser.uid));
           
           updateProgress(50, 'Validating user permissions...');
@@ -170,9 +77,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               updateProgress(90, 'Account inactive...');
               await new Promise(resolve => setTimeout(resolve, 150));
               setUser(null);
-              console.log('🔄 About to call setLoading(false) - inactive user');
-              setLoading(false);
-              console.log('✅ setLoading(false) called successfully - inactive user');
               return;
             }
             
@@ -183,9 +87,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 updateProgress(90, 'Account configuration error...');
                 await new Promise(resolve => setTimeout(resolve, 150));
                 setUser(null);
-                console.log('🔄 About to call setLoading(false) - missing tenantId');
-                setLoading(false);
-                console.log('✅ setLoading(false) called successfully - missing tenantId');
                 return;
               }
               
@@ -196,9 +97,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 updateProgress(90, 'Account configuration error...');
                 await new Promise(resolve => setTimeout(resolve, 150));
                 setUser(null);
-                console.log('🔄 About to call setLoading(false) - tenant not found');
-                setLoading(false);
-                console.log('✅ setLoading(false) called successfully - tenant not found');
                 return;
               }
               
@@ -225,9 +123,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 await new Promise(resolve => setTimeout(resolve, 150));
                 updateProgress(100, 'Complete');
                 setUser(authUser);
-                console.log('🔄 About to call setLoading(false) - inactive tenant');
-                setLoading(false);
-                console.log('✅ setLoading(false) called successfully - inactive tenant');
                 return;
               }
             }
@@ -254,10 +149,53 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             updateProgress(100, 'Complete');
             setUser(authUser);
           } else {
-            // User exists in Auth but not in either collection
-            console.error('User exists in Auth but not in users or retailer collection');
-            updateProgress(90, 'Setting up guest access...');
-            setUser(null);
+            // If not found in users collection, try retailerUsers collection
+            updateProgress(40, 'Checking retailer account...');
+            
+            // Check if this is a retailer user by phone number
+            if (firebaseUser.phoneNumber) {
+              const phone = firebaseUser.phoneNumber.replace('+91', '').replace(/\D/g, '');
+              const retailerUid = `retailer_${phone}`;
+              const retailerUserDoc = await getDoc(doc(db, 'retailerUsers', retailerUid));
+              
+              if (retailerUserDoc.exists()) {
+                updateProgress(70, 'Loading retailer profile...');
+                
+                const retailerData = retailerUserDoc.data();
+                const authUser: AuthUser = {
+                  uid: firebaseUser.uid,
+                  email: firebaseUser.email || `retailer_${phone}@pharmalynk.local`,
+                  displayName: retailerData.name || 'Retailer',
+                  photoURL: firebaseUser.photoURL || undefined,
+                  tenantId: retailerData.tenantId,
+                  roles: ['RETAILER'], // Retailer users always have RETAILER role
+                  isRetailer: true,
+                  retailerId: retailerData.retailerId,
+                  phone: retailerData.phone
+                };
+                
+                // Also store retailerId in localStorage for backward compatibility
+                localStorage.setItem('retailerId', retailerData.retailerId);
+                
+                updateProgress(85, 'Setting up retailer dashboard...');
+                
+                // Final delay before completing
+                await new Promise(resolve => setTimeout(resolve, 150));
+                
+                updateProgress(95, 'Almost ready...');
+                setUser(authUser);
+              } else {
+                // User exists in Auth but not in either collection
+                console.error('User exists in Auth but not in users or retailerUsers collection');
+                updateProgress(90, 'Setting up guest access...');
+                setUser(null);
+              }
+            } else {
+              // User exists in Auth but no phone number and not in users collection
+              console.error('User exists in Auth but no phone number and not in users collection');
+              updateProgress(90, 'Setting up guest access...');
+              setUser(null);
+            }
           }
         } else {
           console.log('👋 No Firebase user - setting user to null');
@@ -278,25 +216,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await new Promise(resolve => setTimeout(resolve, 100));
         updateProgress(100, 'Complete');
       } catch (error) {
-        console.error('❌ Error in authentication flow:', error);
-        console.error('❌ Error details:', {
-          message: error instanceof Error ? error.message : 'Unknown error',
-          stack: error instanceof Error ? error.stack : 'No stack trace',
-          firebaseUser: firebaseUser ? { 
-            uid: firebaseUser.uid, 
-            email: firebaseUser.email, 
-            phone: firebaseUser.phoneNumber 
-          } : null
-        });
+        console.error('Error fetching user data:', error);
         updateProgress(90, 'Recovering from error...');
         await new Promise(resolve => setTimeout(resolve, 200));
         setUser(null);
         updateProgress(100, 'Complete');
       }
       
-      console.log('🔄 About to call setLoading(false) - main flow');
       setLoading(false);
-      console.log('✅ setLoading(false) called successfully - main flow');
     });
 
     // Set up a fallback progress mechanism in case Firebase doesn't respond

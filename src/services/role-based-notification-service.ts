@@ -156,15 +156,6 @@ class RoleBasedNotificationService {
     if (!this.serviceWorkerRegistration) return;
 
     try {
-      // Get current user info
-      const userRole = this.getCurrentUserRole();
-      const userId = this.getCurrentUserId();
-      
-      if (!userId) {
-        console.warn('⚠️ No user ID found for push subscription');
-        return;
-      }
-
       // For PWA background notifications, we need push subscription
       // In production, this would use your VAPID keys
       const subscription = await this.serviceWorkerRegistration.pushManager.subscribe({
@@ -176,59 +167,10 @@ class RoleBasedNotificationService {
 
       console.log('✅ Push subscription created for background notifications');
       
-      // Register the device token with your backend
-      await this.registerDeviceToken(subscription, userId, userRole);
-      
+      // In production, send subscription to server
+      // await this.sendSubscriptionToServer(subscription);
     } catch (error) {
       console.warn('⚠️ Push subscription failed:', error);
-    }
-  }
-
-  private async registerDeviceToken(subscription: PushSubscription, userId: string, userType: string): Promise<void> {
-    try {
-      // Send the subscription to your backend
-      const response = await fetch('/api/fcm/register-device', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          userId: userId,
-          deviceToken: subscription.endpoint, // In production, you'd use the full subscription object
-          userAgent: navigator.userAgent,
-          userType: userType
-        })
-      });
-
-      if (response.ok) {
-        console.log('✅ Device token registered successfully');
-      } else {
-        console.warn('⚠️ Failed to register device token');
-      }
-    } catch (error) {
-      console.warn('⚠️ Error registering device token:', error);
-    }
-  }
-
-  private getCurrentUserId(): string | null {
-    try {
-      // Get user data from localStorage
-      const userData = localStorage.getItem('user');
-      if (userData) {
-        const user = JSON.parse(userData);
-        return user.uid || user.id;
-      }
-      
-      // Check for retailerId
-      const retailerId = localStorage.getItem('retailerId');
-      if (retailerId) {
-        return retailerId;
-      }
-      
-      return null;
-    } catch (error) {
-      console.warn('⚠️ Could not get user ID:', error);
-      return null;
     }
   }
 

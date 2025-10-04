@@ -2,28 +2,23 @@ import { NextRequest, NextResponse } from 'next/server';
 import { fcmService } from '@/lib/fcm-service';
 
 interface UnregisterDeviceRequest {
-  retailerId?: string;
-  userId?: string;
+  retailerId: string;
   deviceToken: string;
-  userType?: 'retailer' | 'line_worker' | 'wholesaler' | 'super_admin';
 }
 
 export async function POST(request: NextRequest) {
   try {
     const body: UnregisterDeviceRequest = await request.json();
-    const { retailerId, userId, deviceToken, userType = 'retailer' } = body;
+    const { retailerId, deviceToken } = body;
 
-    // Support both retailerId and userId for backward compatibility
-    const targetUserId = userId || retailerId;
-    
-    if (!targetUserId || !deviceToken) {
+    if (!retailerId || !deviceToken) {
       return NextResponse.json(
-        { error: 'Missing required fields: userId (or retailerId), deviceToken' },
+        { error: 'Missing required fields: retailerId, deviceToken' },
         { status: 400 }
       );
     }
 
-    const result = await fcmService.unregisterDevice(targetUserId, deviceToken, userType);
+    const result = await fcmService.unregisterDevice(retailerId, deviceToken);
 
     if (result.success) {
       return NextResponse.json({

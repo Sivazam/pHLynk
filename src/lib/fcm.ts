@@ -4,15 +4,15 @@ import { getMessaging, getToken as getFCMTokenFromFirebase, onMessage } from 'fi
 import { initializeApp } from 'firebase/app';
 import { auth } from '@/lib/firebase';
 
-// Firebase configuration - using environment variables
+// Firebase configuration - should match your existing config
 const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "AIzaSyCK6Q5h9C7wE5rJ6k2vF8lG9mH3pK4q7r8",
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || "pharmalynkk.firebaseapp.com",
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "pharmalynkk",
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "pharmalynkk.appspot.com",
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || "877118992574",
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || "1:877118992574:web:abc123def456ghi789",
-  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID || "G-XXXXXXXXXX"
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID
 };
 
 // Initialize Firebase app for messaging
@@ -140,8 +140,8 @@ export async function getFCMToken(): Promise<string | null> {
       return null;
     }
 
-    // Get VAPID key from environment variables
-    const vapidKey = process.env.NEXT_PUBLIC_FCM_VAPID_KEY || "BPSKS7O0fnRC92iiqklOjZ8WcYrYrkJ1Dn6kr_9MnnKbPhU9i5sQ1BtL6RLZwBAYs37EOG3eCwD6AdIVE4ycNrA";
+    // Get VAPID key from environment
+    const vapidKey = process.env.NEXT_PUBLIC_FCM_VAPID_KEY;
     if (!vapidKey) {
       console.warn('⚠️ FCM VAPID key not configured');
       return null;

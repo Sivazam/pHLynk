@@ -1,69 +1,47 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { fcmV1Service } from '@/lib/fcm-v1-service';
 import { fcmService } from '@/lib/fcm-service';
 
 interface RegisterDeviceRequest {
-  retailerId?: string;
-  userId?: string;
+  retailerId: string;
   deviceToken: string;
   userAgent?: string;
-  userType?: 'retailer' | 'line_worker' | 'wholesaler' | 'super_admin';
 }
 
 export async function POST(request: NextRequest) {
   try {
     const body: RegisterDeviceRequest = await request.json();
-    const { retailerId, userId, deviceToken, userAgent, userType = 'retailer' } = body;
+    const { retailerId, deviceToken, userAgent } = body;
 
-    // Support both retailerId and userId for backward compatibility
-    const targetUserId = userId || retailerId;
-    
-    if (!targetUserId || !deviceToken) {
+    if (!retailerId || !deviceToken) {
       return NextResponse.json(
-        { error: 'Missing required fields: userId (or retailerId), deviceToken' },
+        { error: 'Missing required fields: retailerId, deviceToken' },
         { status: 400 }
       );
     }
 
-    // Check FCM v1 configuration
-    const configStatus = fcmV1Service.getConfigStatus();
-    if (!configStatus.configured) {
+    // Check if FCM is properly configured
+    if (!fcmService.isConfigured()) {
       return NextResponse.json(
-        { 
-          error: 'FCM v1 service is not properly configured',
-          missing: configStatus.missing,
-          suggestion: 'Please set FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, and FIREBASE_PRIVATE_KEY in your environment variables'
-        },
+        { error: 'FCM service is not properly configured' },
         { status: 500 }
       );
     }
 
-    // Register device using the FCM service (this actually stores in database)
-    const registrationResult = await fcmService.registerDevice(
-      targetUserId, 
-      deviceToken, 
-      userAgent || 'unknown', 
-      userType
-    );
-    
-    if (!registrationResult.success) {
+    const result = await fcmService.registerDevice(retailerId, deviceToken, userAgent);
+
+    if (result.success) {
+      return NextResponse.json({
+        success: true,
+        message: result.message
+      });
+    } else {
       return NextResponse.json(
-        { error: registrationResult.message },
+        { error: result.message },
         { status: 400 }
       );
     }
-    
-    console.log(`📱 Device registered: ${targetUserId} (${userType}) with token: ${deviceToken.substring(0, 20)}...`);
-    
-    return NextResponse.json({
-      success: true,
-      message: registrationResult.message,
-      userId: targetUserId,
-      userType,
-      tokenPreview: deviceToken.substring(0, 20) + '...'
-    });
   } catch (error) {
-    console.error('Error in FCM v1 register-device API:', error);
+    console.error('Error in FCM register-device API:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

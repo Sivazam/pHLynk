@@ -1,18 +1,26 @@
-import Link from "next/link";
+import Link from 'next/link';
+
+// Force dynamic rendering
+export const dynamic = 'force-dynamic';
 
 export default function NotFound() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="text-center">
-        <h1 className="text-4xl font-bold text-gray-900 mb-4">404 - Page Not Found</h1>
-        <p className="text-gray-600 mb-8">The page you're looking for doesn't exist.</p>
-        <Link 
-          href="/"
-          className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors"
-        >
-          Go Home
-        </Link>
-      </div>
+    <div style={{ padding: '40px', textAlign: 'center', fontFamily: 'system-ui, sans-serif' }}>
+      <h1 style={{ fontSize: '2rem', marginBottom: '16px' }}>404 - Page Not Found</h1>
+      <p style={{ marginBottom: '24px' }}>The page you're looking for doesn't exist.</p>
+      <Link 
+        href="/" 
+        style={{ 
+          display: 'inline-block', 
+          padding: '12px 24px', 
+          background: '#0070f3', 
+          color: 'white', 
+          textDecoration: 'none',
+          borderRadius: '6px'
+        }}
+      >
+        Go Home
+      </Link>
     </div>
   );
 }

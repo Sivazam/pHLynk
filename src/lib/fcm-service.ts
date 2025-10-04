@@ -1,6 +1,12 @@
 import { db } from '@/lib/firebase';
-import { doc, getDoc, updateDoc, arrayUnion, arrayRemove, collection, query, where, getDocs, setDoc } from 'firebase/firestore';
-import { FCMDevice } from '@/types';
+import { doc, getDoc, updateDoc, arrayUnion, arrayRemove, collection, query, where, getDocs } from 'firebase/firestore';
+
+export interface FCMDevice {
+  token: string;
+  userAgent: string;
+  registeredAt: Date;
+  lastActive: Date;
+}
 
 export interface FCMNotificationData {
   title: string;
@@ -13,37 +19,30 @@ export interface FCMNotificationData {
 }
 
 class FCMService {
-  private readonly VAPID_KEY = process.env.NEXT_PUBLIC_FCM_VAPID_KEY || 'BPSKS7O0fnRC92iiqklOjZ8WcYrYrkJ1Dn6kr_9MnnKbPhU9i5sQ1BtL6RLZwBAYs37EOG3eCwD6AdIVE4ycNrA';
-  private readonly SERVER_KEY = process.env.FCM_SERVER_KEY || 'BPSKS7O0fnRC92iiqklOjZ8WcYrYrkJ1Dn6kr_9MnnKbPhU9i5sQ1BtL6RLZwBAYs37EOG3eCwD6AdIVE4ycNrA';
+  private readonly VAPID_KEY = process.env.NEXT_PUBLIC_FCM_VAPID_KEY || '';
+  private readonly SERVER_KEY = process.env.FCM_SERVER_KEY || '';
 
   /**
-   * Register a device token for a user in their respective collection
+   * Register a device token for a retailer
    */
-  async registerDevice(
-    userId: string, 
-    deviceToken: string, 
-    userAgent: string = 'unknown',
-    userType: 'retailer' | 'line_worker' | 'wholesaler' | 'super_admin' = 'retailer'
-  ): Promise<{ success: boolean; message: string }> {
+  async registerDevice(retailerId: string, deviceToken: string, userAgent: string = 'unknown'): Promise<{ success: boolean; message: string }> {
     try {
-      const collectionName = this.getCollectionName(userType);
-      const userRef = doc(db, collectionName, userId);
-      const userDoc = await getDoc(userRef);
+      const retailerRef = doc(db, 'retailers', retailerId);
+      const retailerDoc = await getDoc(retailerRef);
 
-      if (!userDoc.exists()) {
-        return { success: false, message: `${userType} not found` };
+      if (!retailerDoc.exists()) {
+        return { success: false, message: 'Retailer not found' };
       }
 
       const device: FCMDevice = {
         token: deviceToken,
         userAgent,
         registeredAt: new Date(),
-        lastActive: new Date(),
-        userType
+        lastActive: new Date()
       };
 
       // Check if device already exists
-      const existingDevices = userDoc.data()?.fcmDevices || [];
+      const existingDevices = retailerDoc.data()?.fcmDevices || [];
       const deviceExists = existingDevices.some((d: FCMDevice) => d.token === deviceToken);
 
       if (deviceExists) {
@@ -52,11 +51,11 @@ class FCMService {
           d.token === deviceToken ? { ...d, lastActive: new Date() } : d
         );
         
-        await updateDoc(userRef, { fcmDevices: updatedDevices });
+        await updateDoc(retailerRef, { fcmDevices: updatedDevices });
         return { success: true, message: 'Device updated successfully' };
       } else {
         // Add new device
-        await updateDoc(userRef, {
+        await updateDoc(retailerRef, {
           fcmDevices: arrayUnion(device)
         });
         return { success: true, message: 'Device registered successfully' };
@@ -68,27 +67,22 @@ class FCMService {
   }
 
   /**
-   * Unregister a device token for a user from their respective collection
+   * Unregister a device token for a retailer
    */
-  async unregisterDevice(
-    userId: string, 
-    deviceToken: string,
-    userType: 'retailer' | 'line_worker' | 'wholesaler' | 'super_admin' = 'retailer'
-  ): Promise<{ success: boolean; message: string }> {
+  async unregisterDevice(retailerId: string, deviceToken: string): Promise<{ success: boolean; message: string }> {
     try {
-      const collectionName = this.getCollectionName(userType);
-      const userRef = doc(db, collectionName, userId);
-      const userDoc = await getDoc(userRef);
+      const retailerRef = doc(db, 'retailers', retailerId);
+      const retailerDoc = await getDoc(retailerRef);
 
-      if (!userDoc.exists()) {
-        return { success: false, message: `${userType} not found` };
+      if (!retailerDoc.exists()) {
+        return { success: false, message: 'Retailer not found' };
       }
 
-      const existingDevices = userDoc.data()?.fcmDevices || [];
+      const existingDevices = retailerDoc.data()?.fcmDevices || [];
       const deviceToRemove = existingDevices.find((d: FCMDevice) => d.token === deviceToken);
 
       if (deviceToRemove) {
-        await updateDoc(userRef, {
+        await updateDoc(retailerRef, {
           fcmDevices: arrayRemove(deviceToRemove)
         });
         return { success: true, message: 'Device unregistered successfully' };
@@ -98,6 +92,25 @@ class FCMService {
     } catch (error) {
       console.error('Error unregistering FCM device:', error);
       return { success: false, message: 'Failed to unregister device' };
+    }
+  }
+
+  /**
+   * Get all registered devices for a retailer
+   */
+  async getRetailerDevices(retailerId: string): Promise<FCMDevice[]> {
+    try {
+      const retailerRef = doc(db, 'retailers', retailerId);
+      const retailerDoc = await getDoc(retailerRef);
+
+      if (!retailerDoc.exists()) {
+        return [];
+      }
+
+      return retailerDoc.data()?.fcmDevices || [];
+    } catch (error) {
+      console.error('Error getting retailer devices:', error);
+      return [];
     }
   }
 
@@ -129,6 +142,7 @@ class FCMService {
       case 'retailer':
         return 'retailers';
       case 'wholesaler':
+      case 'wholesaler_admin':
       case 'super_admin':
         return 'tenants';
       case 'line_worker':
@@ -162,26 +176,22 @@ class FCMService {
   }
 
   /**
-   * Send notification to all devices for a user
+   * Send notification to all devices for a retailer
    */
-  async sendNotificationToUser(
-    userId: string, 
-    userType: 'retailer' | 'line_worker' | 'wholesaler' | 'super_admin',
-    notification: FCMNotificationData
-  ): Promise<{ success: boolean; message: string; sentCount?: number }> {
+  async sendNotificationToRetailer(retailerId: string, notification: FCMNotificationData): Promise<{ success: boolean; message: string; sentCount?: number }> {
     try {
-      const devices = await this.getUserDevices(userId, userType);
+      const devices = await this.getRetailerDevices(retailerId);
       
       if (devices.length === 0) {
-        return { success: false, message: `No devices registered for this ${userType}` };
+        return { success: false, message: 'No devices registered for this retailer' };
       }
 
       // Clean up inactive devices before sending
-      await this.cleanupInactiveDevices(userId, userType);
-      const activeDevices = await this.getUserDevices(userId, userType);
+      await this.cleanupInactiveDevices(retailerId);
+      const activeDevices = await this.getRetailerDevices(retailerId);
 
       if (activeDevices.length === 0) {
-        return { success: false, message: `No active devices found for this ${userType}` };
+        return { success: false, message: 'No active devices found for this retailer' };
       }
 
       let successCount = 0;
@@ -197,7 +207,7 @@ class FCMService {
             failureCount++;
             // If device token is invalid, remove it
             if (result.error === 'UNREGISTERED' || result.error === 'INVALID_ARGUMENT') {
-              await this.unregisterDevice(userId, device.token, userType);
+              await this.unregisterDevice(retailerId, device.token);
             }
           }
         } catch (error) {
@@ -212,30 +222,9 @@ class FCMService {
         sentCount: successCount
       };
     } catch (error) {
-      console.error('Error sending notification to user:', error);
+      console.error('Error sending notification to retailer:', error);
       return { success: false, message: 'Failed to send notification' };
     }
-  }
-
-  /**
-   * Send notification to all devices for a retailer (backward compatibility)
-   */
-  async sendNotificationToRetailer(retailerId: string, notification: FCMNotificationData): Promise<{ success: boolean; message: string; sentCount?: number }> {
-    return this.sendNotificationToUser(retailerId, 'retailer', notification);
-  }
-
-  /**
-   * Send notification to all devices for a wholesaler
-   */
-  async sendNotificationToWholesaler(wholesalerId: string, notification: FCMNotificationData): Promise<{ success: boolean; message: string; sentCount?: number }> {
-    return this.sendNotificationToUser(wholesalerId, 'wholesaler', notification);
-  }
-
-  /**
-   * Send notification to all devices for a line worker
-   */
-  async sendNotificationToLineWorker(lineWorkerId: string, notification: FCMNotificationData): Promise<{ success: boolean; message: string; sentCount?: number }> {
-    return this.sendNotificationToUser(lineWorkerId, 'line_worker', notification);
   }
 
   /**

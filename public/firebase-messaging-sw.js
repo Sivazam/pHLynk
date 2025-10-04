@@ -6,13 +6,13 @@ importScripts('https://www.gstatic.com/firebasejs/9.6.1/firebase-messaging-compa
 
 // Firebase configuration
 const firebaseConfig = {
-  apiKey: "AIzaSyCK6Q5h9C7wE5rJ6k2vF8lG9mH3pK4q7r8",
-  authDomain: "pharmalynkk.firebaseapp.com",
-  projectId: "pharmalynkk",
-  storageBucket: "pharmalynkk.appspot.com",
-  messagingSenderId: "877118992574",
-  appId: "1:877118992574:web:abc123def456ghi789",
-  measurementId: "G-XXXXXXXXXX"
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID
 };
 
 // Initialize Firebase in the service worker
