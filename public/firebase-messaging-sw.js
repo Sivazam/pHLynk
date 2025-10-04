@@ -4,15 +4,14 @@
 importScripts('https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/9.6.1/firebase-messaging-compat.js');
 
-// Firebase configuration
+// Firebase configuration (hardcoded for service worker)
 const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
-  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID
+  apiKey: "AIzaSyAiuROMuOXyBTQ2tAn_7lCk8qBsKLcKBds",
+  authDomain: "pharmalynkk.firebaseapp.com",
+  projectId: "pharmalynkk",
+  storageBucket: "pharmalynkk.firebasestorage.app",
+  messagingSenderId: "877118992574",
+  appId: "1:877118992574:web:ca55290c721d1c4b18eeef"
 };
 
 // Initialize Firebase in the service worker
@@ -54,17 +53,17 @@ self.addEventListener('notificationclick', (event) => {
   if (data.type === 'otp') {
     // Open retailer dashboard for OTP verification
     event.waitUntil(
-      clients.openWindow('/retailer/dashboard')
+      clients.openWindow('/retailer')
     );
   } else if (data.type === 'payment') {
     // Open payment details or dashboard
     if (data.paymentId) {
       event.waitUntil(
-        clients.openWindow(`/payments/${data.paymentId}`)
+        clients.openWindow(`/retailer/payment-history`)
       );
     } else {
       event.waitUntil(
-        clients.openWindow('/retailer/dashboard')
+        clients.openWindow('/retailer')
       );
     }
   } else {

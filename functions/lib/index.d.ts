@@ -61,3 +61,12 @@ export declare const sendTestFCMNotification: functions.https.CallableFunction<a
     messageId: string;
     message: string;
 }>, unknown>;
+export declare const generateOTP: functions.https.CallableFunction<any, Promise<{
+    success: boolean;
+    otpId: string;
+    code: string;
+    expiresAt: string;
+    retailerName: any;
+    retailerPhone: any;
+}>, unknown>;
+export declare const generateOTPHTTP: functions.https.HttpsFunction;

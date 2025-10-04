@@ -2,8 +2,6 @@ import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
-// Note: Firebase Functions are optional and only used if available
-let functions: any = null;
 
 const firebaseConfig = {
   apiKey: "AIzaSyAiuROMuOXyBTQ2tAn_7lCk8qBsKLcKBds",
@@ -40,46 +38,11 @@ export const db = getFirestore(app);
 // Initialize Firebase Storage and get a reference to the service
 export const storage = getStorage(app);
 
-// Initialize Firebase Functions and get a reference to the service (server-side only)
-// Firebase Functions are only available on the server side
-let functionsInitialized = false;
-let functionsInitPromise: Promise<any> | null = null;
-
+// Firebase Functions are no longer used - OTP generation is now local
+// Keeping this export for backward compatibility but it will always return null
 export async function initializeFirebaseFunctions(): Promise<any> {
-  // Firebase Functions are only available in server-side environment
-  if (typeof window !== 'undefined') {
-    console.log('🌐 Browser environment - Firebase Functions not available on client side');
-    return null;
-  }
-  
-  if (functionsInitialized && functions) {
-    return functions;
-  }
-  
-  if (!functionsInitPromise) {
-    functionsInitPromise = (async () => {
-      try {
-        console.log('🖥️ Server environment - initializing Firebase Functions');
-        const functionsModule = await import('firebase/functions');
-        console.log('📦 Firebase Functions module loaded:', Object.keys(functionsModule));
-        
-        if (functionsModule.getFunctions) {
-          functions = functionsModule.getFunctions(undefined, 'us-central1');
-          functionsInitialized = true;
-          console.log('✅ Firebase Functions initialized successfully');
-          return functions;
-        } else {
-          console.error('❌ getFunctions not available');
-          return null;
-        }
-      } catch (error) {
-        console.error('❌ Error importing Firebase Functions:', error);
-        return null;
-      }
-    })();
-  }
-  
-  return functionsInitPromise;
+  console.log('📝 Firebase Functions initialization skipped - using local OTP generation');
+  return null;
 }
 
 // Helper function to call Firebase Functions via HTTP with retry logic
@@ -182,26 +145,7 @@ export async function callFirebaseFunction(functionName: string, data: any, retr
   throw lastError;
 }
 
-// Auto-initialize functions in the background with retry mechanism (server-side only)
-const initializeWithRetry = async (retryCount = 0, maxRetries = 3) => {
-  try {
-    await initializeFirebaseFunctions();
-    console.log('✅ Background Firebase Functions initialization successful');
-  } catch (error) {
-    console.error('❌ Background Firebase Functions initialization failed:', error);
-    if (retryCount < maxRetries) {
-      console.log(`🔄 Retrying Firebase Functions initialization (${retryCount + 1}/${maxRetries})...`);
-      setTimeout(() => initializeWithRetry(retryCount + 1, maxRetries), 2000 * (retryCount + 1));
-    }
-  }
-};
-
-// Initialize functions only on server side
-if (typeof window === 'undefined') {
-  initializeWithRetry();
-}
-
-export { functions };
+// Firebase Functions are no longer auto-initialized since we use local OTP generation
 
 // Collection names
 export const COLLECTIONS = {

@@ -6,13 +6,12 @@ import { auth } from '@/lib/firebase';
 
 // Firebase configuration - should match your existing config
 const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
-  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID
+  apiKey: "AIzaSyAiuROMuOXyBTQ2tAn_7lCk8qBsKLcKBds",
+  authDomain: "pharmalynkk.firebaseapp.com",
+  projectId: "pharmalynkk",
+  storageBucket: "pharmalynkk.firebasestorage.app",
+  messagingSenderId: "877118992574",
+  appId: "1:877118992574:web:ca55290c721d1c4b18eeef"
 };
 
 // Initialize Firebase app for messaging
@@ -60,11 +59,25 @@ export function isFCMSupported(): boolean {
     return false;
   }
 
+  const hasServiceWorker = 'serviceWorker' in navigator;
+  const hasPushManager = 'PushManager' in window;
+  const hasNotification = 'Notification' in window;
+  const hasSenderId = "877118992574"; // Hardcoded sender ID
+
+  console.log('🔧 FCM Support Check:', {
+    hasServiceWorker,
+    hasPushManager,
+    hasNotification,
+    hasSenderId,
+    isSecure: location.protocol === 'https:' || location.hostname === 'localhost'
+  });
+
   return (
-    'serviceWorker' in navigator &&
-    'PushManager' in window &&
-    'Notification' in window &&
-    process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID !== undefined
+    hasServiceWorker &&
+    hasPushManager &&
+    hasNotification &&
+    hasSenderId &&
+    (location.protocol === 'https:' || location.hostname === 'localhost')
   );
 }
 
@@ -140,15 +153,26 @@ export async function getFCMToken(): Promise<string | null> {
       return null;
     }
 
-    // Get VAPID key from environment
-    const vapidKey = process.env.NEXT_PUBLIC_FCM_VAPID_KEY;
+    // Get VAPID key from environment or use placeholder
+    const vapidKey = process.env.NEXT_PUBLIC_FCM_VAPID_KEY || null;
     if (!vapidKey) {
-      console.warn('⚠️ FCM VAPID key not configured');
-      return null;
+      console.warn('⚠️ FCM VAPID key not configured - using token generation without VAPID');
+      // Continue without VAPID key for testing
     }
 
     // Get FCM token
-    const token = await getFCMTokenFromFirebase(messaging, { vapidKey });
+    let token;
+    if (vapidKey) {
+      token = await getFCMTokenFromFirebase(messaging, { vapidKey });
+    } else {
+      try {
+        // Try without VAPID key first
+        token = await getFCMTokenFromFirebase(messaging);
+      } catch (error) {
+        console.warn('⚠️ Failed to get FCM token without VAPID key:', error);
+        return null;
+      }
+    }
     
     if (token) {
       console.log('✅ FCM token obtained successfully');

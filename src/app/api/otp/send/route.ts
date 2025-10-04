@@ -75,61 +75,31 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log('📱 OTP SEND REQUEST - Using Cloud Function:');
+    console.log('📱 OTP SEND REQUEST - Using Local Generation:');
     console.log('Retailer ID:', retailerId);
     console.log('Payment ID:', paymentId);
     console.log('Amount:', amount);
     console.log('Line Worker Name:', lineWorkerName);
     console.log('Retailer User Data:', retailerUser);
 
-    // Use Cloud Function to generate OTP (more secure) - if available
+    // Generate OTP locally (removed cloud function dependency)
     let otpData;
     try {
-      // Try to use Firebase Functions if available (server-side only)
-      const functionsModule = await import('firebase/functions');
-      if (typeof window === 'undefined') {
-        const { getFunctions, httpsCallable } = functionsModule;
-        const functionsInstance = getFunctions();
-        const generateOTPFunction = httpsCallable(functionsInstance, 'generateOTP');
-        
-        const result = await generateOTPFunction({
-          retailerId,
-          paymentId,
-          amount,
-          lineWorkerName: lineWorkerName || 'Line Worker'
-        });
-
-        console.log('🔐 Cloud Function result:', result.data);
-
-        const data = result.data as any;
-        if (data && data.success) {
-          otpData = data;
-          console.log('✅ OTP generated successfully via cloud function');
-        } else {
-          throw new Error(data?.error || 'Failed to generate OTP via cloud function');
-        }
-      } else {
-        throw new Error('Firebase Functions not available in this environment');
-      }
-    } catch (cloudFunctionError) {
-      console.error('❌ Error calling cloud function:', cloudFunctionError);
-      
-      // Fallback to local generation if cloud function fails
-      console.log('⚠️ Falling back to local OTP generation');
+      console.log('🔐 Generating OTP locally');
       const { generateOTP } = await import('@/lib/otp-store');
       const otp = generateOTP();
       const expiresAt = new Date(Date.now() + 7 * 60 * 1000);
       
       otpData = {
         success: true,
-        otpId: `local_${Date.now()}`,
+        otpId: `local_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         code: otp,
         expiresAt: expiresAt.toISOString(),
         retailerName: retailerUser.name,
         retailerPhone: retailerUser.phone
       };
       
-      // Store OTP locally for fallback
+      // Store OTP locally for validation
       otpStore.set(paymentId, {
         code: otp,
         expiresAt,
@@ -139,6 +109,14 @@ export async function POST(request: NextRequest) {
         consecutiveFailures: 0,
         breachDetected: false
       });
+      
+      console.log('✅ OTP generated successfully locally');
+    } catch (localGenerationError) {
+      console.error('❌ Error generating OTP locally:', localGenerationError);
+      return NextResponse.json(
+        { error: 'Failed to generate OTP' },
+        { status: 500 }
+      );
     }
 
     console.log('📝 OTP generated:', otpData.code);
@@ -273,7 +251,7 @@ export async function POST(request: NextRequest) {
       expiresAt: otpData.expiresAt,
       retailerName: retailerUser.name,
       retailerPhone: retailerUser.phone,
-      usedCloudFunction: !!otpData.otpId && !otpData.otpId.startsWith('local_')
+      usedCloudFunction: false // Always false now since we removed cloud functions
     });
 
   } catch (error) {

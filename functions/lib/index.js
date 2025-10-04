@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.sendTestFCMNotification = exports.sendPaymentCompletionNotification = exports.sendOTPNotification = exports.processSMSResponse = exports.sendWholesalerPaymentSMS = exports.sendRetailerPaymentSMS = void 0;
+exports.generateOTPHTTP = exports.generateOTP = exports.sendTestFCMNotification = exports.sendPaymentCompletionNotification = exports.sendOTPNotification = exports.processSMSResponse = exports.sendWholesalerPaymentSMS = exports.sendRetailerPaymentSMS = void 0;
 const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
 // Initialize Firebase Admin
@@ -871,6 +871,205 @@ exports.sendTestFCMNotification = functions.https.onCall(async (request) => {
             throw error;
         }
         throw new functions.https.HttpsError('internal', 'Failed to send test notification', error instanceof Error ? error.message : 'Unknown error');
+    }
+});
+// Generate OTP function
+exports.generateOTP = functions.https.onCall(async (request) => {
+    try {
+        console.log('🚀 CLOUD FUNCTION TRIGGERED - generateOTP');
+        console.log('📥 Full request object:', JSON.stringify(request, null, 2));
+        let data, context;
+        if (request.data && typeof request.data === 'object') {
+            // Callable function format
+            data = request.data;
+            context = request;
+        }
+        else if (request && typeof request === 'object' && !request.auth) {
+            // Direct HTTP format
+            data = request;
+            context = { auth: null, rawRequest: { ip: 'unknown' } };
+        }
+        else {
+            throw new functions.https.HttpsError('invalid-argument', 'Invalid request format');
+        }
+        console.log('📤 Extracted data:', JSON.stringify(data, null, 2));
+        // Input validation
+        if (!data.retailerId || typeof data.retailerId !== 'string') {
+            throw new functions.https.HttpsError('invalid-argument', 'Invalid or missing retailerId');
+        }
+        if (!data.paymentId || typeof data.paymentId !== 'string') {
+            throw new functions.https.HttpsError('invalid-argument', 'Invalid or missing paymentId');
+        }
+        if (!data.amount || typeof data.amount !== 'number' || data.amount <= 0) {
+            throw new functions.https.HttpsError('invalid-argument', 'Invalid amount');
+        }
+        if (!data.lineWorkerName || typeof data.lineWorkerName !== 'string') {
+            throw new functions.https.HttpsError('invalid-argument', 'Invalid or missing lineWorkerName');
+        }
+        console.log('🔐 OTP Generation Request:', {
+            retailerId: data.retailerId,
+            paymentId: data.paymentId,
+            amount: data.amount,
+            lineWorkerName: data.lineWorkerName,
+            caller: context.auth ? context.auth.uid : 'NEXTJS_API'
+        });
+        // Get retailer user details
+        const retailerUsersQuery = await admin.firestore()
+            .collection('retailerUsers')
+            .where('retailerId', '==', data.retailerId)
+            .limit(1)
+            .get();
+        if (retailerUsersQuery.empty) {
+            throw new functions.https.HttpsError('not-found', `Retailer user not found for retailerId: ${data.retailerId}`);
+        }
+        const retailerUser = retailerUsersQuery.docs[0].data();
+        // Generate a 6-digit OTP
+        const otp = Math.floor(100000 + Math.random() * 900000).toString();
+        const otpId = `otp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const expiresAt = new Date(Date.now() + 7 * 60 * 1000); // 7 minutes
+        console.log('🔐 Generated OTP:', {
+            otpId,
+            otp: otp.substring(0, 2) + '****', // Log partially for security
+            expiresAt: expiresAt.toISOString(),
+            retailerId: data.retailerId,
+            paymentId: data.paymentId
+        });
+        // Store OTP in retailer document for persistence
+        try {
+            const retailerRef = admin.firestore().collection('retailers').doc(data.retailerId);
+            const otpDocumentData = {
+                paymentId: data.paymentId,
+                code: otp,
+                amount: data.amount,
+                lineWorkerName: data.lineWorkerName,
+                expiresAt: admin.firestore.Timestamp.fromDate(expiresAt),
+                createdAt: admin.firestore.Timestamp.now(),
+                isUsed: false,
+                otpId: otpId
+            };
+            await retailerRef.update({
+                activeOTPs: admin.firestore.FieldValue.arrayUnion(otpDocumentData)
+            });
+            console.log('✅ OTP stored in retailer document');
+        }
+        catch (firestoreError) {
+            console.error('❌ Error storing OTP in retailer document:', firestoreError);
+            // Don't fail the request if storage fails
+        }
+        return {
+            success: true,
+            otpId: otpId,
+            code: otp,
+            expiresAt: expiresAt.toISOString(),
+            retailerName: retailerUser.name,
+            retailerPhone: retailerUser.phone
+        };
+    }
+    catch (error) {
+        console.error('❌ CLOUD FUNCTION - Error generating OTP:', error);
+        if (error instanceof functions.https.HttpsError) {
+            throw error;
+        }
+        throw new functions.https.HttpsError('internal', 'Failed to generate OTP', error instanceof Error ? error.message : 'Unknown error');
+    }
+});
+// HTTP version of generateOTP for direct API calls
+exports.generateOTPHTTP = functions.https.onRequest(async (req, res) => {
+    try {
+        console.log('🚀 HTTP CLOUD FUNCTION TRIGGERED - generateOTPHTTP');
+        console.log('📥 Request method:', req.method);
+        console.log('📥 Request body:', JSON.stringify(req.body, null, 2));
+        if (req.method !== 'POST') {
+            res.status(405).json({ error: 'Method not allowed' });
+            return;
+        }
+        const data = req.body;
+        // Input validation
+        if (!data.retailerId || typeof data.retailerId !== 'string') {
+            res.status(400).json({ error: 'Invalid or missing retailerId' });
+            return;
+        }
+        if (!data.paymentId || typeof data.paymentId !== 'string') {
+            res.status(400).json({ error: 'Invalid or missing paymentId' });
+            return;
+        }
+        if (!data.amount || typeof data.amount !== 'number' || data.amount <= 0) {
+            res.status(400).json({ error: 'Invalid amount' });
+            return;
+        }
+        if (!data.lineWorkerName || typeof data.lineWorkerName !== 'string') {
+            res.status(400).json({ error: 'Invalid or missing lineWorkerName' });
+            return;
+        }
+        console.log('🔐 HTTP OTP Generation Request:', {
+            retailerId: data.retailerId,
+            paymentId: data.paymentId,
+            amount: data.amount,
+            lineWorkerName: data.lineWorkerName
+        });
+        // Get retailer user details
+        const retailerUsersQuery = await admin.firestore()
+            .collection('retailerUsers')
+            .where('retailerId', '==', data.retailerId)
+            .limit(1)
+            .get();
+        if (retailerUsersQuery.empty) {
+            res.status(404).json({ error: `Retailer user not found for retailerId: ${data.retailerId}` });
+            return;
+        }
+        const retailerUser = retailerUsersQuery.docs[0].data();
+        // Generate a 6-digit OTP
+        const otp = Math.floor(100000 + Math.random() * 900000).toString();
+        const otpId = `otp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const expiresAt = new Date(Date.now() + 7 * 60 * 1000); // 7 minutes
+        console.log('🔐 Generated OTP via HTTP:', {
+            otpId,
+            otp: otp.substring(0, 2) + '****', // Log partially for security
+            expiresAt: expiresAt.toISOString(),
+            retailerId: data.retailerId,
+            paymentId: data.paymentId
+        });
+        // Store OTP in retailer document for persistence
+        try {
+            const retailerRef = admin.firestore().collection('retailers').doc(data.retailerId);
+            const otpDocumentData = {
+                paymentId: data.paymentId,
+                code: otp,
+                amount: data.amount,
+                lineWorkerName: data.lineWorkerName,
+                expiresAt: admin.firestore.Timestamp.fromDate(expiresAt),
+                createdAt: admin.firestore.Timestamp.now(),
+                isUsed: false,
+                otpId: otpId
+            };
+            await retailerRef.update({
+                activeOTPs: admin.firestore.FieldValue.arrayUnion(otpDocumentData)
+            });
+            console.log('✅ HTTP OTP stored in retailer document');
+        }
+        catch (firestoreError) {
+            console.error('❌ Error storing HTTP OTP in retailer document:', firestoreError);
+            // Don't fail the request if storage fails
+        }
+        const response = {
+            success: true,
+            otpId: otpId,
+            code: otp,
+            expiresAt: expiresAt.toISOString(),
+            retailerName: retailerUser.name,
+            retailerPhone: retailerUser.phone
+        };
+        console.log('✅ HTTP OTP generation successful');
+        res.status(200).json(response);
+        return;
+    }
+    catch (error) {
+        console.error('❌ HTTP CLOUD FUNCTION - Error generating OTP:', error);
+        res.status(500).json({
+            error: 'Failed to generate OTP',
+            details: error instanceof Error ? error.message : 'Unknown error'
+        });
+        return;
     }
 });
 //# sourceMappingURL=index.js.map
