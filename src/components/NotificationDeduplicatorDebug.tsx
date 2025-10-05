@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -71,7 +71,7 @@ export function NotificationDeduplicatorDebug() {
     toast.info('Duplicate test notifications sent');
   };
 
-  useState(() => {
+  useEffect(() => {
     refreshDebugInfo();
   }, []);
 
