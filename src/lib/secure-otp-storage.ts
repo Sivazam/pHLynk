@@ -439,14 +439,34 @@ export class SecureOTPStorage {
     try {
       console.log('🔍 SecureOTPStorage: Querying OTPs for retailer:', retailerId);
       
-      const q = query(
-        collection(firestore, this.collection),
-        where('retailerId', '==', retailerId),
-        where('isUsed', '==', false),
-        orderBy('createdAt', 'desc'),
-        limit(20)
-      );
+      // First, test basic Firestore connectivity
+      console.log('🔍 Testing Firestore connectivity...');
+      const testCollection = collection(firestore, 'test_connection');
+      console.log('✅ Firestore collection access works');
+      
+      // Try with minimal indexing requirements first
+      let q;
+      try {
+        console.log('🔍 Trying minimal index query...');
+        q = query(
+          collection(firestore, this.collection),
+          where('retailerId', '==', retailerId),
+          where('isUsed', '==', false),
+          orderBy('createdAt', 'desc'),
+          limit(20)
+        );
+      } catch (indexError) {
+        console.warn('⚠️ Index query failed, trying fallback query:', indexError);
+        // Fallback: Get all retailer OTPs and filter in memory
+        q = query(
+          collection(firestore, this.collection),
+          where('retailerId', '==', retailerId),
+          limit(100) // Get more and filter locally
+        );
+      }
+      
       const snapshot = await getDocs(q);
+      console.log('✅ Firestore query executed successfully');
       
       console.log('🔍 SecureOTPStorage: Firestore query result:', {
         retailerId,
@@ -456,7 +476,38 @@ export class SecureOTPStorage {
       
       const now = new Date();
       
-      return snapshot.docs.map(doc => {
+      // Filter and process results
+      let docs = snapshot.docs;
+      
+      // If we used fallback query, filter in memory
+      const isFallbackQuery = snapshot.size > 0 && 
+        (snapshot.docs.some(doc => doc.data().isUsed === undefined) || 
+         snapshot.docs.some(doc => !doc.data().hasOwnProperty('isUsed')));
+      
+      if (isFallbackQuery) {
+        console.log('🔍 Using fallback query, filtering in memory...');
+        docs = docs.filter(doc => {
+          const otp = doc.data() as StoredOTP;
+          return otp.isUsed === false;
+        });
+        
+        // Sort by createdAt descending
+        docs.sort((a, b) => {
+          const aTime = a.data().createdAt?.toMillis?.() || 0;
+          const bTime = b.data().createdAt?.toMillis?.() || 0;
+          return bTime - aTime;
+        });
+        
+        // Limit to 20
+        docs = docs.slice(0, 20);
+        
+        console.log('🔍 After filtering and sorting:', {
+          filteredCount: docs.length,
+          originalCount: snapshot.size
+        });
+      }
+      
+      return docs.map(doc => {
         const otp = doc.data() as StoredOTP;
         const decryptedCode = this.decryptOTP(otp.code);
         const isExpired = otp.expiresAt < now;
@@ -489,6 +540,14 @@ export class SecureOTPStorage {
       });
       
     } catch (error) {
+      console.error('❌ SecureOTPStorage: Detailed error:', {
+        error: error,
+        errorMessage: error instanceof Error ? error.message : 'Unknown error',
+        errorStack: error instanceof Error ? error.stack : 'No stack trace',
+        retailerId: retailerId,
+        collection: this.collection
+      });
+      
       secureLogger.error('Failed to get active OTPs for retailer', { 
         error: error instanceof Error ? error.message : 'Unknown error',
         retailerId 
@@ -510,16 +569,49 @@ export class SecureOTPStorage {
     isExpired: boolean;
   }>) => void): () => void {
     try {
-      const q = query(
-        collection(firestore, this.collection),
-        where('retailerId', '==', retailerId),
-        where('isUsed', '==', false),
-        orderBy('createdAt', 'desc')
-      );
+      // Try with minimal indexing requirements first
+      let q;
+      try {
+        console.log('🔍 Setting up real-time listener with indexed query...');
+        q = query(
+          collection(firestore, this.collection),
+          where('retailerId', '==', retailerId),
+          where('isUsed', '==', false),
+          orderBy('createdAt', 'desc')
+        );
+      } catch (indexError) {
+        console.warn('⚠️ Index query failed for real-time listener, using fallback:', indexError);
+        // Fallback: Get all retailer OTPs and filter in memory
+        q = query(
+          collection(firestore, this.collection),
+          where('retailerId', '==', retailerId)
+        );
+      }
       
       const unsubscribe = onSnapshot(q, (snapshot) => {
         const now = new Date();
-        const otps = snapshot.docs.map(doc => {
+        
+        // Check if we're using fallback query and need to filter in memory
+        const isFallbackQuery = snapshot.docs.some(doc => !doc.data().hasOwnProperty('isUsed'));
+        
+        let docs = snapshot.docs;
+        
+        if (isFallbackQuery) {
+          console.log('🔍 Real-time listener using fallback query, filtering in memory...');
+          docs = docs.filter(doc => {
+            const otp = doc.data() as StoredOTP;
+            return otp.isUsed === false;
+          });
+          
+          // Sort by createdAt descending
+          docs.sort((a, b) => {
+            const aTime = a.data().createdAt?.toMillis?.() || 0;
+            const bTime = b.data().createdAt?.toMillis?.() || 0;
+            return bTime - aTime;
+          });
+        }
+        
+        const otps = docs.map(doc => {
           const otp = doc.data() as StoredOTP;
           const decryptedCode = this.decryptOTP(otp.code);
           const isExpired = otp.expiresAt < now;

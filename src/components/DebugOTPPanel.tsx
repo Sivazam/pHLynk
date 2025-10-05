@@ -20,6 +20,24 @@ export function DebugOTPPanel({ retailerId }: { retailerId: string }) {
       addResult('🧪 Starting Debug Test...');
       addResult(`📋 Using Retailer ID: ${retailerId}`);
       
+      // Test 0: Basic Firestore connectivity
+      addResult('📋 Test 0: Testing Firestore connectivity...');
+      try {
+        const { collection, getDocs, query, where, limit } = await import('firebase/firestore');
+        const { db } = await import('@/lib/firebase');
+        
+        const testQuery = query(
+          collection(db, 'secure_otps'),
+          limit(1)
+        );
+        
+        const testSnapshot = await getDocs(testQuery);
+        addResult(`✅ Firestore connectivity test passed. Collection accessible.`);
+      } catch (firestoreError) {
+        addResult(`❌ Firestore connectivity failed: ${firestoreError instanceof Error ? firestoreError.message : 'Unknown error'}`);
+        throw firestoreError;
+      }
+      
       // Test 1: Direct query
       addResult('📋 Test 1: Querying secure_otps collection...');
       const otps = await secureOTPStorage.getActiveOTPsForRetailer(retailerId);

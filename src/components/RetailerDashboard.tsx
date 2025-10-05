@@ -1707,8 +1707,8 @@ Thank you for your payment!
                         </CardContent>
                       </Card>
 
-                      {/* Debug OTP Panel - Only show in development */}
-                      {process.env.NODE_ENV === 'development' && retailer && (
+                      {/* Debug OTP Panel - Always show for testing */}
+                      {retailer && (
                         <DebugOTPPanel retailerId={retailer.id} />
                       )}
 
