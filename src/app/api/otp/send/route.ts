@@ -135,6 +135,13 @@ export async function POST(request: NextRequest) {
         expiresAt
       });
       
+      console.log('🔍 OTP Send - Retailer ID Debug:', {
+        'retailerId from request': retailerId,
+        'paymentId': paymentId,
+        'retailerUser.retailerId': retailerUser.retailerId,
+        'otpId': otpId
+      });
+      
       otpData = {
         success: true,
         otpId,

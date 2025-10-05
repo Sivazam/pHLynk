@@ -90,7 +90,19 @@ export class SecureOTPStorage {
         isUsed: false
       };
       
+      console.log('🔐 SecureOTPStorage: Storing OTP:', {
+        otpId,
+        paymentId: data.paymentId,
+        retailerId: data.retailerId,
+        amount: data.amount,
+        lineWorkerName: data.lineWorkerName,
+        expiresAt: data.expiresAt.toISOString(),
+        createdAt: otpData.createdAt.toISOString()
+      });
+      
       await setDoc(doc(firestore, this.collection, otpId), otpData);
+      
+      console.log('✅ SecureOTPStorage: OTP stored successfully:', otpId);
       
       secureLogger.otp('OTP stored securely in Firestore', {
         otpId,
@@ -102,6 +114,7 @@ export class SecureOTPStorage {
       return otpId;
       
     } catch (error) {
+      console.error('❌ SecureOTPStorage: Failed to store OTP:', error);
       secureLogger.error('Failed to store OTP in Firestore', { 
         error: error instanceof Error ? error.message : 'Unknown error',
         paymentId: data.paymentId 
@@ -424,6 +437,8 @@ export class SecureOTPStorage {
     isExpired: boolean;
   }>> {
     try {
+      console.log('🔍 SecureOTPStorage: Querying OTPs for retailer:', retailerId);
+      
       const q = query(
         collection(firestore, this.collection),
         where('retailerId', '==', retailerId),
@@ -433,12 +448,28 @@ export class SecureOTPStorage {
       );
       const snapshot = await getDocs(q);
       
+      console.log('🔍 SecureOTPStorage: Firestore query result:', {
+        retailerId,
+        totalDocs: snapshot.size,
+        docIds: snapshot.docs.map(doc => doc.id)
+      });
+      
       const now = new Date();
       
       return snapshot.docs.map(doc => {
         const otp = doc.data() as StoredOTP;
         const decryptedCode = this.decryptOTP(otp.code);
         const isExpired = otp.expiresAt < now;
+        
+        console.log('🔍 SecureOTPStorage: Processing OTP:', {
+          id: doc.id,
+          paymentId: otp.paymentId,
+          retailerId: otp.retailerId,
+          decryptedCode: decryptedCode,
+          isExpired: isExpired,
+          expiresAt: otp.expiresAt,
+          now: now
+        });
         
         // Convert Firestore timestamps
         const expiresAt = otp.expiresAt && (otp.expiresAt as any).toDate ? 

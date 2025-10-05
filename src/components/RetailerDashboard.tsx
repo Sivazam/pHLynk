@@ -58,6 +58,7 @@ import {
 } from 'lucide-react';
 import { StatusBarColor } from './ui/StatusBarColor';
 import { Confetti } from './ui/Confetti';
+import { DebugOTPPanel } from './DebugOTPPanel';
 
 export function RetailerDashboard() {
   const { user, logout } = useAuth();
@@ -736,9 +737,25 @@ export function RetailerDashboard() {
     
     try {
       console.log('🔄 Syncing OTPs from secure storage for retailer:', retailer.id);
+      console.log('🔍 Retailer details:', {
+        id: retailer.id,
+        name: retailer.name,
+        tenantId: tenantId
+      });
       
       // Get OTPs from secure storage instead of retailer document array
       const secureOTPs = await secureOTPStorage.getActiveOTPsForRetailer(retailer.id);
+      
+      console.log('🔍 Secure storage raw OTPs:', {
+        count: secureOTPs.length,
+        otps: secureOTPs.map(otp => ({
+          paymentId: otp.paymentId,
+          code: otp.code,
+          amount: otp.amount,
+          expiresAt: otp.expiresAt,
+          isExpired: otp.isExpired
+        }))
+      });
       
       // Get valid OTPs (not expired) from secure storage
       const validOTPsFromSecureStorage = secureOTPs.filter(otp => !otp.isExpired);
@@ -1227,6 +1244,14 @@ export function RetailerDashboard() {
       setTenantId(retailerUserData.tenantId);
       setPayments(paymentsData);
       
+      console.log('🔍 IMPORTANT: Retailer ID Mapping Check:', {
+        'user.retailerId': user?.retailerId,
+        'localStorage.retailerId': localStorage.getItem('retailerId'),
+        'retailerUserData.retailerId': retailerUserData.retailerId,
+        'retailerData.id (used for OTP sync)': retailerData.id,
+        'retailerId parameter passed to function': retailerId
+      });
+      
       // Load active OTPs and completed payments from in-memory store
       // First sync from secure storage to get the latest OTPs
       const activeOTPsData = await otpBridge.syncOTPsToRetailerDashboard(retailerId);
@@ -1681,6 +1706,11 @@ Thank you for your payment!
                           <p className="text-xs text-gray-500">Pending verification</p>
                         </CardContent>
                       </Card>
+
+                      {/* Debug OTP Panel - Only show in development */}
+                      {process.env.NODE_ENV === 'development' && retailer && (
+                        <DebugOTPPanel retailerId={retailer.id} />
+                      )}
 
                       <Card>
                         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
