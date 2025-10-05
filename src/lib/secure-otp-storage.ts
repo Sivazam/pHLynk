@@ -5,7 +5,7 @@
  * Includes encryption, expiration handling, and security tracking.
  */
 
-import { firestore } from '@/lib/firebase';
+import { db } from '@/lib/firebase';
 import { secureLogger } from '@/lib/secure-logger';
 
 export interface StoredOTP {
@@ -89,7 +89,7 @@ export class SecureOTPStorage {
         isUsed: false
       };
       
-      await firestore.collection(this.collection).doc(otpId).set(otpData);
+      await db.collection(this.collection).doc(otpId).set(otpData);
       
       secureLogger.otp('OTP stored securely in Firestore', {
         otpId,
@@ -114,7 +114,7 @@ export class SecureOTPStorage {
    */
   async getOTP(paymentId: string): Promise<StoredOTP | null> {
     try {
-      const snapshot = await firestore
+      const snapshot = await db
         .collection(this.collection)
         .where('paymentId', '==', paymentId)
         .where('isUsed', '==', false)
@@ -274,7 +274,7 @@ export class SecureOTPStorage {
    */
   private async recordFailedAttempt(otpId: string): Promise<void> {
     try {
-      const otpRef = firestore.collection(this.collection).doc(otpId);
+      const otpRef = db.collection(this.collection).doc(otpId);
       const otpDoc = await otpRef.get();
       
       if (!otpDoc.exists) return;
@@ -323,7 +323,7 @@ export class SecureOTPStorage {
    */
   private async resetSecurityTracking(otpId: string): Promise<void> {
     try {
-      await firestore.collection(this.collection).doc(otpId).update({
+      await db.collection(this.collection).doc(otpId).update({
         attempts: 0,
         lastAttemptAt: null,
         cooldownUntil: null,
@@ -346,7 +346,7 @@ export class SecureOTPStorage {
    */
   private async markAsUsed(otpId: string): Promise<void> {
     try {
-      await firestore.collection(this.collection).doc(otpId).update({
+      await db.collection(this.collection).doc(otpId).update({
         isUsed: true,
         usedAt: new Date()
       });
@@ -368,18 +368,18 @@ export class SecureOTPStorage {
       const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
       
       // Clean up expired OTPs
-      const expiredSnapshot = await firestore
+      const expiredSnapshot = await db
         .collection(this.collection)
         .where('expiresAt', '<', now)
         .get();
       
-      const batch = firestore.batch();
+      const batch = db.batch();
       expiredSnapshot.docs.forEach(doc => {
         batch.delete(doc.ref);
       });
       
       // Clean up used OTPs older than 24 hours
-      const usedSnapshot = await firestore
+      const usedSnapshot = await db
         .collection(this.collection)
         .where('isUsed', '==', true)
         .where('usedAt', '<', twentyFourHoursAgo)
@@ -420,7 +420,7 @@ export class SecureOTPStorage {
     isExpired: boolean;
   }>> {
     try {
-      const snapshot = await firestore
+      const snapshot = await db
         .collection(this.collection)
         .where('retailerId', '==', retailerId)
         .where('isUsed', '==', false)

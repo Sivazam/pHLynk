@@ -11,6 +11,15 @@ import { rateLimiters, withRateLimitHandler } from '@/lib/api-rate-limit';
 import { validateInput, VALIDATION_RULES } from '@/lib/input-validation';
 import { secureLogger } from '@/lib/secure-logger';
 
+interface RetailerUser {
+  uid: string;
+  name: string;
+  email: string;
+  phone: string;
+  retailerId: string;
+  [key: string]: any;
+}
+
 interface OTPRequest {
   retailerId: string;
   paymentId: string;
@@ -163,7 +172,7 @@ export const POST = withRateLimitHandler(
       }
 
       // Get retailer user details with retry logic
-      let retailerUser = null;
+      let retailerUser: RetailerUser | null = null;
       let retryCount = 0;
       const maxRetries = 3;
       
