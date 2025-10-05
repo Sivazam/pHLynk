@@ -5,7 +5,7 @@
  * caching, and batch operations to reduce database load using Firebase Firestore.
  */
 
-import { db } from '@/lib/firebase';
+import { firestore } from '@/lib/firebase';
 import { secureLogger } from '@/lib/secure-logger';
 import { secureOTPStorage } from '@/lib/secure-otp-storage';
 
@@ -273,7 +273,7 @@ export class OptimizedPaymentVerification {
     return this.getCachedData(
       `payment:${paymentId}`,
       async () => {
-        const doc = await db.collection(this.paymentsCollection).doc(paymentId).get();
+        const doc = await firestore.collection(this.paymentsCollection).doc(paymentId).get();
         
         if (!doc.exists) return null;
         
@@ -310,7 +310,7 @@ export class OptimizedPaymentVerification {
     return this.getCachedData(
       `retailer:${retailerId}`,
       async () => {
-        const doc = await db.collection(this.retailersCollection).doc(retailerId).get();
+        const doc = await firestore.collection(this.retailersCollection).doc(retailerId).get();
         
         if (!doc.exists) return null;
         
@@ -331,7 +331,7 @@ export class OptimizedPaymentVerification {
    */
   private async markPaymentVerified(paymentId: string): Promise<void> {
     try {
-      await db.collection(this.paymentsCollection).doc(paymentId).update({
+      await firestore.collection(this.paymentsCollection).doc(paymentId).update({
         isVerified: true,
         verifiedAt: new Date(),
         status: 'verified'
@@ -353,7 +353,7 @@ export class OptimizedPaymentVerification {
    */
   private async markPaymentExpired(paymentId: string): Promise<void> {
     try {
-      await db.collection(this.paymentsCollection).doc(paymentId).update({
+      await firestore.collection(this.paymentsCollection).doc(paymentId).update({
         status: 'expired'
       });
       
@@ -378,7 +378,7 @@ export class OptimizedPaymentVerification {
         cacheKey,
         async () => {
           // Single query with all needed data
-          const snapshot = await db
+          const snapshot = await firestore
             .collection(this.paymentsCollection)
             .where('retailerId', '==', retailerId)
             .orderBy('createdAt', 'desc')
@@ -388,7 +388,7 @@ export class OptimizedPaymentVerification {
           const now = new Date();
           
           // Get retailer data in parallel
-          const retailerDoc = await db.collection(this.retailersCollection).doc(retailerId).get();
+          const retailerDoc = await firestore.collection(this.retailersCollection).doc(retailerId).get();
           const retailerName = retailerDoc.exists ? retailerDoc.data()?.name || 'Unknown Retailer' : 'Unknown Retailer';
           
           return snapshot.docs.map(doc => {
@@ -449,7 +449,7 @@ export class OptimizedPaymentVerification {
         
         const batchPromises = batch.map(async (paymentId) => {
           try {
-            const doc = await db.collection(this.paymentsCollection).doc(paymentId).get();
+            const doc = await firestore.collection(this.paymentsCollection).doc(paymentId).get();
             
             if (!doc.exists) {
               failed.push({ id: paymentId, error: 'Payment not found' });
@@ -471,7 +471,7 @@ export class OptimizedPaymentVerification {
               return;
             }
             
-            await db.collection(this.paymentsCollection).doc(paymentId).update({
+            await firestore.collection(this.paymentsCollection).doc(paymentId).update({
               isVerified: true,
               verifiedAt: new Date(),
               status: 'verified'
@@ -522,7 +522,7 @@ export class OptimizedPaymentVerification {
       const now = new Date();
       const expiredThreshold = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000); // 7 days ago
       
-      const snapshot = await db
+      const snapshot = await firestore
         .collection(this.paymentsCollection)
         .where('expiresAt', '<', expiredThreshold)
         .where('isVerified', '==', false)
@@ -537,7 +537,7 @@ export class OptimizedPaymentVerification {
       let deletedCount = 0;
       
       for (let i = 0; i < snapshot.docs.length; i += batchSize) {
-        const batch = db.batch();
+        const batch = firestore.batch();
         const batchDocs = snapshot.docs.slice(i, i + batchSize);
         
         batchDocs.forEach(doc => {

@@ -86,7 +86,7 @@ export default function RootLayout({
               // PWA Detection and Loading Screen with Cache Busting
               (function() {
                 // Stable version identifier - UPDATE THIS FOR EACH DEPLOYMENT
-                const APP_VERSION = 'pHLynk-v3-1.1.0-dev';
+                const APP_VERSION = 'pHLynk-v3-1.1.0';
                 
                 // Check if running as PWA (standalone mode)
                 const isPWA = window.matchMedia('(display-mode: standalone)').matches || 
@@ -106,7 +106,13 @@ export default function RootLayout({
                 // Service Worker Registration with Cache Busting
                 if ('serviceWorker' in navigator) {
                   window.addEventListener('load', function() {
-                    // Store current version without checking for development
+                    // DISABLED: Version checking to prevent infinite reload loops
+                    // const storedVersion = localStorage.getItem('pHLynk-version');
+                    // if (storedVersion && storedVersion !== APP_VERSION) {
+                    //   // Version checking disabled
+                    // }
+                    
+                    // Store current version without checking
                     localStorage.setItem('pHLynk-version', APP_VERSION);
                     
                     // Register service worker normally
@@ -135,11 +141,27 @@ export default function RootLayout({
                         scope: registration.scope,
                         version: APP_VERSION 
                       });
+                      
+                      // Listen for updates - DISABLED to prevent infinite reload loops
+                      // registration.addEventListener('updatefound', () => {
+                      //   const installingWorker = registration.installing;
+                      //   installingWorker.addEventListener('statechange', () => {
+                      //     if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                      //       // Version checking logic disabled to prevent reload loops
+                      //       console.log('Service worker updated, but automatic reload disabled');
+                      //     }
+                      //   });
+                      // });
                     })
                     .catch(function(err) {
                       console.error('ServiceWorker registration failed', err);
                     });
                 }
+                
+                // Show update notification - DISABLED to prevent infinite reload loops
+                // function showUpdateNotification() {
+                //   // Function removed to prevent automatic reloads
+                // }
                 
                 // Remove any existing update notification that might be stuck
                 if (typeof window !== 'undefined') {
@@ -147,6 +169,9 @@ export default function RootLayout({
                   if (existingNotification) {
                     existingNotification.remove();
                   }
+                  
+                  // Clear problematic version storage to prevent reload loops
+                  localStorage.removeItem('pHLynk-version');
                 }
                 
                 // Listen for cache cleared messages from service worker
