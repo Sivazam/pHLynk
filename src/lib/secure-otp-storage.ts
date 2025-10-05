@@ -128,40 +128,78 @@ export class SecureOTPStorage {
    */
   async getOTP(paymentId: string): Promise<StoredOTP | null> {
     try {
+      console.log('🔍 getOTP: Searching for OTP with paymentId:', paymentId);
+      
+      // Simple query without complex indexes
       const q = query(
         collection(firestore, this.collection),
         where('paymentId', '==', paymentId),
-        where('isUsed', '==', false),
-        orderBy('createdAt', 'desc'),
-        limit(1)
+        limit(10) // Get recent OTPs and filter in memory
       );
       const snapshot = await getDocs(q);
       
+      console.log('🔍 getOTP: Query results:', {
+        paymentId,
+        totalDocs: snapshot.size,
+        docIds: snapshot.docs.map(doc => doc.id)
+      });
+      
       if (snapshot.empty) {
+        console.log('🔍 getOTP: No OTPs found for paymentId:', paymentId);
         return null;
       }
       
-      const doc = snapshot.docs[0];
-      const otp = doc.data() as StoredOTP;
+      // Find the most recent unused OTP
+      const otps = snapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          paymentId: data.paymentId,
+          code: data.code,
+          retailerId: data.retailerId,
+          amount: data.amount,
+          lineWorkerName: data.lineWorkerName,
+          expiresAt: data.expiresAt?.toDate() || new Date(),
+          createdAt: data.createdAt?.toDate() || new Date(),
+          attempts: data.attempts || 0,
+          lastAttemptAt: data.lastAttemptAt?.toDate() || null,
+          cooldownUntil: data.cooldownUntil?.toDate() || null,
+          consecutiveFailures: data.consecutiveFailures || 0,
+          breachDetected: data.breachDetected || false,
+          isUsed: data.isUsed || false,
+          usedAt: data.usedAt?.toDate() || null,
+        };
+      });
       
-      // Convert Firestore timestamps to Date objects
-      if (otp.expiresAt && (otp.expiresAt as any).toDate) {
-        otp.expiresAt = (otp.expiresAt as any).toDate();
-      }
-      if (otp.createdAt && (otp.createdAt as any).toDate) {
-        otp.createdAt = (otp.createdAt as any).toDate();
-      }
-      if (otp.lastAttemptAt && (otp.lastAttemptAt as any).toDate) {
-        otp.lastAttemptAt = (otp.lastAttemptAt as any).toDate();
-      }
-      if (otp.cooldownUntil && (otp.cooldownUntil as any).toDate) {
-        otp.cooldownUntil = (otp.cooldownUntil as any).toDate();
-      }
-      if (otp.usedAt && (otp.usedAt as any).toDate) {
-        otp.usedAt = (otp.usedAt as any).toDate();
+      console.log('🔍 getOTP: Processed OTPs:', {
+        paymentId,
+        totalOTPs: otps.length,
+        unusedOTPs: otps.filter(otp => !otp.isUsed).length,
+        otpDetails: otps.map(otp => ({
+          id: otp.id,
+          paymentId: otp.paymentId,
+          isUsed: otp.isUsed,
+          expiresAt: otp.expiresAt.toISOString()
+        }))
+      });
+      
+      // Filter for unused OTPs and get the most recent one
+      const unusedOTPs = otps.filter(otp => !otp.isUsed);
+      if (unusedOTPs.length === 0) {
+        console.log('🔍 getOTP: No unused OTPs found for paymentId:', paymentId);
+        return null;
       }
       
-      return otp;
+      // Sort by creation date and get the most recent
+      const latestOTP = unusedOTPs.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
+      
+      console.log('🔍 getOTP: Found OTP for paymentId:', paymentId, {
+        otpId: latestOTP.id,
+        isUsed: latestOTP.isUsed,
+        expiresAt: latestOTP.expiresAt.toISOString()
+      });
+      
+      return latestOTP;
       
     } catch (error) {
       secureLogger.error('Failed to retrieve OTP from Firestore', { 
@@ -497,7 +535,7 @@ export class SecureOTPStorage {
         .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()) // Sort by creation date
         .slice(0, 20) // Limit to 20 most recent
         .map(otp => ({
-          code: otp.code,
+          code: this.decryptOTP(otp.code), // Decrypt the OTP for display
           amount: otp.amount,
           paymentId: otp.paymentId,
           lineWorkerName: otp.lineWorkerName,
@@ -610,7 +648,7 @@ export class SecureOTPStorage {
           .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()) // Sort by creation date
           .slice(0, 20) // Limit to 20 most recent
           .map(otp => ({
-            code: otp.code,
+            code: this.decryptOTP(otp.code), // Decrypt the OTP for display
             amount: otp.amount,
             paymentId: otp.paymentId,
             lineWorkerName: otp.lineWorkerName,
