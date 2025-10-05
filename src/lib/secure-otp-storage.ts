@@ -481,8 +481,8 @@ export class SecureOTPStorage {
       
       // If we used fallback query, filter in memory
       const isFallbackQuery = snapshot.size > 0 && 
-        (snapshot.docs.some(doc => doc.data().isUsed === undefined) || 
-         snapshot.docs.some(doc => !doc.data().hasOwnProperty('isUsed')));
+        (snapshot.docs.some(doc => (doc.data() as any).isUsed === undefined) || 
+         snapshot.docs.some(doc => !(doc.data() as any).hasOwnProperty('isUsed')));
       
       if (isFallbackQuery) {
         console.log('🔍 Using fallback query, filtering in memory...');
@@ -493,8 +493,8 @@ export class SecureOTPStorage {
         
         // Sort by createdAt descending
         docs.sort((a, b) => {
-          const aTime = a.data().createdAt?.toMillis?.() || 0;
-          const bTime = b.data().createdAt?.toMillis?.() || 0;
+          const aTime = (a.data() as any).createdAt?.toMillis?.() || 0;
+          const bTime = (b.data() as any).createdAt?.toMillis?.() || 0;
           return bTime - aTime;
         });
         
@@ -592,7 +592,7 @@ export class SecureOTPStorage {
         const now = new Date();
         
         // Check if we're using fallback query and need to filter in memory
-        const isFallbackQuery = snapshot.docs.some(doc => !doc.data().hasOwnProperty('isUsed'));
+        const isFallbackQuery = snapshot.docs.some(doc => !(doc.data() as any).hasOwnProperty('isUsed'));
         
         let docs = snapshot.docs;
         
@@ -605,8 +605,8 @@ export class SecureOTPStorage {
           
           // Sort by createdAt descending
           docs.sort((a, b) => {
-            const aTime = a.data().createdAt?.toMillis?.() || 0;
-            const bTime = b.data().createdAt?.toMillis?.() || 0;
+            const aTime = (a.data() as any).createdAt?.toMillis?.() || 0;
+            const bTime = (b.data() as any).createdAt?.toMillis?.() || 0;
             return bTime - aTime;
           });
         }

@@ -15,7 +15,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DashboardNavigation, NavItem, NotificationItem } from '@/components/DashboardNavigation';
 import { DateRangeFilter } from '@/components/ui/DateRangeFilter';
 import { SuccessFeedback } from '@/components/SuccessFeedback';
-import { PWANotificationManager } from '@/components/PWANotificationManager';
 import { useSuccessFeedback } from '@/hooks/useSuccessFeedback';
 
 import { Skeleton } from '@/components/ui/skeleton';
@@ -140,6 +139,9 @@ export function SuperAdminDashboard() {
     const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
     return { startDate: startOfDay, endDate: endOfDay };
   });
+
+  // Dynamic import for PWANotificationManager to avoid SSR issues
+  const [PWANotificationManager, setPWANotificationManager] = useState<any>(null);
 
   // Standardized loading state management
   const mainLoadingState = useLoadingState();
@@ -416,6 +418,15 @@ export function SuperAdminDashboard() {
       }
     };
   }, [isSuperAdmin, user, handleNotificationUpdate]); // Include handleNotificationUpdate in dependencies
+
+  // Dynamic import PWANotificationManager to avoid SSR issues
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      import('@/components/PWANotificationManager').then((module) => {
+        setPWANotificationManager(() => module.PWANotificationManager);
+      });
+    }
+  }, []);
 
   // Separate effect for data fetching when activeNav changes
   useEffect(() => {
@@ -805,7 +816,7 @@ export function SuperAdminDashboard() {
           </Card>
 
           {/* PWA Notification Manager */}
-          <PWANotificationManager userRole="SUPER_ADMIN" />
+          {PWANotificationManager && <PWANotificationManager userRole="SUPER_ADMIN" />}
         </>
       )}
     </div>
