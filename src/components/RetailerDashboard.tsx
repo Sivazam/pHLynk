@@ -991,8 +991,8 @@ export function RetailerDashboard() {
         
         // Show popup for the latest OTP if not already shown and not expired
         // IMPORTANT: Don't show popup if payment is already completed for this OTP
-        if (validOTPsFromFirestore.length > 0) {
-          const latestOTP = validOTPsFromFirestore[validOTPsFromFirestore.length - 1];
+        if (validOTPsFromSecureStorage.length > 0) {
+          const latestOTP = validOTPsFromSecureStorage[validOTPsFromSecureStorage.length - 1];
           const now = new Date();
           const isExpired = latestOTP.expiresAt <= now;
           
