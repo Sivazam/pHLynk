@@ -11,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { DashboardNavigation, NavItem } from '@/components/DashboardNavigation';
 import { PWANotificationManager } from '@/components/PWANotificationManager';
+import { NotificationDeduplicatorDebug } from '@/components/NotificationDeduplicatorDebug';
 import FCMNotificationManager from '@/components/FCMNotificationManager';
 import { useAuth } from '@/contexts/AuthContext';
 import { retailerService, paymentService, otpService } from '@/services/firestore';
@@ -21,6 +22,8 @@ import { RetailerAuthService } from '@/services/retailer-auth';
 import { Retailer, Payment } from '@/types';
 import { formatTimestamp, formatTimestampWithTime, formatCurrency } from '@/lib/timestamp-utils';
 import { getActiveOTPsForRetailer, getCompletedPaymentsForRetailer, removeCompletedPayment, addActiveOTP, removeActiveOTP } from '@/lib/otp-store';
+import { secureOTPStorage } from '@/lib/secure-otp-storage';
+import { otpBridge } from '@/lib/otp-bridge';
 import { db } from '@/lib/firebase';
 import { doc, getDoc, getDocs, onSnapshot, collection, query, where } from 'firebase/firestore';
 import { logger } from '@/lib/logger';
@@ -50,7 +53,8 @@ import {
   RefreshCw,
   Download,
   Share,
-  Heart
+  Heart,
+  Settings
 } from 'lucide-react';
 import { StatusBarColor } from './ui/StatusBarColor';
 import { Confetti } from './ui/Confetti';
@@ -191,6 +195,36 @@ export function RetailerDashboard() {
     });
   };
   
+  // Fetch OTPs from secure storage
+  const fetchOTPsFromSecureStorage = async (retailerId: string) => {
+    try {
+      console.log('🔐 Fetching OTPs from secure storage for retailer:', retailerId);
+      const secureOTPs = await secureOTPStorage.getActiveOTPsForRetailer(retailerId);
+      
+      // Transform secure OTPs to match the expected format
+      const transformedOTPs = secureOTPs.map(otp => ({
+        code: otp.code,
+        retailerId: retailerId,
+        amount: otp.amount,
+        expiresAt: otp.expiresAt,
+        paymentId: otp.paymentId,
+        lineWorkerName: otp.lineWorkerName,
+        createdAt: otp.createdAt,
+        isExpired: otp.isExpired
+      }));
+      
+      console.log('🔐 Retrieved OTPs from secure storage:', {
+        count: transformedOTPs.length,
+        paymentIds: transformedOTPs.map(otp => otp.paymentId)
+      });
+      
+      return transformedOTPs;
+    } catch (error) {
+      console.error('❌ Error fetching OTPs from secure storage:', error);
+      return [];
+    }
+  };
+  
   // Manual refresh function for OTP data
   const refreshOTPData = async () => {
     if (!retailer || !tenantId) return;
@@ -306,6 +340,7 @@ export function RetailerDashboard() {
     { id: 'overview', label: 'Overview', icon: LayoutDashboard },
     { id: 'payments', label: 'Payments', icon: CreditCard },
     { id: 'history', label: 'History', icon: History },
+    { id: 'settings', label: 'Settings', icon: Settings },
   ];
 
   const [activeNav, setActiveNav] = useState('overview');
@@ -734,6 +769,7 @@ export function RetailerDashboard() {
           console.log('🔄 Sync: Removing invalid OTPs:', otpsToRemove.length);
           otpsToRemove.forEach(otp => {
             removeActiveOTP(otp.paymentId);
+            otpBridge.removeOTP(otp.paymentId);
           });
           
           // Update the state
@@ -782,6 +818,7 @@ export function RetailerDashboard() {
         // Remove OTPs from active display for completed payments
         recentCompletedPayments.forEach(payment => {
           removeActiveOTP(payment.id);
+          otpBridge.removeOTP(payment.id);
         });
         
         const updatedActiveOTPs = getActiveOTPsForRetailer(retailer.id);
@@ -880,142 +917,124 @@ export function RetailerDashboard() {
         }
       );
       
-      // Set up real-time OTP listener for retailer document
-      const retailerRef = doc(db, 'retailers', retailerId);
-      const otpUnsubscribeFunc = onSnapshot(retailerRef, (snapshot) => {
-        console.log('🔔 Real-time retailer document update detected:', {
+      // Set up real-time OTP listener using secure storage
+      console.log('🔔 Setting up real-time OTP listener from secure storage for retailer:', retailerId);
+      const otpUnsubscribeFunc = secureOTPStorage.onOTPChanges(retailerId, (secureOTPs) => {
+        console.log('🔔 Real-time OTP update detected:', {
           retailerId,
-          exists: snapshot.exists(),
-          timestamp: new Date().toISOString()
+          activeOTPsFromFirestoreCount: secureOTPs.length,
+          activeOTPsFromFirestore: secureOTPs.map((otp) => ({
+            paymentId: otp.paymentId,
+            code: otp.code,
+            amount: otp.amount,
+            expiresAt: otp.expiresAt,
+            isExpired: otp.isExpired
+          }))
         });
         
-        if (snapshot.exists()) {
-          const retailerData = snapshot.data();
-          const activeOTPsFromFirestore = retailerData.activeOTPs || [];
+        // Always sync all active OTPs from Firestore to ensure we have the latest data
+        const validOTPsFromFirestore = secureOTPs.filter((otp) => !otp.isExpired);
+        
+        console.log('🔍 Valid OTPs from Firestore:', validOTPsFromFirestore.length);
+        
+        // Get current active OTPs to compare
+        const currentActiveOTPs = getActiveOTPsForRetailer(retailerId);
+        const currentPaymentIds = new Set(currentActiveOTPs.map(otp => otp.paymentId));
+        
+        // Check for OTPs that should be removed (used/expired in Firestore but still in local store)
+        const firestorePaymentIds = new Set(validOTPsFromFirestore.map((otp) => otp.paymentId));
+        const otpsToRemove = currentActiveOTPs.filter(otp => !firestorePaymentIds.has(otp.paymentId));
+        
+        if (otpsToRemove.length > 0) {
+          console.log('🗑️ Removing OTPs that are no longer valid in Firestore:', otpsToRemove.length);
+          otpsToRemove.forEach(otp => {
+            removeActiveOTP(otp.paymentId);
+          });
+        }
+        
+        // Only add OTPs that we don't already have
+        const newOTPs = validOTPsFromFirestore.filter((otp) => 
+          !currentPaymentIds.has(otp.paymentId)
+        );
+        
+        if (newOTPs.length > 0) {
+          console.log('🆕 Adding new OTPs from real-time update:', newOTPs.length);
           
-          console.log('🔔 Real-time OTP update detected:', {
-            retailerId,
-            activeOTPsFromFirestoreCount: activeOTPsFromFirestore.length,
-            activeOTPsFromFirestore: activeOTPsFromFirestore.map((otp: any) => ({
-              paymentId: otp.paymentId,
+          // Add new OTPs to our in-memory store for display
+          newOTPs.forEach((otp) => {
+            addActiveOTP({
               code: otp.code,
+              retailerId: retailerId,
               amount: otp.amount,
-              expiresAt: otp.expiresAt.toDate(),
-              isUsed: otp.isUsed,
-              isExpired: otp.expiresAt.toDate() <= new Date()
-            }))
+              paymentId: otp.paymentId,
+              lineWorkerName: otp.lineWorkerName,
+              expiresAt: otp.expiresAt,
+              createdAt: otp.createdAt
+            });
+          });
+        }
+        
+        // Refresh the active OTPs state
+        const updatedActiveOTPs = getActiveOTPsForRetailer(retailerId);
+        console.log('📊 Updated active OTPs count after real-time sync:', updatedActiveOTPs.length);
+        setActiveOTPs(updatedActiveOTPs);
+        
+        // Show popup for the latest OTP if not already shown and not expired
+        // IMPORTANT: Don't show popup if payment is already completed for this OTP
+        if (validOTPsFromFirestore.length > 0) {
+          const latestOTP = validOTPsFromFirestore[validOTPsFromFirestore.length - 1];
+          const now = new Date();
+          const isExpired = latestOTP.expiresAt <= now;
+          
+          // Check if this payment is already completed
+          const isPaymentCompleted = completedPaymentsData.some(cp => cp.paymentId === latestOTP.paymentId);
+          
+          console.log('🔍 Checking OTP popup conditions:', {
+            paymentId: latestOTP.paymentId,
+            alreadyShown: shownOTPpopups.has(latestOTP.paymentId),
+            isExpired,
+            isPaymentCompleted,
+            showOTPPopup: showOTPPopup
           });
           
-          // Always sync all active OTPs from Firestore to ensure we have the latest data
-          const validOTPsFromFirestore = activeOTPsFromFirestore.filter((otp: any) => {
-            const expiresAt = otp.expiresAt.toDate();
-            const isExpired = expiresAt <= new Date();
-            return !isExpired && !otp.isUsed;
-          });
-          
-          console.log('🔍 Valid OTPs from Firestore:', validOTPsFromFirestore.length);
-          
-          // Get current active OTPs to compare
-          const currentActiveOTPs = getActiveOTPsForRetailer(retailerId);
-          const currentPaymentIds = new Set(currentActiveOTPs.map(otp => otp.paymentId));
-          
-          // Check for OTPs that should be removed (used/expired in Firestore but still in local store)
-          const firestorePaymentIds = new Set(validOTPsFromFirestore.map((otp: any) => otp.paymentId));
-          const otpsToRemove = currentActiveOTPs.filter(otp => !firestorePaymentIds.has(otp.paymentId));
-          
-          if (otpsToRemove.length > 0) {
-            console.log('🗑️ Removing OTPs that are no longer valid in Firestore:', otpsToRemove.length);
-            otpsToRemove.forEach(otp => {
-              removeActiveOTP(otp.paymentId);
+          if (!shownOTPpopups.has(latestOTP.paymentId) && !isExpired && !isPaymentCompleted && !showOTPPopup) {
+            console.log('🆕 Showing popup for new OTP:', latestOTP.paymentId);
+            setNewPayment({
+              ...latestOTP,
+              id: latestOTP.paymentId,
+              retailerId: retailerId,
+              retailerName: retailerData.name || retailerUserData.name,
+              lineWorkerId: '',
+              totalPaid: latestOTP.amount,
+              method: 'CASH' as any,
+              state: 'OTP_SENT' as any,
+              evidence: [],
+              tenantId: retailerUserData.tenantId,
+              timeline: {
+                initiatedAt: { toDate: () => latestOTP.createdAt } as any,
+                otpSentAt: { toDate: () => latestOTP.createdAt } as any,
+              },
+              createdAt: { toDate: () => latestOTP.createdAt } as any,
+              updatedAt: { toDate: () => latestOTP.createdAt } as any,
             });
-          }
-          
-          // Only add OTPs that we don't already have
-          const newOTPs = validOTPsFromFirestore.filter((otp: any) => 
-            !currentPaymentIds.has(otp.paymentId)
-          );
-          
-          if (newOTPs.length > 0) {
-            console.log('🆕 Adding new OTPs from real-time update:', newOTPs.length);
+            setShowOTPPopup(true);
             
-            // Add new OTPs to our in-memory store for display
-            newOTPs.forEach((otp: any) => {
-              addActiveOTP({
-                code: otp.code,
-                retailerId: retailerId,
-                amount: otp.amount,
-                paymentId: otp.paymentId,
-                lineWorkerName: otp.lineWorkerName,
-                expiresAt: otp.expiresAt.toDate(),
-                createdAt: otp.createdAt.toDate()
-              });
-            });
-          }
-          
-          // Refresh the active OTPs state
-          const updatedActiveOTPs = getActiveOTPsForRetailer(retailerId);
-          console.log('📊 Updated active OTPs count after real-time sync:', updatedActiveOTPs.length);
-          setActiveOTPs(updatedActiveOTPs);
-          
-          // Show popup for the latest OTP if not already shown and not expired
-          // IMPORTANT: Don't show popup if payment is already completed for this OTP
-          if (validOTPsFromFirestore.length > 0) {
-            const latestOTP = validOTPsFromFirestore[validOTPsFromFirestore.length - 1];
-            const now = new Date();
-            const isExpired = latestOTP.expiresAt.toDate() <= now;
-            
-            // Check if this payment is already completed
-            const isPaymentCompleted = completedPaymentsData.some(cp => cp.paymentId === latestOTP.paymentId);
-            
-            console.log('🔍 Checking OTP popup conditions:', {
-              paymentId: latestOTP.paymentId,
-              alreadyShown: shownOTPpopups.has(latestOTP.paymentId),
-              isExpired,
-              isPaymentCompleted,
-              showOTPPopup: showOTPPopup
-            });
-            
-            if (!shownOTPpopups.has(latestOTP.paymentId) && !isExpired && !isPaymentCompleted && !showOTPPopup) {
-              console.log('🆕 Showing popup for new OTP:', latestOTP.paymentId);
-              setNewPayment({
-                ...latestOTP,
-                id: latestOTP.paymentId,
-                retailerId: retailerId,
-                retailerName: retailerData.name || retailerUserData.name,
-                lineWorkerId: '',
-                totalPaid: latestOTP.amount,
-                method: 'CASH' as any,
-                state: 'OTP_SENT' as any,
-                evidence: [],
-                tenantId: retailerUserData.tenantId,
-                timeline: {
-                  initiatedAt: { toDate: () => latestOTP.createdAt.toDate() } as any,
-                  otpSentAt: { toDate: () => latestOTP.createdAt.toDate() } as any,
-                },
-                createdAt: { toDate: () => latestOTP.createdAt.toDate() } as any,
-                updatedAt: { toDate: () => latestOTP.createdAt.toDate() } as any,
-              });
-              setShowOTPPopup(true);
-              
-              // Add to shown popups using helper function
-              addToShownOTPpopups(latestOTP.paymentId);
-            } else if (isExpired) {
-              console.log('⏰ Skipping expired OTP popup:', latestOTP.paymentId);
-            } else if (isPaymentCompleted) {
-              console.log('✅ Skipping OTP popup for completed payment:', latestOTP.paymentId);
-            } else if (shownOTPpopups.has(latestOTP.paymentId)) {
-              console.log('📝 Skipping already shown OTP popup:', latestOTP.paymentId);
-            } else if (showOTPPopup) {
-              console.log('📝 Skipping OTP popup - already showing one');
-            }
+            // Add to shown popups using helper function
+            addToShownOTPpopups(latestOTP.paymentId);
+          } else if (isExpired) {
+            console.log('⏰ Skipping expired OTP popup:', latestOTP.paymentId);
+          } else if (isPaymentCompleted) {
+            console.log('✅ Skipping OTP popup for completed payment:', latestOTP.paymentId);
+          } else if (shownOTPpopups.has(latestOTP.paymentId)) {
+            console.log('📝 Skipping already shown OTP popup:', latestOTP.paymentId);
+          } else if (showOTPPopup) {
+            console.log('📝 Skipping OTP popup - already showing one');
           }
         }
-      }, (error) => {
-        console.error('Error listening to retailer document for OTPs:', error);
       });
       
       setOtpUnsubscribe(() => otpUnsubscribeFunc);
-      console.log('🔔 Real-time OTP listener setup complete');
+      console.log('🔔 Real-time OTP listener setup complete (using secure storage)');
       
       // Set up real-time payment completion listener
       const paymentsRef = collection(db, 'payments');
@@ -1093,6 +1112,14 @@ export function RetailerDashboard() {
                   });
                   setShowSettlementPopup(true);
                   triggerConfettiWithCleanup();
+                  
+                  // Close OTP popup immediately if it's open
+                  setShowOTPPopup(false);
+                  setNewPayment(null);
+                  
+                  // Remove the OTP from active display
+                  removeActiveOTP(paymentId);
+                  otpBridge.removeOTP(paymentId);
                   
                   // Add to shown completed payment popups
                   addToShownCompletedPaymentPopups(paymentId);
@@ -1191,7 +1218,8 @@ export function RetailerDashboard() {
       setPayments(paymentsData);
       
       // Load active OTPs and completed payments from in-memory store
-      const activeOTPsData = getActiveOTPsForRetailer(retailerId);
+      // First sync from secure storage to get the latest OTPs
+      const activeOTPsData = await otpBridge.syncOTPsToRetailerDashboard(retailerId);
       const completedPaymentsData = getCompletedPaymentsForRetailer(retailerId);
       
       console.log('🔍 Loaded data from in-memory store:', {
@@ -1697,10 +1725,8 @@ Thank you for your payment!
                         <CardContent>
                           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                             {activeOTPs.filter(otp => {
-                              const timeLeft = otpCountdowns.get(otp.paymentId) || 0;
-                              const isExpired = timeLeft <= 0;
                               const isCompleted = completedPayments.some(cp => cp.paymentId === otp.paymentId);
-                              return !isExpired && !isCompleted;
+                              return !isCompleted;  // Show all OTPs that aren't completed (including expired ones)
                             }).map((otp) => {
                               const timeLeft = otpCountdowns.get(otp.paymentId) || 0;
                               const isExpired = timeLeft <= 0;
@@ -2027,6 +2053,25 @@ Thank you for your payment!
                         </TableBody>
                       </Table>
                     </div>
+                  </div>
+                )}
+
+                {/* Settings View */}
+                {activeNav === 'settings' && (
+                  <div className="space-y-6">
+                    <h2 className="text-xl font-semibold">Settings & Debug</h2>
+                    
+                    {/* Notification Managers */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                      {/* PWA Notification Manager */}
+                      <PWANotificationManager userRole="RETAILER" />
+                      
+                      {/* FCM Notification Manager */}
+                      <FCMNotificationManager userId={user?.uid} />
+                    </div>
+
+                    {/* Notification De-duplicator Debug */}
+                    <NotificationDeduplicatorDebug />
                   </div>
                 )}
               </>

@@ -465,6 +465,71 @@ export class SecureOTPStorage {
       return [];
     }
   }
+  
+  /**
+   * Set up real-time listener for OTP changes for a specific retailer
+   */
+  onOTPChanges(retailerId: string, callback: (otps: Array<{
+    code: string;
+    amount: number;
+    paymentId: string;
+    lineWorkerName: string;
+    expiresAt: Date;
+    createdAt: Date;
+    isExpired: boolean;
+  }>) => void): () => void {
+    try {
+      const q = query(
+        collection(firestore, this.collection),
+        where('retailerId', '==', retailerId),
+        where('isUsed', '==', false),
+        orderBy('createdAt', 'desc')
+      );
+      
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        const now = new Date();
+        const otps = snapshot.docs.map(doc => {
+          const otp = doc.data() as StoredOTP;
+          const decryptedCode = this.decryptOTP(otp.code);
+          const isExpired = otp.expiresAt < now;
+          
+          // Convert Firestore timestamps
+          const expiresAt = otp.expiresAt && (otp.expiresAt as any).toDate ? 
+            (otp.expiresAt as any).toDate() : otp.expiresAt;
+          const createdAt = otp.createdAt && (otp.createdAt as any).toDate ? 
+            (otp.createdAt as any).toDate() : otp.createdAt;
+          
+          return {
+            code: isExpired ? `${decryptedCode} (EXPIRED)` : decryptedCode,
+            amount: otp.amount,
+            paymentId: otp.paymentId,
+            lineWorkerName: otp.lineWorkerName,
+            expiresAt,
+            createdAt,
+            isExpired
+          };
+        });
+        
+        secureLogger.otp('Real-time OTP update detected', {
+          retailerId,
+          count: otps.length,
+          paymentIds: otps.map(otp => otp.paymentId)
+        });
+        
+        callback(otps);
+      });
+      
+      return unsubscribe;
+    } catch (error) {
+      secureLogger.error('Failed to set up real-time OTP listener', { 
+        error: error instanceof Error ? error.message : 'Unknown error',
+        retailerId 
+      });
+      
+      // Return empty unsubscribe function
+      return () => {};
+    }
+  }
 }
 
 export const secureOTPStorage = SecureOTPStorage.getInstance();

@@ -1,6 +1,8 @@
 // Role-based PWA Notification Service
 // This service ensures notifications are only sent to users with appropriate roles
 
+import { notificationDeduplicator } from '@/lib/notification-deduplicator';
+
 export interface NotificationData {
   type: 'otp' | 'payment_completed' | 'test' | 'system';
   targetRole: 'super_admin' | 'wholesaler' | 'line_worker' | 'retailer' | 'all';
@@ -206,6 +208,34 @@ class RoleBasedNotificationService {
 
     // Create notification payload based on type
     const payload = this.createNotificationPayload(notificationData);
+    
+    // Check de-duplicator before showing notification
+    const fcmPayload = {
+      notification: {
+        title: payload.title,
+        body: payload.body
+      },
+      data: {
+        type: notificationData.type,
+        ...notificationData.data,
+        tag: payload.tag
+      }
+    };
+    
+    // Check de-duplicator before showing notification (only if available)
+    const deduplicator = notificationDeduplicator;
+    if (deduplicator) {
+      const { shouldShow, reason } = deduplicator.shouldShowNotification(fcmPayload);
+      
+      if (!shouldShow) {
+        console.log(`🚫 PWA notification blocked by de-duplicator: ${reason}`);
+        return false;
+      }
+      
+      console.log(`✅ PWA notification approved by de-duplicator: ${reason}`);
+    } else {
+      console.log('📱 Deduplicator not available, proceeding with notification');
+    }
     
     try {
       console.log('📱 Sending notification:', { 

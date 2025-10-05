@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { onMessageListener, isFCMSupported, initializeFCM, getFCMToken, getMessagingInstance } from '@/lib/fcm';
 import { onMessage } from 'firebase/messaging';
 import { auth } from '@/lib/firebase';
+import { enhancedFCMManager } from '@/lib/enhanced-fcm-manager';
 import { toast } from 'sonner';
 
 interface FCMNotificationManagerProps {
@@ -71,73 +72,16 @@ export default function FCMNotificationManager({ userId, className }: FCMNotific
   useEffect(() => {
     if (!isInitialized) return;
 
-    // Listen for foreground messages
-    const setupForegroundListener = async () => {
-      try {
-        const messagingInstance = getMessagingInstance();
-        if (!messagingInstance) {
-          console.warn('⚠️ Firebase Messaging instance not available');
-          return () => {};
-        }
+    // Initialize enhanced FCM manager with de-duplication
+    enhancedFCMManager.initialize({
+      enableToast: true,
+      enableBrowserNotification: true,
+      autoCloseDelay: 5000,
+      requireInteraction: false
+    });
 
-        const unsubscribe = onMessage(messagingInstance, (payload: any) => {
-          console.log('📱 FCM Foreground message received:', payload);
-          
-          // Show notification when app is in foreground
-          if (payload.notification) {
-            const notificationTitle = payload.notification.title || 'pHLynk Notification';
-            const notificationOptions = {
-              body: payload.notification.body || 'You have a new notification',
-              icon: '/icon-192x192.png',
-              badge: '/icon-96x96.png',
-              tag: payload.data?.tag || 'default',
-              requireInteraction: payload.data?.requireInteraction || false,
-              data: payload.data || {}
-            };
-
-            // Create and show notification
-            const notification = new Notification(notificationTitle, notificationOptions);
-            
-            // Auto-close after appropriate time
-            if (!payload.data?.requireInteraction) {
-              setTimeout(() => {
-                notification.close();
-              }, 5000);
-            }
-
-            // Handle notification click
-            notification.onclick = () => {
-              const urlToOpen = payload.data?.url || '/';
-              window.open(urlToOpen, '_blank');
-              notification.close();
-            };
-
-            // Also show toast for better UX
-            if (payload.data?.type === 'otp') {
-              toast.success(`🔐 OTP: ${payload.data?.otp} for ₹${payload.data?.amount}`);
-            } else if (payload.data?.type === 'payment_completed' || payload.data?.type === 'payment-completed') {
-              toast.success(`✅ Payment of ₹${payload.data?.amount} completed`);
-            } else {
-              toast.info(payload.notification.body || 'New notification received');
-            }
-          }
-        });
-
-        return unsubscribe;
-      } catch (error) {
-        console.error('❌ Error setting up FCM foreground listener:', error);
-        return () => {};
-      }
-    };
-
-    const cleanup = setupForegroundListener();
-    
     return () => {
-      cleanup.then(unsubscribe => {
-        if (typeof unsubscribe === 'function') {
-          unsubscribe();
-        }
-      });
+      enhancedFCMManager.cleanup();
     };
   }, [isInitialized]);
 
@@ -175,20 +119,7 @@ export default function FCMNotificationManager({ userId, className }: FCMNotific
     }
 
     try {
-      // Show a test notification directly
-      const notification = new Notification('📱 Test Notification', {
-        body: 'This is a test FCM notification from pHLynk',
-        icon: '/icon-192x192.png',
-        badge: '/icon-96x96.png',
-        tag: 'test-notification',
-        requireInteraction: false
-      });
-
-      setTimeout(() => {
-        notification.close();
-      }, 5000);
-
-      toast.success('Test notification sent!');
+      enhancedFCMManager.sendTestNotification();
     } catch (error) {
       console.error('Error sending test notification:', error);
       toast.error('Failed to send test notification');
@@ -205,7 +136,8 @@ export default function FCMNotificationManager({ userId, className }: FCMNotific
       notificationPermission: typeof Notification !== 'undefined' ? Notification.permission : 'Not supported',
       serviceWorkerSupported: 'serviceWorker' in navigator,
       pushManagerSupported: 'PushManager' in window,
-      userAgent: navigator.userAgent
+      userAgent: navigator.userAgent,
+      enhancedManagerInfo: enhancedFCMManager.getDebugInfo()
     });
 
     if (isSupported && isInitialized && fcmToken) {
