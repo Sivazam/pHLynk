@@ -430,7 +430,7 @@ export class RealTimeNotificationService {
   }
 
   // Super Admin handlers
-  private handleSuperAdminPaymentChange(payment: DocumentData, paymentId: string): void {
+  private async handleSuperAdminPaymentChange(payment: DocumentData, paymentId: string): Promise<void> {
     console.log('🔔 Handling Super Admin payment change:', paymentId, payment.state);
     
     if (payment.state === 'COMPLETED') {
@@ -446,6 +446,23 @@ export class RealTimeNotificationService {
         retailerName: payment.retailerName
       };
       this.addNotificationToService(notification);
+
+      // Send FCM for high-value payments
+      if (payment.totalPaid && payment.totalPaid > 5000) {
+        try {
+          const { enhancedNotificationService } = await import('./enhanced-notification-service');
+          await enhancedNotificationService.sendPaymentCompletedNotification(
+            payment.lineWorkerName || 'Line Worker',
+            payment.retailerName || 'Retailer',
+            payment.totalPaid,
+            paymentId,
+            'super_admin'
+          );
+          console.log('🔔 FCM sent for high-value payment to Super Admin:', payment.totalPaid);
+        } catch (error) {
+          console.warn('⚠️ Failed to send FCM for high-value payment:', error);
+        }
+      }
     }
   }
 
@@ -546,7 +563,7 @@ export class RealTimeNotificationService {
   }
 
   // Line Worker handlers
-  private handleLineWorkerPaymentChange(payment: DocumentData, paymentId: string, lineWorkerId: string): void {
+  private async handleLineWorkerPaymentChange(payment: DocumentData, paymentId: string, lineWorkerId: string): Promise<void> {
     console.log('🔔 Handling Line Worker payment change:', paymentId, payment.state);
     
     if (payment.state === 'COMPLETED') {
@@ -561,6 +578,23 @@ export class RealTimeNotificationService {
         paymentId: paymentId
       };
       this.addNotificationToService(notification);
+
+      // Send FCM for high-value payments
+      if (payment.totalPaid && payment.totalPaid > 5000) {
+        try {
+          const { enhancedNotificationService } = await import('./enhanced-notification-service');
+          await enhancedNotificationService.sendPaymentCompletedNotification(
+            'Line Worker',
+            payment.retailerName || 'Retailer',
+            payment.totalPaid,
+            paymentId,
+            'line_worker'
+          );
+          console.log('🔔 FCM sent for high-value payment to Line Worker:', payment.totalPaid);
+        } catch (error) {
+          console.warn('⚠️ Failed to send FCM for high-value payment:', error);
+        }
+      }
     } else if (payment.state === 'FAILED') {
       const notification = {
         type: 'warning' as const,

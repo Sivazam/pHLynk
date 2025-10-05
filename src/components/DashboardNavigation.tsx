@@ -66,6 +66,8 @@ interface DashboardNavigationProps {
     email?: string;
   };
   onLogout?: () => void;
+  onNotificationRead?: (notificationId: string) => void;
+  onAllNotificationsRead?: () => void;
 }
 
 export function DashboardNavigation({
@@ -77,7 +79,9 @@ export function DashboardNavigation({
   notificationCount = 0,
   notifications = [],
   user,
-  onLogout
+  onLogout,
+  onNotificationRead,
+  onAllNotificationsRead
 }: DashboardNavigationProps) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
@@ -85,6 +89,20 @@ export function DashboardNavigation({
   const handleNavClick = (navId: string) => {
     setActiveNav(navId);
     setIsMobileMenuOpen(false);
+  };
+
+  // Handle notification click to mark as read
+  const handleNotificationClick = (notificationId: string) => {
+    if (onNotificationRead) {
+      onNotificationRead(notificationId);
+    }
+  };
+
+  // Handle mark all as read
+  const handleMarkAllAsRead = () => {
+    if (onAllNotificationsRead) {
+      onAllNotificationsRead();
+    }
   };
 
   return (
@@ -135,14 +153,30 @@ export function DashboardNavigation({
                   )}
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-80">
-                <DropdownMenuLabel>Notifications</DropdownMenuLabel>
+              <DropdownMenuContent align="end" className="w-80 max-h-96 overflow-y-auto">
+                <div className="flex items-center justify-between px-4 py-2">
+                  <DropdownMenuLabel className="text-sm font-medium">Notifications</DropdownMenuLabel>
+                  {notificationCount > 0 && onAllNotificationsRead && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleMarkAllAsRead}
+                      className="text-xs text-blue-600 hover:text-blue-800 h-auto p-1"
+                    >
+                      Mark all as read
+                    </Button>
+                  )}
+                </div>
                 <DropdownMenuSeparator />
                 {notifications.length > 0 ? (
                   [...notifications]
                     .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
                     .map((notification) => (
-                    <DropdownMenuItem key={notification.id} className="flex-col items-start p-4 cursor-default">
+                    <DropdownMenuItem 
+                      key={notification.id} 
+                      className={`flex-col items-start p-4 cursor-pointer hover:bg-gray-50 ${!notification.read ? 'bg-blue-50' : ''}`}
+                      onClick={() => handleNotificationClick(notification.id)}
+                    >
                       <div className="flex items-start space-x-3 w-full">
                         <div className="flex-shrink-0 mt-0.5">
                           {notification.type === 'warning' && (
@@ -156,8 +190,13 @@ export function DashboardNavigation({
                           )}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <div className="text-sm font-medium text-gray-900">
-                            {notification.title}
+                          <div className="flex items-center justify-between">
+                            <div className="text-sm font-medium text-gray-900">
+                              {notification.title}
+                            </div>
+                            {!notification.read && (
+                              <div className="h-2 w-2 bg-blue-500 rounded-full flex-shrink-0"></div>
+                            )}
                           </div>
                           <div className="text-sm text-gray-500 mt-1">
                             {notification.retailerName ? 

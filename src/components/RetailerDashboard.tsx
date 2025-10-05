@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -16,6 +16,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { retailerService, paymentService, otpService } from '@/services/firestore';
 import { realtimeNotificationService } from '@/services/realtime-notifications';
 import { notificationService } from '@/services/notification-service';
+import { enhancedNotificationService } from '@/services/enhanced-notification-service';
 import { RetailerAuthService } from '@/services/retailer-auth';
 import { Retailer, Payment } from '@/types';
 import { formatTimestamp, formatTimestampWithTime, formatCurrency } from '@/lib/timestamp-utils';
@@ -309,23 +310,46 @@ export function RetailerDashboard() {
 
   const [activeNav, setActiveNav] = useState('overview');
 
+  // Enhanced notification callback with proper count updates
+  const handleNotificationUpdate = useCallback((newNotifications: any[]) => {
+    console.log('🔔 Retailer: Updating notifications', {
+      total: newNotifications.length,
+      unread: newNotifications.filter(n => !n.read).length
+    });
+    
+    setNotifications(newNotifications);
+    setNotificationCount(newNotifications.filter(n => !n.read).length);
+  }, []);
+
+  // Mark notification as read
+  const markNotificationAsRead = useCallback((notificationId: string) => {
+    enhancedNotificationService.markAsRead(notificationId);
+    // Update local state to reflect the change immediately
+    setNotifications(prev => 
+      prev.map(n => n.id === notificationId ? { ...n, read: true } : n)
+    );
+    setNotificationCount(prev => Math.max(0, prev - 1));
+  }, []);
+
+  // Mark all notifications as read
+  const markAllNotificationsAsRead = useCallback(() => {
+    enhancedNotificationService.markAllAsRead();
+    // Update local state immediately
+    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+    setNotificationCount(0);
+  }, []);
+
   // Test notification function for debugging
   const testOTPNotification = async () => {
-    console.log('🧪 Testing OTP notification manually...');
+    console.log('🧪 Testing enhanced OTP notification manually...');
     
     try {
-      const result = await notificationService.sendNotification('RETAILER', {
-        type: 'otp',
-        targetRole: 'retailer',
-        data: {
-          paymentId: 'test-payment-' + Date.now(),
-          otp: '123456',
-          amount: 1000,
-          lineWorkerName: 'Test Line Worker',
-          retailerId: retailer?.id || '',
-          createdAt: new Date()
-        }
-      });
+      const result = await enhancedNotificationService.sendOTPNotification(
+        retailer?.id || 'test-retailer-id',
+        '123456',
+        1000,
+        'Test Line Worker'
+      );
       
       console.log('🧪 Test OTP notification result:', result);
       
@@ -440,6 +464,16 @@ export function RetailerDashboard() {
       // Reset loading state and start fetching data
       mainLoadingState.setLoading(true);
       setDataFetchProgress(0);
+      
+      // Initialize enhanced notification service for retailer
+      enhancedNotificationService.initialize('RETAILER', tenantId || 'system');
+      
+      // Start enhanced real-time notifications
+      enhancedNotificationService.startRealtimeListening(
+        retailerId,
+        handleNotificationUpdate
+      );
+      
       fetchRetailerData(retailerId);
     } else {
       console.log('⚠️ No retailerId found, skipping data fetch');
@@ -457,7 +491,7 @@ export function RetailerDashboard() {
       }
       
       if (retailerId) {
-        realtimeNotificationService.stopListening(retailerId);
+        enhancedNotificationService.stopRealtimeListening(retailerId);
       }
       
       // Clean up OTP listener
@@ -472,7 +506,7 @@ export function RetailerDashboard() {
         setConfettiTimeout(null);
       }
     };
-  }, [user]);
+  }, [user, handleNotificationUpdate]);
 
   // Backup initialization for manual browser refresh - runs once on component mount
   useEffect(() => {
@@ -1524,6 +1558,8 @@ Thank you for your payment!
         onLogout={logout}
         notificationCount={notificationCount}
         notifications={notifications}
+        onNotificationRead={markNotificationAsRead}
+        onAllNotificationsRead={markAllNotificationsAsRead}
       />
 
       {/* Main Content Area */}

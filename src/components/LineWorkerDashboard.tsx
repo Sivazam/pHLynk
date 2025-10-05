@@ -28,6 +28,7 @@ import {
 } from '@/services/firestore';
 import { realtimeNotificationService } from '@/services/realtime-notifications';
 import { notificationService } from '@/services/notification-service';
+import { enhancedNotificationService } from '@/services/enhanced-notification-service';
 import { Retailer, Payment, Area } from '@/types';
 import { formatTimestamp, formatTimestampWithTime, formatCurrency } from '@/lib/timestamp-utils';
 import { db } from '@/lib/firebase';
@@ -154,6 +155,35 @@ export function LineWorkerDashboard() {
     return user?.tenantId && user.tenantId !== 'system' ? user.tenantId : null;
   };
 
+  // Enhanced notification callback with proper count updates
+  const handleNotificationUpdate = useCallback((newNotifications: any[]) => {
+    console.log('🔔 LineWorker: Updating notifications', {
+      total: newNotifications.length,
+      unread: newNotifications.filter(n => !n.read).length
+    });
+    
+    setNotifications(newNotifications);
+    setNotificationCount(newNotifications.filter(n => !n.read).length);
+  }, []);
+
+  // Mark notification as read
+  const markNotificationAsRead = useCallback((notificationId: string) => {
+    enhancedNotificationService.markAsRead(notificationId);
+    // Update local state to reflect the change immediately
+    setNotifications(prev => 
+      prev.map(n => n.id === notificationId ? { ...n, read: true } : n)
+    );
+    setNotificationCount(prev => Math.max(0, prev - 1));
+  }, []);
+
+  // Mark all notifications as read
+  const markAllNotificationsAsRead = useCallback(() => {
+    enhancedNotificationService.markAllAsRead();
+    // Update local state immediately
+    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+    setNotificationCount(0);
+  }, []);
+
   useEffect(() => {
     const currentTenantId = getCurrentTenantId();
     if (isLineWorker && user?.uid && currentTenantId) {
@@ -169,22 +199,20 @@ export function LineWorkerDashboard() {
       setDataFetchProgress(0);
       fetchLineWorkerData();
       
-      // Start real-time notifications
-      realtimeNotificationService.startListening(
+      // Initialize enhanced notification service
+      enhancedNotificationService.initialize('LINE_WORKER', currentTenantId);
+      
+      // Start enhanced real-time notifications
+      enhancedNotificationService.startRealtimeListening(
         user.uid,
-        'LINE_WORKER',
-        currentTenantId,
-        (newNotifications) => {
-          setNotifications(newNotifications);
-          setNotificationCount(newNotifications.filter(n => !n.read).length);
-        }
+        handleNotificationUpdate
       );
     }
 
     // Cleanup on unmount
     return () => {
       if (user?.uid) {
-        realtimeNotificationService.stopListening(user.uid);
+        enhancedNotificationService.stopRealtimeListening(user.uid);
       }
       
       // Clean up payment listener
@@ -193,27 +221,9 @@ export function LineWorkerDashboard() {
         setPaymentUnsubscribe(null);
       }
     };
-  }, [isLineWorker, user]);
+  }, [isLineWorker, user, handleNotificationUpdate]);
 
-  // Notification service integration
-  useEffect(() => {
-    // Set up notification listener
-    const handleNotificationsUpdate = (newNotifications: NotificationItem[]) => {
-      setNotifications(newNotifications);
-      setNotificationCount(newNotifications.filter(n => !n.read).length);
-    };
-
-    notificationService.addListener(handleNotificationsUpdate);
-    
-    // Initialize with current notifications
-    const currentNotifications = notificationService.getNotifications();
-    setNotifications(currentNotifications);
-    setNotificationCount(notificationService.getUnreadCount());
-
-    return () => {
-      notificationService.removeListener(handleNotificationsUpdate);
-    };
-  }, []);
+  // Enhanced notification initialization is handled in the main useEffect above
 
   // Check for milestones and generate notifications
   useEffect(() => {
@@ -266,24 +276,25 @@ export function LineWorkerDashboard() {
       new Date().getTime() - p.createdAt.toDate().getTime() < 24 * 60 * 60 * 1000
     );
     
-    recentHighValuePayments.forEach(payment => {
-      if (payment.retailerName) {
-        notificationService.addLineWorkerHighValueCollection(
-          payment.retailerName,
-          payment.totalPaid,
-          payment.id
-        );
-      } else {
-        // Fallback to dynamic lookup for older payments without retailerName
-        const retailer = retailers.find(r => r.id === payment.retailerId);
-        if (retailer) {
-          notificationService.addLineWorkerHighValueCollection(
-            retailer.name,
-            payment.totalPaid,
-            payment.id
-          );
-        }
-      }
+    recentHighValuePayments.forEach(async (payment) => {
+      const retailerName = payment.retailerName || 
+        (retailers.find(r => r.id === payment.retailerId)?.name || 'Unknown Retailer');
+      
+      // Use enhanced service for high-value payments (includes FCM)
+      await enhancedNotificationService.sendPaymentCompletedNotification(
+        user?.displayName || 'Line Worker',
+        retailerName,
+        payment.totalPaid,
+        payment.id,
+        'line_worker'
+      );
+      
+      // Also add the regular notification
+      notificationService.addLineWorkerHighValueCollection(
+        retailerName,
+        payment.totalPaid,
+        payment.id
+      );
     });
   };
 
@@ -1203,6 +1214,8 @@ Thank you for your payment!
         onLogout={logout}
         notificationCount={notificationCount}
         notifications={notifications}
+        onNotificationRead={markNotificationAsRead}
+        onAllNotificationsRead={markAllNotificationsAsRead}
       />
 
       {/* Main Content Area */}
@@ -1335,6 +1348,51 @@ Thank you for your payment!
                           >
                             <History className="h-8 w-8 mb-3 text-gray-600" />
                             <span className="font-medium">Payment History</span>
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    {/* Test Notifications */}
+                    <Card className="border border-gray-200 shadow-sm">
+                      <CardHeader className="pb-4">
+                        <CardTitle className="text-lg font-semibold text-gray-900">Test Notifications</CardTitle>
+                        <CardDescription className="text-gray-600">Test the enhanced notification system</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          <Button
+                            variant="outline"
+                            onClick={async () => {
+                              const result = await enhancedNotificationService.testNotification();
+                              alert(`Test Results:\nIn-App: ${result.inApp ? '✅' : '❌'}\nFCM: ${result.fcm ? '✅' : '❌'}`);
+                            }}
+                            className="h-20 flex-col border-gray-300 text-gray-700 hover:bg-gray-50"
+                          >
+                            <Bell className="h-6 w-6 mb-2 text-gray-600" />
+                            <span className="font-medium text-sm">Test Basic</span>
+                          </Button>
+                          <Button
+                            variant="outline"
+                            onClick={async () => {
+                              const success = await enhancedNotificationService.testHighValuePayment();
+                              alert(`High-Value Payment Test: ${success ? '✅ Sent' : '❌ Failed'}`);
+                            }}
+                            className="h-20 flex-col border-gray-300 text-gray-700 hover:bg-gray-50"
+                          >
+                            <DollarSign className="h-6 w-6 mb-2 text-gray-600" />
+                            <span className="font-medium text-sm">Test High-Value</span>
+                          </Button>
+                          <Button
+                            variant="outline"
+                            onClick={async () => {
+                              const success = await enhancedNotificationService.testOTPNotification();
+                              alert(`OTP Test: ${success ? '✅ Sent' : '❌ Failed'}`);
+                            }}
+                            className="h-20 flex-col border-gray-300 text-gray-700 hover:bg-gray-50"
+                          >
+                            <AlertCircle className="h-6 w-6 mb-2 text-gray-600" />
+                            <span className="font-medium text-sm">Test OTP</span>
                           </Button>
                         </div>
                       </CardContent>

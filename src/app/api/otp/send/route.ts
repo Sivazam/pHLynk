@@ -2,13 +2,14 @@
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from 'next/server';
-import { doc, getDoc, collection, query, where, getDocs, updateDoc, arrayUnion, Timestamp } from 'firebase/firestore';
+import { doc, updateDoc, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { callFirebaseFunction } from '@/lib/firebase';
-import { otpStore, sendOTPToRetailer, cleanupExpiredOTPs, addActiveOTP } from '@/lib/otp-store';
+import { secureOTPStorage } from '@/lib/secure-otp-storage';
 import { RetailerAuthService } from '@/services/retailer-auth';
-import { retailerService } from '@/services/firestore';
-import { Timestamp as FirebaseTimestamp } from 'firebase/firestore';
+import { rateLimiters, withRateLimitHandler } from '@/lib/api-rate-limit';
+import { validateInput, VALIDATION_RULES } from '@/lib/input-validation';
+import { secureLogger } from '@/lib/secure-logger';
 
 interface OTPRequest {
   retailerId: string;
@@ -17,251 +18,324 @@ interface OTPRequest {
   lineWorkerName?: string;
 }
 
-export async function POST(request: NextRequest) {
-  try {
-    const body: OTPRequest = await request.json();
-    const { retailerId, paymentId, amount, lineWorkerName } = body;
-
-    if (!retailerId || !paymentId || !amount) {
-      return NextResponse.json(
-        { error: 'Missing required fields' },
-        { status: 400 }
-      );
-    }
-
-    // Check if there's already an active OTP for this payment
-    const existingOTP = otpStore.get(paymentId);
-    if (existingOTP) {
-      const now = new Date();
-      const timeRemaining = Math.ceil((existingOTP.expiresAt.getTime() - now.getTime()) / 1000);
+export const POST = withRateLimitHandler(
+  async (request: NextRequest) => {
+    const startTime = Date.now();
+    
+    try {
+      // Parse and validate input
+      const body: OTPRequest = await request.json();
       
-      if (timeRemaining > 0) {
-        // Format remaining time for display
-        const minutes = Math.floor(timeRemaining / 60);
-        const seconds = timeRemaining % 60;
-        const timeString = minutes > 0 
-          ? `${minutes} minute${minutes > 1 ? 's' : ''} and ${seconds} second${seconds !== 1 ? 's' : ''}`
-          : `${seconds} second${seconds !== 1 ? 's' : ''}`;
+      // Validate input data
+      const validation = validateInput(body, 'OTP_SEND');
+      if (!validation.isValid) {
+        secureLogger.security('Invalid OTP send request', {
+          errors: validation.errors,
+          retailerId: body.retailerId,
+          paymentId: body.paymentId
+        });
         
         return NextResponse.json(
           { 
-            error: `Active OTP already exists. Please wait ${timeString} for the current OTP to expire.`,
-            activeOTP: true,
-            timeRemaining,
-            expiresAt: existingOTP.expiresAt.toISOString()
+            error: 'Invalid input data',
+            details: validation.errors 
           },
           { status: 400 }
         );
-      } else {
-        // OTP has expired, remove it and continue
-        otpStore.delete(paymentId);
-        console.log('🗑️ Removed expired OTP before generating new one');
       }
-    }
-
-    // Get retailer user details from retailerUsers collection
-    const retailerUser = await RetailerAuthService.getRetailerUserByRetailerId(retailerId);
-    
-    if (!retailerUser) {
-      return NextResponse.json(
-        { error: 'Retailer user not found' },
-        { status: 404 }
-      );
-    }
-
-    if (!retailerUser.phone) {
-      return NextResponse.json(
-        { error: 'Retailer phone number not found' },
-        { status: 400 }
-      );
-    }
-
-    console.log('📱 OTP SEND REQUEST - Using Local Generation:');
-    console.log('Retailer ID:', retailerId);
-    console.log('Payment ID:', paymentId);
-    console.log('Amount:', amount);
-    console.log('Line Worker Name:', lineWorkerName);
-    console.log('Retailer User Data:', retailerUser);
-
-    // Generate OTP locally (removed cloud function dependency)
-    let otpData;
-    try {
-      console.log('🔐 Generating OTP locally');
-      const { generateOTP } = await import('@/lib/otp-store');
-      const otp = generateOTP();
-      const expiresAt = new Date(Date.now() + 7 * 60 * 1000);
       
-      otpData = {
-        success: true,
-        otpId: `local_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        code: otp,
-        expiresAt: expiresAt.toISOString(),
-        retailerName: retailerUser.name,
-        retailerPhone: retailerUser.phone
-      };
-      
-      // Store OTP locally for validation
-      otpStore.set(paymentId, {
-        code: otp,
-        expiresAt,
-        attempts: 0,
-        lastAttemptAt: null,
-        cooldownUntil: null,
-        consecutiveFailures: 0,
-        breachDetected: false
-      });
-      
-      console.log('✅ OTP generated successfully locally');
-    } catch (localGenerationError) {
-      console.error('❌ Error generating OTP locally:', localGenerationError);
-      return NextResponse.json(
-        { error: 'Failed to generate OTP' },
-        { status: 500 }
-      );
-    }
+      const { retailerId, paymentId, amount, lineWorkerName } = validation.data!;
 
-    console.log('📝 OTP generated:', otpData.code);
-
-    // Save OTP directly to retailer document for persistence (if not already done by cloud function)
-    try {
-      const firestoreExpiresAt = FirebaseTimestamp.fromDate(new Date(otpData.expiresAt));
-      const otpDocumentData = {
-        paymentId,
-        code: otpData.code,
-        amount,
-        lineWorkerName: lineWorkerName || 'Line Worker',
-        expiresAt: firestoreExpiresAt,
-        createdAt: FirebaseTimestamp.now(),
-        isUsed: false
-      };
-
-      console.log('🔍 Attempting to save OTP to retailer document:');
-      console.log('  Retailer ID:', retailerId);
-      console.log('  Tenant ID:', retailerUser.tenantId);
-      console.log('  OTP Data:', otpDocumentData);
-
-      // Add OTP to retailer's activeOTPs array with correct tenantId
-      await retailerService.addOTPToRetailer(retailerId, retailerUser.tenantId, otpDocumentData);
-      console.log('✅ OTP saved to retailer document successfully');
-    } catch (firestoreError) {
-      console.error('❌ Error saving OTP to retailer document:', firestoreError);
-      // Don't fail the request if Firestore save fails, still continue with in-memory storage
-    }
-
-    // Add OTP to active OTPs for retailer dashboard display
-    addActiveOTP({
-      code: otpData.code,
-      retailerId,
-      amount,
-      paymentId,
-      lineWorkerName: lineWorkerName || 'Line Worker'
-    });
-
-    console.log('📱 OTP added to active OTPs for retailer dashboard');
-
-    // Send OTP to retailer (now just logs to console)
-    const sent = sendOTPToRetailer(retailerUser.phone, otpData.code, amount);
-    console.log('📤 OTP send result:', sent);
-    
-    // Send FCM notification to retailer using cloud function
-    try {
-      console.log('📱 Sending FCM OTP notification via cloud function...');
-      const result = await callFirebaseFunction('sendFCMNotification', {
+      secureLogger.otp('OTP send request started', {
         retailerId,
-        notification: {
-          title: '🔐 OTP Verification Required',
-          body: `Your OTP code is: ${otpData.code}`,
-          data: {
-            type: 'otp',
-            otp: otpData.code,
-            retailerId,
-            paymentId,
-            amount: amount.toString(),
-            retailerName: retailerUser.name,
-            lineWorkerName: lineWorkerName || 'Line Worker'
-          },
-          icon: '/icon-192x192.png',
-          tag: `otp-${paymentId}`,
-          clickAction: '/retailer/dashboard'
-        }
+        paymentId,
+        amount,
+        lineWorkerName,
+        processingTime: 0
       });
 
-      console.log('✅ FCM OTP notification sent successfully via cloud function:', result);
-    } catch (fcmError) {
-      console.warn('⚠️ Error sending FCM OTP notification:', fcmError);
-      console.log('📱 FCM error - OTP will be available in retailer dashboard');
-      // Don't fail the request if FCM fails
-    }
-
-    // Send PWA push notification to RETAILER ONLY (client-side only)
-    // Skip notification on server side - notifications will be handled by client
-    if (typeof window !== 'undefined') {
-      try {
-        const { roleBasedNotificationService } = await import('@/services/role-based-notification-service');
-        if (roleBasedNotificationService) {
-          const notificationSent = await roleBasedNotificationService.sendOTPToRetailer({
-            otp: otpData.code,
-            amount,
+      // Check if there's already an active OTP for this payment
+      const existingOTP = await secureOTPStorage.getOTP(paymentId);
+      if (existingOTP) {
+        const now = new Date();
+        const timeRemaining = Math.ceil((existingOTP.expiresAt.getTime() - now.getTime()) / 1000);
+        
+        if (timeRemaining > 0) {
+          // Format remaining time for display
+          const minutes = Math.floor(timeRemaining / 60);
+          const seconds = timeRemaining % 60;
+          const timeString = minutes > 0 
+            ? `${minutes} minute${minutes > 1 ? 's' : ''} and ${seconds} second${seconds !== 1 ? 's' : ''}`
+            : `${seconds} second${seconds !== 1 ? 's' : ''}`;
+          
+          secureLogger.otp('Active OTP already exists', {
             paymentId,
-            retailerName: retailerUser.name,
-            lineWorkerName: lineWorkerName || 'Line Worker'
+            timeRemaining,
+            expiresAt: existingOTP.expiresAt
           });
           
-          if (notificationSent) {
-            console.log('📱 PWA OTP notification sent to retailer only');
-          } else {
-            console.log('⚠️ PWA OTP notification failed, but OTP was generated');
-          }
+          return NextResponse.json(
+            { 
+              error: `Active OTP already exists. Please wait ${timeString} for the current OTP to expire.`,
+              activeOTP: true,
+              timeRemaining,
+              expiresAt: existingOTP.expiresAt.toISOString()
+            },
+            { status: 400 }
+          );
         } else {
-          console.log('🖥️ Role-based notification service not available on server');
+          // OTP has expired, continue with generating new one
+          secureLogger.otp('Expired OTP found, generating new one', { paymentId });
         }
-      } catch (notificationError) {
-        console.error('❌ Error sending PWA OTP notification:', notificationError);
-        // Don't fail the request if notification fails
       }
-    } else {
-      console.log('🖥️ Server environment - skipping PWA notification (will be handled by client)');
-    }
-    
-    if (!sent) {
+
+      // Get retailer user details with retry logic
+      let retailerUser = null;
+      let retryCount = 0;
+      const maxRetries = 3;
+      
+      while (retryCount < maxRetries && !retailerUser) {
+        try {
+          secureLogger.otp('Attempting to find retailer user', { 
+            attempt: retryCount + 1, 
+            maxRetries,
+            retailerId 
+          });
+          retailerUser = await RetailerAuthService.getRetailerUserByRetailerId(retailerId);
+          
+          if (retailerUser) {
+            secureLogger.otp('Retailer user found successfully', { retailerId });
+            break;
+          }
+        } catch (error) {
+          secureLogger.warn('Retailer user search attempt failed', { 
+            attempt: retryCount + 1, 
+            error: error.message 
+          });
+        }
+        
+        retryCount++;
+        if (retryCount < maxRetries) {
+          // Wait 1 second before retrying
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      }
+      
+      if (!retailerUser) {
+        secureLogger.error('Failed to find retailer user after retries', { 
+          maxRetries, 
+          retailerId 
+        });
+        return NextResponse.json(
+          { error: 'Retailer user not found. Please try again.' },
+          { status: 404 }
+        );
+      }
+
+      if (!retailerUser.phone) {
+        secureLogger.security('Retailer phone number missing', { retailerId });
+        return NextResponse.json(
+          { error: 'Retailer phone number not found' },
+          { status: 400 }
+        );
+      }
+
+      secureLogger.otp('OTP send request - using local generation', {
+        retailerId,
+        paymentId,
+        amount,
+        lineWorkerName,
+        hasPhone: !!retailerUser.phone
+      });
+
+      // Generate OTP and store securely
+      let otpData;
+      try {
+        secureLogger.otp('Generating OTP locally');
+        const { generateOTP } = await import('@/lib/otp-store');
+        const otp = generateOTP();
+        const expiresAt = new Date(Date.now() + 7 * 60 * 1000);
+        
+        // Store OTP securely in database
+        const otpId = await secureOTPStorage.storeOTP({
+          paymentId,
+          code: otp,
+          retailerId,
+          amount,
+          lineWorkerName: lineWorkerName || 'Line Worker',
+          expiresAt
+        });
+        
+        otpData = {
+          success: true,
+          otpId,
+          code: otp,
+          expiresAt: expiresAt.toISOString(),
+          retailerName: retailerUser.name,
+          retailerPhone: retailerUser.phone
+        };
+        
+        secureLogger.otp('OTP generated and stored successfully', {
+          otpId,
+          paymentId,
+          expiresAt: otpData.expiresAt
+        });
+      } catch (localGenerationError) {
+        secureLogger.error('Error generating OTP locally', { 
+          error: localGenerationError.message,
+          retailerId,
+          paymentId
+        });
+        return NextResponse.json(
+          { error: 'Failed to generate OTP' },
+          { status: 500 }
+        );
+      }
+
+      secureLogger.otp('OTP generated', { 
+        maskedCode: otpData.code.substring(0, 1) + '***',
+        paymentId 
+      });
+
+      // Send OTP to retailer
+      const sent = await (async () => {
+        try {
+          const { sendOTPToRetailer } = await import('@/lib/otp-store');
+          return await sendOTPToRetailer(retailerUser.phone, otpData.code, amount);
+        } catch (error) {
+          secureLogger.error('Failed to send OTP to retailer', { 
+            error: error.message,
+            retailerId,
+            paymentId
+          });
+          return false;
+        }
+      })();
+      
+      secureLogger.otp('OTP send result', { 
+        success: sent, 
+        retailerId,
+        paymentId 
+      });
+      
+      // Send FCM notification to retailer using cloud function
+      try {
+        secureLogger.otp('Sending FCM OTP notification via cloud function');
+        const result = await callFirebaseFunction('sendFCMNotification', {
+          retailerId,
+          notification: {
+            title: '🔐 OTP Verification Required',
+            body: `Your OTP code is: ${otpData.code}`,
+            data: {
+              type: 'otp',
+              otp: otpData.code,
+              retailerId,
+              paymentId,
+              amount: amount.toString(),
+              retailerName: retailerUser.name,
+              lineWorkerName: lineWorkerName || 'Line Worker'
+            },
+            icon: '/icon-192x192.png',
+            tag: `otp-${paymentId}`,
+            clickAction: '/retailer/dashboard'
+          }
+        });
+
+        secureLogger.otp('FCM OTP notification sent successfully via cloud function', { 
+          success: true,
+          retailerId,
+          paymentId
+        });
+      } catch (fcmError) {
+        secureLogger.warn('Error sending FCM OTP notification', { 
+          error: fcmError.message,
+          retailerId,
+          paymentId
+        });
+        secureLogger.otp('FCM error - OTP will be available in retailer dashboard');
+        // Don't fail the request if FCM fails
+      }
+
+      // PWA notifications are now handled by FCM - no need for duplicate local notifications
+      secureLogger.otp('FCM notification sent - skipping local PWA notification to avoid duplicates');
+      
+      if (!sent) {
+        secureLogger.error('OTP sending failed', {
+          retailerId,
+          paymentId,
+          processingTime: Date.now() - startTime
+        });
+        return NextResponse.json(
+          { error: 'Failed to send OTP' },
+          { status: 500 }
+        );
+      }
+
+      // Clean up expired OTPs
+      await secureOTPStorage.cleanupExpiredOTPs();
+
+      // Update payment state to OTP_SENT
+      try {
+        const paymentRef = doc(db, 'payments', paymentId);
+        await updateDoc(paymentRef, {
+          state: 'OTP_SENT',
+          'timeline.otpSentAt': new Date(),
+          updatedAt: new Date()
+        });
+        secureLogger.otp('Payment state updated to OTP_SENT', { paymentId });
+      } catch (paymentUpdateError) {
+        secureLogger.error('Error updating payment state to OTP_SENT', { 
+          error: paymentUpdateError.message,
+          paymentId
+        });
+        // Don't fail the request if payment update fails
+      }
+
+      secureLogger.otp('OTP send completed successfully', {
+        retailerId,
+        paymentId,
+        processingTime: Date.now() - startTime
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: 'OTP sent successfully',
+        otpSent: true,
+        expiresAt: otpData.expiresAt,
+        retailerName: retailerUser.name,
+        retailerPhone: retailerUser.phone,
+        usedCloudFunction: false // Always false now since we removed cloud functions
+      });
+
+    } catch (error) {
+      secureLogger.error('Error sending OTP', {
+        error: error.message,
+        stack: error.stack,
+        processingTime: Date.now() - startTime
+      });
       return NextResponse.json(
-        { error: 'Failed to send OTP' },
+        { error: 'Internal server error' },
         { status: 500 }
       );
     }
-
-    // Clean up expired OTPs
-    cleanupExpiredOTPs();
-
-    // Update payment state to OTP_SENT
-    try {
-      const paymentRef = doc(db, 'payments', paymentId);
-      await updateDoc(paymentRef, {
-        state: 'OTP_SENT',
-        'timeline.otpSentAt': new Date(),
-        updatedAt: new Date()
+  },
+  {
+    config: 'OTP',
+    identifierGenerator: (req) => {
+      // Use retailer ID for more specific rate limiting
+      const url = new URL(req.url);
+      const retailerId = url.searchParams.get('retailerId');
+      const ip = req.headers.get('x-forwarded-for')?.split(',')[0] || 'unknown';
+      
+      return retailerId ? `otp_send:retailer:${retailerId}` : `otp_send:ip:${ip}`;
+    },
+    onLimitReached: (result) => {
+      secureLogger.security('OTP send rate limit exceeded', {
+        retryAfter: result.retryAfter,
+        severity: 'high'
       });
-      console.log('✅ Payment state updated to OTP_SENT');
-    } catch (paymentUpdateError) {
-      console.error('❌ Error updating payment state to OTP_SENT:', paymentUpdateError);
-      // Don't fail the request if payment update fails
-    }
-
-    return NextResponse.json({
-      success: true,
-      message: 'OTP sent successfully',
-      otpSent: true,
-      expiresAt: otpData.expiresAt,
-      retailerName: retailerUser.name,
-      retailerPhone: retailerUser.phone,
-      usedCloudFunction: false // Always false now since we removed cloud functions
-    });
-
-  } catch (error) {
-    console.error('Error sending OTP:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    },
+    skipSuccessfulRequests: false,
+    skipFailedRequests: false
   }
-}
+);

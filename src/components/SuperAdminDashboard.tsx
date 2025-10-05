@@ -36,6 +36,7 @@ import {
 import { TENANT_STATUSES } from '@/lib/firebase';
 import { realtimeNotificationService } from '@/services/realtime-notifications';
 import { notificationService } from '@/services/notification-service';
+import { enhancedNotificationService } from '@/services/enhanced-notification-service';
 import { Tenant, CreateTenantForm, User, Area, Retailer, Payment } from '@/types';
 import { formatTimestamp, formatTimestampWithTime, formatCurrency } from '@/lib/timestamp-utils';
 import { 
@@ -353,10 +354,33 @@ export function SuperAdminDashboard() {
 
   const [activeNav, setActiveNav] = useState('overview');
 
-  // Memoized notification callback to prevent unnecessary re-renders
-  const handleNotificationUpdate = useCallback((newNotifications: NotificationItem[]) => {
+  // Enhanced notification callback with proper count updates
+  const handleNotificationUpdate = useCallback((newNotifications: any[]) => {
+    console.log('🔔 SuperAdmin: Updating notifications', {
+      total: newNotifications.length,
+      unread: newNotifications.filter(n => !n.read).length
+    });
+    
     setNotifications(newNotifications);
     setNotificationCount(newNotifications.filter(n => !n.read).length);
+  }, []);
+
+  // Mark notification as read
+  const markNotificationAsRead = useCallback((notificationId: string) => {
+    enhancedNotificationService.markAsRead(notificationId);
+    // Update local state to reflect the change immediately
+    setNotifications(prev => 
+      prev.map(n => n.id === notificationId ? { ...n, read: true } : n)
+    );
+    setNotificationCount(prev => Math.max(0, prev - 1));
+  }, []);
+
+  // Mark all notifications as read
+  const markAllNotificationsAsRead = useCallback(() => {
+    enhancedNotificationService.markAllAsRead();
+    // Update local state immediately
+    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+    setNotificationCount(0);
   }, []);
 
   useEffect(() => {
@@ -365,18 +389,19 @@ export function SuperAdminDashboard() {
       mainLoadingState.setLoading(true);
       setDataFetchProgress(0);
       
+      // Initialize enhanced notification service
+      enhancedNotificationService.initialize('SUPER_ADMIN', 'system');
+      
       // Start fetching data
       fetchTenants();
       fetchAnalytics();
       fetchRecentActivities();
       
-      // Start real-time notifications - only once per session
-      const notificationKey = `notifications_${user.uid}`;
+      // Start enhanced real-time notifications - only once per session
+      const notificationKey = `enhanced_notifications_${user.uid}`;
       if (!sessionStorage.getItem(notificationKey)) {
-        realtimeNotificationService.startListening(
+        enhancedNotificationService.startRealtimeListening(
           user.uid,
-          'SUPER_ADMIN',
-          'system', // Super admin listens to all tenants
           handleNotificationUpdate
         );
         sessionStorage.setItem(notificationKey, 'true');
@@ -386,11 +411,11 @@ export function SuperAdminDashboard() {
     // Cleanup on unmount
     return () => {
       if (user) {
-        realtimeNotificationService.stopListening(user.uid);
-        sessionStorage.removeItem(`notifications_${user.uid}`);
+        enhancedNotificationService.stopRealtimeListening(user.uid);
+        sessionStorage.removeItem(`enhanced_notifications_${user.uid}`);
       }
     };
-  }, [isSuperAdmin, user]); // Only restart when user changes or role changes
+  }, [isSuperAdmin, user, handleNotificationUpdate]); // Include handleNotificationUpdate in dependencies
 
   // Separate effect for data fetching when activeNav changes
   useEffect(() => {
@@ -1854,11 +1879,13 @@ export function SuperAdminDashboard() {
           navItems={navItems}
           title="PharmaLync"
           subtitle="Super Admin Dashboard"
-        notificationCount={notificationCount}
-        notifications={notifications}
-        user={user ? { displayName: user.displayName, email: user.email } : undefined}
-        onLogout={logout}
-      />
+          notificationCount={notificationCount}
+          notifications={notifications}
+          user={user ? { displayName: user.displayName, email: user.email } : undefined}
+          onLogout={logout}
+          onNotificationRead={markNotificationAsRead}
+          onAllNotificationsRead={markAllNotificationsAsRead}
+        />
 
       {/* Main Content */}
       <main className="flex-1 pt-20 sm:pt-16 p-3 sm:p-4 lg:p-6 overflow-y-auto pb-20 lg:pb-6">

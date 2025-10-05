@@ -778,56 +778,87 @@ exports.sendPaymentCompletionNotification = functions.https.onCall(async (reques
             retailerId: data.retailerId,
             paymentId: data.paymentId,
             amount: data.amount,
+            recipientType: data.recipientType || 'retailer',
             caller: context.auth ? context.auth.uid : 'NEXTJS_API'
         });
-        // Get retailer user details
-        const retailerUsersQuery = await admin.firestore()
-            .collection('retailerUsers')
-            .where('retailerId', '==', data.retailerId)
-            .limit(1)
-            .get();
-        if (retailerUsersQuery.empty) {
-            throw new functions.https.HttpsError('not-found', `Retailer user not found for retailerId: ${data.retailerId}`);
+        // Get FCM token for recipient (retailer or wholesaler)
+        let fcmToken = null;
+        let recipientUserId = null;
+        if (data.recipientType === 'wholesaler') {
+            // For wholesaler, look in users collection (wholesaler admin users)
+            console.log('🔧 Looking for FCM token for wholesaler:', data.retailerId);
+            const wholesalerUsersQuery = await admin.firestore()
+                .collection('users')
+                .where('tenantId', '==', data.retailerId) // retailerId is actually wholesalerId for wholesaler notifications
+                .where('roles', 'array-contains', 'WHOLESALER_ADMIN')
+                .limit(1)
+                .get();
+            if (wholesalerUsersQuery.empty) {
+                throw new functions.https.HttpsError('not-found', `Wholesaler admin not found for tenantId: ${data.retailerId}`);
+            }
+            const wholesalerUser = wholesalerUsersQuery.docs[0];
+            recipientUserId = wholesalerUser.id;
+            fcmToken = await getFCMTokenForUser(recipientUserId);
+            console.log('📱 Found wholesaler user:', wholesalerUser.id);
         }
-        const retailerUser = retailerUsersQuery.docs[0];
-        const retailerUserId = retailerUser.id;
-        // Get FCM token for retailer user
-        const fcmToken = await getFCMTokenForUser(retailerUserId);
+        else {
+            // For retailer, use existing logic
+            console.log('🔧 Looking for FCM token for retailer:', data.retailerId);
+            const retailerUsersQuery = await admin.firestore()
+                .collection('retailerUsers')
+                .where('retailerId', '==', data.retailerId)
+                .limit(1)
+                .get();
+            if (retailerUsersQuery.empty) {
+                throw new functions.https.HttpsError('not-found', `Retailer user not found for retailerId: ${data.retailerId}`);
+            }
+            const retailerUser = retailerUsersQuery.docs[0];
+            recipientUserId = retailerUser.id;
+            fcmToken = await getFCMTokenForUser(recipientUserId);
+            console.log('📱 Found retailer user:', retailerUser.id);
+        }
         if (!fcmToken) {
-            console.warn('⚠️ FCM token not found for retailer user:', retailerUserId);
+            console.warn(`⚠️ FCM token not found for ${data.recipientType || 'retailer'} user:`, recipientUserId);
             return {
                 success: false,
                 error: 'FCM token not found',
+                recipientType: data.recipientType || 'retailer',
                 fallbackToSMS: true
             };
         }
-        // Create FCM message
+        // Create FCM message with custom content
         const message = {
             notification: {
-                title: '✅ Payment Completed',
-                body: `Payment of ₹${data.amount.toLocaleString()} completed successfully`,
+                title: data.title || '✅ Payment Completed',
+                body: data.body || `Payment of ₹${data.amount.toLocaleString()} completed successfully`,
             },
             data: {
                 type: 'payment_completed',
                 amount: data.amount.toString(),
                 paymentId: data.paymentId,
                 retailerId: data.retailerId,
+                recipientType: data.recipientType || 'retailer',
+                retailerName: data.retailerName,
+                lineWorkerName: data.lineWorkerName,
                 tag: `payment-${data.paymentId}`,
-                requireInteraction: 'false'
+                requireInteraction: 'false',
+                clickAction: data.clickAction || '/retailer/payment-history'
             },
             token: fcmToken,
             android: {
-                priority: 'normal',
+                priority: 'high', // High priority as requested
                 notification: {
-                    priority: 'default',
-                    defaultSound: true
+                    priority: 'high',
+                    defaultSound: true,
+                    clickAction: data.clickAction || '/retailer/payment-history'
                 }
             },
             apns: {
                 payload: {
                     aps: {
                         sound: 'default',
-                        badge: 1
+                        badge: 1,
+                        'mutable-content': 1
                     }
                 }
             }
@@ -840,7 +871,7 @@ exports.sendPaymentCompletionNotification = functions.https.onCall(async (reques
             type: 'PAYMENT_COMPLETION_NOTIFICATION',
             retailerId: data.retailerId,
             paymentId: data.paymentId,
-            userId: retailerUserId,
+            userId: recipientUserId,
             token: fcmToken.substring(0, 8) + '...',
             status: 'SENT',
             messageId: response,
@@ -1014,13 +1045,9 @@ exports.sendFCMNotification = functions.https.onCall(async (request) => {
         const message = {
             notification: {
                 title: notification.title,
-                body: notification.body,
-                icon: notification.icon || '/icon-192x192.png',
-                badge: '/badge-72x72.png',
-                tag: notification.tag,
-                clickAction: notification.clickAction
+                body: notification.body
             },
-            data: notification.data || {},
+            data: Object.assign(Object.assign({}, notification.data), { icon: notification.icon || 'https://your-domain.com/icon-192x192.png', badge: 'https://your-domain.com/icon-72x72.png', tag: notification.tag, clickAction: notification.clickAction }),
             android: {
                 priority: 'high',
                 notification: {
