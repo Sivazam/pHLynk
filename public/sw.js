@@ -1,5 +1,5 @@
 // Stable cache version - only change when actual updates are deployed
-const CACHE_VERSION = 'pharmalynk-v3-1.0.0';
+const CACHE_VERSION = 'pharmalynk-v3-1.1.0';
 const CACHE_NAME = CACHE_VERSION;
 const STATIC_CACHE_NAME = 'pharmalynk-static-v3';
 const RUNTIME_CACHE_NAME = 'pharmalynk-runtime-v3';
@@ -296,8 +296,9 @@ self.addEventListener('message', event => {
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
   
-  // Skip non-GET requests
-  if (event.request.method !== 'GET') {
+  // Skip non-GET requests and non-http(s) schemes
+  if (event.request.method !== 'GET' || 
+      !url.protocol.startsWith('http')) {
     return;
   }
   
@@ -323,6 +324,12 @@ self.addEventListener('fetch', event => {
 // Handle static assets (images, icons, etc.)
 async function handleStaticAsset(request) {
   try {
+    // Additional safety check - skip non-http(s) schemes
+    const url = new URL(request.url);
+    if (!url.protocol.startsWith('http')) {
+      return fetch(request);
+    }
+    
     // Try cache first
     const cachedResponse = await caches.match(request);
     if (cachedResponse) {
@@ -409,6 +416,12 @@ async function handleApiRequest(request) {
 // Handle runtime requests (other assets)
 async function handleRuntimeRequest(request) {
   try {
+    // Additional safety check - skip non-http(s) schemes
+    const url = new URL(request.url);
+    if (!url.protocol.startsWith('http')) {
+      return fetch(request);
+    }
+    
     // Try cache first
     const cachedResponse = await caches.match(request);
     if (cachedResponse) {

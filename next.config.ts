@@ -26,7 +26,9 @@ const nextConfig: NextConfig = {
     'https://0.0.0.0:3000',
     'https://*.space.z.ai',
     'https://*.z.ai',
-    'https://z.ai'
+    'https://z.ai',
+    'https://preview-chat-*.space.z.ai',
+    'https://preview-*.space.z.ai'
   ],
   async headers() {
     return [
@@ -110,10 +112,11 @@ const nextConfig: NextConfig = {
       },
     ];
   },
-  // Generate unique build ID for cache busting
-  generateBuildId: async () => {
-    return 'pharmalynk-' + Date.now();
-  },
+  // Generate unique build ID for cache busting - disabled for development
+  // generateBuildId: async () => {
+  //   // Use a stable build ID for development to prevent static asset 404 errors
+  //   return 'pharmalynk-dev';
+  // },
   // Webpack configuration to exclude Firebase Functions
   webpack: (config, { dev, isServer, defaultLoaders }) => {
     // Exclude the functions directory from being processed by Next.js
