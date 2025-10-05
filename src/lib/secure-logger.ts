@@ -125,6 +125,10 @@ class SecureLogger {
     // Log payment events without sensitive details
     this.log('info', `💳 PAYMENT: ${message}`, context);
   }
+  
+  performance(message: string, context?: Record<string, any>) {
+    this.log('info', `⚡ PERFORMANCE: ${message}`, context);
+  }
 }
 
 export const secureLogger = new SecureLogger();

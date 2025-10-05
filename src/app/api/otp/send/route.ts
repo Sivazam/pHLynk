@@ -18,11 +18,74 @@ interface OTPRequest {
   lineWorkerName?: string;
 }
 
+export const OPTIONS = async (request: NextRequest) => {
+  const origin = request.headers.get('origin');
+  const allowedOrigins = [
+    'http://localhost:3000',
+    'https://localhost:3000',
+    'http://127.0.0.1:3000',
+    'https://127.0.0.1:3000',
+    'http://0.0.0.0:3000',
+    'https://0.0.0.0:3000',
+    'https://*.space.z.ai',
+    'https://*.z.ai',
+    'https://z.ai'
+  ];
+  
+  // Check if origin is allowed (for development, allow all)
+  const isAllowedOrigin = process.env.NODE_ENV === 'development' || 
+    !origin || 
+    allowedOrigins.some(allowed => {
+      if (allowed.includes('*')) {
+        const pattern = allowed.replace(/\*/g, '.*');
+        return new RegExp(`^${pattern}$`).test(origin);
+      }
+      return allowed === origin;
+    });
+  
+  const response = new NextResponse(null, { status: 200 });
+  
+  // Add CORS headers
+  if (isAllowedOrigin && origin) {
+    response.headers.set('Access-Control-Allow-Origin', origin);
+    response.headers.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    response.headers.set('Access-Control-Max-Age', '86400'); // 24 hours
+  }
+  
+  return response;
+};
+
 export const POST = withRateLimitHandler(
   async (request: NextRequest) => {
     const startTime = Date.now();
     
     try {
+      // Handle CORS preflight and actual requests
+      const origin = request.headers.get('origin');
+      const allowedOrigins = [
+        'http://localhost:3000',
+        'https://localhost:3000',
+        'http://127.0.0.1:3000',
+        'https://127.0.0.1:3000',
+        'http://0.0.0.0:3000',
+        'https://0.0.0.0:3000',
+        'https://*.space.z.ai',
+        'https://*.z.ai',
+        'https://z.ai'
+      ];
+      
+      // Check if origin is allowed (for development, allow all)
+      const isAllowedOrigin = process.env.NODE_ENV === 'development' || 
+        !origin || 
+        allowedOrigins.some(allowed => {
+          if (allowed.includes('*')) {
+            const pattern = allowed.replace(/\*/g, '.*');
+            return new RegExp(`^${pattern}$`).test(origin);
+          }
+          return allowed === origin;
+        });
+      
       // Parse and validate input
       const body: OTPRequest = await request.json();
       
@@ -32,16 +95,26 @@ export const POST = withRateLimitHandler(
         secureLogger.security('Invalid OTP send request', {
           errors: validation.errors,
           retailerId: body.retailerId,
-          paymentId: body.paymentId
+          paymentId: body.paymentId,
+          origin
         });
         
-        return NextResponse.json(
+        const response = NextResponse.json(
           { 
             error: 'Invalid input data',
             details: validation.errors 
           },
           { status: 400 }
         );
+        
+        // Add CORS headers
+        if (isAllowedOrigin && origin) {
+          response.headers.set('Access-Control-Allow-Origin', origin);
+          response.headers.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
+          response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+        }
+        
+        return response;
       }
       
       const { retailerId, paymentId, amount, lineWorkerName } = validation.data!;
@@ -297,7 +370,7 @@ export const POST = withRateLimitHandler(
         processingTime: Date.now() - startTime
       });
 
-      return NextResponse.json({
+      const response = NextResponse.json({
         success: true,
         message: 'OTP sent successfully',
         otpSent: true,
@@ -306,6 +379,15 @@ export const POST = withRateLimitHandler(
         retailerPhone: retailerUser.phone,
         usedCloudFunction: false // Always false now since we removed cloud functions
       });
+      
+      // Add CORS headers
+      if (isAllowedOrigin && origin) {
+        response.headers.set('Access-Control-Allow-Origin', origin);
+        response.headers.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
+        response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+      }
+      
+      return response;
 
     } catch (error) {
       secureLogger.error('Error sending OTP', {

@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { callFirebaseFunction } from '@/lib/firebase';
 
+interface NotificationResult {
+  type: 'retailer' | 'wholesaler';
+  success: boolean;
+  result?: any;
+  error?: string;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -24,7 +31,7 @@ export async function POST(request: NextRequest) {
       lineWorkerName
     });
 
-    const results = [];
+    const results: NotificationResult[] = [];
 
     // Send to retailer
     try {
@@ -45,7 +52,7 @@ export async function POST(request: NextRequest) {
       console.log('✅ Retailer payment completion notification sent');
     } catch (retailerError) {
       console.warn('⚠️ Failed to send retailer notification:', retailerError);
-      results.push({ type: 'retailer', success: false, error: retailerError.message });
+      results.push({ type: 'retailer', success: false, error: retailerError instanceof Error ? retailerError.message : 'Unknown error' });
     }
 
     // Send to wholesaler if wholesalerId is provided
@@ -68,7 +75,7 @@ export async function POST(request: NextRequest) {
         console.log('✅ Wholesaler payment completion notification sent');
       } catch (wholesalerError) {
         console.warn('⚠️ Failed to send wholesaler notification:', wholesalerError);
-        results.push({ type: 'wholesaler', success: false, error: wholesalerError.message });
+        results.push({ type: 'wholesaler', success: false, error: wholesalerError instanceof Error ? wholesalerError.message : 'Unknown error' });
       }
     }
 

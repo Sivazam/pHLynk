@@ -65,15 +65,28 @@ export class InputValidator {
         
         // Type validation
         const typeError = this.validateType(value, rule.type, fieldName);
+        let finalValue = value;
+        
         if (typeError) {
-          errors.push(typeError);
-          continue;
+          // Special handling for number fields that might be strings
+          if (rule.type === 'number' && typeof value === 'string') {
+            const numValue = parseFloat(value);
+            if (!isNaN(numValue)) {
+              finalValue = numValue; // Convert string to number
+            } else {
+              errors.push(typeError);
+              continue;
+            }
+          } else {
+            errors.push(typeError);
+            continue;
+          }
         }
         
         // Sanitize value
-        let sanitizedValue = value;
+        let sanitizedValue = finalValue;
         if (rule.sanitize !== false) {
-          sanitizedValue = this.sanitizeValue(value, rule);
+          sanitizedValue = this.sanitizeValue(finalValue, rule);
         }
         
         // Length validation for strings
@@ -156,7 +169,7 @@ export class InputValidator {
       
     } catch (error) {
       secureLogger.error('Input validation error', {
-        error: error.message,
+        error: error instanceof Error ? error.message : 'Unknown error',
         fieldCount: rules.length
       });
       
@@ -218,7 +231,7 @@ export class InputValidator {
         break;
         
       default:
-        warnings.push(`Unknown validation type: ${type}`);
+        console.warn(`Unknown validation type: ${type}`);
     }
     
     return null;
@@ -329,11 +342,13 @@ export const VALIDATION_RULES = {
   
   // OTP operations
   OTP_SEND: {
-    phone: {
-      field: 'phone',
+    retailerId: {
+      field: 'retailerId',
       required: true,
-      type: 'phone',
-      maxLength: 20,
+      type: 'string',
+      minLength: 10,
+      maxLength: 100,
+      pattern: /^[a-zA-Z0-9_-]+$/,
       sanitize: true
     },
     paymentId: {
@@ -343,6 +358,33 @@ export const VALIDATION_RULES = {
       minLength: 10,
       maxLength: 100,
       pattern: /^[a-zA-Z0-9_-]+$/,
+      sanitize: true
+    },
+    amount: {
+      field: 'amount',
+      required: true,
+      type: 'number',
+      min: 0.01,
+      max: 999999.99,
+      sanitize: true,
+      custom: (value: any) => {
+        // Allow string numbers and convert them
+        if (typeof value === 'string') {
+          const numValue = parseFloat(value);
+          if (isNaN(numValue)) {
+            return 'Amount must be a valid number';
+          }
+          return null;
+        }
+        return null;
+      }
+    },
+    lineWorkerName: {
+      field: 'lineWorkerName',
+      required: false,
+      type: 'string',
+      minLength: 2,
+      maxLength: 100,
       sanitize: true
     }
   },
