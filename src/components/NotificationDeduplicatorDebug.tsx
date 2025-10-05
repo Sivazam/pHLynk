@@ -14,6 +14,11 @@ export function NotificationDeduplicatorDebug() {
   const [history, setHistory] = useState<any[]>([]);
 
   const refreshDebugInfo = () => {
+    if (!notificationDeduplicator) {
+      console.warn('Notification deduplicator not available');
+      return;
+    }
+    
     const info = notificationDeduplicator.getDebugInfo();
     const fcmInfo = enhancedFCMManager.getDebugInfo();
     const notificationHistory = notificationDeduplicator.getNotificationHistory();
@@ -26,6 +31,11 @@ export function NotificationDeduplicatorDebug() {
   };
 
   const clearHistory = () => {
+    if (!notificationDeduplicator) {
+      console.warn('Notification deduplicator not available');
+      return;
+    }
+    
     notificationDeduplicator.clearHistory();
     toast.success('Notification history cleared');
     refreshDebugInfo();
