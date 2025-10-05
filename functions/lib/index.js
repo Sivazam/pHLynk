@@ -36,11 +36,29 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.sendFCMNotification = exports.sendTestFCMNotification = exports.sendPaymentCompletionNotification = exports.sendOTPNotification = exports.processSMSResponse = exports.sendWholesalerPaymentSMS = exports.sendRetailerPaymentSMS = void 0;
 const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
-// Initialize Firebase Admin with environment variables
-// Use the new APP_* variable names to avoid Firebase reserved prefixes
+const fs = __importStar(require("fs"));
+const path = __importStar(require("path"));
+// Initialize Firebase Admin with service account JSON file
 function getServiceAccountConfig() {
     var _a;
-    // Try complete JSON config first
+    try {
+        // Try to read from service-account.json file in the functions directory
+        const serviceAccountPath = path.join(__dirname, '../service-account.json');
+        console.log('🔧 Looking for service account file at:', serviceAccountPath);
+        if (fs.existsSync(serviceAccountPath)) {
+            const serviceAccountFile = fs.readFileSync(serviceAccountPath, 'utf8');
+            const serviceAccount = JSON.parse(serviceAccountFile);
+            console.log('✅ Using service account from service-account.json file');
+            return serviceAccount;
+        }
+        else {
+            console.warn('⚠️ service-account.json file not found, falling back to environment variables');
+        }
+    }
+    catch (error) {
+        console.warn('⚠️ Failed to read service-account.json file, falling back to environment variables:', error);
+    }
+    // Fallback to environment variables (APP_* format)
     if (process.env.APP_FIREBASE_CONFIG) {
         try {
             const config = JSON.parse(process.env.APP_FIREBASE_CONFIG);

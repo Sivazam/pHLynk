@@ -1,6 +1,8 @@
 import admin from 'firebase-admin';
 import { getMessaging, Messaging } from 'firebase-admin/messaging';
 import { getFirestore, Firestore } from 'firebase-admin/firestore';
+import * as fs from 'fs';
+import * as path from 'path';
 
 // Global variables to store initialized instances
 let messagingInstance: Messaging | null = null;
@@ -8,11 +10,28 @@ let firestoreInstance: Firestore | null = null;
 let isInitialized = false;
 
 /**
- * Gets Firebase service account configuration from Firebase config
+ * Gets Firebase service account configuration from service-account.json file
  * Falls back to environment variables for local development
  */
 function getServiceAccountConfig() {
-  // Try Firebase config first (for production)
+  try {
+    // Try to read from service-account.json file in the functions directory
+    const serviceAccountPath = path.join(process.cwd(), 'functions', 'service-account.json');
+    console.log('🔧 Looking for service account file at:', serviceAccountPath);
+    
+    if (fs.existsSync(serviceAccountPath)) {
+      const serviceAccountFile = fs.readFileSync(serviceAccountPath, 'utf8');
+      const serviceAccount = JSON.parse(serviceAccountFile);
+      console.log('✅ Using service account from service-account.json file');
+      return serviceAccount;
+    } else {
+      console.warn('⚠️ service-account.json file not found, falling back to environment variables');
+    }
+  } catch (error) {
+    console.warn('⚠️ Failed to read service-account.json file, falling back to environment variables:', error);
+  }
+
+  // Fallback to Firebase config (for production)
   if (process.env.FIREBASE_CONFIG && typeof process.env.FIREBASE_CONFIG === 'string') {
     try {
       const firebaseConfig = JSON.parse(process.env.FIREBASE_CONFIG);
@@ -168,12 +187,16 @@ export function validateFirebaseCredentials(): boolean {
  */
 export function checkFirebaseAdminStatus(): { initialized: boolean; hasCredentials: boolean; source?: string; error?: string } {
   try {
-    const hasCredentials = validateFirebaseCredentials();
-    const initialized = isInitialized && admin.apps.length > 0;
+    const config = getServiceAccountConfig();
+    const requiredFields = ['private_key', 'client_email', 'project_id'];
+    const hasAllFields = requiredFields.every(field => (config as any)[field]);
     
     // Determine credential source
     let source = 'unknown';
-    if (process.env.FIREBASE_CONFIG) {
+    const serviceAccountPath = path.join(process.cwd(), 'functions', 'service-account.json');
+    if (fs.existsSync(serviceAccountPath)) {
+      source = 'service_account_json';
+    } else if (process.env.FIREBASE_CONFIG) {
       source = 'firebase_config';
     } else if (process.env.FIREBASE_SERVICE_ACCOUNT_PRIVATE_KEY) {
       source = 'environment_variables';
@@ -181,7 +204,7 @@ export function checkFirebaseAdminStatus(): { initialized: boolean; hasCredentia
       source = 'hardcoded_development';
     }
     
-    return { initialized, hasCredentials, source };
+    return { initialized: isInitialized && admin.apps.length > 0, hasCredentials: hasAllFields, source };
   } catch (error) {
     return { 
       initialized: false, 
