@@ -61,7 +61,11 @@ class NotificationDeduplicator {
     return NotificationDeduplicator.instance;
   }
 
-  
+  private generateSessionId(): string {
+    const isPWA = this.appState?.isPWA || false;
+    return `${isPWA ? 'pwa' : 'browser'}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }
+
   private detectPWA(): boolean {
     if (typeof window === 'undefined') return false;
     
