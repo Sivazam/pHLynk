@@ -4,6 +4,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from 'next/server';
 import { doc, getDoc, collection, query, where, getDocs, updateDoc, arrayUnion, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { callFirebaseFunction } from '@/lib/firebase';
 import { otpStore, sendOTPToRetailer, cleanupExpiredOTPs, addActiveOTP } from '@/lib/otp-store';
 import { RetailerAuthService } from '@/services/retailer-auth';
 import { retailerService } from '@/services/firestore';
@@ -165,13 +166,9 @@ export async function POST(request: NextRequest) {
     // Send FCM notification to retailer using cloud function
     try {
       console.log('📱 Sending FCM OTP notification via cloud function...');
-      const fcmResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/fcm/send-notification`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          retailerId,
+      const result = await callFirebaseFunction('sendFCMNotification', {
+        retailerId,
+        notification: {
           title: '🔐 OTP Verification Required',
           body: `Your OTP code is: ${otpData.code}`,
           data: {
@@ -186,33 +183,10 @@ export async function POST(request: NextRequest) {
           icon: '/icon-192x192.png',
           tag: `otp-${paymentId}`,
           clickAction: '/retailer/dashboard'
-        })
+        }
       });
 
-      if (fcmResponse.ok) {
-        const fcmResult = await fcmResponse.json();
-        console.log('✅ FCM OTP notification sent successfully via cloud function:', fcmResult);
-      } else {
-        const errorText = await fcmResponse.text();
-        console.warn('⚠️ FCM OTP notification failed via cloud function:', fcmResponse.status, errorText);
-        
-        // Try fallback to local FCM service
-        try {
-          console.log('⚠️ Trying fallback to local FCM service...');
-          const { sendOTPViaFCM } = await import('@/lib/fcm-service');
-          const fallbackResult = await sendOTPViaFCM(retailerId, otpData.code, retailerUser.name, paymentId, amount);
-          
-          if (fallbackResult.success) {
-            console.log('✅ FCM OTP notification sent via local fallback:', fallbackResult);
-          } else {
-            console.warn('⚠️ Local FCM fallback also failed:', fallbackResult.message);
-            console.log('📱 FCM failed - OTP will be available in retailer dashboard');
-          }
-        } catch (fallbackError) {
-          console.warn('⚠️ Local FCM fallback error:', fallbackError);
-          console.log('📱 All FCM methods failed - OTP will be available in retailer dashboard');
-        }
-      }
+      console.log('✅ FCM OTP notification sent successfully via cloud function:', result);
     } catch (fcmError) {
       console.warn('⚠️ Error sending FCM OTP notification:', fcmError);
       console.log('📱 FCM error - OTP will be available in retailer dashboard');
