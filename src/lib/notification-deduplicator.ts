@@ -168,9 +168,9 @@ class NotificationDeduplicator {
         const otherNotifications = new Map(Object.entries(data.notifications));
         
         // Add notifications we don't have
-        otherNotifications.forEach((notification, id) => {
+        otherNotifications.forEach((notification: any, id: string) => {
           if (!this.notifications.has(id)) {
-            this.notifications.set(id, notification);
+            this.notifications.set(id, notification as NotificationRecord);
           }
         });
       }
