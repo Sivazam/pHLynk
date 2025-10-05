@@ -32,37 +32,6 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
-!.env.example
-!.env.production.example
-
-# Sensitive credentials
-functions/service-account.json
-!functions/service-account.json.example
-
-# Security and logs
-*.key
-*.pem
-server.log
-dev.log
-access.log
-error.log
-
-# Database
-*.db
-*.sqlite
-*.sqlite3
-
-# Cache
-.cache
-.parcel-cache
-
-# IDE
-.vscode/settings.json
-.idea/
-
-# OS
-.DS_Store
-Thumbs.db
 
 # vercel
 .vercel

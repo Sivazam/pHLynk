@@ -2,14 +2,14 @@
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from 'next/server';
-import { secureOTPStorage } from '@/lib/secure-otp-storage';
+import { otpStore, cleanupExpiredOTPs, removeActiveOTP, addCompletedPayment, checkSecurityLimits, recordFailedAttempt, resetSecurityTracking, getSecurityStatus } from '@/lib/otp-store';
 import { doc, getDoc, updateDoc, collection, query, where, getDocs, Timestamp, writeBatch } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { RetailerAuthService } from '@/services/retailer-auth';
 import { retailerService, paymentService } from '@/services/firestore';
 import { fast2SMSService, Fast2SMSService } from '@/services/fast2sms-service';
 import { Retailer } from '@/types';
-import { secureLogger } from '@/lib/secure-logger';
+import { logger } from '@/lib/logger';
 import { callFirebaseFunction } from '@/lib/firebase';
 
 // Type definitions for Firebase Function results

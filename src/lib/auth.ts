@@ -2,7 +2,6 @@ import NextAuth from 'next-auth'
 import CredentialsProvider from 'next-auth/providers/credentials'
 import { userService } from '@/services/firestore'
 import { auth as firebaseAuth } from '@/lib/firebase'
-import { secureLogger } from '@/lib/secure-logger'
 
 export const authOptions = {
   providers: [
@@ -42,14 +41,14 @@ export const authOptions = {
             
             // Check if user is active
             if (!userDoc.active) {
-              secureLogger.auth('User account is inactive', { userId: firebaseUser.uid });
+              console.log('User account is inactive:', firebaseUser.uid);
               return null;
             }
             
             // For wholesaler admins and line workers, check tenant status
             if (userDoc.roles.includes('WHOLESALER_ADMIN') || userDoc.roles.includes('LINE_WORKER')) {
               if (!userDoc.tenantId) {
-                secureLogger.auth('User missing tenantId', { userId: firebaseUser.uid });
+                console.log('User missing tenantId:', firebaseUser.uid);
                 return null;
               }
               
@@ -58,16 +57,13 @@ export const authOptions = {
               const { db, COLLECTIONS } = await import('@/lib/firebase');
               const tenantDoc = await getDoc(doc(db, COLLECTIONS.TENANTS, userDoc.tenantId));
               if (!tenantDoc.exists()) {
-                secureLogger.auth('Tenant not found', { tenantId: userDoc.tenantId });
+                console.log('Tenant not found:', userDoc.tenantId);
                 return null;
               }
               
               const tenantData = tenantDoc.data();
               if (tenantData.status !== 'ACTIVE') {
-                secureLogger.auth('Tenant account is not active', { 
-                  tenantId: userDoc.tenantId, 
-                  status: tenantData.status 
-                });
+                console.log('Tenant account is not active:', userDoc.tenantId, 'Status:', tenantData.status);
                 return null;
               }
             }
@@ -80,7 +76,7 @@ export const authOptions = {
               role: userDoc.roles?.[0] || 'RETAILER', // Use first role or default to RETAILER
             }
           } catch (firebaseError) {
-            secureLogger.auth('Firebase auth failed, trying retailer auth', { error: firebaseError.message });
+            console.log('Firebase auth failed, trying retailer auth:', firebaseError)
             
             // If Firebase auth fails, try retailer authentication
             const { RetailerAuthService } = await import('@/services/retailer-auth')
@@ -102,13 +98,13 @@ export const authOptions = {
                 }
               }
             } catch (retailerError) {
-              secureLogger.auth('Retailer auth also failed', { error: retailerError.message });
+              console.log('Retailer auth also failed:', retailerError)
             }
             
             return null
           }
         } catch (error) {
-          secureLogger.error('Authorization error', { error: error.message });
+          console.error('Authorization error:', error)
           return null
         }
       }
