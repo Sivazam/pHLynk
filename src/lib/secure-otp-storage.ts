@@ -463,11 +463,19 @@ export class SecureOTPStorage {
           const data = doc.data();
           return {
             id: doc.id,
-            ...data,
-            createdAt: data.createdAt?.toDate() || new Date(),
+            paymentId: data.paymentId,
+            code: data.code,
+            retailerId: data.retailerId,
+            amount: data.amount,
+            lineWorkerName: data.lineWorkerName,
             expiresAt: data.expiresAt?.toDate() || new Date(),
+            createdAt: data.createdAt?.toDate() || new Date(),
+            attempts: data.attempts || 0,
             lastAttemptAt: data.lastAttemptAt?.toDate() || null,
             cooldownUntil: data.cooldownUntil?.toDate() || null,
+            consecutiveFailures: data.consecutiveFailures || 0,
+            breachDetected: data.breachDetected || false,
+            isUsed: data.isUsed || false,
             usedAt: data.usedAt?.toDate() || null,
           };
         })
@@ -521,7 +529,7 @@ export class SecureOTPStorage {
         collection: this.collection
       });
       
-      secureLogger.logError('Failed to get active OTPs for retailer', {
+      secureLogger.error('Failed to get active OTPs for retailer', {
         error: error.message,
         retailerId,
         stack: error.stack
@@ -568,11 +576,19 @@ export class SecureOTPStorage {
             const data = doc.data();
             return {
               id: doc.id,
-              ...data,
-              createdAt: data.createdAt?.toDate() || new Date(),
+              paymentId: data.paymentId,
+              code: data.code,
+              retailerId: data.retailerId,
+              amount: data.amount,
+              lineWorkerName: data.lineWorkerName,
               expiresAt: data.expiresAt?.toDate() || new Date(),
+              createdAt: data.createdAt?.toDate() || new Date(),
+              attempts: data.attempts || 0,
               lastAttemptAt: data.lastAttemptAt?.toDate() || null,
               cooldownUntil: data.cooldownUntil?.toDate() || null,
+              consecutiveFailures: data.consecutiveFailures || 0,
+              breachDetected: data.breachDetected || false,
+              isUsed: data.isUsed || false,
               usedAt: data.usedAt?.toDate() || null,
             };
           })
@@ -608,7 +624,7 @@ export class SecureOTPStorage {
       
       return unsubscribe;
     } catch (error) {
-      secureLogger.logError('Failed to set up real-time OTP listener', { 
+      secureLogger.error('Failed to set up real-time OTP listener', { 
         error: error instanceof Error ? error.message : 'Unknown error',
         retailerId 
       });
@@ -616,12 +632,6 @@ export class SecureOTPStorage {
       // Return empty unsubscribe function
       return () => {};
     }
-  }
-
-  /**
-   * Clean up expired OTPs
-   */
-  async cleanupExpiredOTPs(): Promise<void> {
   }
 }
 
