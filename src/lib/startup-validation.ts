@@ -66,10 +66,10 @@ export class StartupValidator {
       };
       
     } catch (error) {
-      secureLogger.error('Startup validation error', { error: error.message });
+      secureLogger.error('Startup validation error', { error: error instanceof Error ? error.message : String(error) });
       return {
         success: false,
-        errors: [`Validation error: ${error.message}`],
+        errors: [`Validation error: ${error instanceof Error ? error.message : String(error)}`],
         warnings,
         environment: process.env.NODE_ENV || 'unknown',
         timestamp
@@ -90,7 +90,7 @@ export class StartupValidator {
         secureLogger.info('Firebase connection validated');
       }
     } catch (error) {
-      errors.push(`Firebase validation error: ${error.message}`);
+      errors.push(`Firebase validation error: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
   
@@ -107,7 +107,7 @@ export class StartupValidator {
         secureLogger.info('Database connection validated');
       }
     } catch (error) {
-      errors.push(`Database validation error: ${error.message}`);
+      errors.push(`Database validation error: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
   

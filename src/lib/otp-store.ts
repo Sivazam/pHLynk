@@ -1,5 +1,8 @@
-// Shared OTP store for demo purposes
-// In production, you'd use a more robust storage solution like Redis or database
+// Secure OTP store for production use
+// Uses secure logging and proper data handling
+import { secureLogger } from '@/lib/secure-logger';
+
+// In production, consider using Redis or database for persistence
 export const otpStore = new Map<string, { 
   code: string; 
   expiresAt: Date; 
@@ -116,7 +119,7 @@ export function recordFailedAttempt(paymentId: string): {
     otpData.breachDetected = true;
     otpStore.set(paymentId, otpData);
     
-    console.log('🚨 SECURITY BREACH DETECTED:', {
+    secureLogger.security('Security breach detected', {
       paymentId,
       consecutiveFailures: otpData.consecutiveFailures,
       timestamp: now.toISOString()
@@ -135,10 +138,10 @@ export function recordFailedAttempt(paymentId: string): {
     otpData.cooldownUntil = new Date(now.getTime() + 2 * 60 * 1000); // 2 minutes cooldown
     otpStore.set(paymentId, otpData);
     
-    console.log('⏰ COOLDOWN TRIGGERED:', {
+    secureLogger.security('Cooldown triggered', {
       paymentId,
       attempts: otpData.attempts,
-      cooldownUntil: otpData.cooldownUntil.toISOString()
+      cooldownDuration: '2 minutes'
     });
     
     return {
@@ -170,7 +173,7 @@ export function resetSecurityTracking(paymentId: string) {
     otpData.breachDetected = false;
     otpStore.set(paymentId, otpData);
     
-    console.log('🔄 Security tracking reset for payment:', paymentId);
+    secureLogger.otp('Security tracking reset', { paymentId });
   }
 }
 
@@ -208,14 +211,14 @@ export function getSecurityStatus(paymentId: string): {
 }
 
 export async function sendOTPToRetailer(phone: string, otp: string, amount: number): Promise<boolean> {
-  console.log('📱 OTP generated for retailer dashboard display');
-  console.log('📞 Phone:', phone);
-  console.log('💰 Amount: ₹', amount.toLocaleString());
-  console.log('⏰ Time:', new Date().toISOString());
+  secureLogger.otp('OTP generated for retailer dashboard', {
+    amount,
+    timestamp: new Date().toISOString()
+  });
 
   // For demo purposes, we'll simulate successful sending
   // In production, you would handle actual SMS sending and error handling
-  console.log(`📝 OTP added to retailer dashboard: ${otp}`);
+  secureLogger.otp('OTP added to retailer dashboard', { maskedCode: otp.substring(0, 1) + '***' });
   return true;
 }
 
@@ -239,7 +242,7 @@ export function cleanupExpiredOTPs() {
   // Clean up expired OTPs from Firestore (async, don't wait)
   import('@/services/firestore').then(({ otpService }) => {
     otpService.cleanupExpiredOTPs().catch(error => {
-      console.error('Error cleaning up expired OTPs from Firestore:', error);
+      secureLogger.error('Error cleaning up expired OTPs from Firestore', { error: error.message });
     });
   });
 }
@@ -262,17 +265,22 @@ export function addActiveOTP(otpData: {
     createdAt
   });
   
-  console.log('📱 Added active OTP for retailer dashboard:', {
+  secureLogger.otp('Added active OTP for retailer dashboard', {
     paymentId: otpData.paymentId,
     retailerId: otpData.retailerId,
-    code: otpData.code,
     amount: otpData.amount,
     expiresAt: expiresAt.toISOString(),
     duration: '7 minutes'
   });
   
-  // Also log to console for development
-  console.log(`🚨 NEW OTP GENERATED: ${otpData.code} for ₹${otpData.amount.toLocaleString()} by ${otpData.lineWorkerName}`);
+  // Development-only logging of masked OTP
+  if (process.env.NODE_ENV === 'development') {
+    secureLogger.debug('New OTP generated', { 
+      maskedCode: otpData.code.substring(0, 1) + '***',
+      amount: otpData.amount,
+      lineWorkerName: otpData.lineWorkerName
+    });
+  }
 }
 
 export function getActiveOTPsForRetailer(retailerId: string) {
@@ -305,7 +313,7 @@ export function getActiveOTPsForRetailer(retailerId: string) {
         } else {
           // Remove OTPs older than 2 minutes after expiration
           activeOTPs.delete(paymentId);
-          console.log('🗑️ Removed expired OTP from display:', paymentId);
+          secureLogger.otp('Removed expired OTP from display', { paymentId });
         }
       }
     }
@@ -317,7 +325,7 @@ export function getActiveOTPsForRetailer(retailerId: string) {
 
 export function removeActiveOTP(paymentId: string) {
   activeOTPs.delete(paymentId);
-  console.log('🗑️ Removed active OTP for payment:', paymentId);
+  secureLogger.otp('Removed active OTP', { paymentId });
 }
 
 export function addCompletedPayment(paymentData: {
@@ -334,7 +342,7 @@ export function addCompletedPayment(paymentData: {
     completedAt
   });
   
-  console.log('✅ Added completed payment for retailer dashboard:', {
+  secureLogger.payment('Added completed payment for retailer dashboard', {
     paymentId: paymentData.paymentId,
     retailerId: paymentData.retailerId,
     amount: paymentData.amount,
@@ -363,5 +371,5 @@ export function getCompletedPaymentsForRetailer(retailerId: string) {
 
 export function removeCompletedPayment(paymentId: string) {
   completedPayments.delete(paymentId);
-  console.log('🗑️ Removed completed payment notification:', paymentId);
+  secureLogger.payment('Removed completed payment notification', { paymentId });
 }

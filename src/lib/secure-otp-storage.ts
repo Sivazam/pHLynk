@@ -5,7 +5,8 @@
  * Includes encryption, expiration handling, and security tracking.
  */
 
-import { firestore } from '@/lib/firebase';
+import { db as firestore } from '@/lib/firebase';
+import { collection, doc, setDoc, getDoc, updateDoc, query, where, orderBy, limit, getDocs, writeBatch, deleteDoc, onSnapshot } from 'firebase/firestore';
 import { secureLogger } from '@/lib/secure-logger';
 
 export interface StoredOTP {
@@ -89,7 +90,7 @@ export class SecureOTPStorage {
         isUsed: false
       };
       
-      await firestore.collection(this.collection).doc(otpId).set(otpData);
+      await setDoc(doc(firestore, this.collection, otpId), otpData);
       
       secureLogger.otp('OTP stored securely in Firestore', {
         otpId,
@@ -102,7 +103,7 @@ export class SecureOTPStorage {
       
     } catch (error) {
       secureLogger.error('Failed to store OTP in Firestore', { 
-        error: error.message,
+        error: error instanceof Error ? error.message : 'Unknown error',
         paymentId: data.paymentId 
       });
       throw new Error('Failed to store OTP');
@@ -114,13 +115,14 @@ export class SecureOTPStorage {
    */
   async getOTP(paymentId: string): Promise<StoredOTP | null> {
     try {
-      const snapshot = await firestore
-        .collection(this.collection)
-        .where('paymentId', '==', paymentId)
-        .where('isUsed', '==', false)
-        .orderBy('createdAt', 'desc')
-        .limit(1)
-        .get();
+      const q = query(
+        collection(firestore, this.collection),
+        where('paymentId', '==', paymentId),
+        where('isUsed', '==', false),
+        orderBy('createdAt', 'desc'),
+        limit(1)
+      );
+      const snapshot = await getDocs(q);
       
       if (snapshot.empty) {
         return null;
@@ -130,27 +132,27 @@ export class SecureOTPStorage {
       const otp = doc.data() as StoredOTP;
       
       // Convert Firestore timestamps to Date objects
-      if (otp.expiresAt && otp.expiresAt.toDate) {
-        otp.expiresAt = otp.expiresAt.toDate();
+      if (otp.expiresAt && (otp.expiresAt as any).toDate) {
+        otp.expiresAt = (otp.expiresAt as any).toDate();
       }
-      if (otp.createdAt && otp.createdAt.toDate) {
-        otp.createdAt = otp.createdAt.toDate();
+      if (otp.createdAt && (otp.createdAt as any).toDate) {
+        otp.createdAt = (otp.createdAt as any).toDate();
       }
-      if (otp.lastAttemptAt && otp.lastAttemptAt.toDate) {
-        otp.lastAttemptAt = otp.lastAttemptAt.toDate();
+      if (otp.lastAttemptAt && (otp.lastAttemptAt as any).toDate) {
+        otp.lastAttemptAt = (otp.lastAttemptAt as any).toDate();
       }
-      if (otp.cooldownUntil && otp.cooldownUntil.toDate) {
-        otp.cooldownUntil = otp.cooldownUntil.toDate();
+      if (otp.cooldownUntil && (otp.cooldownUntil as any).toDate) {
+        otp.cooldownUntil = (otp.cooldownUntil as any).toDate();
       }
-      if (otp.usedAt && otp.usedAt.toDate) {
-        otp.usedAt = otp.usedAt.toDate();
+      if (otp.usedAt && (otp.usedAt as any).toDate) {
+        otp.usedAt = (otp.usedAt as any).toDate();
       }
       
       return otp;
       
     } catch (error) {
       secureLogger.error('Failed to retrieve OTP from Firestore', { 
-        error: error.message,
+        error: error instanceof Error ? error.message : 'Unknown error',
         paymentId 
       });
       return null;
@@ -222,7 +224,7 @@ export class SecureOTPStorage {
       
     } catch (error) {
       secureLogger.error('OTP verification error', { 
-        error: error.message,
+        error: error instanceof Error ? error.message : 'Unknown error',
         paymentId 
       });
       return { valid: false, error: 'Verification failed' };
@@ -274,10 +276,10 @@ export class SecureOTPStorage {
    */
   private async recordFailedAttempt(otpId: string): Promise<void> {
     try {
-      const otpRef = firestore.collection(this.collection).doc(otpId);
-      const otpDoc = await otpRef.get();
+      const otpRef = doc(firestore, this.collection, otpId);
+      const otpDoc = await getDoc(otpRef);
       
-      if (!otpDoc.exists) return;
+      if (!otpDoc.exists()) return;
       
       const otp = otpDoc.data() as StoredOTP;
       const now = new Date();
@@ -308,11 +310,11 @@ export class SecureOTPStorage {
         });
       }
       
-      await otpRef.update(updateData);
+      await updateDoc(otpRef, updateData);
       
     } catch (error) {
       secureLogger.error('Failed to record OTP attempt', { 
-        error: error.message,
+        error: error instanceof Error ? error.message : 'Unknown error',
         otpId 
       });
     }
@@ -323,7 +325,7 @@ export class SecureOTPStorage {
    */
   private async resetSecurityTracking(otpId: string): Promise<void> {
     try {
-      await firestore.collection(this.collection).doc(otpId).update({
+      await updateDoc(doc(firestore, this.collection, otpId), {
         attempts: 0,
         lastAttemptAt: null,
         cooldownUntil: null,
@@ -335,7 +337,7 @@ export class SecureOTPStorage {
       
     } catch (error) {
       secureLogger.error('Failed to reset security tracking', { 
-        error: error.message,
+        error: error instanceof Error ? error.message : 'Unknown error',
         otpId 
       });
     }
@@ -346,14 +348,14 @@ export class SecureOTPStorage {
    */
   private async markAsUsed(otpId: string): Promise<void> {
     try {
-      await firestore.collection(this.collection).doc(otpId).update({
+      await updateDoc(doc(firestore, this.collection, otpId), {
         isUsed: true,
         usedAt: new Date()
       });
       
     } catch (error) {
       secureLogger.error('Failed to mark OTP as used', { 
-        error: error.message,
+        error: error instanceof Error ? error.message : 'Unknown error',
         otpId 
       });
     }
@@ -368,22 +370,24 @@ export class SecureOTPStorage {
       const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
       
       // Clean up expired OTPs
-      const expiredSnapshot = await firestore
-        .collection(this.collection)
-        .where('expiresAt', '<', now)
-        .get();
+      const expiredQuery = query(
+        collection(firestore, this.collection),
+        where('expiresAt', '<', now)
+      );
+      const expiredSnapshot = await getDocs(expiredQuery);
       
-      const batch = firestore.batch();
+      const batch = writeBatch(firestore);
       expiredSnapshot.docs.forEach(doc => {
         batch.delete(doc.ref);
       });
       
       // Clean up used OTPs older than 24 hours
-      const usedSnapshot = await firestore
-        .collection(this.collection)
-        .where('isUsed', '==', true)
-        .where('usedAt', '<', twentyFourHoursAgo)
-        .get();
+      const usedQuery = query(
+        collection(firestore, this.collection),
+        where('isUsed', '==', true),
+        where('usedAt', '<', twentyFourHoursAgo)
+      );
+      const usedSnapshot = await getDocs(usedQuery);
       
       usedSnapshot.docs.forEach(doc => {
         batch.delete(doc.ref);
@@ -402,7 +406,7 @@ export class SecureOTPStorage {
       
     } catch (error) {
       secureLogger.error('Failed to cleanup expired OTPs', { 
-        error: error.message 
+        error: error instanceof Error ? error.message : String(error)
       });
     }
   }
@@ -420,13 +424,14 @@ export class SecureOTPStorage {
     isExpired: boolean;
   }>> {
     try {
-      const snapshot = await firestore
-        .collection(this.collection)
-        .where('retailerId', '==', retailerId)
-        .where('isUsed', '==', false)
-        .orderBy('createdAt', 'desc')
-        .limit(20)
-        .get();
+      const q = query(
+        collection(firestore, this.collection),
+        where('retailerId', '==', retailerId),
+        where('isUsed', '==', false),
+        orderBy('createdAt', 'desc'),
+        limit(20)
+      );
+      const snapshot = await getDocs(q);
       
       const now = new Date();
       
@@ -436,10 +441,10 @@ export class SecureOTPStorage {
         const isExpired = otp.expiresAt < now;
         
         // Convert Firestore timestamps
-        const expiresAt = otp.expiresAt && otp.expiresAt.toDate ? 
-          otp.expiresAt.toDate() : otp.expiresAt;
-        const createdAt = otp.createdAt && otp.createdAt.toDate ? 
-          otp.createdAt.toDate() : otp.createdAt;
+        const expiresAt = otp.expiresAt && (otp.expiresAt as any).toDate ? 
+          (otp.expiresAt as any).toDate() : otp.expiresAt;
+        const createdAt = otp.createdAt && (otp.createdAt as any).toDate ? 
+          (otp.createdAt as any).toDate() : otp.createdAt;
         
         return {
           code: isExpired ? `${decryptedCode} (EXPIRED)` : decryptedCode,
@@ -454,7 +459,7 @@ export class SecureOTPStorage {
       
     } catch (error) {
       secureLogger.error('Failed to get active OTPs for retailer', { 
-        error: error.message,
+        error: error instanceof Error ? error.message : 'Unknown error',
         retailerId 
       });
       return [];

@@ -2,14 +2,14 @@
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from 'next/server';
-import { otpStore, cleanupExpiredOTPs, removeActiveOTP, addCompletedPayment, checkSecurityLimits, recordFailedAttempt, resetSecurityTracking, getSecurityStatus } from '@/lib/otp-store';
+import { secureOTPStorage } from '@/lib/secure-otp-storage';
 import { doc, getDoc, updateDoc, collection, query, where, getDocs, Timestamp, writeBatch } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { RetailerAuthService } from '@/services/retailer-auth';
 import { retailerService, paymentService } from '@/services/firestore';
 import { fast2SMSService, Fast2SMSService } from '@/services/fast2sms-service';
 import { Retailer } from '@/types';
-import { logger } from '@/lib/logger';
+import { secureLogger } from '@/lib/secure-logger';
 import { callFirebaseFunction } from '@/lib/firebase';
 
 // Type definitions for Firebase Function results
@@ -315,113 +315,42 @@ export async function POST(request: NextRequest) {
     }
 
     // Clean up expired OTPs
-    cleanupExpiredOTPs();
+    await secureOTPStorage.cleanupExpiredOTPs();
 
-    // Check security limits
-    const securityCheck = checkSecurityLimits(paymentId);
-    if (!securityCheck.canAttempt) {
-      console.log('🚫 Security limits exceeded:', securityCheck);
+    // Verify OTP using secure storage
+    const otpVerification = await secureOTPStorage.verifyOTP(paymentId, otp);
+    
+    if (!otpVerification.valid) {
+      console.log('❌ OTP verification failed:', otpVerification.error);
       return NextResponse.json(
         { 
-          error: securityCheck.message || 'Access denied due to security limits',
-          securityStatus: getSecurityStatus(paymentId)
+          error: otpVerification.error || 'OTP verification failed',
+          remainingAttempts: otpVerification.otp ? Math.max(0, 3 - otpVerification.otp.attempts) : 0
         },
         { status: 400 }
       );
     }
-
-    // Get OTP from in-memory store
-    let otpData = otpStore.get(paymentId);
     
-    // If not in memory, use OPTIMIZED retrieval
-    if (!otpData) {
-      console.log('🔍 OTP not in memory, using OPTIMIZED retrieval...');
-      
-      // SINGLE payment query
-      const payment = await getPaymentOptimized(paymentId);
-      
-      if (payment && payment.retailerId) {
-        // Get all required data in PARALLEL
-        const verificationData = await getVerificationDataOptimized(paymentId, payment.retailerId);
-        const { retailerUser } = verificationData;
-        
-        if (retailerUser && retailerUser.tenantId) {
-          const retailerOTPs = await retailerService.getActiveOTPsFromRetailer(payment.retailerId, retailerUser.tenantId);
-          const retailerOTP = retailerOTPs.find(otp => otp.paymentId === paymentId);
-          
-          if (retailerOTP) {
-            otpData = {
-              code: retailerOTP.code,
-              expiresAt: retailerOTP.expiresAt.toDate(),
-              attempts: 0,
-              lastAttemptAt: null,
-              cooldownUntil: null,
-              consecutiveFailures: 0,
-              breachDetected: false
-            };
-            
-            otpStore.set(paymentId, otpData);
-            console.log('✅ OTP found and cached');
-          }
-        }
-      }
-    }
+    console.log('✅ OTP verified successfully!');
     
-    if (!otpData) {
-      console.log('❌ OTP not found or expired');
+    // Record successful verification
+    const verificationTime = new Date();
+    
+    // Get payment and verification data in MAXIMUM PARALLEL
+    const promises = [
+      getPaymentOptimized(paymentId),
+      getVerificationDataOptimized(paymentId, (await getPaymentOptimized(paymentId))?.retailerId || '')
+    ];
+    
+    const [payment, verificationData] = await Promise.all(promises);
+    
+    if (!payment) {
+      console.log('❌ Payment not found');
       return NextResponse.json(
-        { error: 'OTP not found or expired' },
-        { status: 400 }
+        { error: 'Payment not found' },
+        { status: 404 }
       );
     }
-
-    // Check if OTP is expired
-    if (otpData.expiresAt < new Date()) {
-      otpStore.delete(paymentId);
-      return NextResponse.json(
-        { error: 'OTP expired' },
-        { status: 400 }
-      );
-    }
-
-    // Check attempts
-    if (otpData.attempts >= 3) {
-      otpStore.delete(paymentId);
-      const securityStatus = getSecurityStatus(paymentId);
-      console.log('🚫 Maximum attempts reached for payment:', paymentId);
-      return NextResponse.json(
-        { 
-          error: 'Too many failed attempts. Please request a new OTP.',
-          remainingAttempts: 0,
-          securityStatus,
-          maxAttemptsReached: true
-        },
-        { status: 400 }
-      );
-    }
-
-    // Verify OTP
-    if (otpData.code.toUpperCase() === otp.toUpperCase()) {
-      console.log('✅ OTP verified successfully!');
-      
-      // Record successful verification
-      const verificationTime = new Date();
-      
-      // Get payment and verification data in MAXIMUM PARALLEL
-      const promises = [
-        getPaymentOptimized(paymentId),
-        getVerificationDataOptimized(paymentId, (await getPaymentOptimized(paymentId))?.retailerId || '')
-      ];
-      
-      const [payment, verificationData] = await Promise.all(promises);
-      
-      if (!payment) {
-        console.log('❌ Payment not found');
-        return NextResponse.json(
-          { error: 'Payment not found' },
-          { status: 404 }
-        );
-      }
 
       const { retailerUser, lineWorkerData, wholesalerData } = verificationData;
       
@@ -443,24 +372,16 @@ export async function POST(request: NextRequest) {
         updatedAt: new Date()
       });
 
-      // Clean up OTP
-      otpStore.delete(paymentId);
-      removeActiveOTP(paymentId);
-      addCompletedPayment({
-        retailerId: payment.retailerId,
-        amount: payment.totalPaid,
-        paymentId: paymentId,
-        lineWorkerName: lineWorkerData?.displayName || lineWorkerData?.name || 'Line Worker',
-        remainingOutstanding: 0 // This would need to be calculated based on business logic
-      });
+    // Clean up OTP - OTP is already marked as used by secureOTPStorage.verifyOTP
 
-      // Prepare data for SMS
-      const lineWorkerName = lineWorkerData?.displayName || lineWorkerData?.name || 'Line Worker';
-      const retailerArea = retailerUser.address || retailerUser.area || 'Unknown Area';
-      const wholesalerName = wholesalerData?.name || wholesalerData?.displayName || 'Wholesaler';
-      const collectionDate = verificationTime.toLocaleDateString('en-IN');
 
-      console.log('📱 Sending SMS notifications (ULTRA-OPTIMIZED PARALLEL)...');
+    // Prepare data for SMS
+    const lineWorkerName = lineWorkerData?.displayName || lineWorkerData?.name || 'Line Worker';
+    const retailerArea = retailerUser.address || retailerUser.area || 'Unknown Area';
+    const wholesalerName = wholesalerData?.name || wholesalerData?.displayName || 'Wholesaler';
+    const collectionDate = verificationTime.toLocaleDateString('en-IN');
+
+    console.log('📱 Sending SMS notifications (ULTRA-OPTIMIZED PARALLEL)...');
       
       // Send SMS notifications in MAXIMUM PARALLEL
       const smsResults = await sendSMSNotificationsOptimized({
@@ -551,29 +472,6 @@ export async function POST(request: NextRequest) {
         smsNotifications: smsResults,
         processingTime
       });
-
-    } else {
-      // Invalid OTP
-      recordFailedAttempt(paymentId);
-      otpData.attempts++;
-      otpData.lastAttemptAt = new Date();
-      otpStore.set(paymentId, otpData);
-
-      const remainingAttempts = 3 - otpData.attempts;
-      const securityStatus = getSecurityStatus(paymentId);
-
-      console.log('❌ Invalid OTP provided');
-      console.log('Remaining attempts:', remainingAttempts);
-
-      return NextResponse.json(
-        { 
-          error: 'Invalid OTP',
-          remainingAttempts,
-          securityStatus
-        },
-        { status: 400 }
-      );
-    }
 
   } catch (error) {
     const endTime = Date.now();

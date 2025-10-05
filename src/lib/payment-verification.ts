@@ -5,7 +5,8 @@
  * caching, and batch operations to reduce database load using Firebase Firestore.
  */
 
-import { firestore } from '@/lib/firebase';
+import { db as firestore } from '@/lib/firebase';
+import { collection, doc, getDoc, updateDoc, query, where, orderBy, limit, getDocs, writeBatch } from 'firebase/firestore';
 import { secureLogger } from '@/lib/secure-logger';
 import { secureOTPStorage } from '@/lib/secure-otp-storage';
 
@@ -252,7 +253,7 @@ export class OptimizedPaymentVerification {
       
     } catch (error) {
       secureLogger.error('Payment verification error', {
-        error: error.message,
+        error: error instanceof Error ? error.message : 'Unknown error',
         paymentId: request.paymentId,
         retailerId: request.retailerId,
         processingTime: Date.now() - startTime
@@ -273,11 +274,12 @@ export class OptimizedPaymentVerification {
     return this.getCachedData(
       `payment:${paymentId}`,
       async () => {
-        const doc = await firestore.collection(this.paymentsCollection).doc(paymentId).get();
+        const docRef = doc(firestore, this.paymentsCollection, paymentId);
+        const docSnap = await getDoc(docRef);
         
-        if (!doc.exists) return null;
+        if (!docSnap.exists()) return null;
         
-        const payment = doc.data();
+        const payment = docSnap.data();
         
         // Convert Firestore timestamps to Date objects
         const createdAt = payment.createdAt && payment.createdAt.toDate ? 
@@ -288,7 +290,7 @@ export class OptimizedPaymentVerification {
           payment.verifiedAt.toDate() : payment.verifiedAt;
         
         return {
-          id: doc.id,
+          id: docSnap.id,
           amount: payment.amount,
           retailerId: payment.retailerId,
           lineWorkerName: payment.lineWorkerName,
@@ -310,14 +312,15 @@ export class OptimizedPaymentVerification {
     return this.getCachedData(
       `retailer:${retailerId}`,
       async () => {
-        const doc = await firestore.collection(this.retailersCollection).doc(retailerId).get();
+        const docRef = doc(firestore, this.retailersCollection, retailerId);
+        const docSnap = await getDoc(docRef);
         
-        if (!doc.exists) return null;
+        if (!docSnap.exists()) return null;
         
-        const retailer = doc.data();
+        const retailer = docSnap.data();
         
         return {
-          id: doc.id,
+          id: docSnap.id,
           name: retailer.name,
           isActive: retailer.isActive !== false // Default to true
         };
@@ -331,7 +334,7 @@ export class OptimizedPaymentVerification {
    */
   private async markPaymentVerified(paymentId: string): Promise<void> {
     try {
-      await firestore.collection(this.paymentsCollection).doc(paymentId).update({
+      await updateDoc(doc(firestore, this.paymentsCollection, paymentId), {
         isVerified: true,
         verifiedAt: new Date(),
         status: 'verified'
@@ -341,7 +344,7 @@ export class OptimizedPaymentVerification {
       
     } catch (error) {
       secureLogger.error('Failed to mark payment as verified', {
-        error: error.message,
+        error: error instanceof Error ? error.message : 'Unknown error',
         paymentId
       });
       throw error;
@@ -353,7 +356,7 @@ export class OptimizedPaymentVerification {
    */
   private async markPaymentExpired(paymentId: string): Promise<void> {
     try {
-      await firestore.collection(this.paymentsCollection).doc(paymentId).update({
+      await updateDoc(doc(firestore, this.paymentsCollection, paymentId), {
         status: 'expired'
       });
       
@@ -361,7 +364,7 @@ export class OptimizedPaymentVerification {
       
     } catch (error) {
       secureLogger.error('Failed to mark payment as expired', {
-        error: error.message,
+        error: error instanceof Error ? error.message : 'Unknown error',
         paymentId
       });
     }
@@ -378,18 +381,20 @@ export class OptimizedPaymentVerification {
         cacheKey,
         async () => {
           // Single query with all needed data
-          const snapshot = await firestore
-            .collection(this.paymentsCollection)
-            .where('retailerId', '==', retailerId)
-            .orderBy('createdAt', 'desc')
-            .limit(50) // Limit to recent payments
-            .get();
+          const q = query(
+            collection(firestore, this.paymentsCollection),
+            where('retailerId', '==', retailerId),
+            orderBy('createdAt', 'desc'),
+            limit(50) // Limit to recent payments
+          );
+          const snapshot = await getDocs(q);
           
           const now = new Date();
           
           // Get retailer data in parallel
-          const retailerDoc = await firestore.collection(this.retailersCollection).doc(retailerId).get();
-          const retailerName = retailerDoc.exists ? retailerDoc.data()?.name || 'Unknown Retailer' : 'Unknown Retailer';
+          const retailerDocRef = doc(firestore, this.retailersCollection, retailerId);
+          const retailerDocSnap = await getDoc(retailerDocRef);
+          const retailerName = retailerDocSnap.exists() ? retailerDocSnap.data()?.name || 'Unknown Retailer' : 'Unknown Retailer';
           
           return snapshot.docs.map(doc => {
             const payment = doc.data();
@@ -423,7 +428,7 @@ export class OptimizedPaymentVerification {
       
     } catch (error) {
       secureLogger.error('Failed to get payment summary for retailer', {
-        error: error.message,
+        error: error instanceof Error ? error.message : 'Unknown error',
         retailerId
       });
       return [];
@@ -449,14 +454,15 @@ export class OptimizedPaymentVerification {
         
         const batchPromises = batch.map(async (paymentId) => {
           try {
-            const doc = await firestore.collection(this.paymentsCollection).doc(paymentId).get();
+            const docRef = doc(firestore, this.paymentsCollection, paymentId);
+            const docSnap = await getDoc(docRef);
             
-            if (!doc.exists) {
+            if (!docSnap.exists()) {
               failed.push({ id: paymentId, error: 'Payment not found' });
               return;
             }
             
-            const payment = doc.data();
+            const payment = docSnap.data();
             
             if (payment.isVerified) {
               successful.push(paymentId);
@@ -471,7 +477,7 @@ export class OptimizedPaymentVerification {
               return;
             }
             
-            await firestore.collection(this.paymentsCollection).doc(paymentId).update({
+            await updateDoc(doc(firestore, this.paymentsCollection, paymentId), {
               isVerified: true,
               verifiedAt: new Date(),
               status: 'verified'
@@ -482,7 +488,7 @@ export class OptimizedPaymentVerification {
           } catch (error) {
             failed.push({ 
               id: paymentId, 
-              error: error.message || 'Verification failed' 
+              error: error instanceof Error ? error.message : 'Verification failed' 
             });
           }
         });
@@ -503,7 +509,7 @@ export class OptimizedPaymentVerification {
       
     } catch (error) {
       secureLogger.error('Batch verification failed', {
-        error: error.message,
+        error: error instanceof Error ? error.message : 'Unknown error',
         totalPayments: paymentIds.length
       });
       
@@ -522,11 +528,12 @@ export class OptimizedPaymentVerification {
       const now = new Date();
       const expiredThreshold = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000); // 7 days ago
       
-      const snapshot = await firestore
-        .collection(this.paymentsCollection)
-        .where('expiresAt', '<', expiredThreshold)
-        .where('isVerified', '==', false)
-        .get();
+      const q = query(
+        collection(firestore, this.paymentsCollection),
+        where('expiresAt', '<', expiredThreshold),
+        where('isVerified', '==', false)
+      );
+      const snapshot = await getDocs(q);
       
       if (snapshot.empty) {
         return 0;
@@ -537,7 +544,7 @@ export class OptimizedPaymentVerification {
       let deletedCount = 0;
       
       for (let i = 0; i < snapshot.docs.length; i += batchSize) {
-        const batch = firestore.batch();
+        const batch = writeBatch(firestore);
         const batchDocs = snapshot.docs.slice(i, i + batchSize);
         
         batchDocs.forEach(doc => {
@@ -559,7 +566,7 @@ export class OptimizedPaymentVerification {
       
     } catch (error) {
       secureLogger.error('Failed to cleanup expired payments', {
-        error: error.message
+        error: error instanceof Error ? error.message : 'Unknown error'
       });
       return 0;
     }

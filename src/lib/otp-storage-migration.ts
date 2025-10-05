@@ -55,11 +55,11 @@ export class OTPStorageMigration {
           secureLogger.debug('OTP migrated successfully', { paymentId });
           
         } catch (error) {
-          const errorMsg = `Failed to migrate OTP ${paymentId}: ${error.message}`;
+          const errorMsg = `Failed to migrate OTP ${paymentId}: ${error instanceof Error ? error.message : 'Unknown error'}`;
           errors.push(errorMsg);
           secureLogger.error('OTP migration failed', { 
             paymentId, 
-            error: error.message 
+            error: error instanceof Error ? error.message : 'Unknown error' 
           });
         }
       }
@@ -84,12 +84,12 @@ export class OTPStorageMigration {
       
     } catch (error) {
       secureLogger.error('OTP storage migration failed', { 
-        error: error.message 
+        error: error instanceof Error ? error.message : 'Unknown error' 
       });
       return {
         success: false,
         migrated,
-        errors: [`Migration error: ${error.message}`]
+        errors: [`Migration error: ${error instanceof Error ? error.message : 'Unknown error'}`]
       };
     }
   }
@@ -124,7 +124,7 @@ export class OTPStorageMigration {
       
     } catch (error) {
       secureLogger.error('Migration validation failed', { 
-        error: error.message 
+        error: error instanceof Error ? error.message : 'Unknown error' 
       });
       return {
         memoryCount: otpStore.size,
@@ -143,7 +143,7 @@ export class OTPStorageMigration {
       secureLogger.info('Memory OTP storage cleaned up');
     } catch (error) {
       secureLogger.error('Failed to cleanup memory storage', { 
-        error: error.message 
+        error: error instanceof Error ? error.message : 'Unknown error' 
       });
     }
   }
@@ -168,7 +168,7 @@ export async function runOTPMigration(): Promise<void> {
     
   } catch (error) {
     secureLogger.error('Failed to run OTP migration', { 
-      error: error.message 
+      error: error instanceof Error ? error.message : 'Unknown error' 
     });
   }
 }

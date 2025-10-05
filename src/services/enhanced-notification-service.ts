@@ -46,7 +46,7 @@ class EnhancedNotificationService {
     notificationService.setRole(userRole);
     
     // Set role in role-based service
-    if (typeof window !== 'undefined') {
+    if (typeof window !== 'undefined' && roleBasedNotificationService) {
       roleBasedNotificationService.setCurrentRole(userRole);
     }
     
@@ -59,7 +59,7 @@ class EnhancedNotificationService {
     targetRole?: string
   ): Promise<string> {
     const notificationId = notificationService.addNotification({
-      type: notification.type,
+      type: notification.type === 'otp' ? 'info' : notification.type,
       title: notification.title,
       message: notification.message,
       timestamp: notification.timestamp,
@@ -71,9 +71,10 @@ class EnhancedNotificationService {
     }, notification.tenantId || this.currentTenantId);
 
     // Also send via FCM/PWA if it's an important notification
-    if (this.shouldSendFCM(notification)) {
+    if (this.shouldSendFCM(notification as any)) {
       try {
-        const fcmSuccess = await roleBasedNotificationService.sendNotificationToRole({
+        if (roleBasedNotificationService) {
+          const fcmSuccess = await roleBasedNotificationService.sendNotificationToRole({
           type: notification.type === 'otp' ? 'otp' : 
                 notification.type === 'success' ? 'payment_completed' : 
                 notification.type === 'warning' ? 'system' : 'test',
@@ -91,6 +92,7 @@ class EnhancedNotificationService {
         });
         
         console.log(`🔔 FCM delivery ${fcmSuccess ? 'succeeded' : 'failed'} for notification: ${notificationId}`);
+        }
       } catch (error) {
         console.warn('⚠️ FCM delivery failed:', error);
       }
@@ -126,7 +128,8 @@ class EnhancedNotificationService {
     }, 'retailer');
 
     // Send via FCM/PWA
-    return await roleBasedNotificationService.sendNotificationToRole({
+    if (roleBasedNotificationService) {
+      return await roleBasedNotificationService.sendNotificationToRole({
       type: 'otp',
       targetRole: 'retailer',
       data: {
@@ -137,6 +140,8 @@ class EnhancedNotificationService {
         paymentId: `otp-${Date.now()}`
       }
     });
+    }
+    return false;
   }
 
   async sendPaymentCompletedNotification(
@@ -163,7 +168,7 @@ class EnhancedNotificationService {
 
     // Send FCM for high-value payments
     const shouldSendFCM = amount > 5000;
-    if (shouldSendFCM) {
+    if (shouldSendFCM && roleBasedNotificationService) {
       return await roleBasedNotificationService.sendNotificationToRole({
         type: 'payment_completed',
         targetRole,
@@ -175,7 +180,6 @@ class EnhancedNotificationService {
         }
       });
     }
-
     return true;
   }
 
@@ -257,11 +261,13 @@ class EnhancedNotificationService {
     // Test FCM notification
     let fcmSuccess = false;
     try {
-      fcmSuccess = await roleBasedNotificationService.sendNotificationToRole({
+      if (roleBasedNotificationService) {
+        fcmSuccess = await roleBasedNotificationService.sendNotificationToRole({
         type: 'test',
         targetRole: this.currentUserRole as any,
         data: {}
       });
+      }
     } catch (error) {
       console.warn('⚠️ FCM test failed:', error);
     }
