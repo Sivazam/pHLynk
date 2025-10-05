@@ -41,11 +41,12 @@ class NotificationDeduplicator {
       return;
     }
 
+    const isPWA = this.detectPWA();
     this.appState = {
-      isPWA: this.detectPWA(),
+      isPWA,
       isForeground: !document.hidden,
       lastActive: Date.now(),
-      sessionId: this.generateSessionId()
+      sessionId: `${isPWA ? 'pwa' : 'browser'}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
     };
 
     this.loadFromStorage();
@@ -60,10 +61,7 @@ class NotificationDeduplicator {
     return NotificationDeduplicator.instance;
   }
 
-  private generateSessionId(): string {
-    return `${this.appState.isPWA ? 'pwa' : 'browser'}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-  }
-
+  
   private detectPWA(): boolean {
     if (typeof window === 'undefined') return false;
     
