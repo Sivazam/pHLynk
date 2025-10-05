@@ -439,31 +439,12 @@ export class SecureOTPStorage {
     try {
       console.log('🔍 SecureOTPStorage: Querying OTPs for retailer:', retailerId);
       
-      // First, test basic Firestore connectivity
-      console.log('🔍 Testing Firestore connectivity...');
-      const testCollection = collection(firestore, 'test_connection');
-      console.log('✅ Firestore collection access works');
-      
-      // Try with minimal indexing requirements first
-      let q;
-      try {
-        console.log('🔍 Trying minimal index query...');
-        q = query(
-          collection(firestore, this.collection),
-          where('retailerId', '==', retailerId),
-          where('isUsed', '==', false),
-          orderBy('createdAt', 'desc'),
-          limit(20)
-        );
-      } catch (indexError) {
-        console.warn('⚠️ Index query failed, trying fallback query:', indexError);
-        // Fallback: Get all retailer OTPs and filter in memory
-        q = query(
-          collection(firestore, this.collection),
-          where('retailerId', '==', retailerId),
-          limit(100) // Get more and filter locally
-        );
-      }
+      // Simple query without complex indexes (like previous implementation)
+      const q = query(
+        collection(firestore, this.collection),
+        where('retailerId', '==', retailerId),
+        limit(50) // Get recent OTPs and filter in memory
+      );
       
       const snapshot = await getDocs(q);
       console.log('✅ Firestore query executed successfully');
@@ -476,86 +457,88 @@ export class SecureOTPStorage {
       
       const now = new Date();
       
-      // Filter and process results
-      let docs = snapshot.docs;
-      
-      // If we used fallback query, filter in memory
-      const isFallbackQuery = snapshot.size > 0 && 
-        (snapshot.docs.some(doc => (doc.data() as any).isUsed === undefined) || 
-         snapshot.docs.some(doc => !(doc.data() as any).hasOwnProperty('isUsed')));
-      
-      if (isFallbackQuery) {
-        console.log('🔍 Using fallback query, filtering in memory...');
-        docs = docs.filter(doc => {
-          const otp = doc.data() as StoredOTP;
-          return otp.isUsed === false;
-        });
-        
-        // Sort by createdAt descending
-        docs.sort((a, b) => {
-          const aTime = (a.data() as any).createdAt?.toMillis?.() || 0;
-          const bTime = (b.data() as any).createdAt?.toMillis?.() || 0;
-          return bTime - aTime;
-        });
-        
-        // Limit to 20
-        docs = docs.slice(0, 20);
-        
-        console.log('🔍 After filtering and sorting:', {
-          filteredCount: docs.length,
-          originalCount: snapshot.size
-        });
-      }
-      
-      return docs.map(doc => {
-        const otp = doc.data() as StoredOTP;
-        const decryptedCode = this.decryptOTP(otp.code);
-        const isExpired = otp.expiresAt < now;
-        
-        console.log('🔍 SecureOTPStorage: Processing OTP:', {
-          id: doc.id,
-          paymentId: otp.paymentId,
-          retailerId: otp.retailerId,
-          decryptedCode: decryptedCode,
-          isExpired: isExpired,
-          expiresAt: otp.expiresAt,
-          now: now
-        });
-        
-        // Convert Firestore timestamps
-        const expiresAt = otp.expiresAt && (otp.expiresAt as any).toDate ? 
-          (otp.expiresAt as any).toDate() : otp.expiresAt;
-        const createdAt = otp.createdAt && (otp.createdAt as any).toDate ? 
-          (otp.createdAt as any).toDate() : otp.createdAt;
-        
-        return {
-          code: isExpired ? `${decryptedCode} (EXPIRED)` : decryptedCode,
+      // Filter and process results in memory
+      const activeOTPs = snapshot.docs
+        .map(doc => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            ...data,
+            createdAt: data.createdAt?.toDate() || new Date(),
+            expiresAt: data.expiresAt?.toDate() || new Date(),
+            lastAttemptAt: data.lastAttemptAt?.toDate() || null,
+            cooldownUntil: data.cooldownUntil?.toDate() || null,
+            usedAt: data.usedAt?.toDate() || null,
+          };
+        })
+        .filter(otp => {
+          // Filter out used OTPs
+          if (otp.isUsed) return false;
+          
+          // Filter out expired OTPs
+          if (otp.expiresAt <= now) return false;
+          
+          // Filter out OTPs in cooldown
+          if (otp.cooldownUntil && otp.cooldownUntil > now) return false;
+          
+          // Filter out breached OTPs
+          if (otp.breachDetected) return false;
+          
+          return true;
+        })
+        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()) // Sort by creation date
+        .slice(0, 20) // Limit to 20 most recent
+        .map(otp => ({
+          code: otp.code,
           amount: otp.amount,
           paymentId: otp.paymentId,
           lineWorkerName: otp.lineWorkerName,
-          expiresAt,
-          createdAt,
-          isExpired
-        };
+          expiresAt: otp.expiresAt,
+          createdAt: otp.createdAt,
+          isExpired: otp.expiresAt <= now,
+        }));
+      
+      console.log('🔍 SecureOTPStorage: Processed active OTPs:', {
+        retailerId,
+        totalFound: snapshot.size,
+        activeCount: activeOTPs.length,
+        activeOTPs: activeOTPs.map(otp => ({
+          paymentId: otp.paymentId,
+          amount: otp.amount,
+          expiresAt: otp.expiresAt.toISOString(),
+          isExpired: otp.isExpired
+        }))
       });
       
-    } catch (error) {
+      return activeOTPs;
+      
+    } catch (error: any) {
       console.error('❌ SecureOTPStorage: Detailed error:', {
-        error: error,
-        errorMessage: error instanceof Error ? error.message : 'Unknown error',
-        errorStack: error instanceof Error ? error.stack : 'No stack trace',
-        retailerId: retailerId,
+        error,
+        errorMessage: error.message,
+        errorStack: error.stack,
+        retailerId,
         collection: this.collection
       });
       
-      secureLogger.error('Failed to get active OTPs for retailer', { 
-        error: error instanceof Error ? error.message : 'Unknown error',
-        retailerId 
+      secureLogger.logError('Failed to get active OTPs for retailer', {
+        error: error.message,
+        retailerId,
+        stack: error.stack
       });
+      
       return [];
     }
   }
-  
+
+  /**
+   * Create a new OTP record
+   */
+  async createOTP(data: OTPCreateData): Promise<void> {
+    // This is an alias for storeOTP for backward compatibility
+    await this.storeOTP(data);
+  }
+
   /**
    * Set up real-time listener for OTP changes for a specific retailer
    */
@@ -569,82 +552,63 @@ export class SecureOTPStorage {
     isExpired: boolean;
   }>) => void): () => void {
     try {
-      // Try with minimal indexing requirements first
-      let q;
-      try {
-        console.log('🔍 Setting up real-time listener with indexed query...');
-        q = query(
-          collection(firestore, this.collection),
-          where('retailerId', '==', retailerId),
-          where('isUsed', '==', false),
-          orderBy('createdAt', 'desc')
-        );
-      } catch (indexError) {
-        console.warn('⚠️ Index query failed for real-time listener, using fallback:', indexError);
-        // Fallback: Get all retailer OTPs and filter in memory
-        q = query(
-          collection(firestore, this.collection),
-          where('retailerId', '==', retailerId)
-        );
-      }
+      // Simple query without complex indexes (like previous implementation)
+      const q = query(
+        collection(firestore, this.collection),
+        where('retailerId', '==', retailerId),
+        limit(50) // Get recent OTPs and filter in memory
+      );
       
       const unsubscribe = onSnapshot(q, (snapshot) => {
         const now = new Date();
         
-        // Check if we're using fallback query and need to filter in memory
-        const isFallbackQuery = snapshot.docs.some(doc => !(doc.data() as any).hasOwnProperty('isUsed'));
-        
-        let docs = snapshot.docs;
-        
-        if (isFallbackQuery) {
-          console.log('🔍 Real-time listener using fallback query, filtering in memory...');
-          docs = docs.filter(doc => {
-            const otp = doc.data() as StoredOTP;
-            return otp.isUsed === false;
-          });
-          
-          // Sort by createdAt descending
-          docs.sort((a, b) => {
-            const aTime = (a.data() as any).createdAt?.toMillis?.() || 0;
-            const bTime = (b.data() as any).createdAt?.toMillis?.() || 0;
-            return bTime - aTime;
-          });
-        }
-        
-        const otps = docs.map(doc => {
-          const otp = doc.data() as StoredOTP;
-          const decryptedCode = this.decryptOTP(otp.code);
-          const isExpired = otp.expiresAt < now;
-          
-          // Convert Firestore timestamps
-          const expiresAt = otp.expiresAt && (otp.expiresAt as any).toDate ? 
-            (otp.expiresAt as any).toDate() : otp.expiresAt;
-          const createdAt = otp.createdAt && (otp.createdAt as any).toDate ? 
-            (otp.createdAt as any).toDate() : otp.createdAt;
-          
-          return {
-            code: isExpired ? `${decryptedCode} (EXPIRED)` : decryptedCode,
+        // Filter and process results in memory
+        const activeOTPs = snapshot.docs
+          .map(doc => {
+            const data = doc.data();
+            return {
+              id: doc.id,
+              ...data,
+              createdAt: data.createdAt?.toDate() || new Date(),
+              expiresAt: data.expiresAt?.toDate() || new Date(),
+              lastAttemptAt: data.lastAttemptAt?.toDate() || null,
+              cooldownUntil: data.cooldownUntil?.toDate() || null,
+              usedAt: data.usedAt?.toDate() || null,
+            };
+          })
+          .filter(otp => {
+            // Filter out used OTPs
+            if (otp.isUsed) return false;
+            
+            // Filter out expired OTPs
+            if (otp.expiresAt <= now) return false;
+            
+            // Filter out OTPs in cooldown
+            if (otp.cooldownUntil && otp.cooldownUntil > now) return false;
+            
+            // Filter out breached OTPs
+            if (otp.breachDetected) return false;
+            
+            return true;
+          })
+          .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()) // Sort by creation date
+          .slice(0, 20) // Limit to 20 most recent
+          .map(otp => ({
+            code: otp.code,
             amount: otp.amount,
             paymentId: otp.paymentId,
             lineWorkerName: otp.lineWorkerName,
-            expiresAt,
-            createdAt,
-            isExpired
-          };
-        });
+            expiresAt: otp.expiresAt,
+            createdAt: otp.createdAt,
+            isExpired: otp.expiresAt <= now,
+          }));
         
-        secureLogger.otp('Real-time OTP update detected', {
-          retailerId,
-          count: otps.length,
-          paymentIds: otps.map(otp => otp.paymentId)
-        });
-        
-        callback(otps);
+        callback(activeOTPs);
       });
       
       return unsubscribe;
     } catch (error) {
-      secureLogger.error('Failed to set up real-time OTP listener', { 
+      secureLogger.logError('Failed to set up real-time OTP listener', { 
         error: error instanceof Error ? error.message : 'Unknown error',
         retailerId 
       });
@@ -652,6 +616,12 @@ export class SecureOTPStorage {
       // Return empty unsubscribe function
       return () => {};
     }
+  }
+
+  /**
+   * Clean up expired OTPs
+   */
+  async cleanupExpiredOTPs(): Promise<void> {
   }
 }
 
