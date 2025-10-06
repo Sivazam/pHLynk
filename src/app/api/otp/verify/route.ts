@@ -424,34 +424,8 @@ export async function POST(request: NextRequest) {
         // Don't fail the request if FCM fails
       }
 
-      // Send PWA push notification for payment completion (client-side only)
-      if (typeof window !== 'undefined') {
-        try {
-          console.log('📱 Sending PWA payment completion notification...');
-          const { roleBasedNotificationService } = await import('@/services/role-based-notification-service');
-          if (roleBasedNotificationService) {
-            const pwaNotificationSent = await roleBasedNotificationService.sendPaymentCompletedToAll({
-              amount: payment.totalPaid,
-              paymentId: paymentId,
-              retailerName: retailerUser.name,
-              lineWorkerName: lineWorkerName
-            });
-            
-            if (pwaNotificationSent) {
-              console.log('✅ PWA payment completion notification sent successfully');
-            } else {
-              console.log('⚠️ PWA payment completion notification failed, but payment was verified');
-            }
-          } else {
-            console.log('🖥️ Role-based notification service not available on server');
-          }
-        } catch (pwaNotificationError) {
-          console.error('❌ Error sending PWA payment completion notification:', pwaNotificationError);
-          // Don't fail the request if PWA notification fails
-        }
-      } else {
-        console.log('🖥️ Server environment - skipping PWA notification (will be handled by client)');
-      }
+      // PWA notifications are now handled by FCM - no need for duplicate local notifications
+      console.log('📱 FCM payment completion notification sent - skipping local PWA notification to avoid duplicates');
 
       const endTime = Date.now();
       const processingTime = endTime - startTime;

@@ -27,7 +27,7 @@ class NotificationDeduplicator {
   private appState: AppState;
   private storageKey = 'notification_deduplicator_data';
   private sessionTimeout = 5 * 60 * 1000; // 5 minutes
-  private notificationTimeout = 30 * 1000; // 30 seconds
+  private notificationTimeout = 60 * 1000; // 60 seconds (increased from 30)
 
   private constructor() {
     // Only initialize on client side

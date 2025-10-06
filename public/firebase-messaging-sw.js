@@ -79,8 +79,8 @@ messaging.onBackgroundMessage(async (payload) => {
   const notificationTitle = payload.notification?.title || 'pHLynk Notification';
   const notificationOptions = {
     body: payload.notification?.body || 'You have a new notification',
-    icon: '/icon-192x192.png',
-    badge: '/icon-96x96.png',
+    icon: payload.data?.icon || '/notification-large-192x192.png',
+    badge: payload.data?.badge || '/badge-72x72.png',
     tag: payload.data?.tag || 'default',
     requireInteraction: payload.data?.requireInteraction || false,
     data: payload.data || {},

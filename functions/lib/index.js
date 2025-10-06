@@ -801,7 +801,6 @@ exports.sendOTPNotification = functions.https.onCall(async (request) => {
 });
 // Send FCM notification for payment completion
 exports.sendPaymentCompletionNotification = functions.https.onCall(async (request) => {
-    var _a;
     try {
         console.log('🚀 FCM CLOUD FUNCTION TRIGGERED - sendPaymentCompletionNotification');
         console.log('📥 Full request object:', JSON.stringify(request, null, 2));
@@ -837,138 +836,113 @@ exports.sendPaymentCompletionNotification = functions.https.onCall(async (reques
             recipientType: data.recipientType || 'retailer',
             caller: context.auth ? context.auth.uid : 'NEXTJS_API'
         });
-        // Get FCM token for recipient (retailer or wholesaler)
-        let fcmToken = null;
-        let recipientUserId = null;
+        // Get retailer/wholesaler document and FCM devices
         if (data.recipientType === 'wholesaler') {
-            // For wholesaler, look in users collection (wholesaler admin users)
-            console.log('🔧 Looking for FCM token for wholesaler:', data.retailerId);
-            const wholesalerUsersQuery = await admin.firestore()
-                .collection('users')
-                .where('tenantId', '==', data.retailerId) // retailerId is actually wholesalerId for wholesaler notifications
-                .where('roles', 'array-contains', 'WHOLESALER_ADMIN')
-                .limit(1)
+            // For wholesaler, look in tenants collection
+            console.log('🔧 Looking for FCM devices for wholesaler:', data.retailerId);
+            const wholesalerDoc = await admin.firestore()
+                .collection('tenants')
+                .doc(data.retailerId) // retailerId is actually wholesalerId for wholesaler notifications
                 .get();
-            if (wholesalerUsersQuery.empty) {
-                throw new functions.https.HttpsError('not-found', `Wholesaler admin not found for tenantId: ${data.retailerId}`);
+            if (!wholesalerDoc.exists) {
+                throw new functions.https.HttpsError('not-found', `Wholesaler not found: ${data.retailerId}`);
             }
-            const wholesalerUser = wholesalerUsersQuery.docs[0];
-            recipientUserId = wholesalerUser.id;
-            fcmToken = await getFCMTokenForUser(recipientUserId);
-            console.log('📱 Found wholesaler user:', wholesalerUser.id);
+            const wholesalerData = wholesalerDoc.data();
+            const fcmDevices = (wholesalerData === null || wholesalerData === void 0 ? void 0 : wholesalerData.fcmDevices) || [];
+            if (fcmDevices.length === 0) {
+                console.log('⚠️ No FCM devices found for wholesaler:', data.retailerId);
+                return {
+                    success: false,
+                    message: 'No devices registered for this wholesaler',
+                    deviceCount: 0
+                };
+            }
+            console.log(`📱 Found ${fcmDevices.length} FCM devices for wholesaler`);
+            // Filter active devices (last active within 30 days)
+            const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+            const activeDevices = fcmDevices.filter((device) => {
+                var _a, _b;
+                const lastActive = ((_b = (_a = device.lastActive) === null || _a === void 0 ? void 0 : _a.toDate) === null || _b === void 0 ? void 0 : _b.call(_a)) || new Date(device.lastActive);
+                return lastActive > thirtyDaysAgo;
+            });
+            console.log(`📱 ${activeDevices.length} active devices after filtering`);
+            if (activeDevices.length === 0) {
+                return {
+                    success: false,
+                    message: 'No active devices found for this wholesaler',
+                    deviceCount: 0
+                };
+            }
+            // Send to wholesaler devices
+            return await sendNotificationToDevices(activeDevices, {
+                title: data.title || '💰 Collection Update',
+                body: data.body || `Payment of ₹${data.amount} collected`,
+                data: {
+                    type: 'payment_completed',
+                    amount: data.amount.toString(),
+                    paymentId: data.paymentId,
+                    recipientType: 'wholesaler',
+                    retailerName: data.retailerName,
+                    lineWorkerName: data.lineWorkerName,
+                    wholesalerId: data.wholesalerId
+                },
+                tag: `payment-${data.paymentId}`,
+                clickAction: data.clickAction || '/wholesaler/dashboard'
+            });
         }
         else {
-            // For retailer, use existing logic
-            console.log('🔧 Looking for FCM token for retailer:', data.retailerId);
-            const retailerUsersQuery = await admin.firestore()
-                .collection('retailerUsers')
-                .where('retailerId', '==', data.retailerId)
-                .limit(1)
+            // For retailer, use existing logic (same as sendFCMNotification)
+            console.log('🔧 Looking for FCM devices for retailer:', data.retailerId);
+            const retailerDoc = await admin.firestore()
+                .collection('retailers')
+                .doc(data.retailerId)
                 .get();
-            if (retailerUsersQuery.empty) {
-                throw new functions.https.HttpsError('not-found', `Retailer user not found for retailerId: ${data.retailerId}`);
+            if (!retailerDoc.exists) {
+                throw new functions.https.HttpsError('not-found', `Retailer not found: ${data.retailerId}`);
             }
-            const retailerUser = retailerUsersQuery.docs[0];
-            recipientUserId = retailerUser.id;
-            fcmToken = await getFCMTokenForUser(recipientUserId, 'retailerUsers');
-            console.log('📱 Found retailer user:', retailerUser.id);
-        }
-        if (!fcmToken) {
-            console.warn(`⚠️ FCM token not found for ${data.recipientType || 'retailer'} user:`, recipientUserId);
-            return {
-                success: false,
-                error: 'FCM token not found',
-                recipientType: data.recipientType || 'retailer',
-                fallbackToSMS: true
-            };
-        }
-        // Create FCM message with custom content and proper icons
-        const message = {
-            notification: {
-                title: data.title || '✅ Payment Completed',
-                body: data.body || `Payment of ₹${data.amount.toLocaleString()} completed successfully`,
-            },
-            data: {
-                type: 'payment_completed',
-                amount: data.amount.toString(),
-                paymentId: data.paymentId,
-                retailerId: data.retailerId,
-                recipientType: data.recipientType || 'retailer',
-                retailerName: data.retailerName,
-                lineWorkerName: data.lineWorkerName,
+            const retailerData = retailerDoc.data();
+            const fcmDevices = (retailerData === null || retailerData === void 0 ? void 0 : retailerData.fcmDevices) || [];
+            if (fcmDevices.length === 0) {
+                console.log('⚠️ No FCM devices found for retailer:', data.retailerId);
+                return {
+                    success: false,
+                    message: 'No devices registered for this retailer',
+                    deviceCount: 0
+                };
+            }
+            console.log(`📱 Found ${fcmDevices.length} FCM devices for retailer`);
+            // Filter active devices (last active within 30 days)
+            const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+            const activeDevices = fcmDevices.filter((device) => {
+                var _a, _b;
+                const lastActive = ((_b = (_a = device.lastActive) === null || _a === void 0 ? void 0 : _a.toDate) === null || _b === void 0 ? void 0 : _b.call(_a)) || new Date(device.lastActive);
+                return lastActive > thirtyDaysAgo;
+            });
+            console.log(`📱 ${activeDevices.length} active devices after filtering`);
+            if (activeDevices.length === 0) {
+                return {
+                    success: false,
+                    message: 'No active devices found for this retailer',
+                    deviceCount: 0
+                };
+            }
+            // Send to retailer devices
+            return await sendNotificationToDevices(activeDevices, {
+                title: data.title || '🎉 Payment Successful',
+                body: data.body || `Payment of ₹${data.amount} completed`,
+                data: {
+                    type: 'payment_completed',
+                    amount: data.amount.toString(),
+                    paymentId: data.paymentId,
+                    recipientType: 'retailer',
+                    retailerName: data.retailerName,
+                    lineWorkerName: data.lineWorkerName,
+                    wholesalerId: data.wholesalerId
+                },
                 tag: `payment-${data.paymentId}`,
-                requireInteraction: 'false',
                 clickAction: data.clickAction || '/retailer/payment-history'
-            },
-            token: fcmToken,
-            android: {
-                priority: 'high', // High priority as requested
-                notification: {
-                    priority: 'high',
-                    defaultSound: true,
-                    clickAction: data.clickAction || '/retailer/payment-history',
-                    // Android specific icon configuration
-                    icon: '/notification-large-192x192.png', // Right side large icon
-                    badge: '/badge-72x72.png', // Left side badge icon
-                    color: '#20439f', // Brand blue for notification accent
-                    style: 'default',
-                    notificationCount: 1
-                }
-            },
-            apns: {
-                payload: {
-                    aps: {
-                        sound: 'default',
-                        badge: 1,
-                        'mutable-content': 1
-                    }
-                },
-                fcmOptions: {
-                    imageUrl: '/notification-large-192x192.png' // iOS large icon
-                }
-            },
-            webpush: {
-                headers: {
-                    icon: '/notification-large-192x192.png', // Right side large icon
-                    badge: '/badge-72x72.png', // Left side badge icon
-                    themeColor: '#20439f' // Brand blue
-                },
-                notification: {
-                    title: data.title || '✅ Payment Completed',
-                    body: data.body || `Payment of ₹${data.amount.toLocaleString()} completed successfully`,
-                    icon: '/notification-large-192x192.png',
-                    badge: '/badge-72x72.png',
-                    tag: `payment-${data.paymentId}`,
-                    requireInteraction: false,
-                    actions: [
-                        {
-                            action: 'view',
-                            title: 'View Payment'
-                        }
-                    ]
-                }
-            }
-        };
-        // Send FCM message
-        const response = await admin.messaging().send(message);
-        console.log('✅ FCM Payment completion notification sent successfully:', response);
-        // Log FCM delivery
-        await admin.firestore().collection('fcmLogs').add({
-            type: 'PAYMENT_COMPLETION_NOTIFICATION',
-            retailerId: data.retailerId,
-            paymentId: data.paymentId,
-            userId: recipientUserId,
-            token: fcmToken.substring(0, 8) + '...',
-            status: 'SENT',
-            messageId: response,
-            sentBy: ((_a = context.auth) === null || _a === void 0 ? void 0 : _a.uid) || 'NEXTJS_API',
-            sentAt: admin.firestore.FieldValue.serverTimestamp()
-        });
-        return {
-            success: true,
-            messageId: response,
-            type: 'fcm_sent'
-        };
+            });
+        }
     }
     catch (error) {
         console.error('❌ FCM CLOUD FUNCTION - Error sending payment completion notification:', error);
@@ -1129,34 +1103,23 @@ exports.sendFCMNotification = functions.https.onCall(async (request) => {
         }
         // Prepare notification message with proper FCM format
         const message = {
-            notification: {
-                title: notification.title,
-                body: notification.body,
-                image: notification.image || null, // Optional large image
-            },
+            notification: Object.assign({ title: notification.title, body: notification.body }, (notification.image && { image: notification.image })),
             data: Object.assign(Object.assign({}, notification.data), { icon: notification.icon || `${process.env.NEXT_PUBLIC_BASE_URL || 'https://localhost:3000'}/notification-large-192x192.png`, badge: `${process.env.NEXT_PUBLIC_BASE_URL || 'https://localhost:3000'}/badge-72x72.png`, tag: notification.tag, clickAction: notification.clickAction }),
             android: {
                 priority: 'high',
-                notification: {
-                    sound: 'default',
-                    clickAction: notification.clickAction,
-                    icon: `${process.env.NEXT_PUBLIC_BASE_URL || 'https://localhost:3000'}/notification-small-24x24.png`,
-                    color: '#000000', // Your brand color
-                    notificationCount: 1
-                }
+                notification: Object.assign(Object.assign({ sound: 'default' }, (notification.clickAction && { click_action: notification.clickAction })), { icon: `${process.env.NEXT_PUBLIC_BASE_URL || 'https://localhost:3000'}/notification-small-24x24.png`, color: '#000000', notificationCount: 1 })
             },
-            apns: {
-                payload: {
+            apns: Object.assign({ payload: {
                     aps: {
                         sound: 'default',
                         badge: 1,
                         'mutable-content': 1
                     }
-                },
+                } }, (notification.image && {
                 fcm_options: {
-                    image: notification.image || `${process.env.NEXT_PUBLIC_BASE_URL || 'https://localhost:3000'}/notification-large-192x192.png`
+                    image: notification.image
                 }
-            }
+            }))
         };
         let successCount = 0;
         let failureCount = 0;
@@ -1219,4 +1182,90 @@ exports.sendFCMNotification = functions.https.onCall(async (request) => {
         throw new functions.https.HttpsError('internal', 'Failed to send FCM notification', error instanceof Error ? error.message : 'Unknown error');
     }
 });
+// Helper function to send notifications to multiple devices (shared between functions)
+async function sendNotificationToDevices(activeDevices, notification) {
+    // Prepare notification message with proper FCM format
+    const message = {
+        notification: Object.assign({ title: notification.title, body: notification.body }, (notification.image && { image: notification.image })),
+        data: Object.assign(Object.assign({}, notification.data), { icon: `${process.env.NEXT_PUBLIC_BASE_URL || 'https://localhost:3000'}/notification-large-192x192.png`, badge: `${process.env.NEXT_PUBLIC_BASE_URL || 'https://localhost:3000'}/badge-72x72.png`, tag: notification.tag, clickAction: notification.clickAction }),
+        android: {
+            priority: 'high',
+            notification: Object.assign(Object.assign({ sound: 'default' }, (notification.clickAction && { click_action: notification.clickAction })), { icon: `${process.env.NEXT_PUBLIC_BASE_URL || 'https://localhost:3000'}/notification-small-24x24.png`, color: '#000000', notificationCount: 1 })
+        },
+        apns: Object.assign({ payload: {
+                aps: {
+                    sound: 'default',
+                    badge: 1,
+                    'mutable-content': 1
+                }
+            } }, (notification.image && {
+            fcm_options: {
+                image: notification.image
+            }
+        }))
+    };
+    let successCount = 0;
+    let failureCount = 0;
+    const results = [];
+    // Send to each device
+    for (const device of activeDevices) {
+        try {
+            console.log(`📤 Sending to device: ${device.token.substring(0, 20)}...`);
+            const deviceMessage = Object.assign(Object.assign({}, message), { token: device.token });
+            const response = await admin.messaging().send(deviceMessage);
+            console.log(`✅ Message sent successfully: ${response}`);
+            successCount++;
+            results.push({
+                token: device.token.substring(0, 20) + '...',
+                success: true,
+                messageId: response
+            });
+        }
+        catch (error) {
+            console.error(`❌ Failed to send to device ${device.token.substring(0, 20)}...:`, error);
+            failureCount++;
+            results.push({
+                token: device.token.substring(0, 20) + '...',
+                success: false,
+                error: error.message
+            });
+            // If device token is invalid, remove it
+            if (error.code === 'messaging/registration-token-not-registered' ||
+                error.code === 'messaging/invalid-registration-token') {
+                try {
+                    // For retailers
+                    if (notification.data.recipientType === 'retailer') {
+                        await admin.firestore()
+                            .collection('retailers')
+                            .doc(notification.data.retailerId)
+                            .update({
+                            fcmDevices: admin.firestore.FieldValue.arrayRemove(device)
+                        });
+                    }
+                    else if (notification.data.recipientType === 'wholesaler') {
+                        // For wholesalers
+                        await admin.firestore()
+                            .collection('tenants')
+                            .doc(notification.data.wholesalerId)
+                            .update({
+                            fcmDevices: admin.firestore.FieldValue.arrayRemove(device)
+                        });
+                    }
+                    console.log('🗑️ Removed invalid device token:', device.token.substring(0, 20) + '...');
+                }
+                catch (removeError) {
+                    console.error('Failed to remove invalid device:', removeError);
+                }
+            }
+        }
+    }
+    console.log(`📊 FCM sending complete: ${successCount} success, ${failureCount} failures`);
+    return {
+        success: successCount > 0,
+        message: `Sent to ${successCount} device(s), ${failureCount} failed`,
+        sentCount: successCount,
+        failedCount: failureCount,
+        results
+    };
+}
 //# sourceMappingURL=index.js.map

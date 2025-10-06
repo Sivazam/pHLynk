@@ -1896,8 +1896,8 @@ Thank you for your payment!
                     </Card>
 
                     {/* PWA Notification Manager */}
-                    {/* <PWANotificationManager userRole="RETAILER" /> */}
-                    
+                    {/* <PWANotificationManager userRole="RETAILER" />
+                     */}
                     {/* FCM Notification Manager */}
                     {/* <FCMNotificationManager userId={user?.uid} /> */}
                   </div>

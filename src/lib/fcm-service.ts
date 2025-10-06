@@ -249,37 +249,9 @@ class FCMService {
    */
   private async sendToDevice(deviceToken: string, notification: FCMNotificationData): Promise<{ success: boolean; error?: string }> {
     try {
-      // Use the direct FCM API for OTP notifications
-      console.log('📱 Attempting to send notification via direct FCM API...');
-      
-      // Check if this is an OTP notification
-      if (notification.data?.type === 'otp') {
-        const directApiUrl = '/api/fcm/send-otp-direct';
-        
-        const response = await fetch(`http://localhost:3000${directApiUrl}`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            retailerId: notification.data.retailerId,
-            otp: notification.data.otp,
-            amount: parseFloat(notification.data.amount || '0'),
-            paymentId: notification.data.paymentId || '',
-            lineWorkerName: notification.data.lineWorkerName || 'Line Worker'
-          })
-        });
-
-        if (response.ok) {
-          const result = await response.json();
-          console.log('✅ OTP notification sent via direct FCM API:', result);
-          return { success: true };
-        } else {
-          const error = await response.text();
-          console.error('❌ Direct FCM API error:', error);
-          return { success: false, error: 'DIRECT_FCM_API_ERROR' };
-        }
-      }
+      // DISABLED: Automatic OTP routing to prevent duplicate notifications
+      // OTP notifications are now handled exclusively by Cloud Functions
+      console.log('📱 sendToDevice called for notification type:', notification.data?.type);
       
       // For non-OTP notifications, fallback to legacy API if available
       if (this.SERVER_KEY && this.SERVER_KEY !== 'your_fcm_server_key_here') {
