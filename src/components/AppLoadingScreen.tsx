@@ -86,7 +86,7 @@ export function AppLoadingScreen({
       {/* Bouncing Logo */}
       <div className="animate-bounce">
         <Image 
-          src="/logoMain.png" 
+          src="/PharmaLogo.png" 
           alt="PharmaLync" 
           width={120} 
           height={120}
