@@ -1315,14 +1315,12 @@ export const sendFCMNotification = functions.https.onCall(async (request: any) =
       };
     }
 
-    // Prepare notification message with proper icons
+    // Prepare notification message with proper FCM format
     const message = {
       notification: {
         title: notification.title,
         body: notification.body,
-        icon: notification.icon || `${process.env.NEXT_PUBLIC_BASE_URL || 'https://localhost:3000'}/notification-large-192x192.png`,
         image: notification.image || null, // Optional large image
-        badge: `${process.env.NEXT_PUBLIC_BASE_URL || 'https://localhost:3000'}/badge-72x72.png`
       },
       data: {
         ...notification.data,

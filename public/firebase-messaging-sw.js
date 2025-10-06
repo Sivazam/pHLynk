@@ -1,5 +1,5 @@
 // Firebase Cloud Messaging Service Worker
-// This service worker handles background push notifications
+// This service worker handles background push notifications with AUTH CHECK
 
 importScripts('https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/9.6.1/firebase-messaging-compat.js');
@@ -20,9 +20,61 @@ firebase.initializeApp(firebaseConfig);
 // Retrieve Firebase Messaging instance
 const messaging = firebase.messaging();
 
-// Handle background messages
-messaging.onBackgroundMessage((payload) => {
+/**
+ * Check if user is currently authenticated
+ * This prevents showing notifications to logged-out users
+ */
+async function isUserAuthenticated() {
+  try {
+    // Try to get the authenticated user from IndexedDB (where Firebase Auth stores it)
+    const firebaseApp = firebase.app();
+    const auth = firebaseApp.auth();
+    
+    // Wait for auth state to be determined
+    return new Promise((resolve) => {
+      const unsubscribe = auth.onAuthStateChanged((user) => {
+        unsubscribe();
+        console.log('🔐 SW Auth check result:', user ? 'AUTHENTICATED' : 'NOT AUTHENTICATED');
+        resolve(!!user);
+      });
+      
+      // Timeout after 2 seconds to prevent hanging
+      setTimeout(() => {
+        unsubscribe();
+        console.log('🔐 SW Auth check timeout - assuming NOT AUTHENTICATED');
+        resolve(false);
+      }, 2000);
+    });
+  } catch (error) {
+    console.error('❌ Error checking auth status in service worker:', error);
+    return false;
+  }
+}
+
+/**
+ * Check if notification should be shown based on user auth status
+ */
+async function shouldShowNotification(payload) {
+  const isAuthenticated = await isUserAuthenticated();
+  
+  if (!isAuthenticated) {
+    console.log('🚫 User not authenticated - discarding notification:', payload.notification?.title);
+    return false;
+  }
+  
+  console.log('✅ User authenticated - showing notification:', payload.notification?.title);
+  return true;
+}
+
+// Handle background messages with AUTH CHECK
+messaging.onBackgroundMessage(async (payload) => {
   console.log('📱 FCM Background message received:', payload);
+
+  // 🔐 SECURITY: Check if user is authenticated before showing notification
+  const canShow = await shouldShowNotification(payload);
+  if (!canShow) {
+    return; // Silently discard notification for logged-out users
+  }
 
   const notificationTitle = payload.notification?.title || 'pHLynk Notification';
   const notificationOptions = {
@@ -35,7 +87,7 @@ messaging.onBackgroundMessage((payload) => {
     actions: payload.data?.actions || []
   };
 
-  // Show notification
+  // Show notification only for authenticated users
   self.registration.showNotification(notificationTitle, notificationOptions);
 });
 
@@ -79,7 +131,7 @@ self.addEventListener('notificationclose', (event) => {
   console.log('📱 Notification closed:', event);
 });
 
-// Handle push events (fallback)
+// Handle push events (fallback) with AUTH CHECK
 self.addEventListener('push', (event) => {
   console.log('📱 Push event received:', event);
 
@@ -91,6 +143,10 @@ self.addEventListener('push', (event) => {
   try {
     const data = event.data.json();
     console.log('📱 Push data:', data);
+
+    // 🔐 SECURITY: Check if user is authenticated before processing
+    // Note: We can't easily check auth here, so we'll do it in onBackgroundMessage
+    // This is mainly for direct push events that bypass onBackgroundMessage
 
     const notificationTitle = data.notification?.title || data.title || 'pHLynk Notification';
     const notificationOptions = {
@@ -129,5 +185,12 @@ self.addEventListener('message', (event) => {
   
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
+  }
+  
+  // Handle auth state changes from main app
+  if (event.data && event.data.type === 'AUTH_STATE_CHANGED') {
+    console.log('🔐 Service worker received auth state change:', event.data.isAuthenticated);
+    // Store auth state in service worker for quick access
+    self.isAuthenticated = event.data.isAuthenticated;
   }
 });

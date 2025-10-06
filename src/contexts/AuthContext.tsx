@@ -327,6 +327,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       console.log('🚪 Starting logout process...');
       
+      // 🔐 SECURITY: Unregister FCM token to prevent notifications to logged-out users
+      try {
+        const { deleteFCMToken } = await import('@/lib/fcm');
+        await deleteFCMToken();
+        console.log('🔕 FCM token unregistered successfully');
+      } catch (fcmError) {
+        console.warn('⚠️ Error unregistering FCM token:', fcmError);
+        // Continue with logout even if FCM unregistration fails
+      }
+      
       // Clear any retailer-specific data
       localStorage.removeItem('retailerId');
       console.log('🗑️ Cleared retailerId from localStorage');

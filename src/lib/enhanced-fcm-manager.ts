@@ -7,6 +7,7 @@ import { onMessage } from 'firebase/messaging';
 import { getMessagingInstance } from './fcm';
 import { notificationDeduplicator } from './notification-deduplicator';
 import { toast } from 'sonner';
+import { auth } from '@/lib/firebase';
 
 export interface EnhancedFCMConfig {
   enableToast: boolean;
@@ -54,7 +55,7 @@ class EnhancedFCMManager {
   }
 
   /**
-   * Set up foreground message listener with de-duplication
+   * Set up foreground message listener with de-duplication and auth check
    */
   private setupForegroundListener(): void {
     try {
@@ -66,6 +67,12 @@ class EnhancedFCMManager {
 
       const unsubscribe = onMessage(messagingInstance, (payload: any) => {
         console.log('📱 Enhanced FCM message received:', payload);
+        
+        // 🔐 SECURITY: Check if user is authenticated before processing
+        if (!this.isUserAuthenticated()) {
+          console.log('🚫 User not authenticated - discarding foreground notification:', payload.notification?.title);
+          return;
+        }
         
         // Check de-duplicator before showing notification (only if available)
         const deduplicator = notificationDeduplicator;
@@ -89,6 +96,20 @@ class EnhancedFCMManager {
       this.unsubscribeFunctions.push(unsubscribe);
     } catch (error) {
       console.error('❌ Error setting up enhanced FCM listener:', error);
+    }
+  }
+
+  /**
+   * Check if user is currently authenticated
+   * This prevents showing notifications to logged-out users
+   */
+  private isUserAuthenticated(): boolean {
+    try {
+      // Use Firebase Auth instance to check current user
+      return !!auth.currentUser;
+    } catch (error) {
+      console.error('❌ Error checking auth status in enhanced FCM manager:', error);
+      return false;
     }
   }
 

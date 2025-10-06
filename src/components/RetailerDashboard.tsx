@@ -367,30 +367,30 @@ export function RetailerDashboard() {
   }, []);
 
   // Test notification function for debugging
-  const testOTPNotification = async () => {
-    console.log('🧪 Testing enhanced OTP notification manually...');
+  // const testOTPNotification = async () => {
+  //   console.log('🧪 Testing enhanced OTP notification manually...');
     
-    try {
-      const result = await enhancedNotificationService.sendOTPNotification(
-        retailer?.id || 'test-retailer-id',
-        '123456',
-        1000,
-        'Test Line Worker'
-      );
+  //   try {
+  //     const result = await enhancedNotificationService.sendOTPNotification(
+  //       retailer?.id || 'test-retailer-id',
+  //       '123456',
+  //       1000,
+  //       'Test Line Worker'
+  //     );
       
-      console.log('🧪 Test OTP notification result:', result);
+  //     console.log('🧪 Test OTP notification result:', result);
       
-      if (result) {
-        alert('✅ Test OTP notification sent successfully! Check your notification panel and console.');
-      } else {
-        alert('❌ Test OTP notification failed. Check console for details.');
-      }
-    } catch (error) {
-      console.error('🧪 Test OTP notification error:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      alert('❌ Test OTP notification error: ' + errorMessage);
-    }
-  };
+  //     if (result) {
+  //       alert('✅ Test OTP notification sent successfully! Check your notification panel and console.');
+  //     } else {
+  //       alert('❌ Test OTP notification failed. Check console for details.');
+  //     }
+  //   } catch (error) {
+  //     console.error('🧪 Test OTP notification error:', error);
+  //     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+  //     alert('❌ Test OTP notification error: ' + errorMessage);
+  //   }
+  // };
   const [wholesalerNames, setWholesalerNames] = useState<Record<string, string>>({});
   const [lineWorkerNames, setLineWorkerNames] = useState<Record<string, string>>({});
 
@@ -1628,14 +1628,14 @@ Thank you for your payment!
                 </Button>
                 
                 {/* Debug button for testing notifications */}
-                <Button
+                {/* <Button
                   variant="outline"
                   size="sm"
                   onClick={testOTPNotification}
                   className="text-xs"
                 >
                   🧪 Test OTP
-                </Button>
+                </Button> */}
               </div>
             </div>
 
@@ -1708,9 +1708,9 @@ Thank you for your payment!
                       </Card>
 
                       {/* Debug OTP Panel - Always show for testing */}
-                      {retailer && (
+                      {/* {retailer && (
                         <DebugOTPPanel retailerId={retailer.id} />
-                      )}
+                      )} */}
 
                       <Card>
                         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -1896,10 +1896,10 @@ Thank you for your payment!
                     </Card>
 
                     {/* PWA Notification Manager */}
-                    <PWANotificationManager userRole="RETAILER" />
+                    {/* <PWANotificationManager userRole="RETAILER" /> */}
                     
                     {/* FCM Notification Manager */}
-                    <FCMNotificationManager userId={user?.uid} />
+                    {/* <FCMNotificationManager userId={user?.uid} /> */}
                   </div>
                 )}
 
@@ -2089,11 +2089,11 @@ Thank you for your payment!
                       <PWANotificationManager userRole="RETAILER" />
                       
                       {/* FCM Notification Manager */}
-                      <FCMNotificationManager userId={user?.uid} />
+                      {/* <FCMNotificationManager userId={user?.uid} /> */}
                     </div>
 
                     {/* Notification De-duplicator Debug */}
-                    <NotificationDeduplicatorDebug />
+                    {/* <NotificationDeduplicatorDebug /> */}
                   </div>
                 )}
               </>
