@@ -192,7 +192,7 @@ export async function POST(request: NextRequest) {
             retailerName: retailerUser.name,
             lineWorkerName: lineWorkerName || 'Line Worker'
           },
-          icon: '/icon-192x192.png',
+          icon: '/notification-large-192x192.png',
           tag: `otp-${paymentId}`,
           clickAction: '/retailer/dashboard'
         }

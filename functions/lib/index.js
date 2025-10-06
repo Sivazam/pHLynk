@@ -599,17 +599,41 @@ exports.processSMSResponse = functions.https.onCall(async (data, context) => {
 });
 // ===== FCM NOTIFICATION FUNCTIONS =====
 // Helper function to get user's FCM token
-async function getFCMTokenForUser(userId) {
+async function getFCMTokenForUser(userId, collection = 'users') {
+    var _a;
     try {
-        const userDoc = await admin.firestore().collection('users').doc(userId).get();
+        console.log(`🔧 Looking for FCM token for user ${userId} in collection: ${collection}`);
+        const userDoc = await admin.firestore().collection(collection).doc(userId).get();
         if (userDoc.exists) {
             const userData = userDoc.data();
-            return (userData === null || userData === void 0 ? void 0 : userData.fcmToken) || null;
+            console.log(`📱 Found user document in ${collection}, checking FCM devices...`);
+            // Check for fcmDevices array first (new structure)
+            const fcmDevices = (userData === null || userData === void 0 ? void 0 : userData.fcmDevices) || [];
+            if (fcmDevices.length > 0) {
+                // Return the most recently active device token
+                const activeDevice = fcmDevices.reduce((latest, device) => {
+                    var _a, _b, _c, _d;
+                    const deviceTime = ((_b = (_a = device.lastActive) === null || _a === void 0 ? void 0 : _a.toDate) === null || _b === void 0 ? void 0 : _b.call(_a)) || new Date(0);
+                    const latestTime = ((_d = (_c = latest === null || latest === void 0 ? void 0 : latest.lastActive) === null || _c === void 0 ? void 0 : _c.toDate) === null || _d === void 0 ? void 0 : _d.call(_c)) || new Date(0);
+                    return deviceTime > latestTime ? device : latest;
+                }, fcmDevices[0]);
+                console.log(`✅ Found ${fcmDevices.length} FCM devices in ${collection}, using most recent:`, ((_a = activeDevice.token) === null || _a === void 0 ? void 0 : _a.substring(0, 20)) + '...');
+                return activeDevice.token || null;
+            }
+            // Fallback to single fcmToken field (old structure)
+            if (userData === null || userData === void 0 ? void 0 : userData.fcmToken) {
+                console.log(`✅ Found single FCM token in ${collection} (old structure):`, userData.fcmToken.substring(0, 20) + '...');
+                return userData.fcmToken;
+            }
+            console.log(`❌ No FCM devices found for user in ${collection}`);
+        }
+        else {
+            console.log(`❌ User document not found in ${collection}`);
         }
         return null;
     }
     catch (error) {
-        console.error('❌ Error getting FCM token for user:', userId, error);
+        console.error('❌ Error getting FCM token for user:', userId, 'in collection:', collection, error);
         return null;
     }
 }
@@ -679,11 +703,11 @@ exports.sendOTPNotification = functions.https.onCall(async (request) => {
                 fallbackToSMS: true
             };
         }
-        // Create FCM message
+        // Create FCM message with proper icons and bold OTP
         const message = {
             notification: {
                 title: '🔐 Payment OTP Required',
-                body: `OTP: ${data.otp} for ₹${data.amount.toLocaleString()} by ${data.lineWorkerName}`,
+                body: `Your OTP code is: **${data.otp}** for ₹${data.amount.toLocaleString()} by ${data.lineWorkerName}`,
             },
             data: {
                 type: 'otp',
@@ -693,7 +717,11 @@ exports.sendOTPNotification = functions.https.onCall(async (request) => {
                 retailerId: data.retailerId,
                 lineWorkerName: data.lineWorkerName,
                 tag: `otp-${data.paymentId}`,
-                requireInteraction: 'true'
+                requireInteraction: 'true',
+                // Icon paths for the notification
+                icon: '/notification-large-192x192.png', // Right side - high-res app icon from logo.png
+                badge: '/badge-72x72.png', // Left side - badge icon from PharmaLogo.png
+                clickAction: '/retailer/dashboard'
             },
             token: fcmToken,
             android: {
@@ -701,7 +729,13 @@ exports.sendOTPNotification = functions.https.onCall(async (request) => {
                 notification: {
                     priority: 'high',
                     defaultSound: true,
-                    defaultVibrateTimings: true
+                    defaultVibrateTimings: true,
+                    // Android specific icon configuration
+                    icon: '/notification-large-192x192.png', // Right side large icon
+                    badge: '/badge-72x72.png', // Left side badge icon
+                    color: '#20439f', // Brand blue for notification accent
+                    style: 'default',
+                    notificationCount: 1
                 }
             },
             apns: {
@@ -709,8 +743,33 @@ exports.sendOTPNotification = functions.https.onCall(async (request) => {
                     aps: {
                         sound: 'default',
                         badge: 1,
-                        contentAvailable: true
+                        contentAvailable: true,
+                        'mutable-content': 1
                     }
+                },
+                fcmOptions: {
+                    imageUrl: '/notification-large-192x192.png' // iOS large icon
+                }
+            },
+            webpush: {
+                headers: {
+                    icon: '/notification-large-192x192.png', // Right side large icon
+                    badge: '/badge-72x72.png', // Left side badge icon
+                    themeColor: '#20439f' // Brand blue
+                },
+                notification: {
+                    title: '🔐 Payment OTP Required',
+                    body: `Your OTP code is: **${data.otp}** for ₹${data.amount.toLocaleString()} by ${data.lineWorkerName}`,
+                    icon: '/notification-large-192x192.png',
+                    badge: '/badge-72x72.png',
+                    tag: `otp-${data.paymentId}`,
+                    requireInteraction: true,
+                    actions: [
+                        {
+                            action: 'open',
+                            title: 'Open App'
+                        }
+                    ]
                 }
             }
         };
@@ -814,7 +873,7 @@ exports.sendPaymentCompletionNotification = functions.https.onCall(async (reques
             }
             const retailerUser = retailerUsersQuery.docs[0];
             recipientUserId = retailerUser.id;
-            fcmToken = await getFCMTokenForUser(recipientUserId);
+            fcmToken = await getFCMTokenForUser(recipientUserId, 'retailerUsers');
             console.log('📱 Found retailer user:', retailerUser.id);
         }
         if (!fcmToken) {
@@ -826,7 +885,7 @@ exports.sendPaymentCompletionNotification = functions.https.onCall(async (reques
                 fallbackToSMS: true
             };
         }
-        // Create FCM message with custom content
+        // Create FCM message with custom content and proper icons
         const message = {
             notification: {
                 title: data.title || '✅ Payment Completed',
@@ -842,7 +901,10 @@ exports.sendPaymentCompletionNotification = functions.https.onCall(async (reques
                 lineWorkerName: data.lineWorkerName,
                 tag: `payment-${data.paymentId}`,
                 requireInteraction: 'false',
-                clickAction: data.clickAction || '/retailer/payment-history'
+                clickAction: data.clickAction || '/retailer/payment-history',
+                // Icon paths for the notification
+                icon: '/notification-large-192x192.png', // Right side - high-res app icon from logo.png
+                badge: '/badge-72x72.png' // Left side - badge icon from PharmaLogo.png
             },
             token: fcmToken,
             android: {
@@ -850,7 +912,13 @@ exports.sendPaymentCompletionNotification = functions.https.onCall(async (reques
                 notification: {
                     priority: 'high',
                     defaultSound: true,
-                    clickAction: data.clickAction || '/retailer/payment-history'
+                    clickAction: data.clickAction || '/retailer/payment-history',
+                    // Android specific icon configuration
+                    icon: '/notification-large-192x192.png', // Right side large icon
+                    badge: '/badge-72x72.png', // Left side badge icon
+                    color: '#20439f', // Brand blue for notification accent
+                    style: 'default',
+                    notificationCount: 1
                 }
             },
             apns: {
@@ -860,6 +928,30 @@ exports.sendPaymentCompletionNotification = functions.https.onCall(async (reques
                         badge: 1,
                         'mutable-content': 1
                     }
+                },
+                fcmOptions: {
+                    imageUrl: '/notification-large-192x192.png' // iOS large icon
+                }
+            },
+            webpush: {
+                headers: {
+                    icon: '/notification-large-192x192.png', // Right side large icon
+                    badge: '/badge-72x72.png', // Left side badge icon
+                    themeColor: '#20439f' // Brand blue
+                },
+                notification: {
+                    title: data.title || '✅ Payment Completed',
+                    body: data.body || `Payment of ₹${data.amount.toLocaleString()} completed successfully`,
+                    icon: '/notification-large-192x192.png',
+                    badge: '/badge-72x72.png',
+                    tag: `payment-${data.paymentId}`,
+                    requireInteraction: false,
+                    actions: [
+                        {
+                            action: 'view',
+                            title: 'View Payment'
+                        }
+                    ]
                 }
             }
         };
@@ -1041,26 +1133,36 @@ exports.sendFCMNotification = functions.https.onCall(async (request) => {
                 deviceCount: 0
             };
         }
-        // Prepare notification message
+        // Prepare notification message with proper icons
         const message = {
             notification: {
                 title: notification.title,
-                body: notification.body
+                body: notification.body,
+                icon: notification.icon || `${process.env.NEXT_PUBLIC_BASE_URL || 'https://localhost:3000'}/notification-large-192x192.png`,
+                image: notification.image || null, // Optional large image
+                badge: `${process.env.NEXT_PUBLIC_BASE_URL || 'https://localhost:3000'}/badge-72x72.png`
             },
-            data: Object.assign(Object.assign({}, notification.data), { icon: notification.icon || 'https://your-domain.com/icon-192x192.png', badge: 'https://your-domain.com/icon-72x72.png', tag: notification.tag, clickAction: notification.clickAction }),
+            data: Object.assign(Object.assign({}, notification.data), { icon: notification.icon || `${process.env.NEXT_PUBLIC_BASE_URL || 'https://localhost:3000'}/notification-large-192x192.png`, badge: `${process.env.NEXT_PUBLIC_BASE_URL || 'https://localhost:3000'}/badge-72x72.png`, tag: notification.tag, clickAction: notification.clickAction }),
             android: {
                 priority: 'high',
                 notification: {
                     sound: 'default',
-                    clickAction: notification.clickAction
+                    clickAction: notification.clickAction,
+                    icon: `${process.env.NEXT_PUBLIC_BASE_URL || 'https://localhost:3000'}/notification-small-24x24.png`,
+                    color: '#000000', // Your brand color
+                    notificationCount: 1
                 }
             },
             apns: {
                 payload: {
                     aps: {
                         sound: 'default',
-                        badge: 1
+                        badge: 1,
+                        'mutable-content': 1
                     }
+                },
+                fcm_options: {
+                    image: notification.image || `${process.env.NEXT_PUBLIC_BASE_URL || 'https://localhost:3000'}/notification-large-192x192.png`
                 }
             }
         };

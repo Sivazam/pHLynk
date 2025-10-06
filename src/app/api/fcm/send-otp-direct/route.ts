@@ -63,11 +63,11 @@ export async function POST(request: NextRequest) {
     const fcmToken = activeDevice.token;
     console.log('✅ DIRECT FCM API - Using FCM token:', fcmToken.substring(0, 20) + '...');
 
-    // Create FCM message
+    // Create FCM message with proper icons and bold OTP
     const message = {
       notification: {
         title: '🔐 Payment OTP Required',
-        body: `OTP: ${otp} for ₹${amount.toLocaleString()} by ${lineWorkerName}`,
+        body: `Your OTP code is: **${otp}** for ₹${amount.toLocaleString()} by ${lineWorkerName}`,
       },
       data: {
         type: 'otp',
@@ -77,7 +77,11 @@ export async function POST(request: NextRequest) {
         retailerId: retailerId,
         lineWorkerName: lineWorkerName,
         tag: `otp-${paymentId}`,
-        requireInteraction: 'true'
+        requireInteraction: 'true',
+        // Icon paths for the notification
+        icon: '/notification-large-192x192.png', // Right side - high-res app icon from logo.png
+        badge: '/badge-72x72.png', // Left side - badge icon with blue background
+        clickAction: '/retailer/dashboard'
       },
       token: fcmToken,
       android: {
@@ -85,7 +89,13 @@ export async function POST(request: NextRequest) {
         notification: {
           priority: 'high' as const,
           defaultSound: true,
-          defaultVibrateTimings: true
+          defaultVibrateTimings: true,
+          // Android specific icon configuration
+          icon: '/notification-large-192x192.png', // Right side large icon
+          badge: '/badge-72x72.png', // Left side badge icon
+          color: '#20439f', // Brand blue for notification accent
+          style: 'default',
+          notificationCount: 1
         }
       },
       apns: {
@@ -93,8 +103,33 @@ export async function POST(request: NextRequest) {
           aps: {
             sound: 'default',
             badge: 1,
-            contentAvailable: true
+            contentAvailable: true,
+            'mutable-content': 1
           }
+        },
+        fcmOptions: {
+          imageUrl: '/notification-large-192x192.png' // iOS large icon
+        }
+      },
+      webpush: {
+        headers: {
+          icon: '/notification-large-192x192.png', // Right side large icon
+          badge: '/badge-72x72.png', // Left side badge icon
+          themeColor: '#20439f' // Brand blue
+        },
+        notification: {
+          title: '🔐 Payment OTP Required',
+          body: `Your OTP code is: **${otp}** for ₹${amount.toLocaleString()} by ${lineWorkerName}`,
+          icon: '/notification-large-192x192.png',
+          badge: '/badge-72x72.png',
+          tag: `otp-${paymentId}`,
+          requireInteraction: true,
+          actions: [
+            {
+              action: 'open',
+              title: 'Open App'
+            }
+          ]
         }
       }
     };

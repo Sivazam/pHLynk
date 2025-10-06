@@ -309,8 +309,8 @@ class FCMService {
         notification: {
           title: notification.title,
           body: notification.body,
-          icon: notification.icon || '/icon-192x192.png',
-          badge: notification.badge || '/badge-72x72.png',
+          icon: notification.icon || '/notification-large-192x192.png', // Use new large icon
+          badge: notification.badge || '/badge-72x72.png', // Use badge icon
           tag: notification.tag,
           click_action: notification.clickAction
         },
@@ -373,7 +373,7 @@ export async function sendOTPViaFCM(
 ): Promise<{ success: boolean; message: string; sentCount?: number }> {
   const notification: FCMNotificationData = {
     title: '🔐 OTP Verification Required',
-    body: `Your OTP code is: ${otp}`,
+    body: `Your OTP code is: **${otp}**`,
     data: {
       type: 'otp',
       otp: otp,
@@ -381,9 +381,14 @@ export async function sendOTPViaFCM(
       paymentId: paymentId || '',
       amount: amount?.toString() || '',
       retailerName,
-      lineWorkerName: lineWorkerName || 'Line Worker'
+      lineWorkerName: lineWorkerName || 'Line Worker',
+      // Icon paths for the notification
+      icon: '/notification-large-192x192.png', // Right side - high-res app icon from logo.png
+      badge: '/badge-72x72.png', // Left side - badge icon with blue background
+      clickAction: '/retailer/dashboard'
     },
-    icon: '/icon-192x192.png',
+    icon: '/notification-large-192x192.png', // Right side large icon
+    badge: '/badge-72x72.png', // Left side badge icon
     tag: `otp-${paymentId || Date.now()}`,
     clickAction: '/retailer/dashboard'
   };
@@ -423,9 +428,14 @@ export async function sendPaymentNotificationViaFCM(
       paymentId,
       status,
       amount: amount.toString(),
-      customerName: customerName || ''
+      customerName: customerName || '',
+      // Icon paths for the notification
+      icon: '/notification-large-192x192.png', // Right side - high-res app icon from logo.png
+      badge: '/badge-72x72.png', // Left side - badge icon with blue background
+      clickAction: '/retailer/dashboard'
     },
-    icon: '/icon-192x192.png',
+    icon: '/notification-large-192x192.png', // Right side large icon
+    badge: '/badge-72x72.png', // Left side badge icon
     tag: `payment-${paymentId}`,
     clickAction: '/retailer/dashboard'
   };

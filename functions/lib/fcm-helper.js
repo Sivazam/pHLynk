@@ -34,7 +34,7 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 const admin = __importStar(require("firebase-admin"));
-// Fixed getFCMTokenForUser function for retailer users
+// Enhanced getFCMTokenForUser function for retailer users (matches working version)
 async function getFCMTokenForUser(userId) {
     var _a, _b;
     try {

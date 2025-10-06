@@ -1,6 +1,6 @@
 import * as admin from 'firebase-admin';
 
-// Fixed getFCMTokenForUser function for retailer users
+// Enhanced getFCMTokenForUser function for retailer users (matches working version)
 async function getFCMTokenForUser(userId: string): Promise<string | null> {
   try {
     console.log('🔧 Looking for FCM token for user:', userId);
