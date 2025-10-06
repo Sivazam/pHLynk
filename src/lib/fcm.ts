@@ -108,6 +108,57 @@ export async function requestNotificationPermission(): Promise<NotificationPermi
 }
 
 /**
+ * Force Service Worker update (temporary fix for FCM issues)
+ * This will unregister all existing Service Workers and register with cache-busting
+ */
+export async function forceServiceWorkerUpdate(): Promise<{ success: boolean; message: string }> {
+  // Ensure this only runs on client side
+  if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
+    return {
+      success: false,
+      message: 'Service Workers not supported in this environment'
+    };
+  }
+
+  try {
+    console.log('🔄 Starting forced Service Worker update...');
+    
+    // Unregister all existing Service Workers
+    const registrations = await navigator.serviceWorker.getRegistrations();
+    for (const registration of registrations) {
+      if (registration.active?.scriptURL.includes('firebase-messaging-sw')) {
+        console.log('🗑️ Unregistering old Service Worker:', registration.active?.scriptURL);
+        await registration.unregister();
+      }
+    }
+    
+    // Register with cache-busting to force update
+    const cacheBuster = Date.now();
+    const swUrl = `/firebase-messaging-sw.js?v=${cacheBuster}`;
+    
+    const registration = await navigator.serviceWorker.register(swUrl);
+    console.log('✅ New Service Worker registered with cache-buster:', swUrl);
+    
+    // Force the new service worker to activate
+    if (registration.waiting) {
+      registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+    }
+    
+    return { 
+      success: true, 
+      message: 'Service Worker updated successfully. Please refresh the page.' 
+    };
+    
+  } catch (error) {
+    console.error('❌ Error forcing Service Worker update:', error);
+    return { 
+      success: false, 
+      message: 'Failed to update Service Worker: ' + (error instanceof Error ? error.message : 'Unknown error') 
+    };
+  }
+}
+
+/**
  * Register service worker for FCM
  */
 async function registerServiceWorker(): Promise<ServiceWorkerRegistration | null> {
@@ -117,6 +168,7 @@ async function registerServiceWorker(): Promise<ServiceWorkerRegistration | null
   }
 
   try {
+    // Normal Service Worker registration - no cache-busting
     const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
     console.log('✅ Service worker registered for FCM:', registration.scope);
     return registration;

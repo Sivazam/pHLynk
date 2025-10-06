@@ -38,6 +38,7 @@ const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
+// Version: 2.0.2 - Force update for Service Worker cache-busting
 // Initialize Firebase Admin with service account JSON file
 function getServiceAccountConfig() {
     var _a;

@@ -249,25 +249,15 @@ class FCMService {
    */
   private async sendToDevice(deviceToken: string, notification: FCMNotificationData): Promise<{ success: boolean; error?: string }> {
     try {
-      // DISABLED: Automatic OTP routing to prevent duplicate notifications
-      // OTP notifications are now handled exclusively by Cloud Functions
+      // DISABLED: All notification sending to prevent duplicates
+      // All notifications are now handled exclusively by Cloud Functions
       console.log('📱 sendToDevice called for notification type:', notification.data?.type);
+      console.log('🚫 FCMService.sendToDevice DISABLED - using Cloud Functions only');
       
-      // For non-OTP notifications, fallback to legacy API if available
-      if (this.SERVER_KEY && this.SERVER_KEY !== 'your_fcm_server_key_here') {
-        return this.sendViaLegacyAPI(deviceToken, notification);
-      }
-      
-      return { success: false, error: 'NO_CONFIGURED_SEND_METHOD' };
+      return { success: false, error: 'FCM_SERVICE_DISABLED - USE_CLOUD_FUNCTIONS' };
     } catch (error) {
-      console.error('Error sending notification:', error);
-      
-      // Fallback to legacy API if server key is available
-      if (this.SERVER_KEY && this.SERVER_KEY !== 'your_fcm_server_key_here') {
-        return this.sendViaLegacyAPI(deviceToken, notification);
-      }
-      
-      return { success: false, error: 'NETWORK_ERROR' };
+      console.error('Error in sendToDevice:', error);
+      return { success: false, error: 'FCM_SERVICE_DISABLED' };
     }
   }
 

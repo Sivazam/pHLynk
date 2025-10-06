@@ -4,6 +4,7 @@ import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { PWAInstallPrompt } from "@/components/PWAInstallPrompt";
+import FCMDebugPanel from "@/components/FCMDebugPanel";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -78,6 +79,8 @@ export default function RootLayout({
         <AuthProvider>
           <PWAInstallPrompt />
           {children}
+          {/* TEMPORARY: FCM Debug Panel - Remove after FCM issues are resolved */}
+          <FCMDebugPanel />
         </AuthProvider>
         <Toaster />
         <script

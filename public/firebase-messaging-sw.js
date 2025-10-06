@@ -1,5 +1,6 @@
-// Firebase Cloud Messaging Service Worker
-// This service worker handles background push notifications with AUTH CHECK
+// Firebase Cloud Messaging Service Worker - Version 2.0.2
+// Fixed: Security for logged-out users, Updated icon/badge paths, Prevented duplicates
+// FORCE UPDATE: Clear browser cache and reload
 
 importScripts('https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/9.6.1/firebase-messaging-compat.js');

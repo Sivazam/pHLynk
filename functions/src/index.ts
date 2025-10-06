@@ -3,6 +3,8 @@ import * as admin from 'firebase-admin';
 import * as fs from 'fs';
 import * as path from 'path';
 
+// Version: 2.0.2 - Force update for Service Worker cache-busting
+
 // Initialize Firebase Admin with service account JSON file
 function getServiceAccountConfig() {
   try {

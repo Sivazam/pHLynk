@@ -1354,7 +1354,7 @@ Thank you for your payment!
                     </Card>
 
                     {/* Test Notifications */}
-                    {/* <Card className="border border-gray-200 shadow-sm">
+                    <Card className="border border-gray-200 shadow-sm">
                       <CardHeader className="pb-4">
                         <CardTitle className="text-lg font-semibold text-gray-900">Test Notifications</CardTitle>
                         <CardDescription className="text-gray-600">Test the enhanced notification system</CardDescription>
@@ -1396,7 +1396,7 @@ Thank you for your payment!
                           </Button>
                         </div>
                       </CardContent>
-                    </Card> */}
+                    </Card>
 
                     {/* Recent Activity */}
                     <Card className="border border-gray-200 shadow-sm">
