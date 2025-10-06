@@ -25,6 +25,7 @@ const nextConfig: NextConfig = {
     'http://0.0.0.0:3000',
     'https://0.0.0.0:3000',
     'https://*.space.z.ai',
+    'https://preview-chat-fcccd265-f9cb-4dbf-aa40-f01c57e15944.space.z.ai',
     'https://*.z.ai',
     'https://z.ai'
   ],
@@ -93,6 +94,18 @@ const nextConfig: NextConfig = {
             key: 'X-Content-Type-Options',
             value: 'nosniff',
           },
+          {
+            key: 'Access-Control-Allow-Origin',
+            value: '*',
+          },
+          {
+            key: 'Access-Control-Allow-Methods',
+            value: 'GET, HEAD, OPTIONS',
+          },
+          {
+            key: 'Access-Control-Allow-Headers',
+            value: 'Content-Type',
+          },
         ],
       },
       {
@@ -106,6 +119,14 @@ const nextConfig: NextConfig = {
             key: 'Cache-Control',
             value: 'public, max-age=31536000, immutable',
           },
+          {
+            key: 'Access-Control-Allow-Origin',
+            value: '*',
+          },
+          {
+            key: 'Access-Control-Allow-Methods',
+            value: 'GET, HEAD, OPTIONS',
+          },
         ],
       },
       {
@@ -118,6 +139,14 @@ const nextConfig: NextConfig = {
           {
             key: 'Cache-Control',
             value: 'public, max-age=31536000, immutable',
+          },
+          {
+            key: 'Access-Control-Allow-Origin',
+            value: '*',
+          },
+          {
+            key: 'Access-Control-Allow-Methods',
+            value: 'GET, HEAD, OPTIONS',
           },
         ],
       },

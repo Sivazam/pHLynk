@@ -27,6 +27,17 @@ async function createCustomServer() {
 
     // Create HTTP server that will handle both Next.js and Socket.IO
     const server = createServer((req, res) => {
+      // Handle CORS preflight requests
+      if (req.method === 'OPTIONS') {
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+        res.setHeader('Access-Control-Max-Age', '86400'); // 24 hours
+        res.writeHead(200);
+        res.end();
+        return;
+      }
+
       // Skip socket.io requests from Next.js handler
       if (req.url?.startsWith('/api/socketio')) {
         return;
@@ -44,6 +55,9 @@ async function createCustomServer() {
           if (fs.existsSync(staticPath)) {
             res.setHeader('Content-Type', 'text/css');
             res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+            res.setHeader('Access-Control-Allow-Origin', '*');
+            res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+            res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
             const fileStream = fs.createReadStream(staticPath);
             fileStream.pipe(res);
             return;
@@ -61,6 +75,9 @@ async function createCustomServer() {
           if (fs.existsSync(staticPath)) {
             res.setHeader('Content-Type', 'application/javascript');
             res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+            res.setHeader('Access-Control-Allow-Origin', '*');
+            res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+            res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
             const fileStream = fs.createReadStream(staticPath);
             fileStream.pipe(res);
             return;
@@ -99,6 +116,9 @@ async function createCustomServer() {
             }
             
             res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+            res.setHeader('Access-Control-Allow-Origin', '*');
+            res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+            res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
             const fileStream = fs.createReadStream(staticPath);
             fileStream.pipe(res);
             return;
@@ -136,6 +156,9 @@ async function createCustomServer() {
               res.setHeader('Content-Type', mimeTypes[ext]);
             }
             
+            res.setHeader('Access-Control-Allow-Origin', '*');
+            res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+            res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
             const fileStream = fs.createReadStream(publicPath);
             fileStream.pipe(res);
             return;

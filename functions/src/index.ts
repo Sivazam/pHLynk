@@ -841,9 +841,6 @@ export const sendOTPNotification = functions.https.onCall(async (request: any) =
         lineWorkerName: data.lineWorkerName,
         tag: `otp-${data.paymentId}`,
         requireInteraction: 'true',
-        // Icon paths for the notification
-        icon: '/notification-large-192x192.png', // Right side - high-res app icon from logo.png
-        badge: '/badge-72x72.png', // Left side - badge icon from PharmaLogo.png
         clickAction: '/retailer/dashboard'
       },
       token: fcmToken,
@@ -1051,10 +1048,7 @@ export const sendPaymentCompletionNotification = functions.https.onCall(async (r
         lineWorkerName: data.lineWorkerName,
         tag: `payment-${data.paymentId}`,
         requireInteraction: 'false',
-        clickAction: data.clickAction || '/retailer/payment-history',
-        // Icon paths for the notification
-        icon: '/notification-large-192x192.png', // Right side - high-res app icon from logo.png
-        badge: '/badge-72x72.png' // Left side - badge icon from PharmaLogo.png
+        clickAction: data.clickAction || '/retailer/payment-history'
       },
       token: fcmToken,
       android: {
