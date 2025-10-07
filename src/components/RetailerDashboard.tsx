@@ -13,7 +13,6 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { DashboardNavigation, NavItem } from '@/components/DashboardNavigation';
 import { PWANotificationManager } from '@/components/PWANotificationManager';
 import { NotificationDeduplicatorDebug } from '@/components/NotificationDeduplicatorDebug';
-import FCMNotificationManager from '@/components/FCMNotificationManager';
 import { useAuth } from '@/contexts/AuthContext';
 import { retailerService, paymentService, otpService } from '@/services/firestore';
 import { realtimeNotificationService } from '@/services/realtime-notifications';
@@ -59,7 +58,6 @@ import {
 } from 'lucide-react';
 import { StatusBarColor } from './ui/StatusBarColor';
 import { Confetti } from './ui/Confetti';
-import { DebugOTPPanel } from './DebugOTPPanel';
 
 export function RetailerDashboard() {
   const { user, logout } = useAuth();
@@ -1275,6 +1273,13 @@ export function RetailerDashboard() {
       
       // Handle multi-tenant support
       const retailerTenants = retailerData.tenantIds || [retailerUserData.tenantId];
+      console.log('🏪 Retailer Multi-Tenant Data:', {
+        retailerId: retailerData.id,
+        retailerName: retailerData.name,
+        tenantIds: retailerData.tenantIds,
+        userTenantId: retailerUserData.tenantId,
+        finalTenants: retailerTenants
+      });
       setAvailableTenants(retailerTenants);
       
       // Set current tenantId (prefer the one from retailerUserData, fallback to first available)
@@ -1748,11 +1753,6 @@ Thank you for your payment!
                         </CardContent>
                       </Card>
 
-                      {/* Debug OTP Panel - Always show for testing */}
-                      {retailer && (
-                        <DebugOTPPanel retailerId={retailer.id} />
-                      )}
-
                       <Card>
                         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                           <CardTitle className="text-sm font-medium text-gray-600">Wholesaler</CardTitle>
@@ -1777,12 +1777,12 @@ Thank you for your payment!
                                   ))}
                                 </SelectContent>
                               </Select>
-                              <p className="text-xs text-gray-500">Multiple wholesalers</p>
+                              <p className="text-xs text-gray-500">Multiple wholesalers ({availableTenants.length} available)</p>
                             </div>
                           ) : (
                             <div>
                               <div className="text-2xl font-bold text-gray-900">{wholesalerNames[tenantId || ''] || 'Loading...'}</div>
-                              <p className="text-xs text-gray-500">Your wholesaler</p>
+                              <p className="text-xs text-gray-500">Your wholesaler {availableTenants.length > 0 ? `(${availableTenants.length} total)` : ''}</p>
                             </div>
                           )}
                         </CardContent>
@@ -1960,9 +1960,6 @@ Thank you for your payment!
 
                     {/* PWA Notification Manager */}
                     <PWANotificationManager userRole="RETAILER" />
-                    
-                    {/* FCM Notification Manager */}
-                    <FCMNotificationManager userId={user?.uid} />
                   </div>
                 )}
 
@@ -2162,9 +2159,6 @@ Thank you for your payment!
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                       {/* PWA Notification Manager */}
                       <PWANotificationManager userRole="RETAILER" />
-                      
-                      {/* FCM Notification Manager */}
-                      <FCMNotificationManager userId={user?.uid} />
                     </div>
 
                     {/* Notification De-duplicator Debug */}

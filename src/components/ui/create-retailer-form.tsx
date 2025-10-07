@@ -80,12 +80,13 @@ export function CreateRetailerForm({
   const handleRetailerFound = (retailer: Retailer) => {
     setFoundRetailer(retailer);
     setFormMode('create');
-    // Pre-fill form with found retailer data
+    // Pre-fill form with found retailer data but NOT service areas
     setName(retailer.name);
     setPhone(retailer.phone);
     setAddress(retailer.address || '');
-    setAreaId(retailer.areaId || '');
-    setZipcodes(retailer.zipcodes || []);
+    // Clear area and zipcodes to let wholesaler assign their own
+    setAreaId('');
+    setZipcodes([]);
   };
 
   const handleAddExistingRetailer = async () => {
@@ -210,13 +211,16 @@ export function CreateRetailerForm({
                       </div>
                       <div>
                         <h3 className="font-semibold text-blue-900">Adding Existing Retailer</h3>
-                        <p className="text-sm text-blue-700">This retailer will be added to your account</p>
+                        <p className="text-sm text-blue-700">Assign service areas for this retailer in your network</p>
                       </div>
                     </div>
-                    <div className="text-sm text-blue-800">
+                    <div className="text-sm text-blue-800 mb-3">
                       <p><strong>Name:</strong> {foundRetailer.name}</p>
                       <p><strong>Phone:</strong> {foundRetailer.phone}</p>
                       {foundRetailer.address && <p><strong>Address:</strong> {foundRetailer.address}</p>}
+                    </div>
+                    <div className="text-xs text-blue-600 bg-blue-100 p-2 rounded">
+                      <p>💡 <strong>Note:</strong> This retailer already exists. You can now assign service areas specific to your wholesaler network.</p>
                     </div>
                   </CardContent>
                 </Card>
@@ -334,11 +338,11 @@ export function CreateRetailerForm({
                     <>
                       <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                       {formMode === 'update' ? 'Updating...' : 
-                       foundRetailer ? 'Adding...' : 'Creating...'}
+                       foundRetailer ? 'Adding to Network...' : 'Creating...'}
                     </>
                   ) : (
                     formMode === 'update' ? 'Update Retailer' : 
-                    foundRetailer ? 'Add Retailer to Account' : 'Create Retailer'
+                    foundRetailer ? 'Add Retailer to Network' : 'Create Retailer'
                   )}
                 </Button>
               </div>
