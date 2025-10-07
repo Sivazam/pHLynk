@@ -363,25 +363,66 @@ export class UserService extends FirestoreService<User> {
   }
 
   async getUsersByRole(tenantId: string, role: string): Promise<User[]> {
-    return this.query(tenantId, [
-      where('roles', 'array-contains', role),
-      where('active', '==', true)
-    ]);
+    try {
+      // Direct query to avoid multiple array-contains filters
+      const q = query(
+        collection(db, this.collectionName), 
+        where('tenantId', '==', tenantId),  // Use == instead of array-contains
+        where('roles', 'array-contains', role),
+        where('active', '==', true)
+      );
+      const querySnapshot = await getDocs(q);
+      
+      const users: User[] = [];
+      querySnapshot.forEach((doc: QueryDocumentSnapshot) => {
+        users.push({ id: doc.id, ...doc.data() } as User);
+      });
+      
+      return users;
+    } catch (error) {
+      logger.error(`Error getting users by role ${role}`, error, { context: 'UserService' });
+      throw error;
+    }
   }
 
   async getAllUsersByRole(tenantId: string, role: string): Promise<User[]> {
-    return this.query(tenantId, [
-      where('roles', 'array-contains', role)
-    ]);
+    try {
+      // Direct query to avoid multiple array-contains filters
+      const q = query(
+        collection(db, this.collectionName), 
+        where('tenantId', '==', tenantId),  // Use == instead of array-contains
+        where('roles', 'array-contains', role)
+      );
+      const querySnapshot = await getDocs(q);
+      
+      const users: User[] = [];
+      querySnapshot.forEach((doc: QueryDocumentSnapshot) => {
+        users.push({ id: doc.id, ...doc.data() } as User);
+      });
+      
+      return users;
+    } catch (error) {
+      logger.error(`Error getting all users by role ${role}`, error, { context: 'UserService' });
+      throw error;
+    }
   }
 
   async getLineWorkersForArea(tenantId: string, areaId: string): Promise<User[]> {
     try {
-      // First get all active line workers for the tenant
-      const lineWorkers = await this.query(tenantId, [
+      // Direct query to avoid multiple array-contains filters
+      // Use tenantId instead of tenantIds to avoid array-contains conflict
+      const q = query(
+        collection(db, this.collectionName), 
+        where('tenantId', '==', tenantId),  // Use == instead of array-contains
         where('roles', 'array-contains', 'LINE_WORKER'),
         where('active', '==', true)
-      ]);
+      );
+      const querySnapshot = await getDocs(q);
+      
+      const lineWorkers: User[] = [];
+      querySnapshot.forEach((doc: QueryDocumentSnapshot) => {
+        lineWorkers.push({ id: doc.id, ...doc.data() } as User);
+      });
       
       // Then filter by assigned areas in application code
       const workersForArea = lineWorkers.filter(worker => 
@@ -623,7 +664,25 @@ export class RetailerService extends FirestoreService<Retailer> {
   }
 
   async getRetailersByZipcode(tenantId: string, zipcode: string): Promise<Retailer[]> {
-    return this.query(tenantId, [where('zipcodes', 'array-contains', zipcode)]);
+    try {
+      // Direct query to avoid multiple array-contains filters
+      const q = query(
+        collection(db, this.collectionName), 
+        where('tenantId', '==', tenantId),  // Use == instead of array-contains
+        where('zipcodes', 'array-contains', zipcode)
+      );
+      const querySnapshot = await getDocs(q);
+      
+      const retailers: Retailer[] = [];
+      querySnapshot.forEach((doc: QueryDocumentSnapshot) => {
+        retailers.push({ id: doc.id, ...doc.data() } as Retailer);
+      });
+      
+      return retailers;
+    } catch (error) {
+      logger.error(`Error getting retailers by zipcode ${zipcode}`, error, { context: 'RetailerService' });
+      throw error;
+    }
   }
 
   // New multi-tenant methods
