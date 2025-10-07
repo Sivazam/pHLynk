@@ -341,25 +341,55 @@ export class UserService extends FirestoreService<User> {
     }
   }
 
-  async getUsersByRole(tenantId: string, role: string): Promise<User[]> {
-    return this.query(tenantId, [
-      where('roles', 'array-contains', role),
-      where('active', '==', true)
-    ]);
+  async getUsersByRole(tenantId: string, role: keyof typeof ROLES): Promise<User[]> {
+    try {
+      // Get all users for the tenant first (to avoid multiple ARRAY_CONTAINS filters)
+      const allUsers = await this.getAll(tenantId);
+      
+      // Then filter by role and active status on the client side
+      return allUsers.filter(user => 
+        user.roles && 
+        user.roles.includes(role) &&
+        user.active === true
+      );
+    } catch (error) {
+      logger.error(`Error getting active users by role ${String(role)} for tenant ${tenantId}`, error, { context: 'UserService' });
+      throw error;
+    }
   }
 
-  async getAllUsersByRole(tenantId: string, role: string): Promise<User[]> {
-    return this.query(tenantId, [
-      where('roles', 'array-contains', role)
-    ]);
+  async getAllUsersByRole(tenantId: string, role: keyof typeof ROLES): Promise<User[]> {
+    try {
+      // Get all users for the tenant first (to avoid multiple ARRAY_CONTAINS filters)
+      const allUsers = await this.getAll(tenantId);
+      
+      // Then filter by role on the client side
+      return allUsers.filter(user => 
+        user.roles && user.roles.includes(role)
+      );
+    } catch (error) {
+      logger.error(`Error getting users by role ${String(role)} for tenant ${tenantId}`, error, { context: 'UserService' });
+      throw error;
+    }
   }
 
   async getLineWorkersForArea(tenantId: string, areaId: string): Promise<User[]> {
-    return this.query(tenantId, [
-      where('roles', 'array-contains', 'LINE_WORKER'),
-      where('assignedAreas', 'array-contains', areaId),
-      where('active', '==', true)
-    ]);
+    try {
+      // Get all users for the tenant first (to avoid multiple ARRAY_CONTAINS filters)
+      const allUsers = await this.getAll(tenantId);
+      
+      // Then filter on the client side
+      return allUsers.filter(user => 
+        user.roles && 
+        user.roles.includes('LINE_WORKER') &&
+        user.assignedAreas && 
+        user.assignedAreas.includes(areaId) &&
+        user.active === true
+      );
+    } catch (error) {
+      logger.error(`Error getting line workers for area ${areaId} in tenant ${tenantId}`, error, { context: 'UserService' });
+      throw error;
+    }
   }
 
   async assignAreasToUser(userId: string, tenantId: string, areaIds: string[]): Promise<void> {
@@ -389,10 +419,18 @@ export class AreaService extends FirestoreService<Area> {
   }
 
   async getAreasByZipcode(tenantId: string, zipcode: string): Promise<Area[]> {
-    return this.getAll(tenantId, [
-      where('active', '==', true),
-      where('zipcodes', 'array-contains', zipcode)
-    ]);
+    try {
+      // Get all active areas for the tenant first (to avoid multiple ARRAY_CONTAINS filters)
+      const allAreas = await this.getActiveAreas(tenantId);
+      
+      // Then filter by zipcode on the client side
+      return allAreas.filter(area => 
+        area.zipcodes && area.zipcodes.includes(zipcode)
+      );
+    } catch (error) {
+      logger.error(`Error getting areas by zipcode ${zipcode} for tenant ${tenantId}`, error, { context: 'AreaService' });
+      throw error;
+    }
   }
 
   async deleteArea(tenantId: string, areaId: string): Promise<void> {
@@ -444,7 +482,18 @@ export class RetailerService extends FirestoreService<Retailer> {
   }
 
   async getRetailersByZipcode(tenantId: string, zipcode: string): Promise<Retailer[]> {
-    return this.query(tenantId, [where('zipcodes', 'array-contains', zipcode)]);
+    try {
+      // Get all retailers for the tenant first (to avoid multiple ARRAY_CONTAINS filters)
+      const allRetailers = await this.getAll(tenantId);
+      
+      // Then filter by zipcode on the client side
+      return allRetailers.filter(retailer => 
+        retailer.zipcodes && retailer.zipcodes.includes(zipcode)
+      );
+    } catch (error) {
+      logger.error(`Error getting retailers by zipcode ${zipcode} for tenant ${tenantId}`, error, { context: 'RetailerService' });
+      throw error;
+    }
   }
 
   // New multi-tenant methods
