@@ -22,11 +22,11 @@ export function getCurrentDeviceId(): string {
   
   // Create a unique device ID based on browser fingerprint
   const userAgent = navigator.userAgent;
-  const screen = `${screen.width}x${screen.height}`;
+  const screenDimensions = `${window.screen.width}x${window.screen.height}`;
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   
   // Create a simple hash
-  const str = `${userAgent}|${screen}|${timezone}`;
+  const str = `${userAgent}|${screenDimensions}|${timezone}`;
   let hash = 0;
   for (let i = 0; i < str.length; i++) {
     const char = str.charCodeAt(i);
