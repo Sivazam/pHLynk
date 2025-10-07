@@ -19,8 +19,8 @@ export async function GET(request: NextRequest) {
     const retailerId = session.user.id
 
     // Get retailer details - try to find from any tenant the retailer belongs to
-    let retailer: any = null
-    let tenantIds: string[] = []
+    let retailer = null
+    let tenantIds = []
     
     // Query retailers directly to find the retailer and get all associated tenants
     const retailersRef = collection(db, 'retailers')

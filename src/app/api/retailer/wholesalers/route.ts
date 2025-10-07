@@ -19,8 +19,8 @@ export async function GET(request: NextRequest) {
     const retailerId = session.user.id
 
     // Get retailer details - query directly to find retailer and their tenant associations
-    let retailer: any = null
-    let tenantIds: string[] = []
+    let retailer = null
+    let tenantIds = []
     
     const retailersRef = collection(db, 'retailers')
     const retailerQuery = query(retailersRef, where('phone', '==', session.user.email || ''))
@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Get wholesaler details for each tenantId
-    const wholesalers: any[] = []
+    const wholesalers = []
     
     for (const tenantId of tenantIds) {
       try {

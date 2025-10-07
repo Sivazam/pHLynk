@@ -54,27 +54,9 @@ export function RoleSelection({ onRoleSelect, onBack }: RoleSelectionProps) {
   if (selectedRole === 'RETAILER') {
     return (
       <RetailerAuth 
-        onAuthSuccess={async (retailerId) => {
-          console.log('🔐 Retailer authentication successful, initializing FCM...');
-          
+        onAuthSuccess={(retailerId) => {
           // Store retailer ID in localStorage for backward compatibility
           localStorage.setItem('retailerId', retailerId);
-          
-          // Request notification permission and register device
-          try {
-            const { requestNotificationPermissionAndRegisterDevice } = await import('@/lib/fcm');
-            const fcmToken = await requestNotificationPermissionAndRegisterDevice(retailerId);
-            
-            if (fcmToken) {
-              console.log('✅ FCM device registered successfully for retailer:', retailerId);
-            } else {
-              console.warn('⚠️ FCM registration failed, but continuing with login...');
-            }
-          } catch (error) {
-            console.error('❌ Error during FCM registration:', error);
-            // Continue with login even if FCM fails
-          }
-          
           // Note: The AuthContext will automatically detect the Firebase Auth user
           // and load the retailer data, so no page reload is needed
           console.log('Retailer authentication successful, retailerId:', retailerId);

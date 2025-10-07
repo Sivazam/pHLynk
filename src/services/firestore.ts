@@ -127,7 +127,28 @@ export class FirestoreService<T extends BaseDocument> {
       
       const documents: T[] = [];
       querySnapshot.forEach((doc: QueryDocumentSnapshot) => {
-        documents.push({ id: doc.id, ...doc.data() } as T);
+        const data = doc.data() as T;
+        
+        // For Retailer documents, merge wholesaler-specific data
+        if (this.collectionName === COLLECTIONS.RETAILERS && 
+            data && 
+            (data as any).wholesalerAssignments && 
+            (data as any).wholesalerAssignments[tenantId]) {
+          
+          const retailer = data as any;
+          const assignment = retailer.wholesalerAssignments[tenantId];
+          
+          // Create merged retailer with wholesaler-specific overrides
+          const mergedRetailer = {
+            ...retailer,
+            areaId: assignment.areaId || retailer.areaId,
+            zipcodes: assignment.zipcodes.length > 0 ? assignment.zipcodes : retailer.zipcodes
+          };
+          
+          documents.push({ id: doc.id, ...mergedRetailer } as T);
+        } else {
+          documents.push({ id: doc.id, ...data } as T);
+        }
       });
       
       return documents;
@@ -341,55 +362,25 @@ export class UserService extends FirestoreService<User> {
     }
   }
 
-  async getUsersByRole(tenantId: string, role: keyof typeof ROLES): Promise<User[]> {
-    try {
-      // Get all users for the tenant first (to avoid multiple ARRAY_CONTAINS filters)
-      const allUsers = await this.getAll(tenantId);
-      
-      // Then filter by role and active status on the client side
-      return allUsers.filter(user => 
-        user.roles && 
-        user.roles.includes(role) &&
-        user.active === true
-      );
-    } catch (error) {
-      logger.error(`Error getting active users by role ${String(role)} for tenant ${tenantId}`, error, { context: 'UserService' });
-      throw error;
-    }
+  async getUsersByRole(tenantId: string, role: string): Promise<User[]> {
+    return this.query(tenantId, [
+      where('roles', 'array-contains', role),
+      where('active', '==', true)
+    ]);
   }
 
-  async getAllUsersByRole(tenantId: string, role: keyof typeof ROLES): Promise<User[]> {
-    try {
-      // Get all users for the tenant first (to avoid multiple ARRAY_CONTAINS filters)
-      const allUsers = await this.getAll(tenantId);
-      
-      // Then filter by role on the client side
-      return allUsers.filter(user => 
-        user.roles && user.roles.includes(role)
-      );
-    } catch (error) {
-      logger.error(`Error getting users by role ${String(role)} for tenant ${tenantId}`, error, { context: 'UserService' });
-      throw error;
-    }
+  async getAllUsersByRole(tenantId: string, role: string): Promise<User[]> {
+    return this.query(tenantId, [
+      where('roles', 'array-contains', role)
+    ]);
   }
 
   async getLineWorkersForArea(tenantId: string, areaId: string): Promise<User[]> {
-    try {
-      // Get all users for the tenant first (to avoid multiple ARRAY_CONTAINS filters)
-      const allUsers = await this.getAll(tenantId);
-      
-      // Then filter on the client side
-      return allUsers.filter(user => 
-        user.roles && 
-        user.roles.includes('LINE_WORKER') &&
-        user.assignedAreas && 
-        user.assignedAreas.includes(areaId) &&
-        user.active === true
-      );
-    } catch (error) {
-      logger.error(`Error getting line workers for area ${areaId} in tenant ${tenantId}`, error, { context: 'UserService' });
-      throw error;
-    }
+    return this.query(tenantId, [
+      where('roles', 'array-contains', 'LINE_WORKER'),
+      where('assignedAreas', 'array-contains', areaId),
+      where('active', '==', true)
+    ]);
   }
 
   async assignAreasToUser(userId: string, tenantId: string, areaIds: string[]): Promise<void> {
@@ -419,18 +410,10 @@ export class AreaService extends FirestoreService<Area> {
   }
 
   async getAreasByZipcode(tenantId: string, zipcode: string): Promise<Area[]> {
-    try {
-      // Get all active areas for the tenant first (to avoid multiple ARRAY_CONTAINS filters)
-      const allAreas = await this.getActiveAreas(tenantId);
-      
-      // Then filter by zipcode on the client side
-      return allAreas.filter(area => 
-        area.zipcodes && area.zipcodes.includes(zipcode)
-      );
-    } catch (error) {
-      logger.error(`Error getting areas by zipcode ${zipcode} for tenant ${tenantId}`, error, { context: 'AreaService' });
-      throw error;
-    }
+    return this.getAll(tenantId, [
+      where('active', '==', true),
+      where('zipcodes', 'array-contains', zipcode)
+    ]);
   }
 
   async deleteArea(tenantId: string, areaId: string): Promise<void> {
@@ -444,37 +427,94 @@ export class RetailerService extends FirestoreService<Retailer> {
   }
 
   async createRetailer(tenantId: string, data: CreateRetailerForm): Promise<string> {
-    // Create the retailer document with tenantIds array
-    const retailerId = await this.create({
-      name: data.name,
-      phone: data.phone,
-      address: data.address,
-      areaId: data.areaId,
-      zipcodes: data.zipcodes
-    } as Omit<Retailer, 'id' | 'createdAt' | 'updatedAt'>, tenantId);
-
-    // Create retailer user account for login
     try {
-      const retailerData: Retailer = {
-        id: retailerId,
-        tenantIds: [tenantId], // Use tenantIds array
+      // First check if retailer with same phone number already exists
+      console.log('🔍 Checking if retailer already exists with phone:', data.phone);
+      const existingRetailer = await this.getRetailerByPhone(data.phone);
+      
+      if (existingRetailer) {
+        console.log('✅ Found existing retailer, adding tenant to it:', existingRetailer.id);
+        
+        // Check if this tenant is already associated
+        if (existingRetailer.tenantIds && existingRetailer.tenantIds.includes(tenantId)) {
+          console.log('ℹ️ Tenant already associated with this retailer');
+          // Update wholesaler assignment anyway in case area changed
+          await this.updateWholesalerAssignment(existingRetailer.id, tenantId, data.areaId, data.zipcodes);
+          return existingRetailer.id;
+        }
+        
+        // Add tenant to existing retailer
+        await this.addTenantToRetailer(existingRetailer.id, tenantId);
+        
+        // Add wholesaler-specific assignment
+        await this.updateWholesalerAssignment(existingRetailer.id, tenantId, data.areaId, data.zipcodes);
+        
+        // Create retailer user account for this tenant if it doesn't exist
+        try {
+          const retailerDataForTenant = {
+            ...existingRetailer,
+            tenantIds: [...(existingRetailer.tenantIds || []), tenantId]
+          };
+          await RetailerAuthService.createRetailerUser(retailerDataForTenant, tenantId);
+          logger.success('Retailer user account created for existing retailer', data.phone, { context: 'RetailerService' });
+        } catch (error) {
+          logger.error('Error creating retailer user account for existing retailer', error, { context: 'RetailerService' });
+          // Don't throw here - the retailer was added successfully
+        }
+        
+        return existingRetailer.id;
+      }
+      
+      // Create new retailer document only if no existing retailer found
+      console.log('🆕 Creating new retailer document for:', data.phone);
+      const retailerId = await this.create({
         name: data.name,
         phone: data.phone,
         address: data.address,
         areaId: data.areaId,
         zipcodes: data.zipcodes,
-        createdAt: Timestamp.now(),
-        updatedAt: Timestamp.now()
-      };
+        wholesalerAssignments: {
+          [tenantId]: {
+            areaId: data.areaId,
+            zipcodes: data.zipcodes,
+            assignedAt: Timestamp.now()
+          }
+        }
+      } as Omit<Retailer, 'id' | 'createdAt' | 'updatedAt'>, tenantId);
 
-      await RetailerAuthService.createRetailerUser(retailerData, tenantId);
-      logger.success('Retailer user account created for', data.phone, { context: 'RetailerService' });
+      // Create retailer user account for login
+      try {
+        const retailerData: Retailer = {
+          id: retailerId,
+          tenantIds: [tenantId], // Use tenantIds array
+          name: data.name,
+          phone: data.phone,
+          address: data.address,
+          areaId: data.areaId,
+          zipcodes: data.zipcodes,
+          wholesalerAssignments: {
+            [tenantId]: {
+              areaId: data.areaId,
+              zipcodes: data.zipcodes,
+              assignedAt: Timestamp.now()
+            }
+          },
+          createdAt: Timestamp.now(),
+          updatedAt: Timestamp.now()
+        };
+
+        await RetailerAuthService.createRetailerUser(retailerData, tenantId);
+        logger.success('Retailer user account created for', data.phone, { context: 'RetailerService' });
+      } catch (error) {
+        logger.error('Error creating retailer user account', error, { context: 'RetailerService' });
+        // Don't throw here - the retailer was created successfully
+      }
+
+      return retailerId;
     } catch (error) {
-      logger.error('Error creating retailer user account', error, { context: 'RetailerService' });
-      // Don't throw here - the retailer was created successfully
+      logger.error('Error in createRetailer', error, { context: 'RetailerService' });
+      throw error;
     }
-
-    return retailerId;
   }
 
   async getRetailersByArea(tenantId: string, areaId: string): Promise<Retailer[]> {
@@ -482,18 +522,7 @@ export class RetailerService extends FirestoreService<Retailer> {
   }
 
   async getRetailersByZipcode(tenantId: string, zipcode: string): Promise<Retailer[]> {
-    try {
-      // Get all retailers for the tenant first (to avoid multiple ARRAY_CONTAINS filters)
-      const allRetailers = await this.getAll(tenantId);
-      
-      // Then filter by zipcode on the client side
-      return allRetailers.filter(retailer => 
-        retailer.zipcodes && retailer.zipcodes.includes(zipcode)
-      );
-    } catch (error) {
-      logger.error(`Error getting retailers by zipcode ${zipcode} for tenant ${tenantId}`, error, { context: 'RetailerService' });
-      throw error;
-    }
+    return this.query(tenantId, [where('zipcodes', 'array-contains', zipcode)]);
   }
 
   // New multi-tenant methods
@@ -603,6 +632,92 @@ export class RetailerService extends FirestoreService<Retailer> {
     } catch (error) {
       logger.error('Error getting retailers for tenant', error, { context: 'RetailerService' });
       return [];
+    }
+  }
+
+  /**
+   * Update wholesaler-specific assignment for a retailer
+   */
+  async updateWholesalerAssignment(retailerId: string, tenantId: string, areaId?: string, zipcodes?: string[]): Promise<void> {
+    try {
+      const retailerRef = doc(db, COLLECTIONS.RETAILERS, retailerId);
+      const retailerDoc = await getDoc(retailerRef);
+      
+      if (!retailerDoc.exists()) {
+        throw new Error('Retailer not found');
+      }
+      
+      const retailerData = retailerDoc.data();
+      const currentAssignments = retailerData.wholesalerAssignments || {};
+      
+      // Update or add the wholesaler's assignment
+      const updatedAssignments = {
+        ...currentAssignments,
+        [tenantId]: {
+          areaId: areaId || undefined,
+          zipcodes: zipcodes || [],
+          assignedAt: Timestamp.now()
+        }
+      };
+      
+      await updateDoc(retailerRef, {
+        wholesalerAssignments: updatedAssignments,
+        updatedAt: Timestamp.now()
+      });
+      
+      logger.success(`Updated wholesaler assignment for retailer ${retailerId}, tenant ${tenantId}`, { context: 'RetailerService' });
+    } catch (error) {
+      logger.error('Error updating wholesaler assignment', error, { context: 'RetailerService' });
+      throw error;
+    }
+  }
+
+  /**
+   * Get wholesaler-specific assignment for a retailer
+   */
+  async getWholesalerAssignment(retailerId: string, tenantId: string): Promise<{
+    areaId?: string;
+    zipcodes: string[];
+    assignedAt: Timestamp;
+  } | null> {
+    try {
+      const retailer = await this.getById(retailerId, tenantId);
+      if (!retailer || !retailer.wholesalerAssignments) {
+        return null;
+      }
+      
+      return retailer.wholesalerAssignments[tenantId] || null;
+    } catch (error) {
+      logger.error('Error getting wholesaler assignment', error, { context: 'RetailerService' });
+      return null;
+    }
+  }
+
+  /**
+   * Get retailer with wholesaler-specific data merged
+   */
+  async getRetailerForTenant(retailerId: string, tenantId: string): Promise<Retailer | null> {
+    try {
+      const retailer = await this.getById(retailerId, tenantId);
+      if (!retailer) {
+        return null;
+      }
+      
+      // If wholesaler-specific assignment exists, merge it
+      if (retailer.wholesalerAssignments && retailer.wholesalerAssignments[tenantId]) {
+        const assignment = retailer.wholesalerAssignments[tenantId];
+        return {
+          ...retailer,
+          // Override with wholesaler-specific data
+          areaId: assignment.areaId || retailer.areaId,
+          zipcodes: assignment.zipcodes.length > 0 ? assignment.zipcodes : retailer.zipcodes
+        };
+      }
+      
+      return retailer;
+    } catch (error) {
+      logger.error('Error getting retailer for tenant', error, { context: 'RetailerService' });
+      return null;
     }
   }
 

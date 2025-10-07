@@ -9,6 +9,8 @@ import { db } from '@/lib/firebase';
 interface AddRetailerToTenantRequest {
   retailerId: string;
   tenantId: string;
+  areaId?: string;
+  zipcodes?: string[];
 }
 
 export async function POST(request: NextRequest) {
@@ -19,8 +21,9 @@ export async function POST(request: NextRequest) {
     const body: AddRetailerToTenantRequest = await request.json();
     retailerId = body.retailerId;
     tenantId = body.tenantId;
+    const { areaId, zipcodes } = body;
 
-    console.log('🔗 Adding retailer to tenant:', { retailerId, tenantId });
+    console.log('🔗 Adding retailer to tenant:', { retailerId, tenantId, areaId, zipcodes });
 
     if (!retailerId || !tenantId) {
       return NextResponse.json(
@@ -44,6 +47,11 @@ export async function POST(request: NextRequest) {
     const retailer = await retailerService.getById(retailerId, tenantId);
     if (retailer) {
       // Retailer is already associated with this tenant
+      // Update wholesaler assignment if area/zipcodes provided
+      if (areaId || zipcodes) {
+        await retailerService.updateWholesalerAssignment(retailerId, tenantId, areaId, zipcodes);
+      }
+      
       return NextResponse.json({
         success: true,
         message: 'Retailer is already associated with your account',
@@ -67,6 +75,11 @@ export async function POST(request: NextRequest) {
     // Check if retailer is already associated with this tenant
     const retailerData = retailerDoc.data();
     if (retailerData.tenantIds && retailerData.tenantIds.includes(tenantId)) {
+      // Update wholesaler assignment if area/zipcodes provided
+      if (areaId || zipcodes) {
+        await retailerService.updateWholesalerAssignment(retailerId, tenantId, areaId, zipcodes);
+      }
+      
       return NextResponse.json({
         success: true,
         message: 'Retailer is already associated with your account',
@@ -78,6 +91,11 @@ export async function POST(request: NextRequest) {
 
     // Add tenant to retailer's tenantIds array
     await retailerService.addTenantToRetailer(retailerId, tenantId);
+    
+    // Add wholesaler-specific assignment if area/zipcodes provided
+    if (areaId || zipcodes) {
+      await retailerService.updateWholesalerAssignment(retailerId, tenantId, areaId, zipcodes);
+    }
 
     console.log('✅ Retailer added to tenant successfully');
 

@@ -43,8 +43,19 @@ export interface Retailer extends BaseDocument {
   phone: string;
   email?: string;
   address?: string;
+  
+  // Legacy fields (kept for backward compatibility)
   areaId?: string;
   zipcodes: string[];
+  
+  // Wholesaler-specific assignments (NEW)
+  wholesalerAssignments?: {
+    [tenantId: string]: {
+      areaId?: string;
+      zipcodes: string[];
+      assignedAt: Timestamp;
+    };
+  };
   
   // Direct line worker assignment (optional, overrides area-based assignment)
   assignedLineWorkerId?: string;

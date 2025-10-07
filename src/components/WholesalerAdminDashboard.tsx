@@ -873,7 +873,7 @@ export function WholesalerAdminDashboard() {
     }
   };
 
-  const handleAddExistingRetailer = async (retailer: Retailer) => {
+  const handleAddExistingRetailer = async (retailer: Retailer, areaId?: string, zipcodes?: string[]) => {
     const currentTenantId = getCurrentTenantId();
     if (!currentTenantId) {
       setError('No tenant selected. Please select a tenant to continue.');
@@ -881,7 +881,7 @@ export function WholesalerAdminDashboard() {
     }
     
     try {
-      console.log('🔗 Adding existing retailer to tenant:', retailer.id, currentTenantId);
+      console.log('🔗 Adding existing retailer to tenant:', retailer.id, currentTenantId, { areaId, zipcodes });
       
       const response = await fetch('/api/retailer/add-to-tenant', {
         method: 'POST',
@@ -890,7 +890,9 @@ export function WholesalerAdminDashboard() {
         },
         body: JSON.stringify({ 
           retailerId: retailer.id,
-          tenantId: currentTenantId
+          tenantId: currentTenantId,
+          areaId,
+          zipcodes
         }),
       });
 

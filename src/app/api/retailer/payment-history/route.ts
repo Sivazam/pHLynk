@@ -24,8 +24,8 @@ export async function GET(request: NextRequest) {
     const toDate = searchParams.get('to')
 
     // Get retailer details - query directly to find retailer and their tenant associations
-    let retailer: any = null
-    let tenantIds: string[] = []
+    let retailer = null
+    let tenantIds = []
     
     const retailersRef = collection(db, 'retailers')
     const retailerQuery = query(retailersRef, where('phone', '==', session.user.email || ''))

@@ -24,7 +24,6 @@ class FCMService {
 
   /**
    * Register a device token for a retailer
-   * Enhanced to handle multi-retailer scenarios and token uniqueness
    */
   async registerDevice(retailerId: string, deviceToken: string, userAgent: string = 'unknown'): Promise<{ success: boolean; message: string }> {
     try {
@@ -52,7 +51,7 @@ class FCMService {
         lastActive: new Date()
       };
 
-      // Check if device already exists for this retailer
+      // Check if device already exists
       const existingDevices = retailerDoc.data()?.fcmDevices || [];
       console.log('📱 FCM Service: Existing devices count:', existingDevices.length);
       
@@ -71,10 +70,6 @@ class FCMService {
         return { success: true, message: 'Device updated successfully' };
       } else {
         console.log('➕ FCM Service: Adding new device to retailers collection');
-        
-        // Before adding new device, check if this token is already registered to another retailer
-        await this.cleanupTokenFromOtherRetailers(deviceToken, retailerId);
-        
         // Add new device
         await updateDoc(retailerRef, {
           fcmDevices: arrayUnion(device)
@@ -85,57 +80,6 @@ class FCMService {
     } catch (error) {
       console.error('❌ FCM Service: Error registering FCM device:', error);
       return { success: false, message: 'Failed to register device' };
-    }
-  }
-
-  /**
-   * Clean up FCM token from other retailers to ensure token uniqueness
-   * This handles the case where the same device is used by multiple retailers
-   */
-  private async cleanupTokenFromOtherRetailers(token: string, currentRetailerId: string): Promise<void> {
-    try {
-      console.log('🧹 FCM Service: Cleaning up token from other retailers:', {
-        tokenPrefix: token.substring(0, 20) + '...',
-        currentRetailerId
-      });
-
-      // Query all retailers to find if this token is registered elsewhere
-      const retailersRef = collection(db, 'retailers');
-      const q = query(retailersRef, where('fcmDevices', 'array-contains', { token }));
-      const querySnapshot = await getDocs(q);
-
-      let cleanupCount = 0;
-      for (const doc of querySnapshot.docs) {
-        const retailerId = doc.id;
-        
-        // Skip current retailer
-        if (retailerId === currentRetailerId) {
-          continue;
-        }
-
-        const retailerData = doc.data();
-        const fcmDevices = retailerData.fcmDevices || [];
-        
-        // Find and remove the device with this token
-        const deviceToRemove = fcmDevices.find((d: FCMDevice) => d.token === token);
-        
-        if (deviceToRemove) {
-          console.log(`🗑️ FCM Service: Removing token from retailer ${retailerId}`);
-          await updateDoc(doc.ref, {
-            fcmDevices: arrayRemove(deviceToRemove)
-          });
-          cleanupCount++;
-        }
-      }
-
-      if (cleanupCount > 0) {
-        console.log(`✅ FCM Service: Cleaned up token from ${cleanupCount} other retailer(s)`);
-      } else {
-        console.log('🔍 FCM Service: Token not found in other retailers');
-      }
-    } catch (error) {
-      console.error('❌ FCM Service: Error cleaning up token from other retailers:', error);
-      // Don't fail the registration if cleanup fails
     }
   }
 
