@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
       const payment = {
         id: paymentDoc.id,
         ...paymentDoc.data()
-      };
+      } as any;
 
       console.log('📄 Payment details:', {
         paymentId: payment.id,
