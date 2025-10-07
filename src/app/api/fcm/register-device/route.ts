@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
   try {
     // 🔐 SECURITY: Verify user is authenticated before registering device
     const authHeader = request.headers.get('authorization');
-    let authToken = null;
+    let authToken: string | null = null;
     
     // Extract token from Authorization header or from request body
     if (authHeader && authHeader.startsWith('Bearer ')) {
