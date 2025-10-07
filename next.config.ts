@@ -173,7 +173,7 @@ const nextConfig: NextConfig = {
   generateBuildId: async () => {
     return 'pharmalynk-' + Date.now();
   },
-  // Webpack configuration to exclude Firebase Functions and handle module resolution
+  // Webpack configuration to exclude Firebase Functions
   webpack: (config, { dev, isServer, defaultLoaders }) => {
     // Exclude the functions directory from being processed by Next.js
     config.module.rules.push({
@@ -186,22 +186,6 @@ const nextConfig: NextConfig = {
     config.externals.push({
       'firebase-functions': 'firebase-functions'
     });
-
-    // Fix for webpack runtime error with module resolution
-    if (!isServer) {
-      config.resolve.fallback = {
-        ...config.resolve.fallback,
-        fs: false,
-        path: false,
-        os: false,
-      };
-    }
-
-    // Handle module resolution issues
-    config.resolve.alias = {
-      ...config.resolve.alias,
-      // Add any problematic module aliases here if needed
-    };
     
     return config;
   },
