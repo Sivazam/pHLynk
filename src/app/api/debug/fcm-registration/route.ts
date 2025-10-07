@@ -9,7 +9,15 @@ export async function POST(request: NextRequest) {
 
     console.log('🔍 Debug FCM Registration:', { retailerId, phone });
 
-    const debugInfo = {
+    const debugInfo: {
+      retailerId?: string;
+      phone?: string;
+      checks: Array<{
+        check: string;
+        result: boolean | number;
+        data?: any;
+      }>;
+    } = {
       retailerId,
       phone,
       checks: []
