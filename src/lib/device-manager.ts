@@ -16,6 +16,7 @@ export interface DeviceInfo {
 
 /**
  * Get the current device's unique identifier
+ * Enhanced to include user-specific identification for multi-retailer scenarios
  */
 export function getCurrentDeviceId(): string {
   if (typeof window === 'undefined') return 'server';
@@ -25,7 +26,7 @@ export function getCurrentDeviceId(): string {
   const screenDimensions = `${window.screen.width}x${window.screen.height}`;
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   
-  // Create a simple hash
+  // Create a simple hash for device fingerprint
   const str = `${userAgent}|${screenDimensions}|${timezone}`;
   let hash = 0;
   for (let i = 0; i < str.length; i++) {
@@ -34,7 +35,15 @@ export function getCurrentDeviceId(): string {
     hash = hash & hash; // Convert to 32-bit integer
   }
   
-  return `device_${Math.abs(hash)}`;
+  const deviceFingerprint = `device_${Math.abs(hash)}`;
+  
+  // For retailers, include retailer-specific identifier to prevent conflicts
+  const retailerId = localStorage.getItem('retailerId');
+  if (retailerId) {
+    return `${deviceFingerprint}_retailer_${retailerId.substring(0, 8)}`;
+  }
+  
+  return deviceFingerprint;
 }
 
 /**
@@ -86,6 +95,7 @@ export function getCurrentDeviceInfo(): DeviceInfo | null {
 
 /**
  * Clear the current device's information (called during logout)
+ * Enhanced to handle multi-retailer scenarios
  */
 export function clearCurrentDeviceInfo(): void {
   if (typeof window === 'undefined') return;
@@ -100,6 +110,20 @@ export function clearCurrentDeviceInfo(): void {
   
   localStorage.removeItem('currentDevice');
   localStorage.removeItem('fcmToken');
+  
+  // Also clear any retailer-specific device identifiers
+  const keysToRemove: string[] = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key && key.startsWith('device_') && key.includes('retailer_')) {
+      keysToRemove.push(key);
+    }
+  }
+  
+  keysToRemove.forEach(key => {
+    console.log('🗑️ Removing retailer-specific device key:', key);
+    localStorage.removeItem(key);
+  });
 }
 
 /**
@@ -128,4 +152,28 @@ export function logDeviceInfo(): void {
     isRegistered: isCurrentDeviceRegistered(),
     userAgent: navigator.userAgent.substring(0, 50) + '...'
   });
+}
+
+/**
+ * Clean up device info when switching retailers
+ * This ensures proper device transfer between retailer accounts
+ */
+export function cleanupDeviceForRetailerSwitch(oldRetailerId: string, newRetailerId: string): void {
+  if (typeof window === 'undefined') return;
+  
+  console.log('🔄 Cleaning up device for retailer switch:', {
+    oldRetailerId: oldRetailerId.substring(0, 8),
+    newRetailerId: newRetailerId.substring(0, 8)
+  });
+  
+  // Clear current device info to force re-registration with new retailer
+  clearCurrentDeviceInfo();
+  
+  // Clear any old retailer-specific data
+  localStorage.removeItem('retailerId');
+  
+  // Set new retailer ID
+  localStorage.setItem('retailerId', newRetailerId);
+  
+  console.log('✅ Device cleanup completed for retailer switch');
 }

@@ -83,6 +83,34 @@ export function isFCMSupported(): boolean {
 }
 
 /**
+ * Request notification permission and register device in one flow
+ * This is the recommended function to use during login/signup
+ */
+export async function requestNotificationPermissionAndRegisterDevice(retailerId?: string): Promise<string | null> {
+  try {
+    console.log('🔔 Requesting notification permission and registering device...');
+    
+    // Request notification permission first
+    const permission = await requestNotificationPermission();
+    console.log('🔔 Notification permission granted:', permission);
+    
+    // Initialize FCM and register device
+    const token = await initializeFCM(retailerId);
+    
+    if (token) {
+      console.log('✅ Device registered successfully with FCM token');
+      return token;
+    } else {
+      console.warn('⚠️ Failed to register device after permission granted');
+      return null;
+    }
+  } catch (error) {
+    console.error('❌ Error in permission request and device registration flow:', error);
+    throw error;
+  }
+}
+
+/**
  * Request notification permission
  */
 export async function requestNotificationPermission(): Promise<NotificationPermission> {

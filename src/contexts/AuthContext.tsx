@@ -95,7 +95,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               };
               
               // Also store retailerId in localStorage for backward compatibility
-              localStorage.setItem('retailerId', retailerData.retailerId);
+              const oldRetailerId = localStorage.getItem('retailerId');
+              if (oldRetailerId && oldRetailerId !== retailerData.retailerId) {
+                // Clean up device info when switching retailers
+                const { cleanupDeviceForRetailerSwitch } = await import('@/lib/device-manager');
+                cleanupDeviceForRetailerSwitch(oldRetailerId, retailerData.retailerId);
+              } else {
+                localStorage.setItem('retailerId', retailerData.retailerId);
+              }
               
               // 🔐 SECURITY: Clear any logout timestamp on successful login
               localStorage.removeItem('logged_out_at');
@@ -314,6 +321,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = async (email: string, password: string) => {
     await signInWithEmailAndPassword(auth, email, password);
+    
+    // After successful login, initialize FCM for non-retailer users
+    // Note: For retailer users, FCM is handled in the retailer login flow
+    try {
+      console.log('🔔 Initializing FCM after login for email user...');
+      const { initializeFCM } = await import('@/lib/fcm');
+      const fcmToken = await initializeFCM();
+      
+      if (fcmToken) {
+        console.log('✅ FCM initialized successfully after login');
+      } else {
+        console.warn('⚠️ FCM initialization failed after login');
+      }
+    } catch (error) {
+      console.error('❌ Error initializing FCM after login:', error);
+      // Continue with login even if FCM fails
+    }
   };
 
   const signup = async (email: string, password: string, displayName?: string, superAdminCode?: string) => {
@@ -431,6 +455,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const loginWithGoogle = async () => {
     const provider = new GoogleAuthProvider();
     await signInWithPopup(auth, provider);
+    
+    // After successful Google login, initialize FCM
+    try {
+      console.log('🔔 Initializing FCM after Google login...');
+      const { initializeFCM } = await import('@/lib/fcm');
+      const fcmToken = await initializeFCM();
+      
+      if (fcmToken) {
+        console.log('✅ FCM initialized successfully after Google login');
+      } else {
+        console.warn('⚠️ FCM initialization failed after Google login');
+      }
+    } catch (error) {
+      console.error('❌ Error initializing FCM after Google login:', error);
+      // Continue with login even if FCM fails
+    }
   };
 
   const resetPassword = async (email: string) => {

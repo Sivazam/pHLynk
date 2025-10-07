@@ -22,8 +22,8 @@ export async function GET(request: NextRequest) {
     const wholesalerId = searchParams.get('wholesalerId')
 
     // Get retailer details - query directly to find retailer and their tenant associations
-    let retailer = null
-    let tenantIds = []
+    let retailer: any = null
+    let tenantIds: string[] = []
     
     const retailersRef = collection(db, 'retailers')
     const retailerQuery = query(retailersRef, where('phone', '==', session.user.email || ''))

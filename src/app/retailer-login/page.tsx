@@ -8,9 +8,27 @@ import Link from 'next/link';
 import Image from 'next/image';
 
 export default function RetailerLoginPage() {
-  const handleAuthSuccess = (retailerId: string) => {
+  const handleAuthSuccess = async (retailerId: string) => {
+    console.log('🔐 Retailer authentication successful, initializing FCM...');
+    
     // Store retailer ID in localStorage
     localStorage.setItem('retailerId', retailerId);
+    
+    // Request notification permission and register device
+    try {
+      const { requestNotificationPermissionAndRegisterDevice } = await import('@/lib/fcm');
+      const fcmToken = await requestNotificationPermissionAndRegisterDevice(retailerId);
+      
+      if (fcmToken) {
+        console.log('✅ FCM device registered successfully for retailer:', retailerId);
+      } else {
+        console.warn('⚠️ FCM registration failed, but continuing with login...');
+      }
+    } catch (error) {
+      console.error('❌ Error during FCM registration:', error);
+      // Continue with login even if FCM fails
+    }
+    
     // Redirect to home page which will show retailer dashboard
     window.location.href = '/';
   };
