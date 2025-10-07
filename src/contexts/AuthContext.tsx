@@ -345,29 +345,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Continue with logout even if FCM unregistration fails
       }
       
-      // 🔐 SECURITY: Additional cleanup - unregister all devices for current user
-      try {
-        if (auth.currentUser) {
-          const retailerId = localStorage.getItem('retailerId') || auth.currentUser.uid;
-          console.log('🗑️ Cleaning up all devices for retailer:', retailerId);
-          
-          // Call cleanup API to remove all devices
-          await fetch('/api/fcm/cleanup-user-devices', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              retailerId: retailerId,
-              userId: auth.currentUser.uid
-            })
-          }).catch(error => {
-            console.warn('⚠️ Error calling cleanup API:', error);
-          });
-        }
-      } catch (cleanupError) {
-        console.warn('⚠️ Error during device cleanup:', cleanupError);
-      }
+      // 🔐 SECURITY: FCM token cleanup is already handled by deleteFCMToken() above
+      // No need for additional cleanup here as it would remove all devices for the retailer
+      console.log('✅ FCM token cleanup completed by deleteFCMToken()');
       
       // 🔌 Disconnect socket connections
       try {
