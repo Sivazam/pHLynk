@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { DashboardNavigation, NavItem } from '@/components/DashboardNavigation';
 import { PWANotificationManager } from '@/components/PWANotificationManager';
@@ -65,6 +66,7 @@ export function RetailerDashboard() {
   const [retailer, setRetailer] = useState<Retailer | null>(null);
   const [retailerUser, setRetailerUser] = useState<any>(null);
   const [tenantId, setTenantId] = useState<string | null>(null);
+  const [availableTenants, setAvailableTenants] = useState<string[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [activeOTPs, setActiveOTPs] = useState<Array<{
@@ -327,6 +329,28 @@ export function RetailerDashboard() {
     setDateRange(newDateRange);
   };
 
+  // Handle tenant switching
+  const handleTenantSwitch = async (newTenantId: string) => {
+    if (!retailer || newTenantId === tenantId) return;
+    
+    try {
+      console.log('🔄 Switching tenant from', tenantId, 'to', newTenantId);
+      
+      // Fetch payments for the new tenant
+      const paymentsData = await paymentService.getPaymentsByRetailer(newTenantId, retailer.id);
+      setPayments(paymentsData);
+      setTenantId(newTenantId);
+      
+      // Fetch wholesaler name for the new tenant
+      await getWholesalerName(newTenantId);
+      
+      console.log('✅ Tenant switched successfully', { newTenantId, paymentsCount: paymentsData.length });
+    } catch (error) {
+      console.error('❌ Error switching tenant:', error);
+      setError('Failed to switch wholesaler. Please try again.');
+    }
+  };
+
   // Navigation items
   const navItems: NavItem[] = [
     { id: 'overview', label: 'Overview', icon: LayoutDashboard },
@@ -367,30 +391,30 @@ export function RetailerDashboard() {
   }, []);
 
   // Test notification function for debugging
-  // const testOTPNotification = async () => {
-  //   console.log('🧪 Testing enhanced OTP notification manually...');
+  const testOTPNotification = async () => {
+    console.log('🧪 Testing enhanced OTP notification manually...');
     
-  //   try {
-  //     const result = await enhancedNotificationService.sendOTPNotification(
-  //       retailer?.id || 'test-retailer-id',
-  //       '123456',
-  //       1000,
-  //       'Test Line Worker'
-  //     );
+    try {
+      const result = await enhancedNotificationService.sendOTPNotification(
+        retailer?.id || 'test-retailer-id',
+        '123456',
+        1000,
+        'Test Line Worker'
+      );
       
-  //     console.log('🧪 Test OTP notification result:', result);
+      console.log('🧪 Test OTP notification result:', result);
       
-  //     if (result) {
-  //       alert('✅ Test OTP notification sent successfully! Check your notification panel and console.');
-  //     } else {
-  //       alert('❌ Test OTP notification failed. Check console for details.');
-  //     }
-  //   } catch (error) {
-  //     console.error('🧪 Test OTP notification error:', error);
-  //     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-  //     alert('❌ Test OTP notification error: ' + errorMessage);
-  //   }
-  // };
+      if (result) {
+        alert('✅ Test OTP notification sent successfully! Check your notification panel and console.');
+      } else {
+        alert('❌ Test OTP notification failed. Check console for details.');
+      }
+    } catch (error) {
+      console.error('🧪 Test OTP notification error:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      alert('❌ Test OTP notification error: ' + errorMessage);
+    }
+  };
   const [wholesalerNames, setWholesalerNames] = useState<Record<string, string>>({});
   const [lineWorkerNames, setLineWorkerNames] = useState<Record<string, string>>({});
 
@@ -459,6 +483,13 @@ export function RetailerDashboard() {
     // Fetch wholesaler names
     for (const tenantId of uniqueTenantIds) {
       await getWholesalerName(tenantId);
+    }
+    
+    // Also fetch names for all available tenants if this is a multi-tenant retailer
+    if (availableTenants.length > 1) {
+      for (const tenantId of availableTenants) {
+        await getWholesalerName(tenantId);
+      }
     }
     
     // Fetch line worker names
@@ -1241,7 +1272,17 @@ export function RetailerDashboard() {
       // Set state with fetched data
       setRetailer(retailerData);
       setRetailerUser(retailerUserData);
-      setTenantId(retailerUserData.tenantId);
+      
+      // Handle multi-tenant support
+      const retailerTenants = retailerData.tenantIds || [retailerUserData.tenantId];
+      setAvailableTenants(retailerTenants);
+      
+      // Set current tenantId (prefer the one from retailerUserData, fallback to first available)
+      const currentTenantId = retailerTenants.includes(retailerUserData.tenantId) 
+        ? retailerUserData.tenantId 
+        : retailerTenants[0];
+      setTenantId(currentTenantId);
+      
       setPayments(paymentsData);
       
       console.log('🔍 IMPORTANT: Retailer ID Mapping Check:', {
@@ -1628,14 +1669,14 @@ Thank you for your payment!
                 </Button>
                 
                 {/* Debug button for testing notifications */}
-                {/* <Button
+                <Button
                   variant="outline"
                   size="sm"
                   onClick={testOTPNotification}
                   className="text-xs"
                 >
                   🧪 Test OTP
-                </Button> */}
+                </Button>
               </div>
             </div>
 
@@ -1708,9 +1749,9 @@ Thank you for your payment!
                       </Card>
 
                       {/* Debug OTP Panel - Always show for testing */}
-                      {/* {retailer && (
+                      {retailer && (
                         <DebugOTPPanel retailerId={retailer.id} />
-                      )} */}
+                      )}
 
                       <Card>
                         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -1720,8 +1761,30 @@ Thank you for your payment!
                           </div>
                         </CardHeader>
                         <CardContent>
-                          <div className="text-2xl font-bold text-gray-900">{wholesalerNames[tenantId || ''] || 'Loading...'}</div>
-                          <p className="text-xs text-gray-500">Your wholesaler</p>
+                          {availableTenants.length > 1 ? (
+                            <div className="space-y-2">
+                              <Select value={tenantId || ''} onValueChange={handleTenantSwitch}>
+                                <SelectTrigger className="w-full">
+                                  <SelectValue placeholder="Select wholesaler">
+                                    {wholesalerNames[tenantId || ''] || 'Loading...'}
+                                  </SelectValue>
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {availableTenants.map((tenantIdOption) => (
+                                    <SelectItem key={tenantIdOption} value={tenantIdOption}>
+                                      {wholesalerNames[tenantIdOption] || 'Loading...'}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              <p className="text-xs text-gray-500">Multiple wholesalers</p>
+                            </div>
+                          ) : (
+                            <div>
+                              <div className="text-2xl font-bold text-gray-900">{wholesalerNames[tenantId || ''] || 'Loading...'}</div>
+                              <p className="text-xs text-gray-500">Your wholesaler</p>
+                            </div>
+                          )}
                         </CardContent>
                       </Card>
                     </div>
@@ -1896,10 +1959,10 @@ Thank you for your payment!
                     </Card>
 
                     {/* PWA Notification Manager */}
-                    {/* <PWANotificationManager userRole="RETAILER" /> */}
+                    <PWANotificationManager userRole="RETAILER" />
                     
                     {/* FCM Notification Manager */}
-                    {/* <FCMNotificationManager userId={user?.uid} /> */}
+                    <FCMNotificationManager userId={user?.uid} />
                   </div>
                 )}
 
@@ -1930,6 +1993,7 @@ Thank you for your payment!
                                 <TableHead>Date</TableHead>
                                 <TableHead>Amount</TableHead>
                                 <TableHead>Method</TableHead>
+                                <TableHead>Wholesaler</TableHead>
                                 <TableHead>Status</TableHead>
                                 <TableHead>Line Worker</TableHead>
                                 <TableHead>Actions</TableHead>
@@ -1941,6 +2005,11 @@ Thank you for your payment!
                                   <TableCell>{formatTimestampWithTime(payment.createdAt)}</TableCell>
                                   <TableCell>{formatCurrency(payment.totalPaid)}</TableCell>
                                   <TableCell>{payment.method}</TableCell>
+                                  <TableCell>
+                                    <Badge variant="outline" className="text-xs">
+                                      {wholesalerNames[payment.tenantId || ''] || 'Unknown'}
+                                    </Badge>
+                                  </TableCell>
                                   <TableCell>
                                     <Badge className={
                                       payment.state === 'COMPLETED' 
@@ -2012,6 +2081,7 @@ Thank you for your payment!
                             <TableHead>Date</TableHead>
                             <TableHead>Amount</TableHead>
                             <TableHead>Method</TableHead>
+                            <TableHead>Wholesaler</TableHead>
                             <TableHead>Status</TableHead>
                             <TableHead>Line Worker</TableHead>
                             <TableHead>Actions</TableHead>
@@ -2025,6 +2095,11 @@ Thank you for your payment!
                                 <TableCell>{formatTimestampWithTime(payment.createdAt)}</TableCell>
                                 <TableCell>{formatCurrency(payment.totalPaid)}</TableCell>
                                 <TableCell>{payment.method}</TableCell>
+                                <TableCell>
+                                  <Badge variant="outline" className="text-xs">
+                                    {wholesalerNames[payment.tenantId || ''] || 'Unknown'}
+                                  </Badge>
+                                </TableCell>
                                 <TableCell>
                                   <Badge className={
                                     payment.state === 'COMPLETED' 
@@ -2089,11 +2164,11 @@ Thank you for your payment!
                       <PWANotificationManager userRole="RETAILER" />
                       
                       {/* FCM Notification Manager */}
-                      {/* <FCMNotificationManager userId={user?.uid} /> */}
+                      <FCMNotificationManager userId={user?.uid} />
                     </div>
 
                     {/* Notification De-duplicator Debug */}
-                    {/* <NotificationDeduplicatorDebug /> */}
+                    <NotificationDeduplicatorDebug />
                   </div>
                 )}
               </>

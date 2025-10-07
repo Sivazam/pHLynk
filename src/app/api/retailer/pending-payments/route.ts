@@ -16,7 +16,9 @@ export async function GET(request: NextRequest) {
     }
 
     const retailerId = session.user.id
-    const tenantId = 'default' // You may need to determine this from the session or context
+    const { searchParams } = new URL(request.url)
+    const wholesalerId = searchParams.get('wholesalerId')
+    const tenantId = wholesalerId || session.user.tenantId || 'default'
 
     // Get retailer details
     const retailer = await retailerService.getById(retailerId, tenantId)
