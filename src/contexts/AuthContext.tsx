@@ -111,25 +111,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                   phone: retailerData.phone
                 });
                 
+                // DISABLED: FCM initialization - User wants cloud function FCM only
                 // Initialize FCM in background without blocking the UI
-                initializeFCM(retailerData.retailerId).then(fcmToken => {
-                  if (fcmToken) {
-                    console.log('✅ FCM initialized successfully for returning retailer user:', {
-                      retailerId: retailerData.retailerId,
-                      tokenLength: fcmToken.length,
-                      tokenPrefix: fcmToken.substring(0, 20) + '...'
-                    });
-                  } else {
-                    console.warn('⚠️ FCM initialization failed for returning retailer user:', {
-                      retailerId: retailerData.retailerId
-                    });
-                  }
-                }).catch(error => {
-                  console.error('❌ FCM initialization error for returning retailer user:', {
-                    retailerId: retailerData.retailerId,
-                    error: error instanceof Error ? error.message : 'Unknown error'
-                  });
-                });
+                // initializeFCM(retailerData.retailerId).then(fcmToken => {
+                //   if (fcmToken) {
+                //     console.log('✅ FCM initialized successfully for returning retailer user:', {
+                //       retailerId: retailerData.retailerId,
+                //       tokenLength: fcmToken.length,
+                //       tokenPrefix: fcmToken.substring(0, 20) + '...'
+                //     });
+                //   } else {
+                //     console.warn('⚠️ FCM initialization failed for returning retailer user:', {
+                //       retailerId: retailerData.retailerId
+                //     });
+                //   }
+                // }).catch(error => {
+                //   console.error('❌ FCM initialization error for returning retailer user:', {
+                //     retailerId: retailerData.retailerId,
+                //     error: error instanceof Error ? error.message : 'Unknown error'
+                //   });
+                // });
+                console.log('🚫 FCM initialization disabled for retailer - using cloud function FCM only');
               } catch (error) {
                 console.error('❌ Failed to initialize FCM for returning retailer user:', {
                   retailerId: retailerData.retailerId,
@@ -237,24 +239,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             localStorage.removeItem('logged_out_at');
             console.log('✅ Cleared logout timestamp on successful login');
             
-            // 🔄 Initialize FCM for returning users
-            try {
-              updateProgress(88, 'Setting up notifications...');
-              console.log('🔔 Initializing FCM for returning user:', firebaseUser.uid);
+            // 🔄 DISABLED: FCM initialization - User wants cloud function FCM only
+            // try {
+            //   updateProgress(88, 'Setting up notifications...');
+            //   console.log('🔔 Initializing FCM for returning user:', firebaseUser.uid);
               
-              // Initialize FCM in background without blocking the UI
-              initializeFCM().then(fcmToken => {
-                if (fcmToken) {
-                  console.log('✅ FCM initialized successfully for returning user');
-                } else {
-                  console.warn('⚠️ FCM initialization failed for returning user');
-                }
-              }).catch(error => {
-                console.error('❌ FCM initialization error for returning user:', error);
-              });
-            } catch (error) {
-              console.error('❌ Failed to initialize FCM for returning user:', error);
-            }
+            //   // Initialize FCM in background without blocking the UI
+            //   initializeFCM().then(fcmToken => {
+            //     if (fcmToken) {
+            //       console.log('✅ FCM initialized successfully for returning user');
+            //     } else {
+            //       console.warn('⚠️ FCM initialization failed for returning user');
+            //     }
+            //   }).catch(error => {
+            //     console.error('❌ FCM initialization error for returning user:', error);
+            //   });
+            // } catch (error) {
+            //   console.error('❌ Failed to initialize FCM for returning user:', error);
+            // }
+            console.log('🚫 FCM initialization disabled for general user - using cloud function FCM only');
             
             updateProgress(95, 'Almost ready...');
             

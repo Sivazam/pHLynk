@@ -67,19 +67,10 @@ export function HomeContent() {
     }
   }, [loading, user, retailerId]);
 
-  // Debug function to reset intro (remove in production)
+  // Handle keyboard shortcuts
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.shiftKey && e.key === 'I') {
-        resetIntroCarousel();
-        setShowIntro(true);
-        console.log('Intro carousel reset for testing', { context: 'Debug' });
-      }
-      // Debug shortcut to open Firebase test page
-      if (e.ctrlKey && e.shiftKey && e.key === 'F') {
-        window.open('/firebase-test', '_blank');
-        console.log('Opening Firebase test page', { context: 'Debug' });
-      }
+      // Handle any future keyboard shortcuts here
     };
     
     window.addEventListener('keydown', handleKeyPress);
@@ -108,20 +99,13 @@ export function HomeContent() {
 
   // Show retailer dashboard if user is a retailer (authenticated)
   if (user && user.isRetailer) {
-    console.log('🏪 Showing retailer dashboard for authenticated user:', user.uid);
     return <RetailerDashboard />;
   }
 
   // Show retailer dashboard if retailer ID is present AND user is loading (for backward compatibility during initial load)
   // This should only apply during the initial loading state, not after logout
   if (retailerId && !user && loading) {
-    console.log('🏪 Showing retailer dashboard from localStorage during loading:', retailerId);
     return <RetailerDashboard />;
-  }
-
-  // Debug: Show what's happening when we have retailerId but no user and not loading
-  if (retailerId && !user && !loading) {
-    console.log('⚠️ RetailerId found but no user and not loading - should NOT show dashboard:', retailerId);
   }
 
   // Show login for non-authenticated users

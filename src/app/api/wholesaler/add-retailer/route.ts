@@ -69,14 +69,11 @@ export async function POST(request: NextRequest) {
       // Add tenant to retailer
       await retailerService.addTenantToRetailer(retailerId, tenantId);
       
-      // Update area and zipcodes if provided
-      if (areaId || zipcodes) {
-        const updateData: any = {};
-        if (areaId) updateData.areaId = areaId;
-        if (zipcodes) updateData.zipcodes = zipcodes;
-        
-        await retailerService.update(retailerId, updateData, tenantId);
-      }
+      // NEW: Use wholesalerData structure instead of just updating area/zipcodes
+      await retailerService.upsertWholesalerData(retailerId, tenantId, {
+        areaId: areaId,
+        zipcodes: zipcodes
+      });
       
       return NextResponse.json({
         success: true,
@@ -92,6 +89,12 @@ export async function POST(request: NextRequest) {
     
     // Retailer already has access to this tenant
     console.log('ℹ️  Retailer already has access to this tenant');
+    
+    // Update wholesaler data anyway in case area changed
+    await retailerService.upsertWholesalerData(retailerId, tenantId, {
+      areaId: areaId,
+      zipcodes: zipcodes
+    });
     
     return NextResponse.json({
       success: true,

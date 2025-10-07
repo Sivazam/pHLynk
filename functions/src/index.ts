@@ -799,28 +799,11 @@ export const sendOTPNotification = functions.https.onCall(async (request: any) =
       caller: context.auth ? context.auth.uid : 'NEXTJS_API'
     });
 
-    // Get retailer user details
-    const retailerUsersQuery = await admin.firestore()
-      .collection('retailerUsers')
-      .where('retailerId', '==', data.retailerId)
-      .limit(1)
-      .get();
-
-    if (retailerUsersQuery.empty) {
-      throw new functions.https.HttpsError(
-        'not-found',
-        `Retailer user not found for retailerId: ${data.retailerId}`
-      );
-    }
-
-    const retailerUser = retailerUsersQuery.docs[0];
-    const retailerUserId = retailerUser.id;
-    
-    // Get FCM token for retailer user
-    const fcmToken = await getFCMTokenForUser(retailerUserId);
+    // Get FCM token for retailer from retailers collection (not retailerUsers)
+    const fcmToken = await getFCMTokenForUser(data.retailerId, 'retailers');
     
     if (!fcmToken) {
-      console.warn('⚠️ FCM token not found for retailer user:', retailerUserId);
+      console.warn('⚠️ FCM token not found for retailer:', data.retailerId);
       return {
         success: false,
         error: 'FCM token not found',
@@ -905,7 +888,7 @@ export const sendOTPNotification = functions.https.onCall(async (request: any) =
       type: 'OTP_NOTIFICATION',
       retailerId: data.retailerId,
       paymentId: data.paymentId,
-      userId: retailerUserId,
+      userId: data.retailerId, // Using retailerId since we're getting tokens from retailers collection
       token: fcmToken.substring(0, 8) + '...',
       status: 'SENT',
       messageId: response,

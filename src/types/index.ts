@@ -48,12 +48,30 @@ export interface Retailer extends BaseDocument {
   areaId?: string;
   zipcodes: string[];
   
-  // Wholesaler-specific assignments (NEW)
+  // Legacy wholesaler assignments (will be migrated to wholesalerData)
   wholesalerAssignments?: {
     [tenantId: string]: {
       areaId?: string;
       zipcodes: string[];
       assignedAt: Timestamp;
+    };
+  };
+  
+  // NEW: Wholesaler-specific isolated data
+  wholesalerData?: {
+    [tenantId: string]: {
+      currentAreaId: string;
+      currentZipcodes: string[];
+      assignedAt: Timestamp;
+      areaAssignmentHistory: Array<{
+        areaId: string;
+        zipcodes: string[];
+        assignedAt: Timestamp;
+        isActive: boolean;
+      }>;
+      notes?: string;
+      creditLimit?: number;
+      currentBalance?: number;
     };
   };
   

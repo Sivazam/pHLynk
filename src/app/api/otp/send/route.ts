@@ -178,24 +178,13 @@ export async function POST(request: NextRequest) {
     // Send FCM notification to retailer using cloud function
     try {
       secureLogger.otp('Sending FCM OTP notification via cloud function');
-      const result = await callFirebaseFunction('sendFCMNotification', {
+      const result = await callFirebaseFunction('sendOTPNotification', {
         retailerId,
-        notification: {
-          title: '🔐 OTP Verification Required',
-          body: `Your OTP code is: ${otpData.code}`,
-          data: {
-            type: 'otp',
-            otp: otpData.code,
-            retailerId,
-            paymentId,
-            amount: amount.toString(),
-            retailerName: retailerUser.name,
-            lineWorkerName: lineWorkerName || 'Line Worker'
-          },
-          icon: '/notification-large-192x192.png',
-          tag: `otp-${paymentId}`,
-          clickAction: '/retailer/dashboard'
-        }
+        otp: otpData.code,
+        retailerName: retailerUser.name,
+        paymentId,
+        amount,
+        lineWorkerName: lineWorkerName || 'Line Worker'
       });
 
       secureLogger.otp('FCM OTP notification sent successfully via cloud function', { success: true });

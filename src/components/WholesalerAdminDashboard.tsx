@@ -864,6 +864,36 @@ export function WholesalerAdminDashboard() {
         zipcodes: data.zipcodes
       });
       
+      // 🔄 CRITICAL: Automatically assign retailer to Line Worker if area has one
+      if (data.areaId) {
+        const assignedWorker = getAssignedWorkerForArea(data.areaId);
+        if (assignedWorker) {
+          console.log('🔄 Auto-assigning new retailer to Line Worker for area:', {
+            retailerName: data.name,
+            areaId: data.areaId,
+            lineWorkerName: assignedWorker.displayName
+          });
+          
+          try {
+            // Need to get the newly created retailer ID first
+            const updatedRetailers = await retailerService.getAll(currentTenantId);
+            const newRetailer = updatedRetailers.find(r => 
+              r.name === data.name && 
+              r.phone === data.phone && 
+              r.areaId === data.areaId
+            );
+            
+            if (newRetailer) {
+              await retailerService.assignLineWorker(currentTenantId, newRetailer.id, assignedWorker.id);
+              console.log(`✅ Auto-assigned new retailer "${data.name}" to Line Worker "${assignedWorker.displayName}"`);
+            }
+          } catch (assignmentError) {
+            console.error('❌ Error auto-assigning new retailer to Line Worker:', assignmentError);
+            // Don't fail the retailer creation, just log the error
+          }
+        }
+      }
+      
       await fetchDashboardData();
       setShowCreateRetailer(false);
       showSuccess(`Retailer "${data.name}" created successfully!`);
@@ -927,6 +957,22 @@ export function WholesalerAdminDashboard() {
     setCreatingLineWorker(true);
     
     try {
+      // VALIDATION: Check for area conflicts before creating line worker
+      if (data.assignedAreas && data.assignedAreas.length > 0) {
+        const areaConflicts = data.assignedAreas.filter(areaId => 
+          isAreaAssignedToOtherWorker(areaId)
+        );
+        
+        if (areaConflicts.length > 0) {
+          const conflictAreas = areaConflicts.map(areaId => {
+            const area = areas.find(a => a.id === areaId);
+            return area?.name || areaId;
+          }).join(', ');
+          
+          throw new Error(`Cannot create line worker: The following areas are already assigned to other line workers: ${conflictAreas}`);
+        }
+      }
+      
       const userData: any = {
         email: data.email,
         password: data.password,
@@ -940,7 +986,38 @@ export function WholesalerAdminDashboard() {
         userData.assignedAreas = data.assignedAreas;
       }
       
-      await userService.createUserWithAuth(currentTenantId, userData);
+      const createdLineWorkerId = await userService.createUserWithAuth(currentTenantId, userData);
+      
+      // 🔄 CRITICAL: Automatically assign retailers from the assigned areas to this Line Worker
+      if (data.assignedAreas && data.assignedAreas.length > 0) {
+        console.log('🔄 Auto-assigning retailers from areas to new Line Worker:', {
+          lineWorkerEmail: data.email,
+          assignedAreas: data.assignedAreas
+        });
+        
+        try {
+          // Find all retailers in these areas who are not already assigned
+          const unassignedRetailersInAreas = retailers.filter(retailer => 
+            data.assignedAreas!.includes(retailer.areaId || '') && 
+            !retailer.assignedLineWorkerId
+          );
+          
+          console.log(`🎯 Found ${unassignedRetailersInAreas.length} unassigned retailers in assigned areas`);
+          
+          // Assign each retailer to this new Line Worker
+          for (const retailer of unassignedRetailersInAreas) {
+            await retailerService.assignLineWorker(currentTenantId, retailer.id, createdLineWorkerId);
+            console.log(`✅ Auto-assigned retailer "${retailer.name}" to Line Worker`);
+          }
+          
+          if (unassignedRetailersInAreas.length > 0) {
+            console.log(`🎉 Successfully auto-assigned ${unassignedRetailersInAreas.length} retailers to new Line Worker`);
+          }
+        } catch (assignmentError) {
+          console.error('❌ Error auto-assigning retailers to Line Worker:', assignmentError);
+          // Don't fail the Line Worker creation, just log the error
+        }
+      }
       
       await fetchDashboardData();
       
@@ -955,7 +1032,52 @@ export function WholesalerAdminDashboard() {
         showSuccess(`Line worker "${data.displayName || data.email}" created successfully!`);
       }, 2000);
     } catch (err: any) {
-      setError(err.message || 'Failed to create line worker');
+      console.error('❌ Line Worker Creation Error:', err);
+      
+      // Provide more specific error messages based on the error type
+      let errorMessage = 'Failed to create line worker';
+      
+      if (err.code) {
+        switch (err.code) {
+          case 'auth/email-already-in-use':
+            errorMessage = 'A user with this email address already exists. Please use a different email.';
+            break;
+          case 'auth/invalid-email':
+            errorMessage = 'The email address is not valid. Please check and try again.';
+            break;
+          case 'auth/weak-password':
+            errorMessage = 'The password is too weak. Please choose a stronger password (at least 6 characters).';
+            break;
+          case 'auth/network-request-failed':
+            errorMessage = 'Network connection failed. Please check your internet connection and try again.';
+            break;
+          case 'auth/too-many-requests':
+            errorMessage = 'Too many attempts. Please wait a few minutes and try again.';
+            break;
+          case 'permission-denied':
+            errorMessage = 'You do not have permission to create line workers. Please contact your administrator.';
+            break;
+          case 'unavailable':
+            errorMessage = 'Service is temporarily unavailable. Please try again in a few minutes.';
+            break;
+          case 'deadline-exceeded':
+            errorMessage = 'Request timed out. Please check your connection and try again.';
+            break;
+          default:
+            errorMessage = `Failed to create line worker: ${err.message || 'Unknown error occurred'}`;
+        }
+      } else if (err.message) {
+        // Handle custom error messages from our validation
+        if (err.message.includes('already assigned to other line workers')) {
+          errorMessage = err.message;
+        } else if (err.message.includes('required fields')) {
+          errorMessage = 'Please fill in all required fields correctly.';
+        } else {
+          errorMessage = `Failed to create line worker: ${err.message}`;
+        }
+      }
+      
+      setError(errorMessage);
       throw err;
     } finally {
       setCreatingLineWorker(false);
@@ -1072,6 +1194,61 @@ export function WholesalerAdminDashboard() {
       });
       
       await userService.update(editingLineWorker.id, updateData, currentTenantId);
+      
+      // 🔄 CRITICAL: Automatically assign/unassign retailers based on area changes
+      const oldAreas = editingLineWorker.assignedAreas || [];
+      const newAreas = editingSelectedAreas;
+      
+      // Find newly added areas
+      const addedAreas = newAreas.filter(area => !oldAreas.includes(area));
+      // Find removed areas
+      const removedAreas = oldAreas.filter(area => !newAreas.includes(area));
+      
+      console.log('🔄 Area changes detected:', {
+        oldAreas,
+        newAreas,
+        addedAreas,
+        removedAreas
+      });
+      
+      try {
+        // Assign retailers from newly added areas
+        if (addedAreas.length > 0) {
+          const unassignedRetailersInAddedAreas = retailers.filter(retailer => 
+            addedAreas.includes(retailer.areaId || '') && 
+            !retailer.assignedLineWorkerId
+          );
+          
+          console.log(`🎯 Found ${unassignedRetailersInAddedAreas.length} unassigned retailers in newly added areas`);
+          
+          for (const retailer of unassignedRetailersInAddedAreas) {
+            await retailerService.assignLineWorker(currentTenantId, retailer.id, editingLineWorker.id);
+            console.log(`✅ Auto-assigned retailer "${retailer.name}" to Line Worker for new area`);
+          }
+        }
+        
+        // Unassign retailers from removed areas (only if they're assigned to this worker)
+        if (removedAreas.length > 0) {
+          const assignedRetailersInRemovedAreas = retailers.filter(retailer => 
+            removedAreas.includes(retailer.areaId || '') && 
+            retailer.assignedLineWorkerId === editingLineWorker.id
+          );
+          
+          console.log(`🎯 Found ${assignedRetailersInRemovedAreas.length} assigned retailers in removed areas`);
+          
+          for (const retailer of assignedRetailersInRemovedAreas) {
+            await retailerService.assignLineWorker(currentTenantId, retailer.id, null);
+            console.log(`✅ Auto-unassigned retailer "${retailer.name}" from Line Worker for removed area`);
+          }
+        }
+        
+        if (addedAreas.length > 0 || removedAreas.length > 0) {
+          console.log(`🎉 Successfully processed area-based retailer assignments`);
+        }
+      } catch (assignmentError) {
+        console.error('❌ Error processing area-based retailer assignments:', assignmentError);
+        // Don't fail the Line Worker update, just log the error
+      }
       
       console.log('✅ Line worker updated, fetching fresh data...');
       await fetchDashboardData();
@@ -1638,21 +1815,43 @@ export function WholesalerAdminDashboard() {
                     </div>
                     <div className="space-y-2">
                       <Label>Assigned Areas</Label>
-                      <p className="text-xs text-gray-500">Optional: Leave all unchecked to create worker without area assignments.</p>
+                      <p className="text-xs text-gray-500">Optional: Leave all unchecked to create worker without area assignments. Areas already assigned to other workers are disabled.</p>
                       <div className="space-y-2 max-h-32 overflow-y-auto">
-                        {areas.map((area) => (
-                          <div key={area.id} className="flex items-center space-x-2">
-                            <input
-                              type="checkbox"
-                              id={`area-${area.id}`}
-                              value={area.id}
-                              className="rounded"
-                              disabled={creatingLineWorker}
-                            />
-                            <label htmlFor={`area-${area.id}`} className="text-sm">{area.name}</label>
-                          </div>
-                        ))}
+                        {areas.map((area) => {
+                          const isAssignedToOther = isAreaAssignedToOtherWorker(area.id);
+                          const assignedWorker = getAssignedWorkerForArea(area.id);
+                          
+                          return (
+                            <div key={area.id} className="flex items-center space-x-2">
+                              <input
+                                type="checkbox"
+                                id={`area-${area.id}`}
+                                value={area.id}
+                                className="rounded"
+                                disabled={creatingLineWorker || isAssignedToOther}
+                                style={{ opacity: isAssignedToOther ? 0.5 : 1 }}
+                              />
+                              <label 
+                                htmlFor={`area-${area.id}`} 
+                                className={`text-sm ${isAssignedToOther ? 'text-gray-400 line-through' : ''}`}
+                                title={isAssignedToOther ? `Already assigned to: ${assignedWorker?.displayName || 'Unknown Worker'}` : ''}
+                              >
+                                {area.name}
+                                {isAssignedToOther && (
+                                  <span className="text-xs text-red-500 ml-2">
+                                    (Assigned to {assignedWorker?.displayName || 'Unknown'})
+                                  </span>
+                                )}
+                              </label>
+                            </div>
+                          );
+                        })}
                       </div>
+                      {areas.some(area => isAreaAssignedToOtherWorker(area.id)) && (
+                        <p className="text-xs text-amber-600">
+                          ⚠️ Some areas are already assigned to other line workers and cannot be selected.
+                        </p>
+                      )}
                     </div>
                     <div className="flex space-x-2">
                       <Button 
@@ -1686,8 +1885,14 @@ export function WholesalerAdminDashboard() {
                             try {
                               await handleCreateLineWorker(createData);
                             } catch (error) {
-                              // Error is already handled by the handler
+                              // Show error to user
+                              const errorMessage = error instanceof Error ? error.message : 'Failed to create line worker';
+                              setError(errorMessage);
+                              setTimeout(() => setError(null), 5000);
                             }
+                          } else {
+                            setError('Please fill in all required fields');
+                            setTimeout(() => setError(null), 5000);
                           }
                         }}
                         disabled={creatingLineWorker}

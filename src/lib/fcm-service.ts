@@ -249,15 +249,13 @@ class FCMService {
    */
   private async sendToDevice(deviceToken: string, notification: FCMNotificationData): Promise<{ success: boolean; error?: string }> {
     try {
-      // DISABLED: All notification sending to prevent duplicates
-      // All notifications are now handled exclusively by Cloud Functions
+      // DISABLED: All notifications go through Cloud Functions now
       console.log('📱 sendToDevice called for notification type:', notification.data?.type);
-      console.log('🚫 FCMService.sendToDevice DISABLED - using Cloud Functions only');
-      
+      console.log('🚫 FCMService.sendToDevice DISABLED - All notifications use Cloud Functions only');
       return { success: false, error: 'FCM_SERVICE_DISABLED - USE_CLOUD_FUNCTIONS' };
     } catch (error) {
       console.error('Error in sendToDevice:', error);
-      return { success: false, error: 'FCM_SERVICE_DISABLED' };
+      return { success: false, error: 'FCM_SERVICE_ERROR' };
     }
   }
 
@@ -266,6 +264,12 @@ class FCMService {
    */
   private async sendViaLegacyAPI(deviceToken: string, notification: FCMNotificationData): Promise<{ success: boolean; error?: string }> {
     try {
+      if (!this.SERVER_KEY) {
+        console.warn('⚠️ FCM Server key not configured. OTP notifications will not work.');
+        console.warn('🔧 To fix: Set FCM_SERVER_KEY environment variable');
+        return { success: false, error: 'FCM_SERVER_KEY_NOT_CONFIGURED' };
+      }
+
       const message = {
         to: deviceToken,
         notification: {
@@ -293,13 +297,14 @@ class FCMService {
       const responseData = await response.json();
 
       if (response.ok && responseData.success === 1) {
+        console.log('✅ OTP notification sent successfully via FCM Legacy API');
         return { success: true };
       } else {
-        console.error('FCM API Error:', responseData);
+        console.error('❌ FCM API Error:', responseData);
         return { success: false, error: responseData.results?.[0]?.error || 'UNKNOWN_ERROR' };
       }
     } catch (error) {
-      console.error('Error sending FCM notification via legacy API:', error);
+      console.error('❌ Error sending FCM notification via legacy API:', error);
       return { success: false, error: 'NETWORK_ERROR' };
     }
   }
