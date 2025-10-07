@@ -3,6 +3,7 @@
 import { getMessaging, getToken as getFCMTokenFromFirebase, onMessage } from 'firebase/messaging';
 import { initializeApp } from 'firebase/app';
 import { auth } from '@/lib/firebase';
+import { storeCurrentDeviceToken, clearCurrentDeviceInfo, isCurrentDeviceRegistered, getCurrentDeviceInfo, getCurrentDeviceId } from '@/lib/device-manager';
 
 // Firebase configuration - should match your existing config
 const firebaseConfig = {
@@ -300,15 +301,25 @@ export async function initializeFCM(retailerId?: string): Promise<string | null>
       if (response.ok) {
         const result = await response.json();
         console.log('✅ Device registered with FCM backend:', result);
+        
+        // Store current device info for proper logout handling
+        storeCurrentDeviceToken(token);
+        
         return token;
       } else {
         const errorResult = await response.json();
         console.warn('⚠️ Failed to register device with FCM backend:', response.status, errorResult);
-        return token; // Still return token even if backend registration fails
+        
+        // Still store the token locally even if backend registration fails
+        storeCurrentDeviceToken(token);
+        return token;
       }
     } catch (backendError) {
       console.warn('⚠️ Error registering device with FCM backend:', backendError);
-      return token; // Still return token even if backend registration fails
+      
+      // Still store the token locally even if backend registration fails
+      storeCurrentDeviceToken(token);
+      return token;
     }
   } catch (error) {
     console.error('❌ Error initializing FCM:', error);
@@ -394,33 +405,74 @@ export function onMessageListener() {
  */
 export async function deleteFCMToken(): Promise<boolean> {
   try {
+    console.log('🗑️ Starting FCM token deletion process...');
+    
+    // Get current device info before deletion
+    const deviceInfo = getCurrentDeviceInfo();
+    if (deviceInfo) {
+      console.log('📱 Current device info:', {
+        deviceId: deviceInfo.deviceId,
+        tokenPrefix: deviceInfo.token.substring(0, 20) + '...'
+      });
+    }
+    
     const messaging = getMessagingInstance();
     if (!messaging) {
+      console.warn('⚠️ Firebase Messaging instance not available for token deletion');
       return false;
+    }
+
+    // Get current token before attempting deletion
+    let currentToken: string | null = null;
+    try {
+      currentToken = await getFCMToken();
+      console.log('🔍 Current FCM token:', currentToken ? `${currentToken.substring(0, 20)}...` : 'null');
+    } catch (tokenError) {
+      console.warn('⚠️ Error getting current FCM token:', tokenError);
     }
 
     // Note: Firebase doesn't provide a direct way to delete tokens in the current SDK
     // Instead, we should unregister the device from our backend
-    if (auth.currentUser) {
+    if (auth.currentUser && currentToken) {
       try {
-        const token = await getFCMToken();
-        if (token) {
-          await fetch('/api/fcm/unregister-device', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              retailerId: auth.currentUser.uid,
-              deviceToken: token
-            })
-          });
+        console.log('📡 Unregistering current device from backend...');
+        
+        // Try to get retailerId for proper device cleanup
+        const retailerId = localStorage.getItem('retailerId') || auth.currentUser.uid;
+        
+        const response = await fetch('/api/fcm/unregister-device', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            retailerId: retailerId,
+            deviceToken: currentToken,
+            userId: auth.currentUser.uid
+          })
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          console.log('✅ Current device unregistered from backend:', result);
+        } else {
+          console.warn('⚠️ Backend unregistration failed:', response.status);
         }
-      } catch (error) {
-        console.warn('⚠️ Error unregistering device from backend:', error);
+      } catch (backendError) {
+        console.warn('⚠️ Error unregistering device from backend:', backendError);
       }
+    } else {
+      console.warn('⚠️ No authenticated user or token available for unregistration');
     }
 
+    // Clear current device info from localStorage
+    clearCurrentDeviceInfo();
+
+    // Note: No additional cleanup needed here as we only want to remove the current device
+    // The cleanup API for all devices should only be called in specific scenarios
+    console.log('✅ Current device unregistration completed');
+
+    console.log('✅ FCM token deletion process completed');
     return true;
   } catch (error) {
     console.error('❌ Error deleting FCM token:', error);
