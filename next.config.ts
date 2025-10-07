@@ -171,37 +171,19 @@ const nextConfig: NextConfig = {
   },
   // Generate unique build ID for cache busting
   generateBuildId: async () => {
-    return 'pharmalynk-' + Date.now();
+    return 'pharmalynk-v1';
   },
-  // Webpack configuration to exclude Firebase Functions and handle module resolution
+  // Webpack configuration to exclude Firebase Functions
   webpack: (config, { dev, isServer, defaultLoaders }) => {
     // Exclude the functions directory from being processed by Next.js
-    config.module.rules.push({
-      test: /functions\/.*\.(ts|js)$/,
-      use: 'ignore-loader'
-    });
-    
-    // Also exclude any Firebase Functions imports
-    config.externals = config.externals || [];
-    config.externals.push({
-      'firebase-functions': 'firebase-functions'
-    });
-
-    // Fix for webpack runtime error with module resolution
     if (!isServer) {
       config.resolve.fallback = {
         ...config.resolve.fallback,
         fs: false,
-        path: false,
-        os: false,
+        net: false,
+        tls: false,
       };
     }
-
-    // Handle module resolution issues
-    config.resolve.alias = {
-      ...config.resolve.alias,
-      // Add any problematic module aliases here if needed
-    };
     
     return config;
   },

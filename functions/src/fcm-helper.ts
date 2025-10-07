@@ -1,16 +1,16 @@
 import * as admin from 'firebase-admin';
 
 // Enhanced getFCMTokenForUser function for retailer users (matches working version)
-async function getFCMTokenForUser(userId: string): Promise<string | null> {
+async function getFCMTokenForUser(userId: string, collectionName: string = 'retailerUsers'): Promise<string | null> {
   try {
-    console.log('🔧 Looking for FCM token for user:', userId);
+    console.log('🔧 Looking for FCM token for user:', userId, 'in collection:', collectionName);
     
-    // First try to get from retailerUsers collection (for retailers)
-    const retailerUserDoc = await admin.firestore().collection('retailerUsers').doc(userId).get();
+    // First try the specified collection
+    const userDoc = await admin.firestore().collection(collectionName).doc(userId).get();
     
-    if (retailerUserDoc.exists) {
-      const userData = retailerUserDoc.data();
-      console.log('📱 Found retailer user, checking FCM devices...');
+    if (userDoc.exists) {
+      const userData = userDoc.data();
+      console.log(`📱 Found user in ${collectionName}, checking FCM devices...`);
       
       // Check for fcmDevices array (new structure)
       const fcmDevices = userData?.fcmDevices || [];
@@ -32,35 +32,14 @@ async function getFCMTokenForUser(userId: string): Promise<string | null> {
         return userData.fcmToken;
       }
       
-      console.log('❌ No FCM devices found for retailer user');
+      console.log(`❌ No FCM devices found for user in ${collectionName}`);
     } else {
-      // Try users collection (for other user types)
-      console.log('🔍 Checking users collection...');
-      const userDoc = await admin.firestore().collection('users').doc(userId).get();
+      console.log(`❌ User document not found in ${collectionName}`);
       
-      if (userDoc.exists) {
-        const userData = userDoc.data();
-        
-        // Check for fcmDevices array first
-        const fcmDevices = userData?.fcmDevices || [];
-        if (fcmDevices.length > 0) {
-          const activeDevice = fcmDevices.reduce((latest: any, device: any) => {
-            const deviceTime = device.lastActive?.toDate?.() || new Date(0);
-            const latestTime = latest?.lastActive?.toDate?.() || new Date(0);
-            return deviceTime > latestTime ? device : latest;
-          }, fcmDevices[0]);
-          
-          console.log(`✅ Found ${fcmDevices.length} FCM devices in users collection, using most recent:`, activeDevice.token?.substring(0, 20) + '...');
-          return activeDevice.token || null;
-        }
-        
-        // Fallback to single fcmToken field
-        if (userData?.fcmToken) {
-          console.log('✅ Found single FCM token in users collection');
-          return userData.fcmToken;
-        }
-        
-        console.log('❌ No FCM devices found for user');
+      // If we didn't find in retailers collection, try retailerUsers as fallback for OTP notifications
+      if (collectionName === 'retailers') {
+        console.log('🔍 Trying fallback to retailerUsers collection...');
+        return await getFCMTokenForUser(userId, 'retailerUsers');
       }
     }
     

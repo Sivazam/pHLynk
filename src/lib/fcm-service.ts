@@ -249,13 +249,89 @@ class FCMService {
    */
   private async sendToDevice(deviceToken: string, notification: FCMNotificationData): Promise<{ success: boolean; error?: string }> {
     try {
-      // DISABLED: All notifications go through Cloud Functions now
+      // Use cloud functions for sending notifications
       console.log('📱 sendToDevice called for notification type:', notification.data?.type);
-      console.log('🚫 FCMService.sendToDevice DISABLED - All notifications use Cloud Functions only');
-      return { success: false, error: 'FCM_SERVICE_DISABLED - USE_CLOUD_FUNCTIONS' };
+      console.log('🚀 Redirecting to Cloud Functions for notification sending');
+      
+      // Call the appropriate cloud function based on notification type
+      if (notification.data?.type === 'otp') {
+        return await this.sendOTPViaCloudFunction(notification.data);
+      } else if (notification.data?.type === 'payment') {
+        return await this.sendPaymentViaCloudFunction(notification.data);
+      } else {
+        console.log('❌ Unknown notification type for cloud function routing');
+        return { success: false, error: 'UNKNOWN_NOTIFICATION_TYPE' };
+      }
     } catch (error) {
       console.error('Error in sendToDevice:', error);
       return { success: false, error: 'FCM_SERVICE_ERROR' };
+    }
+  }
+
+  /**
+   * Send OTP notification via cloud function
+   */
+  private async sendOTPViaCloudFunction(data: any): Promise<{ success: boolean; error?: string }> {
+    try {
+      const response = await fetch('https://us-central1-phlynk-firebase.cloudfunctions.net/sendOTPNotification', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          retailerId: data.retailerId,
+          otp: data.otp,
+          amount: parseFloat(data.amount),
+          paymentId: data.paymentId,
+          lineWorkerName: data.lineWorkerName
+        })
+      });
+
+      const result = await response.json();
+      
+      if (response.ok && result.success) {
+        console.log('✅ OTP notification sent successfully via cloud function');
+        return { success: true };
+      } else {
+        console.error('❌ Cloud function OTP notification failed:', result);
+        return { success: false, error: result.error || 'CLOUD_FUNCTION_ERROR' };
+      }
+    } catch (error) {
+      console.error('❌ Error calling OTP cloud function:', error);
+      return { success: false, error: 'CLOUD_FUNCTION_NETWORK_ERROR' };
+    }
+  }
+
+  /**
+   * Send payment notification via cloud function
+   */
+  private async sendPaymentViaCloudFunction(data: any): Promise<{ success: boolean; error?: string }> {
+    try {
+      const response = await fetch('https://us-central1-phlynk-firebase.cloudfunctions.net/sendPaymentCompletionNotification', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          retailerId: data.retailerId,
+          amount: parseFloat(data.amount),
+          paymentId: data.paymentId,
+          status: data.status || 'completed'
+        })
+      });
+
+      const result = await response.json();
+      
+      if (response.ok && result.success) {
+        console.log('✅ Payment notification sent successfully via cloud function');
+        return { success: true };
+      } else {
+        console.error('❌ Cloud function payment notification failed:', result);
+        return { success: false, error: result.error || 'CLOUD_FUNCTION_ERROR' };
+      }
+    } catch (error) {
+      console.error('❌ Error calling payment cloud function:', error);
+      return { success: false, error: 'CLOUD_FUNCTION_NETWORK_ERROR' };
     }
   }
 

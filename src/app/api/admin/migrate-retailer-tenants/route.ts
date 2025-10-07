@@ -2,32 +2,31 @@
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from 'next/server';
-import { migrateRetailerToWholesalerData } from '@/lib/migrate-retailer-to-wholesaler-data';
+import { migrateRetailerTenants } from '@/lib/migrate-retailer-tenants';
 
 export async function POST(request: NextRequest) {
   try {
-    console.log('🚀 Starting retailer to wholesalerData migration API');
+    console.log('🚀 Retailer tenant migration API called');
     
-    // Run the migration
-    const result = await migrateRetailerToWholesalerData();
+    // Add security check - only allow super admins
+    const authHeader = request.headers.get('authorization');
+    if (authHeader !== 'Bearer super-admin-migration-key') {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+    
+    const result = await migrateRetailerTenants();
     
     if (result.success) {
-      console.log('✅ Migration completed successfully');
       return NextResponse.json({
-        success: true,
-        message: 'Retailer to wholesalerData migration completed successfully',
-        summary: {
-          total: result.total,
-          migrated: result.migrated,
-          skipped: result.skipped,
-          errors: result.errors
-        }
+        message: 'Retailer tenant migration completed successfully',
+        ...result
       });
     } else {
-      console.error('❌ Migration failed:', result.error);
       return NextResponse.json(
         { 
-          success: false, 
           error: 'Migration failed',
           details: result.error 
         },
@@ -36,10 +35,9 @@ export async function POST(request: NextRequest) {
     }
     
   } catch (error) {
-    console.error('❌ Error in migration API:', error);
+    console.error('❌ Error in retailer tenant migration API:', error);
     return NextResponse.json(
       { 
-        success: false, 
         error: 'Internal server error',
         details: error instanceof Error ? error.message : 'Unknown error'
       },
