@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { callFirebaseFunction } from '@/lib/firebase';
+import { db } from '@/lib/firebase';
+import { fcmService } from '@/lib/fcm-service';
 
 export async function POST(request: NextRequest) {
   try {
@@ -89,23 +91,61 @@ export async function POST(request: NextRequest) {
           clickAction: '/wholesaler/dashboard'
         });
         
-        // ✅ 使用专门的 sendPaymentCompletionNotification 云函数
-        const wholesalerResult = await callFirebaseFunction('sendPaymentCompletionNotification', {
-          retailerId: wholesalerId, // Use wholesalerId as the recipient
-          amount,
-          paymentId,
-          recipientType: 'wholesaler',
-          retailerName,
-          lineWorkerName,
-          wholesalerId,
-          title: '💰 Collection Update',
-          body: `Line Man ${lineWorkerName || 'Line Worker'} collected ₹${amount.toLocaleString()} from ${retailerName || 'Retailer'} on ${new Date().toLocaleDateString()} at ${new Date().toLocaleTimeString()}.`,
-          clickAction: '/wholesaler/dashboard'
-        });
+        // Direct tenant notification instead of cloud function
+        const { doc, getDoc } = await import('firebase/firestore');
+        const tenantRef = doc(db, 'tenants', wholesalerId);
+        const tenantDoc = await getDoc(tenantRef);
         
-        console.log('✅ Wholesaler cloud function response:', wholesalerResult);
-        results.push({ type: 'wholesaler', success: true, result: wholesalerResult });
-        console.log('✅ Wholesaler payment completion notification sent');
+        if (!tenantDoc.exists()) {
+          console.warn('⚠️ Tenant not found for wholesaler notification:', wholesalerId);
+          results.push({ type: 'wholesaler', success: false, error: 'Tenant not found' });
+        } else {
+          const tenantData = tenantDoc.data();
+          const fcmDevices = tenantData.fcmDevices || [];
+          
+          if (fcmDevices.length === 0) {
+            console.log('ℹ️ No FCM devices for tenant:', wholesalerId);
+            results.push({ type: 'wholesaler', success: true, result: { message: 'No FCM devices registered' } });
+          } else {
+            const notificationData = {
+              title: '💰 Collection Update',
+              body: `Line Man ${lineWorkerName || 'Line Worker'} collected ₹${amount.toLocaleString()} from ${retailerName || 'Retailer'} on ${new Date().toLocaleDateString()} at ${new Date().toLocaleTimeString()}.`,
+              data: {
+                type: 'payment_completion',
+                paymentId,
+                amount: amount.toString(),
+                retailerName,
+                lineWorkerName,
+                tenantId: wholesalerId,
+                clickAction: '/wholesaler/dashboard'
+              }
+            };
+            
+            let successCount = 0;
+            for (const device of fcmDevices) {
+              try {
+                const result = await fcmService.sendToDevice(device.token, notificationData);
+                if (result.success) {
+                  successCount++;
+                }
+              } catch (error) {
+                console.error('Error sending to device:', error);
+              }
+            }
+            
+            console.log(`✅ Wholesaler notification sent to ${successCount}/${fcmDevices.length} devices`);
+            results.push({ 
+              type: 'wholesaler', 
+              success: successCount > 0, 
+              result: { 
+                message: `Sent to ${successCount} device(s)`,
+                tenantName: tenantData.name
+              } 
+            });
+          }
+        }
+        
+        console.log('✅ Wholesaler notification completed');
       } catch (wholesalerError) {
         console.error('❌ Failed to send wholesaler notification:', {
           error: wholesalerError instanceof Error ? wholesalerError.message : 'Unknown error',
