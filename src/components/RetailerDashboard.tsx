@@ -63,7 +63,7 @@ export function RetailerDashboard() {
   const { user, logout } = useAuth();
   const [retailer, setRetailer] = useState<Retailer | null>(null);
   const [retailerUser, setRetailerUser] = useState<any>(null);
-  const [tenantId, setTenantId] = useState<string | null>(null);
+  const [tenantId, setTenantId] = useState<string | null>('all'); // Default to 'all' for consolidated view
   const [availableTenants, setAvailableTenants] = useState<string[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -334,15 +334,28 @@ export function RetailerDashboard() {
     try {
       console.log('🔄 Switching tenant from', tenantId, 'to', newTenantId);
       
-      // Fetch payments for the new tenant
-      const paymentsData = await paymentService.getPaymentsByRetailer(newTenantId, retailer.id);
+      let paymentsData: Payment[] = [];
+      
+      if (newTenantId === 'all') {
+        // Fetch consolidated payments from all tenants
+        paymentsData = await paymentService.getPaymentsByRetailerAcrossAllTenants(retailer.id);
+        setTenantId('all');
+      } else {
+        // Fetch payments for the specific tenant
+        paymentsData = await paymentService.getPaymentsByRetailer(newTenantId, retailer.id);
+        setTenantId(newTenantId);
+        
+        // Fetch wholesaler name for the new tenant
+        await getWholesalerName(newTenantId);
+      }
+      
       setPayments(paymentsData);
-      setTenantId(newTenantId);
       
-      // Fetch wholesaler name for the new tenant
-      await getWholesalerName(newTenantId);
-      
-      console.log('✅ Tenant switched successfully', { newTenantId, paymentsCount: paymentsData.length });
+      console.log('✅ Tenant switched successfully', { 
+        newTenantId, 
+        isAll: newTenantId === 'all',
+        paymentsCount: paymentsData.length 
+      });
     } catch (error) {
       console.error('❌ Error switching tenant:', error);
       setError('Failed to switch wholesaler. Please try again.');
@@ -418,6 +431,10 @@ export function RetailerDashboard() {
 
   // Get wholesaler/tenant name by tenantId
   const getWholesalerName = async (tenantId: string): Promise<string> => {
+    if (tenantId === 'all') {
+      return 'All Wholesalers';
+    }
+    
     if (wholesalerNames[tenantId]) {
       return wholesalerNames[tenantId];
     }
@@ -1261,9 +1278,9 @@ export function RetailerDashboard() {
         };
       }
       
-      // Get payment history using the tenantId and retailerId from user data
+      // Get payment history - fetch consolidated data from all tenants
       setDataFetchProgress(80);
-      const paymentsData = await paymentService.getPaymentsByRetailer(retailerUserData.tenantId, retailerUserData.retailerId);
+      const paymentsData = await paymentService.getPaymentsByRetailerAcrossAllTenants(retailerUserData.retailerId);
       
       logger.debug('Payments data fetched', paymentsData, { context: 'RetailerDashboard' });
       
@@ -1282,11 +1299,8 @@ export function RetailerDashboard() {
       });
       setAvailableTenants(retailerTenants);
       
-      // Set current tenantId (prefer the one from retailerUserData, fallback to first available)
-      const currentTenantId = retailerTenants.includes(retailerUserData.tenantId) 
-        ? retailerUserData.tenantId 
-        : retailerTenants[0];
-      setTenantId(currentTenantId);
+      // Set current tenantId to 'all' for consolidated view by default
+      setTenantId('all');
       
       setPayments(paymentsData);
       
@@ -1546,7 +1560,9 @@ export function RetailerDashboard() {
 
   // Generate receipt content
   const generateReceiptContent = (payment: any) => {
-    const wholesalerName = wholesalerNames[tenantId || ''] || 'Unknown Wholesaler';
+    const wholesalerName = tenantId === 'all' 
+      ? (wholesalerNames[payment.tenantId || ''] || 'Unknown Wholesaler')
+      : (wholesalerNames[tenantId || ''] || 'Unknown Wholesaler');
     const lineWorkerName = lineWorkerNames[payment.lineWorkerId] || 'Unknown Line Worker';
     
     return `
@@ -1763,13 +1779,16 @@ Thank you for your payment!
                         <CardContent>
                           {availableTenants.length > 1 ? (
                             <div className="space-y-2">
-                              <Select value={tenantId || ''} onValueChange={handleTenantSwitch}>
+                              <Select value={tenantId || 'all'} onValueChange={handleTenantSwitch}>
                                 <SelectTrigger className="w-full">
                                   <SelectValue placeholder="Select wholesaler">
-                                    {wholesalerNames[tenantId || ''] || 'Loading...'}
+                                    {tenantId === 'all' ? 'All Wholesalers' : (wholesalerNames[tenantId || ''] || 'Loading...')}
                                   </SelectValue>
                                 </SelectTrigger>
                                 <SelectContent>
+                                  <SelectItem value="all">
+                                    🏢 All Wholesalers (Consolidated)
+                                  </SelectItem>
                                   {availableTenants.map((tenantIdOption) => (
                                     <SelectItem key={tenantIdOption} value={tenantIdOption}>
                                       {wholesalerNames[tenantIdOption] || 'Loading...'}
@@ -1777,12 +1796,24 @@ Thank you for your payment!
                                   ))}
                                 </SelectContent>
                               </Select>
-                              <p className="text-xs text-gray-500">Multiple wholesalers ({availableTenants.length} available)</p>
+                              <p className="text-xs text-gray-500">
+                                {tenantId === 'all' 
+                                  ? `Showing consolidated data from ${availableTenants.length} wholesalers` 
+                                  : `Individual wholesaler view (${availableTenants.length} total)`
+                                }
+                              </p>
                             </div>
                           ) : (
                             <div>
-                              <div className="text-2xl font-bold text-gray-900">{wholesalerNames[tenantId || ''] || 'Loading...'}</div>
-                              <p className="text-xs text-gray-500">Your wholesaler {availableTenants.length > 0 ? `(${availableTenants.length} total)` : ''}</p>
+                              <div className="text-2xl font-bold text-gray-900">
+                                {tenantId === 'all' ? 'All Wholesalers' : (wholesalerNames[tenantId || ''] || 'Loading...')}
+                              </div>
+                              <p className="text-xs text-gray-500">
+                                {tenantId === 'all' 
+                                  ? `Consolidated view (${availableTenants.length} wholesalers)` 
+                                  : `Your wholesaler ${availableTenants.length > 0 ? `(${availableTenants.length} total)` : ''}`
+                                }
+                              </p>
                             </div>
                           )}
                         </CardContent>

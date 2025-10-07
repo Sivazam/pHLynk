@@ -42,17 +42,38 @@ export async function POST(request: NextRequest) {
 
     // Verify retailer exists
     const retailer = await retailerService.getById(retailerId, tenantId);
-    if (!retailer) {
-      // Try to get retailer without tenant filter (since we're adding to new tenant)
-      const retailersRef = doc(db, 'retailers', retailerId);
-      const retailerDoc = await getDoc(retailersRef);
-      
-      if (!retailerDoc.exists()) {
-        return NextResponse.json(
-          { error: 'Retailer not found' },
-          { status: 404 }
-        );
-      }
+    if (retailer) {
+      // Retailer is already associated with this tenant
+      return NextResponse.json({
+        success: true,
+        message: 'Retailer is already associated with your account',
+        retailerId,
+        tenantId,
+        alreadyAssociated: true
+      });
+    }
+    
+    // Try to get retailer without tenant filter (since we're adding to new tenant)
+    const retailersRef = doc(db, 'retailers', retailerId);
+    const retailerDoc = await getDoc(retailersRef);
+    
+    if (!retailerDoc.exists()) {
+      return NextResponse.json(
+        { error: 'Retailer not found' },
+        { status: 404 }
+      );
+    }
+
+    // Check if retailer is already associated with this tenant
+    const retailerData = retailerDoc.data();
+    if (retailerData.tenantIds && retailerData.tenantIds.includes(tenantId)) {
+      return NextResponse.json({
+        success: true,
+        message: 'Retailer is already associated with your account',
+        retailerId,
+        tenantId,
+        alreadyAssociated: true
+      });
     }
 
     // Add tenant to retailer's tenantIds array

@@ -86,7 +86,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 email: firebaseUser.email || `retailer_${phone}@pharmalynk.local`,
                 displayName: retailerData.name || 'Retailer',
                 photoURL: firebaseUser.photoURL || undefined,
-                tenantId: retailerData.tenantId,
+                tenantId: retailerData.tenantIds?.[0] || null, // Use first tenantId from array for backward compatibility
+                tenantStatus: retailerData.tenantStatus || null,
                 roles: ['RETAILER'], // Retailer users always have RETAILER role
                 isRetailer: true,
                 retailerId: retailerData.retailerId,

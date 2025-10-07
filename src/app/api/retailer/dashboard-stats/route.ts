@@ -18,8 +18,20 @@ export async function GET(request: NextRequest) {
 
     const retailerId = session.user.id
 
-    // Get retailer details to find tenantId
-    const retailer = await retailerService.getById(retailerId, 'default')
+    // Get retailer details - try to find from any tenant the retailer belongs to
+    let retailer = null
+    let tenantIds = []
+    
+    // Query retailers directly to find the retailer and get all associated tenants
+    const retailersRef = collection(db, 'retailers')
+    const retailerQuery = query(retailersRef, where('phone', '==', session.user.email || ''))
+    const retailerSnapshot = await getDocs(retailerQuery)
+    
+    if (!retailerSnapshot.empty) {
+      const retailerDoc = retailerSnapshot.docs[0]
+      retailer = { id: retailerDoc.id, ...retailerDoc.data() }
+      tenantIds = retailer.tenantIds || []
+    }
 
     if (!retailer) {
       return NextResponse.json({ 
@@ -30,9 +42,6 @@ export async function GET(request: NextRequest) {
         associatedWholesalers: 0
       })
     }
-
-    // Use the correct tenantId from retailer
-    const tenantId = retailer.tenantId || 'default'
 
     // Query payments directly from Firestore for better performance and accuracy
     const paymentsRef = collection(db, 'payments')
@@ -52,8 +61,8 @@ export async function GET(request: NextRequest) {
     ).length
     const totalAmount = retailerPayments.reduce((sum, payment) => sum + (payment.totalPaid || 0), 0)
 
-    // Get associated wholesalers count
-    const associatedWholesalers = retailer.tenantId ? 1 : 0 // Each retailer is associated with one wholesaler/tenant
+    // Get associated wholesalers count from tenantIds array
+    const associatedWholesalers = tenantIds.length
 
     return NextResponse.json({
       totalPayments,

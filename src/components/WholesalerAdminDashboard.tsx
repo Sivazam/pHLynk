@@ -902,9 +902,15 @@ export function WholesalerAdminDashboard() {
 
       console.log('✅ Retailer added successfully:', data);
       
+      // Check if retailer was already associated
+      if (data.alreadyAssociated) {
+        showSuccess(`Retailer "${retailer.name}" is already in your account!`);
+      } else {
+        showSuccess(`Retailer "${retailer.name}" added to your account successfully!`);
+      }
+      
       await fetchDashboardData();
       setShowCreateRetailer(false);
-      showSuccess(`Retailer "${retailer.name}" added to your account successfully!`);
     } catch (err: any) {
       console.error('❌ Error adding existing retailer:', err);
       setError(err.message || 'Failed to add retailer to account');

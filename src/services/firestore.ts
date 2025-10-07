@@ -184,9 +184,10 @@ export class FirestoreService<T extends BaseDocument> {
 
   async query(tenantId: string, constraints: QueryConstraint[]): Promise<T[]> {
     try {
+      // Use tenantIds array-contains query for consistency
       const q = query(
         collection(db, this.collectionName), 
-        where('tenantId', '==', tenantId),
+        where('tenantIds', 'array-contains', tenantId),
         ...constraints
       );
       const querySnapshot = await getDocs(q);
@@ -384,11 +385,11 @@ export class AreaService extends FirestoreService<Area> {
   }
 
   async getActiveAreas(tenantId: string): Promise<Area[]> {
-    return this.query(tenantId, [where('active', '==', true)]);
+    return this.getAll(tenantId, [where('active', '==', true)]);
   }
 
   async getAreasByZipcode(tenantId: string, zipcode: string): Promise<Area[]> {
-    return this.query(tenantId, [
+    return this.getAll(tenantId, [
       where('active', '==', true),
       where('zipcodes', 'array-contains', zipcode)
     ]);
@@ -976,6 +977,28 @@ export class PaymentService extends FirestoreService<Payment> {
     );
   }
 
+  async getPaymentsByRetailerAcrossAllTenants(retailerId: string): Promise<Payment[]> {
+    try {
+      // Query payments collection directly without tenant filter
+      const paymentsRef = collection(db, COLLECTIONS.PAYMENTS);
+      const q = query(paymentsRef, where('retailerId', '==', retailerId));
+      const querySnapshot = await getDocs(q);
+      
+      const payments: Payment[] = [];
+      querySnapshot.forEach((doc) => {
+        payments.push({ id: doc.id, ...doc.data() } as Payment);
+      });
+      
+      // Sort in memory by initiatedAt (newest first)
+      return payments.sort((a, b) => 
+        toMillis(b.timeline.initiatedAt) - toMillis(a.timeline.initiatedAt)
+      );
+    } catch (error) {
+      logger.error('Error getting payments for retailer across all tenants', error, { context: 'PaymentService' });
+      throw error;
+    }
+  }
+
   async getPaymentsByLineWorker(tenantId: string, lineWorkerId: string): Promise<Payment[]> {
     const payments = await this.query(tenantId, [
       where('lineWorkerId', '==', lineWorkerId)
@@ -1122,9 +1145,10 @@ export class SubscriptionService extends FirestoreService<Subscription> {
 
   async getByTenantId(tenantId: string): Promise<Subscription | null> {
     try {
+      // Use tenantIds array-contains query for consistency
       const q = query(
         collection(db, this.collectionName),
-        where('tenantId', '==', tenantId)
+        where('tenantIds', 'array-contains', tenantId)
       );
       const querySnapshot = await getDocs(q);
       
@@ -1226,7 +1250,7 @@ export class DashboardService {
       const targetsRef = collection(db, COLLECTIONS.MONTHLY_TARGETS);
       const q = query(
         targetsRef,
-        where('tenantId', '==', tenantId),
+        where('tenantIds', 'array-contains', tenantId),
         where('year', '==', year)
       );
       const querySnapshot = await getDocs(q);
@@ -1247,7 +1271,7 @@ export class DashboardService {
       const existingTargets = await this.getMonthlyTargets(tenantId, year);
       
       const targetsData: Omit<MonthlyTargets, 'id'> = {
-        tenantId,
+        tenantIds: [tenantId], // Use tenantIds array
         targets,
         year,
         createdAt: existingTargets?.createdAt || Timestamp.now(),

@@ -5,6 +5,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { retailerService } from '@/services/firestore'
+import { db } from '@/lib/firebase'
+import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore'
 
 export async function GET(request: NextRequest) {
   try {
@@ -15,10 +17,20 @@ export async function GET(request: NextRequest) {
     }
 
     const retailerId = session.user.id
-    const tenantId = 'default' // You may need to determine this from the session or context
 
-    // Get retailer details
-    const retailer = await retailerService.getById(retailerId, tenantId)
+    // Get retailer details - query directly to find retailer and their tenant associations
+    let retailer = null
+    let tenantIds = []
+    
+    const retailersRef = collection(db, 'retailers')
+    const retailerQuery = query(retailersRef, where('phone', '==', session.user.email || ''))
+    const retailerSnapshot = await getDocs(retailerQuery)
+    
+    if (!retailerSnapshot.empty) {
+      const retailerDoc = retailerSnapshot.docs[0]
+      retailer = { id: retailerDoc.id, ...retailerDoc.data() }
+      tenantIds = retailer.tenantIds || []
+    }
 
     if (!retailer) {
       return NextResponse.json({ 
@@ -27,14 +39,29 @@ export async function GET(request: NextRequest) {
       }, { status: 404 })
     }
 
-    // For now, return empty wholesalers list since we don't have the wholesaler association model
-    // You may need to implement this based on your actual data model
-    // This could be stored in the retailer document or in a separate collection
+    // Get wholesaler details for each tenantId
+    const wholesalers = []
     
+    for (const tenantId of tenantIds) {
+      try {
+        const tenantDoc = await getDoc(doc(db, 'tenants', tenantId))
+        if (tenantDoc.exists()) {
+          const tenantData = tenantDoc.data()
+          wholesalers.push({
+            id: tenantId,
+            name: tenantData.name || 'Unknown Wholesaler',
+            status: tenantData.status || 'UNKNOWN',
+            subscriptionStatus: tenantData.subscriptionStatus || 'UNKNOWN'
+          })
+        }
+      } catch (error) {
+        console.error(`Error fetching wholesaler ${tenantId}:`, error)
+      }
+    }
+
     return NextResponse.json({
-      wholesalers: [],
-      count: 0,
-      message: 'Wholesaler associations not implemented yet'
+      wholesalers,
+      count: wholesalers.length
     })
 
   } catch (error) {

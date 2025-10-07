@@ -182,23 +182,10 @@ export function RetailerPhoneLookup({
                       )}
                     </div>
 
-                    {foundRetailer.zipcodes && foundRetailer.zipcodes.length > 0 && (
-                      <div>
-                        <p className="text-sm font-medium text-blue-700 mb-2">Service Areas:</p>
-                        <div className="flex flex-wrap gap-1">
-                          {foundRetailer.zipcodes.slice(0, 5).map((zipcode) => (
-                            <Badge key={zipcode} variant="secondary" className="text-xs">
-                              {zipcode}
-                            </Badge>
-                          ))}
-                          {foundRetailer.zipcodes.length > 5 && (
-                            <Badge variant="outline" className="text-xs">
-                              +{foundRetailer.zipcodes.length - 5} more
-                            </Badge>
-                          )}
-                        </div>
-                      </div>
-                    )}
+                    {/* Note about area assignment */}
+                    <div className="text-xs text-blue-600 bg-blue-100 p-2 rounded">
+                      <p>💡 <strong>Note:</strong> This retailer already exists. You can assign service areas specific to your wholesaler network in the next step.</p>
+                    </div>
                   </div>
                 </CardContent>
               </Card>

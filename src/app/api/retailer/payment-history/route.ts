@@ -6,6 +6,8 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { retailerService, paymentService } from '@/services/firestore'
 import { toDate as convertToDate } from '@/lib/timestamp-utils'
+import { db } from '@/lib/firebase'
+import { collection, query, where, getDocs } from 'firebase/firestore'
 
 export async function GET(request: NextRequest) {
   try {
@@ -20,10 +22,20 @@ export async function GET(request: NextRequest) {
     const wholesalerId = searchParams.get('wholesalerId')
     const fromDate = searchParams.get('from')
     const toDate = searchParams.get('to')
-    const tenantId = wholesalerId || session.user.tenantId || 'default'
 
-    // Get retailer details
-    const retailer = await retailerService.getById(retailerId, tenantId)
+    // Get retailer details - query directly to find retailer and their tenant associations
+    let retailer = null
+    let tenantIds = []
+    
+    const retailersRef = collection(db, 'retailers')
+    const retailerQuery = query(retailersRef, where('phone', '==', session.user.email || ''))
+    const retailerSnapshot = await getDocs(retailerQuery)
+    
+    if (!retailerSnapshot.empty) {
+      const retailerDoc = retailerSnapshot.docs[0]
+      retailer = { id: retailerDoc.id, ...retailerDoc.data() }
+      tenantIds = retailer.tenantIds || []
+    }
 
     if (!retailer) {
       return NextResponse.json({ 
@@ -37,13 +49,20 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    // Get all payments for this retailer
-    let payments = await paymentService.query(tenantId, [])
+    // Get all payments for this retailer across all tenants
+    const paymentsRef = collection(db, 'payments')
+    const paymentsQuery = query(paymentsRef, where('retailerId', '==', retailerId))
+    const paymentSnapshot = await getDocs(paymentsQuery)
+    
+    let payments = paymentSnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    } as any))
 
-    // Filter payments for this retailer
-    payments = payments.filter(payment => 
-      payment.retailerId === retailerId
-    )
+    // Apply wholesaler filter if provided
+    if (wholesalerId && wholesalerId !== 'all') {
+      payments = payments.filter(payment => payment.tenantId === wholesalerId)
+    }
 
     // Apply date filters if provided
     if (fromDate || toDate) {
@@ -59,10 +78,6 @@ export async function GET(request: NextRequest) {
         return true
       })
     }
-
-    // Apply wholesaler filter if provided
-    // Note: wholesaler filtering is not applicable for retailer API as payments are retailer-specific
-    // This parameter is kept for API compatibility but has no effect
 
     // Sort payments by date (newest first)
     payments.sort((a, b) => {
@@ -80,28 +95,29 @@ export async function GET(request: NextRequest) {
       pendingAmount: payments
         .filter(p => p.state === 'INITIATED' || p.state === 'OTP_SENT' || p.state === 'OTP_VERIFIED')
         .reduce((sum, payment) => sum + (payment.totalPaid || 0), 0),
-      methodBreakdown: [] as any[]
+      wholesalerBreakdown: [] as any[]
     }
 
-    // Calculate breakdown by payment method instead of wholesaler
-    const methodMap = new Map()
+    // Calculate breakdown by wholesaler
+    const wholesalerMap = new Map()
     payments.forEach(payment => {
-      const methodName = payment.method || 'Unknown'
+      const wholesalerId = payment.tenantId || 'unknown'
       
-      if (!methodMap.has(methodName)) {
-        methodMap.set(methodName, {
-          method: methodName,
+      if (!wholesalerMap.has(wholesalerId)) {
+        wholesalerMap.set(wholesalerId, {
+          wholesalerId,
+          wholesalerName: payment.initiatedByTenantName || 'Unknown Wholesaler',
           totalPaid: 0,
           paymentCount: 0
         })
       }
       
-      const method = methodMap.get(methodName)
-      method.totalPaid += payment.totalPaid || 0
-      method.paymentCount += 1
+      const wholesaler = wholesalerMap.get(wholesalerId)
+      wholesaler.totalPaid += payment.totalPaid || 0
+      wholesaler.paymentCount += 1
     })
 
-    summary.methodBreakdown = Array.from(methodMap.values())
+    summary.wholesalerBreakdown = Array.from(wholesalerMap.values())
 
     return NextResponse.json({
       payments: payments.map(payment => ({
@@ -113,6 +129,10 @@ export async function GET(request: NextRequest) {
         retailer: {
           id: payment.retailerId,
           name: payment.retailerName || 'Unknown'
+        },
+        wholesaler: {
+          id: payment.tenantId,
+          name: payment.initiatedByTenantName || 'Unknown Wholesaler'
         },
         referenceNumber: payment.id
       })),
