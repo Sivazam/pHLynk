@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { DashboardNavigation, NavItem } from '@/components/DashboardNavigation';
 import { PWANotificationManager } from '@/components/PWANotificationManager';
-import { NotificationDeduplicatorDebug } from '@/components/NotificationDeduplicatorDebug';
+
 import { useAuth } from '@/contexts/AuthContext';
 import { retailerService, paymentService, otpService } from '@/services/firestore';
 import { realtimeNotificationService } from '@/services/realtime-notifications';
@@ -2192,8 +2192,6 @@ Thank you for your payment!
                       <PWANotificationManager userRole="RETAILER" />
                     </div>
 
-                    {/* Notification De-duplicator Debug */}
-                    <NotificationDeduplicatorDebug />
                   </div>
                 )}
               </>

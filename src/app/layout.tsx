@@ -4,7 +4,7 @@ import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { PWAInstallPrompt } from "@/components/PWAInstallPrompt";
-import FCMDebugPanel from "@/components/FCMDebugPanel";
+
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -79,8 +79,6 @@ export default function RootLayout({
         <AuthProvider>
           <PWAInstallPrompt />
           {children}
-          {/* TEMPORARY: FCM Debug Panel - Remove after FCM issues are resolved */}
-          <FCMDebugPanel />
         </AuthProvider>
         <Toaster />
         <script
@@ -101,7 +99,7 @@ export default function RootLayout({
                   sessionStorage.setItem('pwaLoaded', 'true');
                   // Initialize background notifications for PWA
                   if ('Notification' in window && Notification.permission === 'granted') {
-                    console.log('📱 PWA detected, notifications already enabled');
+                    // PWA detected, notifications already enabled
                   }
                   window.location.href = '/pwa-loading';
                 }
@@ -127,11 +125,11 @@ export default function RootLayout({
                         // Request permission for PWA users
                         Notification.requestPermission().then(permission => {
                           if (permission === 'granted') {
-                            console.log('📱 Background notifications enabled for PWA');
+                            // Background notifications enabled for PWA
                           }
                         });
                       } else if (Notification.permission === 'granted') {
-                        console.log('📱 Background notifications already enabled for PWA');
+                        // Background notifications already enabled for PWA
                       }
                     }
                   });
@@ -140,10 +138,7 @@ export default function RootLayout({
                 function registerServiceWorker() {
                   navigator.serviceWorker.register('/sw.js?v=' + APP_VERSION)
                     .then(function(registration) {
-                      console.log('ServiceWorker registration successful', { 
-                        scope: registration.scope,
-                        version: APP_VERSION 
-                      });
+                      // ServiceWorker registration successful
                       
                       // Listen for updates - DISABLED to prevent infinite reload loops
                       // registration.addEventListener('updatefound', () => {
@@ -157,7 +152,7 @@ export default function RootLayout({
                       // });
                     })
                     .catch(function(err) {
-                      console.error('ServiceWorker registration failed', err);
+                      // ServiceWorker registration failed
                     });
                 }
                 
@@ -181,7 +176,7 @@ export default function RootLayout({
                 if ('serviceWorker' in navigator) {
                   navigator.serviceWorker.addEventListener('message', event => {
                     if (event.data && event.data.type === 'CACHE_CLEARED') {
-                      console.log('Cache cleared by service worker');
+                      // Cache cleared by service worker
                       // Optionally reload the page
                       window.location.reload();
                     }
@@ -200,7 +195,7 @@ export default function RootLayout({
                   if (e.ctrlKey && e.shiftKey && e.key === 'U') {
                     localStorage.removeItem('pHLynk-version');
                     window.forceCacheBust();
-                    console.log('Manual cache bust triggered');
+                    // Manual cache bust triggered
                   }
                 });
               })();

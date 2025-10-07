@@ -1,13 +1,12 @@
 'use client';
 
-import { Suspense } from 'react';
-import { HomeContent } from './HomeContent';
-import { AppLoadingScreen } from '@/components/AppLoadingScreen';
+import dynamic from 'next/dynamic';
+
+// Dynamically import HomeContent to avoid webpack issues
+const HomeContent = dynamic(() => import('./HomeContent'), {
+  ssr: false
+});
 
 export default function Home() {
-  return (
-    <Suspense fallback={<AppLoadingScreen progress={0} stage="Loading..." />}>
-      <HomeContent />
-    </Suspense>
-  );
+  return <HomeContent />;
 }
