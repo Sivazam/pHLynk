@@ -4,8 +4,7 @@ import { ROLES, PAYMENT_STATES, PAYMENT_METHODS, TENANT_STATUSES } from '@/lib/f
 // Base interface with common fields
 export interface BaseDocument {
   id: string;
-  tenantId?: string; // Optional for backward compatibility
-  tenantIds?: string[]; // New array-based approach
+  tenantId: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
@@ -71,12 +70,6 @@ export interface Retailer extends BaseDocument {
     isUsed?: boolean;
     usedAt?: Timestamp;
   }>;
-  
-  // Helper methods for tenant management
-  getTenantIds?(): string[];
-  hasTenantId?(tenantId: string): boolean;
-  addTenantId?(tenantId: string): void;
-  removeTenantId?(tenantId: string): void;
 }
 
 // Summary interfaces for recent activity
@@ -141,8 +134,6 @@ export interface Payment extends BaseDocument {
   totalPaid: number;
   method: keyof typeof PAYMENT_METHODS;
   state: keyof typeof PAYMENT_STATES;
-  tenantId: string; // The wholesaler who initiated this payment
-  initiatedByTenantName?: string; // Wholesaler name for display in chips
   otp?: PaymentOTP;
   upi?: PaymentUPI;
   evidence: PaymentEvidence[];

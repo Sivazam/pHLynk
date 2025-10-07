@@ -8,11 +8,11 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { DashboardNavigation, NavItem } from '@/components/DashboardNavigation';
 import { PWANotificationManager } from '@/components/PWANotificationManager';
 import { NotificationDeduplicatorDebug } from '@/components/NotificationDeduplicatorDebug';
+import FCMNotificationManager from '@/components/FCMNotificationManager';
 import { useAuth } from '@/contexts/AuthContext';
 import { retailerService, paymentService, otpService } from '@/services/firestore';
 import { realtimeNotificationService } from '@/services/realtime-notifications';
@@ -58,13 +58,13 @@ import {
 } from 'lucide-react';
 import { StatusBarColor } from './ui/StatusBarColor';
 import { Confetti } from './ui/Confetti';
+import { DebugOTPPanel } from './DebugOTPPanel';
 
 export function RetailerDashboard() {
   const { user, logout } = useAuth();
   const [retailer, setRetailer] = useState<Retailer | null>(null);
   const [retailerUser, setRetailerUser] = useState<any>(null);
   const [tenantId, setTenantId] = useState<string | null>(null);
-  const [availableTenants, setAvailableTenants] = useState<string[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [activeOTPs, setActiveOTPs] = useState<Array<{
@@ -327,28 +327,6 @@ export function RetailerDashboard() {
     setDateRange(newDateRange);
   };
 
-  // Handle tenant switching
-  const handleTenantSwitch = async (newTenantId: string) => {
-    if (!retailer || newTenantId === tenantId) return;
-    
-    try {
-      console.log('🔄 Switching tenant from', tenantId, 'to', newTenantId);
-      
-      // Fetch payments for the new tenant
-      const paymentsData = await paymentService.getPaymentsByRetailer(newTenantId, retailer.id);
-      setPayments(paymentsData);
-      setTenantId(newTenantId);
-      
-      // Fetch wholesaler name for the new tenant
-      await getWholesalerName(newTenantId);
-      
-      console.log('✅ Tenant switched successfully', { newTenantId, paymentsCount: paymentsData.length });
-    } catch (error) {
-      console.error('❌ Error switching tenant:', error);
-      setError('Failed to switch wholesaler. Please try again.');
-    }
-  };
-
   // Navigation items
   const navItems: NavItem[] = [
     { id: 'overview', label: 'Overview', icon: LayoutDashboard },
@@ -481,13 +459,6 @@ export function RetailerDashboard() {
     // Fetch wholesaler names
     for (const tenantId of uniqueTenantIds) {
       await getWholesalerName(tenantId);
-    }
-    
-    // Also fetch names for all available tenants if this is a multi-tenant retailer
-    if (availableTenants.length > 1) {
-      for (const tenantId of availableTenants) {
-        await getWholesalerName(tenantId);
-      }
     }
     
     // Fetch line worker names
@@ -1270,24 +1241,7 @@ export function RetailerDashboard() {
       // Set state with fetched data
       setRetailer(retailerData);
       setRetailerUser(retailerUserData);
-      
-      // Handle multi-tenant support
-      const retailerTenants = retailerData.tenantIds || [retailerUserData.tenantId];
-      console.log('🏪 Retailer Multi-Tenant Data:', {
-        retailerId: retailerData.id,
-        retailerName: retailerData.name,
-        tenantIds: retailerData.tenantIds,
-        userTenantId: retailerUserData.tenantId,
-        finalTenants: retailerTenants
-      });
-      setAvailableTenants(retailerTenants);
-      
-      // Set current tenantId (prefer the one from retailerUserData, fallback to first available)
-      const currentTenantId = retailerTenants.includes(retailerUserData.tenantId) 
-        ? retailerUserData.tenantId 
-        : retailerTenants[0];
-      setTenantId(currentTenantId);
-      
+      setTenantId(retailerUserData.tenantId);
       setPayments(paymentsData);
       
       console.log('🔍 IMPORTANT: Retailer ID Mapping Check:', {
@@ -1753,6 +1707,11 @@ Thank you for your payment!
                         </CardContent>
                       </Card>
 
+                      {/* Debug OTP Panel - Always show for testing */}
+                      {retailer && (
+                        <DebugOTPPanel retailerId={retailer.id} />
+                      )}
+
                       <Card>
                         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                           <CardTitle className="text-sm font-medium text-gray-600">Wholesaler</CardTitle>
@@ -1761,30 +1720,8 @@ Thank you for your payment!
                           </div>
                         </CardHeader>
                         <CardContent>
-                          {availableTenants.length > 1 ? (
-                            <div className="space-y-2">
-                              <Select value={tenantId || ''} onValueChange={handleTenantSwitch}>
-                                <SelectTrigger className="w-full">
-                                  <SelectValue placeholder="Select wholesaler">
-                                    {wholesalerNames[tenantId || ''] || 'Loading...'}
-                                  </SelectValue>
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {availableTenants.map((tenantIdOption) => (
-                                    <SelectItem key={tenantIdOption} value={tenantIdOption}>
-                                      {wholesalerNames[tenantIdOption] || 'Loading...'}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                              <p className="text-xs text-gray-500">Multiple wholesalers ({availableTenants.length} available)</p>
-                            </div>
-                          ) : (
-                            <div>
-                              <div className="text-2xl font-bold text-gray-900">{wholesalerNames[tenantId || ''] || 'Loading...'}</div>
-                              <p className="text-xs text-gray-500">Your wholesaler {availableTenants.length > 0 ? `(${availableTenants.length} total)` : ''}</p>
-                            </div>
-                          )}
+                          <div className="text-2xl font-bold text-gray-900">{wholesalerNames[tenantId || ''] || 'Loading...'}</div>
+                          <p className="text-xs text-gray-500">Your wholesaler</p>
                         </CardContent>
                       </Card>
                     </div>
@@ -1960,6 +1897,9 @@ Thank you for your payment!
 
                     {/* PWA Notification Manager */}
                     <PWANotificationManager userRole="RETAILER" />
+                    
+                    {/* FCM Notification Manager */}
+                    <FCMNotificationManager userId={user?.uid} />
                   </div>
                 )}
 
@@ -1990,7 +1930,6 @@ Thank you for your payment!
                                 <TableHead>Date</TableHead>
                                 <TableHead>Amount</TableHead>
                                 <TableHead>Method</TableHead>
-                                <TableHead>Wholesaler</TableHead>
                                 <TableHead>Status</TableHead>
                                 <TableHead>Line Worker</TableHead>
                                 <TableHead>Actions</TableHead>
@@ -2002,11 +1941,6 @@ Thank you for your payment!
                                   <TableCell>{formatTimestampWithTime(payment.createdAt)}</TableCell>
                                   <TableCell>{formatCurrency(payment.totalPaid)}</TableCell>
                                   <TableCell>{payment.method}</TableCell>
-                                  <TableCell>
-                                    <Badge variant="outline" className="text-xs">
-                                      {wholesalerNames[payment.tenantId || ''] || 'Unknown'}
-                                    </Badge>
-                                  </TableCell>
                                   <TableCell>
                                     <Badge className={
                                       payment.state === 'COMPLETED' 
@@ -2078,7 +2012,6 @@ Thank you for your payment!
                             <TableHead>Date</TableHead>
                             <TableHead>Amount</TableHead>
                             <TableHead>Method</TableHead>
-                            <TableHead>Wholesaler</TableHead>
                             <TableHead>Status</TableHead>
                             <TableHead>Line Worker</TableHead>
                             <TableHead>Actions</TableHead>
@@ -2092,11 +2025,6 @@ Thank you for your payment!
                                 <TableCell>{formatTimestampWithTime(payment.createdAt)}</TableCell>
                                 <TableCell>{formatCurrency(payment.totalPaid)}</TableCell>
                                 <TableCell>{payment.method}</TableCell>
-                                <TableCell>
-                                  <Badge variant="outline" className="text-xs">
-                                    {wholesalerNames[payment.tenantId || ''] || 'Unknown'}
-                                  </Badge>
-                                </TableCell>
                                 <TableCell>
                                   <Badge className={
                                     payment.state === 'COMPLETED' 
@@ -2159,6 +2087,9 @@ Thank you for your payment!
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                       {/* PWA Notification Manager */}
                       <PWANotificationManager userRole="RETAILER" />
+                      
+                      {/* FCM Notification Manager */}
+                      <FCMNotificationManager userId={user?.uid} />
                     </div>
 
                     {/* Notification De-duplicator Debug */}

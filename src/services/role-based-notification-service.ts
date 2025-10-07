@@ -386,70 +386,7 @@ class RoleBasedNotificationService {
     const normalizedUserRole = userRole.toLowerCase();
     
     // Only send to users with matching role
-    const roleMatches = normalizedTargetRole === normalizedUserRole;
-    
-    // 🔐 SECURITY: Additional check - verify user is actually authenticated
-    // This prevents notifications to logged-out users who still have role data in localStorage
-    const isUserAuthenticated = this.checkUserAuthentication();
-    
-    const shouldReceive = roleMatches && isUserAuthenticated;
-    
-    console.log(`🔍 Notification check:`, {
-      targetRole,
-      userRole,
-      roleMatches,
-      isUserAuthenticated,
-      shouldReceive
-    });
-    
-    return shouldReceive;
-  }
-
-  /**
-   * Check if user is actually authenticated (not just has role data in localStorage)
-   */
-  private checkUserAuthentication(): boolean {
-    try {
-      // Check if Firebase auth user exists
-      if (typeof window !== 'undefined' && 'firebase' in window) {
-        // Try to get current Firebase user
-        const auth = (window as any).firebase?.auth?.();
-        if (auth && auth.currentUser) {
-          console.log('✅ User is authenticated via Firebase');
-          return true;
-        }
-      }
-      
-      // Check for retailer-specific authentication indicators
-      const retailerId = localStorage.getItem('retailerId');
-      const hasUserSession = sessionStorage.getItem('auth_session') || 
-                            sessionStorage.getItem('firebase_session');
-      
-      // Additional check: verify we don't have logout indicators
-      const recentlyLoggedOut = localStorage.getItem('logged_out_at');
-      if (recentlyLoggedOut) {
-        const logoutTime = parseInt(recentlyLoggedOut);
-        const fiveMinutesAgo = Date.now() - (5 * 60 * 1000);
-        if (logoutTime > fiveMinutesAgo) {
-          console.log('🚫 User recently logged out - blocking notifications');
-          return false;
-        }
-      }
-      
-      const isAuthenticated = !!(retailerId && hasUserSession);
-      
-      console.log(`🔍 Authentication check:`, {
-        retailerId: !!retailerId,
-        hasUserSession: !!hasUserSession,
-        recentlyLoggedOut: !!recentlyLoggedOut,
-        isAuthenticated
-      });
-      
-      return isAuthenticated;
-    } catch (error) {
-      console.warn('⚠️ Error checking user authentication:', error);
-      return false; // Err on the side of security
-    }
+    return normalizedTargetRole === normalizedUserRole;
   }
 
   private getCurrentUserRole(): string {

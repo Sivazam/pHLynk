@@ -873,45 +873,6 @@ export function WholesalerAdminDashboard() {
     }
   };
 
-  const handleAddExistingRetailer = async (retailer: Retailer) => {
-    const currentTenantId = getCurrentTenantId();
-    if (!currentTenantId) {
-      setError('No tenant selected. Please select a tenant to continue.');
-      return;
-    }
-    
-    try {
-      console.log('🔗 Adding existing retailer to tenant:', retailer.id, currentTenantId);
-      
-      const response = await fetch('/api/retailer/add-to-tenant', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ 
-          retailerId: retailer.id,
-          tenantId: currentTenantId
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to add retailer to account');
-      }
-
-      console.log('✅ Retailer added successfully:', data);
-      
-      await fetchDashboardData();
-      setShowCreateRetailer(false);
-      showSuccess(`Retailer "${retailer.name}" added to your account successfully!`);
-    } catch (err: any) {
-      console.error('❌ Error adding existing retailer:', err);
-      setError(err.message || 'Failed to add retailer to account');
-      throw err;
-    }
-  };
-
   const handleCreateLineWorker = async (data: { email: string; password: string; displayName?: string; phone?: string; assignedAreas?: string[] }) => {
     const currentTenantId = getCurrentTenantId();
     if (!currentTenantId) return;
@@ -1421,7 +1382,6 @@ export function WholesalerAdminDashboard() {
               <CreateRetailerForm 
                 key="retailer-form"
                 onSubmit={handleCreateRetailer}
-                onAddExistingRetailer={handleAddExistingRetailer}
                 areas={areas}
                 onCancel={() => setShowCreateRetailer(false)}
               />

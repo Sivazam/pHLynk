@@ -61,7 +61,7 @@ export class FirestoreService<T extends BaseDocument> {
     try {
       const docRef = await addDoc(collection(db, this.collectionName), {
         ...data,
-        tenantIds: [tenantId], // Use tenantIds array instead of single tenantId
+        tenantId,
         createdAt: Timestamp.now(),
         updatedAt: Timestamp.now()
       });
@@ -84,26 +84,14 @@ export class FirestoreService<T extends BaseDocument> {
       logger.debug('Document exists', docSnap.exists(), { context: 'FirestoreService' });
       if (docSnap.exists()) {
         const data = docSnap.data();
+        logger.debug('Document tenantId', data.tenantId, { context: 'FirestoreService' });
+        logger.debug('Tenant ID match', data.tenantId === tenantId, { context: 'FirestoreService' });
         
-        // Check if tenant has access to this document
-        let hasAccess = false;
-        
-        // New way: check tenantIds array
-        if (data.tenantIds && Array.isArray(data.tenantIds)) {
-          hasAccess = data.tenantIds.includes(tenantId);
-        }
-        // Backward compatibility: check single tenantId
-        else if (data.tenantId) {
-          hasAccess = data.tenantId === tenantId;
-        }
-        
-        logger.debug('Tenant access', hasAccess, { context: 'FirestoreService' });
-        
-        if (hasAccess) {
-          logger.debug('Document found and tenant has access', { context: 'FirestoreService' });
+        if (data.tenantId === tenantId) {
+          logger.debug('Document found and tenant ID matches', { context: 'FirestoreService' });
           return { id: docSnap.id, ...data } as T;
         } else {
-          logger.warn('Tenant does not have access to this document', { context: 'FirestoreService' });
+          logger.warn('Tenant ID mismatch - document belongs to different tenant', { context: 'FirestoreService' });
         }
       } else {
         logger.debug('Document does not exist', { context: 'FirestoreService' });
@@ -117,10 +105,9 @@ export class FirestoreService<T extends BaseDocument> {
 
   async getAll(tenantId: string, constraints: QueryConstraint[] = []): Promise<T[]> {
     try {
-      // Query for documents where tenantIds array contains the tenantId
       const q = query(
         collection(db, this.collectionName), 
-        where('tenantIds', 'array-contains', tenantId),
+        where('tenantId', '==', tenantId),
         ...constraints
       );
       const querySnapshot = await getDocs(q);
@@ -405,7 +392,7 @@ export class RetailerService extends FirestoreService<Retailer> {
   }
 
   async createRetailer(tenantId: string, data: CreateRetailerForm): Promise<string> {
-    // Create the retailer document with tenantIds array
+    // Create the retailer document first
     const retailerId = await this.create({
       name: data.name,
       phone: data.phone,
@@ -418,7 +405,7 @@ export class RetailerService extends FirestoreService<Retailer> {
     try {
       const retailerData: Retailer = {
         id: retailerId,
-        tenantIds: [tenantId], // Use tenantIds array
+        tenantId: tenantId,
         name: data.name,
         phone: data.phone,
         address: data.address,
@@ -444,161 +431,6 @@ export class RetailerService extends FirestoreService<Retailer> {
 
   async getRetailersByZipcode(tenantId: string, zipcode: string): Promise<Retailer[]> {
     return this.query(tenantId, [where('zipcodes', 'array-contains', zipcode)]);
-  }
-
-  // New multi-tenant methods
-  
-  /**
-   * Find retailer by phone number across all tenants
-   */
-  async getRetailerByPhone(phone: string): Promise<Retailer | null> {
-    try {
-      const retailersRef = collection(db, COLLECTIONS.RETAILERS);
-      const q = query(retailersRef, where('phone', '==', phone));
-      const querySnapshot = await getDocs(q);
-      
-      if (!querySnapshot.empty) {
-        const doc = querySnapshot.docs[0];
-        return { id: doc.id, ...doc.data() } as Retailer;
-      }
-      
-      return null;
-    } catch (error) {
-      logger.error('Error finding retailer by phone', error, { context: 'RetailerService' });
-      return null;
-    }
-  }
-
-  /**
-   * Add tenant to existing retailer's tenantIds array
-   */
-  async addTenantToRetailer(retailerId: string, tenantId: string): Promise<void> {
-    try {
-      const retailerRef = doc(db, COLLECTIONS.RETAILERS, retailerId);
-      const retailerDoc = await getDoc(retailerRef);
-      
-      if (!retailerDoc.exists()) {
-        throw new Error('Retailer not found');
-      }
-      
-      const retailerData = retailerDoc.data();
-      const currentTenantIds = retailerData.tenantIds || [];
-      
-      // Check if tenant already exists
-      if (currentTenantIds.includes(tenantId)) {
-        logger.info(`Tenant ${tenantId} already associated with retailer ${retailerId}`, { context: 'RetailerService' });
-        return;
-      }
-      
-      // Add new tenant to array
-      const updatedTenantIds = [...currentTenantIds, tenantId];
-      
-      await updateDoc(retailerRef, {
-        tenantIds: updatedTenantIds,
-        updatedAt: Timestamp.now()
-      });
-      
-      logger.success(`Added tenant ${tenantId} to retailer ${retailerId}`, { context: 'RetailerService' });
-    } catch (error) {
-      logger.error('Error adding tenant to retailer', error, { context: 'RetailerService' });
-      throw error;
-    }
-  }
-
-  /**
-   * Remove tenant from retailer's tenantIds array (soft removal - keeps historical data)
-   */
-  async removeTenantFromRetailer(retailerId: string, tenantId: string): Promise<void> {
-    try {
-      const retailerRef = doc(db, COLLECTIONS.RETAILERS, retailerId);
-      const retailerDoc = await getDoc(retailerRef);
-      
-      if (!retailerDoc.exists()) {
-        throw new Error('Retailer not found');
-      }
-      
-      const retailerData = retailerDoc.data();
-      const currentTenantIds = retailerData.tenantIds || [];
-      
-      // Remove tenant from array
-      const updatedTenantIds = currentTenantIds.filter((id: string) => id !== tenantId);
-      
-      await updateDoc(retailerRef, {
-        tenantIds: updatedTenantIds,
-        updatedAt: Timestamp.now()
-      });
-      
-      logger.success(`Removed tenant ${tenantId} from retailer ${retailerId}`, { context: 'RetailerService' });
-    } catch (error) {
-      logger.error('Error removing tenant from retailer', error, { context: 'RetailerService' });
-      throw error;
-    }
-  }
-
-  /**
-   * Get all retailers for a specific tenant (from tenantIds array)
-   */
-  async getRetailersForTenant(tenantId: string): Promise<Retailer[]> {
-    try {
-      const retailersRef = collection(db, COLLECTIONS.RETAILERS);
-      const q = query(retailersRef, where('tenantIds', 'array-contains', tenantId));
-      const querySnapshot = await getDocs(q);
-      
-      const retailers: Retailer[] = [];
-      querySnapshot.forEach((doc) => {
-        retailers.push({ id: doc.id, ...doc.data() } as Retailer);
-      });
-      
-      return retailers;
-    } catch (error) {
-      logger.error('Error getting retailers for tenant', error, { context: 'RetailerService' });
-      return [];
-    }
-  }
-
-  /**
-   * Migration function: Convert existing retailers with single tenantId to tenantIds array
-   */
-  async migrateRetailersToMultiTenant(): Promise<{ migrated: number; errors: number }> {
-    try {
-      logger.info('Starting retailer migration to multi-tenant structure', { context: 'RetailerService' });
-      
-      const retailersRef = collection(db, COLLECTIONS.RETAILERS);
-      const querySnapshot = await getDocs(retailersRef);
-      
-      let migrated = 0;
-      let errors = 0;
-      
-      for (const doc of querySnapshot.docs) {
-        try {
-          const retailerData = doc.data();
-          
-          // Skip if already migrated
-          if (retailerData.tenantIds && Array.isArray(retailerData.tenantIds)) {
-            continue;
-          }
-          
-          // Migrate single tenantId to array
-          if (retailerData.tenantId) {
-            await updateDoc(doc.ref, {
-              tenantIds: [retailerData.tenantId],
-              updatedAt: Timestamp.now()
-            });
-            migrated++;
-            logger.debug(`Migrated retailer ${doc.id} to multi-tenant`, { context: 'RetailerService' });
-          }
-        } catch (error) {
-          errors++;
-          logger.error(`Error migrating retailer ${doc.id}`, error, { context: 'RetailerService' });
-        }
-      }
-      
-      logger.info(`Retailer migration completed: ${migrated} migrated, ${errors} errors`, { context: 'RetailerService' });
-      return { migrated, errors };
-    } catch (error) {
-      logger.error('Error during retailer migration', error, { context: 'RetailerService' });
-      return { migrated: 0, errors: 1 };
-    }
   }
 
   // updateOutstanding function disabled - invoices have been removed

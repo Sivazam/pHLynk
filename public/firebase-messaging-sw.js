@@ -5,14 +5,14 @@
 importScripts('https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/9.6.1/firebase-messaging-compat.js');
 
-// Firebase configuration (hardcoded for service worker) - MUST MATCH FRONTEND CONFIG
+// Firebase configuration (hardcoded for service worker)
 const firebaseConfig = {
-  apiKey: "AIzaSyCdOIhLQh9iYBXbE7dre2J9zsmCBuVdwwU",
-  authDomain: "plkapp-8c052.firebaseapp.com",
-  projectId: "plkapp-8c052",
-  storageBucket: "plkapp-8c052.firebasestorage.app",
-  messagingSenderId: "333526318951",
-  appId: "1:333526318951:web:a8f30f497e7060e264b9c2"
+  apiKey: "AIzaSyAiuROMuOXyBTQ2tAn_7lCk8qBsKLcKBds",
+  authDomain: "pharmalynkk.firebaseapp.com",
+  projectId: "pharmalynkk",
+  storageBucket: "pharmalynkk.firebasestorage.app",
+  messagingSenderId: "877118992574",
+  appId: "1:877118992574:web:ca55290c721d1c4b18eeef"
 };
 
 // Initialize Firebase in the service worker
@@ -146,18 +146,14 @@ self.addEventListener('push', (event) => {
     console.log('📱 Push data:', data);
 
     // 🔐 SECURITY: Check if user is authenticated before processing
-    // For push events, we need to check auth synchronously - default to blocking if unsure
-    const isAuthenticated = self.isAuthenticated || false;
-    if (!isAuthenticated) {
-      console.log('🚫 Push event: User not authenticated - discarding notification');
-      return;
-    }
+    // Note: We can't easily check auth here, so we'll do it in onBackgroundMessage
+    // This is mainly for direct push events that bypass onBackgroundMessage
 
     const notificationTitle = data.notification?.title || data.title || 'pHLynk Notification';
     const notificationOptions = {
       body: data.notification?.body || data.body || 'You have a new notification',
-      icon: data.notification?.icon || data.icon || data.data?.icon || '/notification-large-192x192.png',
-      badge: data.notification?.badge || data.badge || data.data?.badge || '/badge-72x72.png',
+      icon: data.notification?.icon || data.icon || '/icon-192x192.png',
+      badge: data.notification?.badge || data.badge || '/icon-96x96.png',
       tag: data.data?.tag || data.tag || 'default',
       requireInteraction: data.data?.requireInteraction || false,
       data: data.data || data,

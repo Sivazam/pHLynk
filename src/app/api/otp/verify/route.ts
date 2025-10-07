@@ -398,21 +398,7 @@ export async function POST(request: NextRequest) {
       // Send FCM notification for payment completion
       try {
         console.log('📱 Sending FCM payment completion notification...');
-        
-        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
-        const fcmUrl = `${baseUrl}/api/fcm/send-payment-completion`;
-        
-        console.log('🔗 FCM URL:', fcmUrl);
-        console.log('📤 FCM Request data:', {
-          retailerId: payment.retailerId,
-          amount: payment.totalPaid,
-          paymentId: paymentId,
-          retailerName: payment.retailerName,
-          lineWorkerName: payment.lineWorkerName,
-          wholesalerId: payment.tenantId
-        });
-        
-        const fcmResponse = await fetch(fcmUrl, {
+        const fcmResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/fcm/send-payment-completion`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -423,29 +409,18 @@ export async function POST(request: NextRequest) {
             paymentId: paymentId,
             retailerName: payment.retailerName,
             lineWorkerName: payment.lineWorkerName,
-            wholesalerId: payment.tenantId
+            wholesalerId: payment.tenantId // Assuming tenantId is the wholesalerId
           })
         });
-
-        console.log('📡 FCM Response status:', fcmResponse.status);
-        console.log('📡 FCM Response ok:', fcmResponse.ok);
 
         if (fcmResponse.ok) {
           const fcmResult = await fcmResponse.json();
           console.log('✅ FCM payment completion notification sent successfully:', fcmResult);
         } else {
-          const errorText = await fcmResponse.text();
-          console.warn('⚠️ FCM payment completion notification failed:', {
-            status: fcmResponse.status,
-            statusText: fcmResponse.statusText,
-            errorText: errorText
-          });
+          console.warn('⚠️ FCM payment completion notification failed:', fcmResponse.status);
         }
       } catch (fcmError) {
-        console.warn('⚠️ Error sending FCM payment completion notification:', {
-          error: fcmError instanceof Error ? fcmError.message : 'Unknown error',
-          stack: fcmError instanceof Error ? fcmError.stack : undefined
-        });
+        console.warn('⚠️ Error sending FCM payment completion notification:', fcmError);
         // Don't fail the request if FCM fails
       }
 

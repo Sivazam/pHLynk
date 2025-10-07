@@ -74,13 +74,6 @@ class EnhancedFCMManager {
           return;
         }
         
-        // 🔥 DUPLICATE PREVENTION: Skip OTP notifications as they're handled by service worker
-        const notificationData = payload.data || {};
-        if (notificationData.type === 'otp') {
-          console.log('🚫 OTP notification handled by service worker - skipping foreground display to prevent duplicates');
-          return;
-        }
-        
         // Check de-duplicator before showing notification (only if available)
         const deduplicator = notificationDeduplicator;
         if (deduplicator) {
@@ -146,8 +139,8 @@ class EnhancedFCMManager {
     try {
       const notificationOptions = {
         body,
-        icon: data.icon || '/notification-large-192x192.png',
-        badge: data.badge || '/badge-72x72.png',
+        icon: '/icon-192x192.png',
+        badge: '/icon-96x96.png',
         tag: data.tag || 'default',
         requireInteraction: this.config.requireInteraction,
         data
@@ -164,7 +157,7 @@ class EnhancedFCMManager {
 
       // Handle notification click
       notification.onclick = () => {
-        const urlToOpen = data.url || data.clickAction || '/';
+        const urlToOpen = data.url || '/';
         window.open(urlToOpen, '_blank');
         notification.close();
       };

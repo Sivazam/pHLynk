@@ -96,10 +96,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               // Also store retailerId in localStorage for backward compatibility
               localStorage.setItem('retailerId', retailerData.retailerId);
               
-              // 🔐 SECURITY: Clear any logout timestamp on successful login
-              localStorage.removeItem('logged_out_at');
-              console.log('✅ Cleared logout timestamp on successful login');
-              
               // 🔄 Initialize FCM for returning retailer users
               try {
                 updateProgress(78, 'Setting up notifications...');
@@ -232,10 +228,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               assignedZips: userData.assignedZips
             };
             
-            // 🔐 SECURITY: Clear any logout timestamp on successful login
-            localStorage.removeItem('logged_out_at');
-            console.log('✅ Cleared logout timestamp on successful login');
-            
             // 🔄 Initialize FCM for returning users
             try {
               updateProgress(88, 'Setting up notifications...');
@@ -338,35 +330,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // 🔐 SECURITY: Unregister FCM token to prevent notifications to logged-out users
       try {
         const { deleteFCMToken } = await import('@/lib/fcm');
-        const fcmResult = await deleteFCMToken();
-        console.log('🔕 FCM token unregistered:', fcmResult ? 'success' : 'failed');
+        await deleteFCMToken();
+        console.log('🔕 FCM token unregistered successfully');
       } catch (fcmError) {
         console.warn('⚠️ Error unregistering FCM token:', fcmError);
         // Continue with logout even if FCM unregistration fails
       }
       
-      // 🔐 SECURITY: FCM token cleanup is already handled by deleteFCMToken() above
-      // No need for additional cleanup here as it would remove all devices for the retailer
-      console.log('✅ FCM token cleanup completed by deleteFCMToken()');
-      
-      // 🔌 Disconnect socket connections
-      try {
-        if (typeof window !== 'undefined' && (window as any).socket) {
-          console.log('🔌 Disconnecting socket connection...');
-          (window as any).socket.disconnect();
-          (window as any).socket = null;
-        }
-      } catch (socketError) {
-        console.warn('⚠️ Error disconnecting socket:', socketError);
-      }
-      
       // Clear any retailer-specific data
       localStorage.removeItem('retailerId');
       console.log('🗑️ Cleared retailerId from localStorage');
-      
-      // 🔐 SECURITY: Set logout timestamp to prevent notifications to recently logged-out users
-      localStorage.setItem('logged_out_at', Date.now().toString());
-      console.log('🚫 Set logout timestamp for notification blocking');
       
       // Clear any role selection state
       sessionStorage.removeItem('auth_view');
@@ -379,23 +352,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           sessionStorage.removeItem(key);
         }
       });
-      
-      // Clear notification service state
-      try {
-        if (typeof window !== 'undefined') {
-          // Clear any in-app notification state
-          localStorage.removeItem('shownOTPpopups');
-          localStorage.removeItem('shownCompletedPaymentPopups');
-          
-          // Stop any real-time listeners
-          const { enhancedNotificationService } = await import('@/services/enhanced-notification-service');
-          if (auth.currentUser) {
-            enhancedNotificationService.stopRealtimeListening(auth.currentUser.uid);
-          }
-        }
-      } catch (notificationError) {
-        console.warn('⚠️ Error clearing notification state:', notificationError);
-      }
       
       // Sign out from Firebase - this will clear the Firebase Auth session
       // for both email/password users and retailer phone auth users
@@ -420,8 +376,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     } catch (error) {
       console.error('❌ Logout error:', error);
-      // Still try to redirect even if logout fails partially
+      // Fallback - still attempt to redirect even if there's an error
       if (typeof window !== 'undefined') {
+        console.log('🔄 Fallback redirect to home page...');
         window.location.href = '/';
       }
     }
