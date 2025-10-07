@@ -376,11 +376,23 @@ export class UserService extends FirestoreService<User> {
   }
 
   async getLineWorkersForArea(tenantId: string, areaId: string): Promise<User[]> {
-    return this.query(tenantId, [
-      where('roles', 'array-contains', 'LINE_WORKER'),
-      where('assignedAreas', 'array-contains', areaId),
-      where('active', '==', true)
-    ]);
+    try {
+      // First get all active line workers for the tenant
+      const lineWorkers = await this.query(tenantId, [
+        where('roles', 'array-contains', 'LINE_WORKER'),
+        where('active', '==', true)
+      ]);
+      
+      // Then filter by assigned areas in application code
+      const workersForArea = lineWorkers.filter(worker => 
+        worker.assignedAreas && worker.assignedAreas.includes(areaId)
+      );
+      
+      return workersForArea;
+    } catch (error) {
+      logger.error(`Error getting line workers for area ${areaId}`, error, { context: 'UserService' });
+      throw error;
+    }
   }
 
   async assignAreasToUser(userId: string, tenantId: string, areaIds: string[]): Promise<void> {

@@ -191,6 +191,16 @@ const nextConfig: NextConfig = {
   experimental: {
     optimizeCss: true,
   },
+  // Ensure proper static file handling in development
+  async rewrites() {
+    return [
+      // Ensure static assets are properly served
+      {
+        source: '/_next/static/:path*',
+        destination: '/_next/static/:path*',
+      },
+    ];
+  },
 };
 
 export default nextConfig;
