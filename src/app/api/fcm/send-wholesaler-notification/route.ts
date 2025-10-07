@@ -16,8 +16,8 @@ interface WholesalerNotificationRequest {
 
 export async function POST(request: NextRequest) {
   try {
-    const body: WholesalerNotificationRequest = await request.json();
-    const { tenantId, amount, paymentId, retailerName, lineWorkerName, title, body, clickAction } = body;
+    const requestBody: WholesalerNotificationRequest = await request.json();
+    const { tenantId, amount, paymentId, retailerName, lineWorkerName, title, body, clickAction } = requestBody;
 
     console.log('🏪 Sending wholesaler notification via tenant collection:', {
       tenantId,
@@ -86,44 +86,48 @@ export async function POST(request: NextRequest) {
       }
     };
 
-    let successCount = 0;
-    let failureCount = 0;
-
-    for (const device of fcmDevices) {
-      try {
-        console.log(`📤 Sending to device: ${device.token.substring(0, 20)}...`);
-        const result = await fcmService.sendToDevice(device.token, notificationData);
-        
-        if (result.success) {
-          successCount++;
-          console.log(`✅ Success sending to device: ${device.token.substring(0, 20)}...`);
-        } else {
-          failureCount++;
-          console.warn(`⚠️ Failed to send to device: ${device.token.substring(0, 20)}...`, result.error);
-          
-          // If device token is invalid, remove it
-          if (result.error === 'UNREGISTERED' || result.error === 'INVALID_ARGUMENT') {
-            console.log(`🗑️ Removing invalid device token: ${device.token.substring(0, 20)}...`);
-            await fcmService.unregisterDevice(tenantId, device.token);
-          }
-        }
-      } catch (error) {
-        failureCount++;
-        console.error(`❌ Error sending to device ${device.token.substring(0, 20)}...:`, error);
-      }
+    // Use cloud function for wholesaler notification instead of direct FCM
+    // Since FCMService.sendToDevice is disabled, we'll use the cloud function approach
+    console.log('📤 Using cloud function for wholesaler notification...');
+    
+    try {
+      const { callFirebaseFunction } = await import('@/lib/firebase');
+      const result = await callFirebaseFunction('sendPaymentCompletionNotification', {
+        retailerId: tenantId, // Use tenantId as the recipient
+        amount,
+        paymentId,
+        recipientType: 'wholesaler',
+        retailerName,
+        lineWorkerName,
+        wholesalerId: tenantId,
+        title,
+        body,
+        clickAction
+      });
+      
+      console.log('✅ Wholesaler cloud function response:', result);
+      
+      return NextResponse.json({
+        success: true,
+        message: 'Notification sent via cloud function',
+        tenantId,
+        tenantName: tenantData.name,
+        devicesFound: fcmDevices.length,
+        cloudFunctionResult: result
+      });
+    } catch (cloudFunctionError) {
+      console.error('❌ Cloud function failed:', cloudFunctionError);
+      
+      // Fallback: return success but note that cloud function failed
+      return NextResponse.json({
+        success: false,
+        message: 'Cloud function failed',
+        tenantId,
+        tenantName: tenantData.name,
+        devicesFound: fcmDevices.length,
+        error: cloudFunctionError instanceof Error ? cloudFunctionError.message : 'Unknown error'
+      });
     }
-
-    console.log(`📊 Wholesaler notification results: ${successCount} success, ${failureCount} failed`);
-
-    return NextResponse.json({
-      success: successCount > 0,
-      message: `Notification sent to ${successCount} device(s), ${failureCount} failed`,
-      tenantId,
-      tenantName: tenantData.name,
-      devicesFound: fcmDevices.length,
-      successCount,
-      failureCount
-    });
 
   } catch (error) {
     console.error('❌ Error sending wholesaler notification:', error);
