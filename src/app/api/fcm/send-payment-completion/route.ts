@@ -33,6 +33,21 @@ export async function POST(request: NextRequest) {
 
     // Send to retailer
     try {
+      console.log('📱 Sending retailer notification via cloud function...');
+      console.log('📤 Retailer notification data:', {
+        retailerId,
+        amount,
+        paymentId,
+        recipientType: 'retailer',
+        retailerName,
+        lineWorkerName,
+        wholesalerId,
+        title: '🎉 Payment Successful',
+        body: `Congratulations - you successfully paid ₹${amount.toLocaleString()} to ${retailerName || 'your wholesaler'} via Line Man ${lineWorkerName || 'Line Worker'}.`,
+        clickAction: '/retailer/payment-history'
+      });
+      
+      // ✅ 使用专门的 sendPaymentCompletionNotification 云函数
       const retailerResult = await callFirebaseFunction('sendPaymentCompletionNotification', {
         retailerId,
         amount,
@@ -46,16 +61,35 @@ export async function POST(request: NextRequest) {
         clickAction: '/retailer/payment-history'
       });
       
+      console.log('✅ Retailer cloud function response:', retailerResult);
       results.push({ type: 'retailer', success: true, result: retailerResult });
       console.log('✅ Retailer payment completion notification sent');
     } catch (retailerError) {
-      console.warn('⚠️ Failed to send retailer notification:', retailerError);
+      console.error('❌ Failed to send retailer notification:', {
+        error: retailerError instanceof Error ? retailerError.message : 'Unknown error',
+        stack: retailerError instanceof Error ? retailerError.stack : undefined
+      });
       results.push({ type: 'retailer', success: false, error: retailerError instanceof Error ? retailerError.message : 'Unknown error' });
     }
 
     // Send to wholesaler if wholesalerId is provided
     if (wholesalerId) {
       try {
+        console.log('📱 Sending wholesaler notification via cloud function...');
+        console.log('📤 Wholesaler notification data:', {
+          retailerId: wholesalerId, // Use wholesalerId as the recipient
+          amount,
+          paymentId,
+          recipientType: 'wholesaler',
+          retailerName,
+          lineWorkerName,
+          wholesalerId,
+          title: '💰 Collection Update',
+          body: `Line Man ${lineWorkerName || 'Line Worker'} collected ₹${amount.toLocaleString()} from ${retailerName || 'Retailer'} on ${new Date().toLocaleDateString()} at ${new Date().toLocaleTimeString()}.`,
+          clickAction: '/wholesaler/dashboard'
+        });
+        
+        // ✅ 使用专门的 sendPaymentCompletionNotification 云函数
         const wholesalerResult = await callFirebaseFunction('sendPaymentCompletionNotification', {
           retailerId: wholesalerId, // Use wholesalerId as the recipient
           amount,
@@ -69,12 +103,18 @@ export async function POST(request: NextRequest) {
           clickAction: '/wholesaler/dashboard'
         });
         
+        console.log('✅ Wholesaler cloud function response:', wholesalerResult);
         results.push({ type: 'wholesaler', success: true, result: wholesalerResult });
         console.log('✅ Wholesaler payment completion notification sent');
       } catch (wholesalerError) {
-        console.warn('⚠️ Failed to send wholesaler notification:', wholesalerError);
+        console.error('❌ Failed to send wholesaler notification:', {
+          error: wholesalerError instanceof Error ? wholesalerError.message : 'Unknown error',
+          stack: wholesalerError instanceof Error ? wholesalerError.stack : undefined
+        });
         results.push({ type: 'wholesaler', success: false, error: wholesalerError instanceof Error ? wholesalerError.message : 'Unknown error' });
       }
+    } else {
+      console.log('ℹ️ No wholesalerId provided - skipping wholesaler notification');
     }
 
     console.log('✅ API Route - Payment completion notifications completed:', results);
