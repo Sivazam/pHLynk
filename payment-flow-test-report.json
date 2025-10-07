@@ -1,0 +1,236 @@
+{
+  "summary": {
+    "total": 12,
+    "passed": 6,
+    "failed": 6,
+    "successRate": "50.0"
+  },
+  "details": [
+    {
+      "test": "sendRetailerPaymentSMS CORS",
+      "passed": true,
+      "message": "CORS supported",
+      "details": {
+        "status": 204,
+        "headers": {
+          "access-control-allow-origin": [
+            "http://localhost:3000"
+          ],
+          "vary": [
+            "Origin, Access-Control-Request-Headers"
+          ],
+          "access-control-allow-methods": [
+            "POST"
+          ],
+          "access-control-allow-headers": [
+            "Content-Type, Authorization"
+          ],
+          "function-execution-id": [
+            "t2xzdwxu1387"
+          ],
+          "x-cloud-trace-context": [
+            "1370d92bee6c8ad259e7738252fa66cc"
+          ],
+          "date": [
+            "Tue, 30 Sep 2025 08:46:15 GMT"
+          ],
+          "content-type": [
+            "text/html"
+          ],
+          "server": [
+            "Google Frontend"
+          ],
+          "alt-svc": [
+            "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000"
+          ]
+        }
+      },
+      "timestamp": "2025-09-30T08:46:15.278Z"
+    },
+    {
+      "test": "sendRetailerPaymentSMS Error Handling",
+      "passed": true,
+      "message": "Properly returns 400 for invalid data",
+      "details": {
+        "status": 400,
+        "body": "{\"error\":{\"message\":\"Bad Request\",\"status\":\"INVALID_ARGUMENT\"}}"
+      },
+      "timestamp": "2025-09-30T08:46:15.481Z"
+    },
+    {
+      "test": "sendWholesalerPaymentSMS CORS",
+      "passed": true,
+      "message": "CORS supported",
+      "details": {
+        "status": 204,
+        "headers": {
+          "access-control-allow-origin": [
+            "http://localhost:3000"
+          ],
+          "vary": [
+            "Origin, Access-Control-Request-Headers"
+          ],
+          "access-control-allow-methods": [
+            "POST"
+          ],
+          "access-control-allow-headers": [
+            "Content-Type, Authorization"
+          ],
+          "function-execution-id": [
+            "hfwjnfpzlzfu"
+          ],
+          "x-cloud-trace-context": [
+            "01216141cf1b3f9659e7738252fa613b"
+          ],
+          "date": [
+            "Tue, 30 Sep 2025 08:46:15 GMT"
+          ],
+          "content-type": [
+            "text/html"
+          ],
+          "server": [
+            "Google Frontend"
+          ],
+          "alt-svc": [
+            "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000"
+          ]
+        }
+      },
+      "timestamp": "2025-09-30T08:46:15.684Z"
+    },
+    {
+      "test": "sendWholesalerPaymentSMS Error Handling",
+      "passed": true,
+      "message": "Properly returns 400 for invalid data",
+      "details": {
+        "status": 400,
+        "body": "{\"error\":{\"message\":\"Bad Request\",\"status\":\"INVALID_ARGUMENT\"}}"
+      },
+      "timestamp": "2025-09-30T08:46:15.889Z"
+    },
+    {
+      "test": "processSMSResponse CORS",
+      "passed": true,
+      "message": "CORS supported",
+      "details": {
+        "status": 204,
+        "headers": {
+          "access-control-allow-origin": [
+            "http://localhost:3000"
+          ],
+          "vary": [
+            "Origin, Access-Control-Request-Headers"
+          ],
+          "access-control-allow-methods": [
+            "POST"
+          ],
+          "access-control-allow-headers": [
+            "Content-Type, Authorization"
+          ],
+          "function-execution-id": [
+            "tra9v5nbxhda"
+          ],
+          "x-cloud-trace-context": [
+            "0313f76ee07aaea959e7738252fa613c"
+          ],
+          "date": [
+            "Tue, 30 Sep 2025 08:46:16 GMT"
+          ],
+          "content-type": [
+            "text/html"
+          ],
+          "server": [
+            "Google Frontend"
+          ],
+          "alt-svc": [
+            "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000"
+          ]
+        }
+      },
+      "timestamp": "2025-09-30T08:46:16.089Z"
+    },
+    {
+      "test": "processSMSResponse Error Handling",
+      "passed": true,
+      "message": "Properly returns 400 for invalid data",
+      "details": {
+        "status": 400,
+        "body": "{\"error\":{\"message\":\"Bad Request\",\"status\":\"INVALID_ARGUMENT\"}}"
+      },
+      "timestamp": "2025-09-30T08:46:16.287Z"
+    },
+    {
+      "test": "API /test-cloud-functions",
+      "passed": false,
+      "message": "Connection failed: request to http://localhost:3000/api/test-cloud-functions failed, reason: ",
+      "details": {
+        "error": "request to http://localhost:3000/api/test-cloud-functions failed, reason: "
+      },
+      "timestamp": "2025-09-30T08:46:16.289Z"
+    },
+    {
+      "test": "API /otp/send",
+      "passed": false,
+      "message": "Connection failed: request to http://localhost:3000/api/otp/send failed, reason: ",
+      "details": {
+        "error": "request to http://localhost:3000/api/otp/send failed, reason: "
+      },
+      "timestamp": "2025-09-30T08:46:16.291Z"
+    },
+    {
+      "test": "API /otp/verify",
+      "passed": false,
+      "message": "Connection failed: request to http://localhost:3000/api/otp/verify failed, reason: ",
+      "details": {
+        "error": "request to http://localhost:3000/api/otp/verify failed, reason: "
+      },
+      "timestamp": "2025-09-30T08:46:16.293Z"
+    },
+    {
+      "test": "Fast2SMS Config Check",
+      "passed": false,
+      "message": "Unexpected response: 404",
+      "details": {
+        "error": {
+          "message": "Retailer user not found",
+          "status": "NOT_FOUND"
+        }
+      },
+      "timestamp": "2025-09-30T08:46:16.845Z"
+    },
+    {
+      "test": "Payment Flow Simulation",
+      "passed": false,
+      "message": "Simulation failed: request to http://localhost:3000/api/otp/verify failed, reason: ",
+      "details": {
+        "error": "request to http://localhost:3000/api/otp/verify failed, reason: "
+      },
+      "timestamp": "2025-09-30T08:46:16.846Z"
+    },
+    {
+      "test": "Invalid Data Handling",
+      "passed": false,
+      "message": "Unexpected response: 404",
+      "details": {
+        "status": 404
+      },
+      "timestamp": "2025-09-30T08:46:18.149Z"
+    }
+  ],
+  "timestamp": "2025-09-30T08:46:18.150Z",
+  "config": {
+    "firebaseProjectId": "pharmalynkk",
+    "cloudFunctionBaseUrl": "https://us-central1-pharmalynkk.cloudfunctions.net",
+    "localApiUrl": "http://localhost:3000/api",
+    "testData": {
+      "retailerId": "test-retailer-123",
+      "paymentId": "test-payment-123",
+      "amount": 1500,
+      "lineWorkerName": "Test Line Worker",
+      "retailerName": "Test Retailer",
+      "retailerArea": "Test Area",
+      "wholesalerName": "Test Wholesaler",
+      "collectionDate": "30/09/2025"
+    }
+  }
+}
