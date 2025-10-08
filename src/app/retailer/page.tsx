@@ -109,7 +109,7 @@ export default function RetailerDashboard() {
         <div className="space-y-1">
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Retailer Dashboard</h1>
           <p className="text-sm sm:text-base text-muted-foreground">
-            Manage your payments and view transaction history
+            Retailer
           </p>
         </div>
         <div className="flex gap-2">

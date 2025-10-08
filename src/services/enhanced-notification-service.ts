@@ -2,6 +2,7 @@
 import { notificationService } from './notification-service';
 import { realtimeNotificationService } from './realtime-notifications';
 import { roleBasedNotificationService } from './role-based-notification-service';
+import { sendOTPNotificationViaCloudFunction, sendPaymentCompletionNotificationViaCloudFunction } from '@/lib/cloud-functions';
 
 export interface EnhancedNotificationItem {
   id: string;
@@ -127,21 +128,22 @@ class EnhancedNotificationService {
       workerName: lineWorkerName
     }, 'retailer');
 
-    // Send via FCM/PWA
-    if (roleBasedNotificationService) {
-      return await roleBasedNotificationService.sendNotificationToRole({
-      type: 'otp',
-      targetRole: 'retailer',
-      data: {
+    // Send via Cloud Function
+    try {
+      const result = await sendOTPNotificationViaCloudFunction({
+        retailerId,
         otp,
         amount,
-        retailerId,
-        lineWorkerName,
-        paymentId: `otp-${Date.now()}`
-      }
-    });
+        paymentId: `otp-${Date.now()}`,
+        lineWorkerName
+      });
+      
+      console.log(`🔔 Cloud function OTP delivery ${result.success ? 'succeeded' : 'failed'} for retailer: ${retailerId}`);
+      return result.success;
+    } catch (error) {
+      console.warn('⚠️ Cloud function OTP delivery failed:', error);
+      return false;
     }
-    return false;
   }
 
   async sendPaymentCompletedNotification(
@@ -149,7 +151,8 @@ class EnhancedNotificationService {
     retailerName: string,
     amount: number,
     paymentId: string,
-    targetRole: 'line_worker' | 'wholesaler' | 'super_admin' = 'line_worker'
+    targetRole: 'line_worker' | 'wholesaler' | 'super_admin' = 'line_worker',
+    retailerId?: string
   ): Promise<boolean> {
     // Add to in-app notifications
     this.addNotification({
@@ -166,19 +169,27 @@ class EnhancedNotificationService {
       paymentId
     }, targetRole);
 
-    // Send FCM for high-value payments
-    const shouldSendFCM = amount > 5000;
-    if (shouldSendFCM && roleBasedNotificationService) {
-      return await roleBasedNotificationService.sendNotificationToRole({
-        type: 'payment_completed',
-        targetRole,
-        data: {
+    // Send via Cloud Function for high-value payments
+    const shouldSendCloudNotification = amount > 5000;
+    if (shouldSendCloudNotification && retailerId) {
+      try {
+        const result = await sendPaymentCompletionNotificationViaCloudFunction({
+          retailerId,
           amount,
+          paymentId,
+          recipientType: targetRole === 'wholesaler' ? 'wholesaler' : 'retailer',
           retailerName,
-          workerName,
-          paymentId
-        }
-      });
+          lineWorkerName: workerName,
+          title: '✅ Payment Completed',
+          body: `Payment of ₹${amount.toLocaleString()} completed from ${retailerName}`
+        });
+        
+        console.log(`🔔 Cloud function payment delivery ${result.success ? 'succeeded' : 'failed'} for ${targetRole}: ${retailerId}`);
+        return result.success;
+      } catch (error) {
+        console.warn('⚠️ Cloud function payment delivery failed:', error);
+        return false;
+      }
     }
     return true;
   }

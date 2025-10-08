@@ -870,6 +870,63 @@ Thank you for your payment!
     return isInDateRange;
   });
 
+  // Check if retailer has completed payments today
+  const hasCompletedPaymentToday = (retailerId: string) => {
+    const today = new Date();
+    const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
+    
+    return payments.some(p => 
+      p.retailerId === retailerId && 
+      p.state === 'COMPLETED' && 
+      p.createdAt.toDate() >= startOfDay && 
+      p.createdAt.toDate() <= endOfDay
+    );
+  };
+
+  // Get the last completed payment date for a retailer
+  const getLastCompletedPaymentDate = (retailerId: string) => {
+    const completedPayments = payments
+      .filter(p => p.retailerId === retailerId && p.state === 'COMPLETED')
+      .sort((a, b) => b.createdAt.toDate().getTime() - a.createdAt.toDate().getTime());
+    
+    if (completedPayments.length > 0) {
+      return formatTimestamp(completedPayments[0].createdAt);
+    }
+    return null;
+  };
+
+  // Get the last completed payment amount for a retailer
+  const getLastCompletedPaymentAmount = (retailerId: string) => {
+    const completedPayments = payments
+      .filter(p => p.retailerId === retailerId && p.state === 'COMPLETED')
+      .sort((a, b) => b.createdAt.toDate().getTime() - a.createdAt.toDate().getTime());
+    
+    if (completedPayments.length > 0) {
+      return completedPayments[0].totalPaid;
+    }
+    return 0;
+  };
+
+  // Sort retailers: those with completed payments today go to bottom
+  const sortedFilteredRetailers = [...filteredRetailers].sort((a, b) => {
+    const aCompletedToday = hasCompletedPaymentToday(a.id);
+    const bCompletedToday = hasCompletedPaymentToday(b.id);
+    
+    // If both have same status, maintain original order
+    if (aCompletedToday === bCompletedToday) {
+      return 0;
+    }
+    
+    // If a completed today and b didn't, a goes to bottom (return 1)
+    if (aCompletedToday && !bCompletedToday) {
+      return 1;
+    }
+    
+    // If b completed today and a didn't, b goes to bottom (return -1)
+    return -1;
+  });
+
   // Retailer cards component
   const RetailerList = () => {
     const handleToggleExpand = (retailerId: string) => {
@@ -916,64 +973,7 @@ Thank you for your payment!
         .slice(0, 3);
     };
 
-    // Check if retailer has completed payments today
-    const hasCompletedPaymentToday = (retailerId: string) => {
-      const today = new Date();
-      const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-      const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
-      
-      return payments.some(p => 
-        p.retailerId === retailerId && 
-        p.state === 'COMPLETED' && 
-        p.createdAt.toDate() >= startOfDay && 
-        p.createdAt.toDate() <= endOfDay
-      );
-    };
-
-    // Get the last completed payment date for a retailer
-    const getLastCompletedPaymentDate = (retailerId: string) => {
-      const completedPayments = payments
-        .filter(p => p.retailerId === retailerId && p.state === 'COMPLETED')
-        .sort((a, b) => b.createdAt.toDate().getTime() - a.createdAt.toDate().getTime());
-      
-      if (completedPayments.length > 0) {
-        return formatTimestamp(completedPayments[0].createdAt);
-      }
-      return null;
-    };
-
-    // Get the last completed payment amount for a retailer
-    const getLastCompletedPaymentAmount = (retailerId: string) => {
-      const completedPayments = payments
-        .filter(p => p.retailerId === retailerId && p.state === 'COMPLETED')
-        .sort((a, b) => b.createdAt.toDate().getTime() - a.createdAt.toDate().getTime());
-      
-      if (completedPayments.length > 0) {
-        return completedPayments[0].totalPaid;
-      }
-      return 0;
-    };
-
-    // Sort retailers: those with completed payments today go to bottom
-    const sortedFilteredRetailers = [...filteredRetailers].sort((a, b) => {
-      const aCompletedToday = hasCompletedPaymentToday(a.id);
-      const bCompletedToday = hasCompletedPaymentToday(b.id);
-      
-      // If both have same status, maintain original order
-      if (aCompletedToday === bCompletedToday) {
-        return 0;
-      }
-      
-      // If a completed today and b didn't, a goes to bottom (return 1)
-      if (aCompletedToday && !bCompletedToday) {
-        return 1;
-      }
-      
-      // If b completed today and a didn't, b goes to bottom (return -1)
-      return -1;
-    });
-
-    if (filteredRetailers.length === 0) {
+    if (sortedFilteredRetailers.length === 0) {
       return (
         <Card>
           <CardContent className="flex items-center justify-center h-32">
@@ -1280,7 +1280,7 @@ Thank you for your payment!
         activeNav={activeNav}
         setActiveNav={setActiveNav}
         title="Line Worker Dashboard"
-        subtitle="Manage your assigned retailers and collect payments"
+        subtitle="Line Worker"
         user={user ? { displayName: user.displayName, email: user.email } : undefined}
         onLogout={logout}
         notificationCount={notificationCount}

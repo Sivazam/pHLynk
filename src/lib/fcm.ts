@@ -285,41 +285,102 @@ export async function initializeFCM(
         userAgent: navigator.userAgent.substring(0, 50) + '...'
       });
       
-      const response = await fetch('/api/fcm/register-device', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          userId: finalUserId,
-          deviceToken: token,
-          userAgent: navigator.userAgent,
-          userType,
-          isNewUser: false, // Flag for returning users
-          timestamp: new Date().toISOString()
-        })
-      });
-
-      console.log('📡 FCM registration response status:', response.status);
+      // Directly update user document with FCM device array structure
+      // This ensures cloud functions can find the tokens
+      const { doc, getDoc, updateDoc, arrayUnion, Timestamp } = await import('firebase/firestore');
+      const { db } = await import('@/lib/firebase');
       
-      if (response.ok) {
-        const result = await response.json();
-        console.log('✅ Device registered with FCM backend:', result);
-        
-        // Store current device info for proper logout handling
-        storeCurrentDeviceToken(token);
-        
-        return token;
+      const userRef = doc(db, userType, finalUserId);
+      const userDoc = await getDoc(userRef);
+      
+      if (!userDoc.exists()) {
+        console.warn(`⚠️ User document not found in ${userType} collection, creating new document`);
+        // Create user document with FCM device
+        await updateDoc(userRef, {
+          fcmDevices: arrayUnion({
+            token: token,
+            deviceId: generateDeviceId(token, navigator.userAgent),
+            userAgent: navigator.userAgent,
+            lastActive: Timestamp.now(),
+            createdAt: Timestamp.now(),
+            isActive: true
+          }),
+          updatedAt: Timestamp.now()
+        });
       } else {
-        const errorResult = await response.json();
-        console.warn('⚠️ Failed to register device with FCM backend:', response.status, errorResult);
+        // Check if device already exists
+        const userData = userDoc.data();
+        const existingDevices: any[] = userData.fcmDevices || [];
+        const deviceId = generateDeviceId(token, navigator.userAgent);
         
-        // Still store the token locally even if backend registration fails
-        storeCurrentDeviceToken(token);
-        return token;
+        const existingDeviceIndex = existingDevices.findIndex(d => d.deviceId === deviceId);
+        
+        if (existingDeviceIndex >= 0) {
+          // Update existing device
+          existingDevices[existingDeviceIndex] = {
+            ...existingDevices[existingDeviceIndex],
+            lastActive: Timestamp.now(),
+            isActive: true,
+            token: token // Update token in case it changed
+          };
+          
+          await updateDoc(userRef, {
+            fcmDevices: existingDevices,
+            updatedAt: Timestamp.now()
+          });
+          
+          console.log('🔄 Updated existing FCM device in user document');
+        } else {
+          // Add new device
+          await updateDoc(userRef, {
+            fcmDevices: arrayUnion({
+              token: token,
+              deviceId: deviceId,
+              userAgent: navigator.userAgent,
+              lastActive: Timestamp.now(),
+              createdAt: Timestamp.now(),
+              isActive: true
+            }),
+            updatedAt: Timestamp.now()
+          });
+          
+          console.log('➕ Added new FCM device to user document');
+        }
       }
+      
+      console.log('✅ FCM device stored directly in user document');
+      
+      // Also call the API endpoint for backup
+      try {
+        const response = await fetch('/api/fcm/register-device', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            userId: finalUserId,
+            deviceToken: token,
+            userAgent: navigator.userAgent,
+            userType,
+            isNewUser: false,
+            timestamp: new Date().toISOString()
+          })
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          console.log('✅ Also registered with FCM API backup:', result);
+        }
+      } catch (apiError) {
+        console.warn('⚠️ API backup registration failed (but direct storage succeeded):', apiError);
+      }
+      
+      // Store current device info for proper logout handling
+      storeCurrentDeviceToken(token);
+      
+      return token;
     } catch (backendError) {
-      console.warn('⚠️ Error registering device with FCM backend:', backendError);
+      console.error('❌ Error storing FCM token in user document:', backendError);
       
       // Still store the token locally even if backend registration fails
       storeCurrentDeviceToken(token);
@@ -332,6 +393,21 @@ export async function initializeFCM(
 }
 
 /**
+ * Generate a unique device ID based on token and user agent
+ */
+function generateDeviceId(token: string, userAgent: string): string {
+  // Create a simple hash without crypto module for browser compatibility
+  let hash = 0;
+  const str = `${token}:${userAgent}`;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32-bit integer
+  }
+  return `device_${Math.abs(hash).toString(16)}`;
+}
+
+/**
  * Check if token is already registered for this user
  */
 async function checkIfTokenRegistered(
@@ -341,22 +417,19 @@ async function checkIfTokenRegistered(
   try {
     if (!auth.currentUser) return false;
     
-    const response = await fetch('/api/fcm/check-token', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        token: token,
-        userId: auth.currentUser.uid,
-        userType
-      })
-    });
-
-    if (response.ok) {
-      const result = await response.json();
-      return result.exists;
+    // Check directly in user document
+    const { doc, getDoc } = await import('firebase/firestore');
+    const { db } = await import('@/lib/firebase');
+    
+    const userRef = doc(db, userType, auth.currentUser.uid);
+    const userDoc = await getDoc(userRef);
+    
+    if (userDoc.exists()) {
+      const userData = userDoc.data();
+      const devices: any[] = userData.fcmDevices || [];
+      return devices.some(device => device.token === token && device.isActive);
     }
+    
     return false;
   } catch (error) {
     console.error('Error checking token registration:', error);
@@ -374,17 +447,30 @@ async function updateLastActive(
   try {
     if (!auth.currentUser) return;
     
-    await fetch('/api/fcm/update-last-active', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        token: token,
-        userId: auth.currentUser.uid,
-        userType
-      })
-    });
+    // Update directly in user document
+    const { doc, getDoc, updateDoc, Timestamp } = await import('firebase/firestore');
+    const { db } = await import('@/lib/firebase');
+    
+    const userRef = doc(db, userType, auth.currentUser.uid);
+    const userDoc = await getDoc(userRef);
+    
+    if (userDoc.exists()) {
+      const userData = userDoc.data();
+      const devices: any[] = userData.fcmDevices || [];
+      
+      const updatedDevices = devices.map(device => 
+        device.token === token 
+          ? { ...device, lastActive: Timestamp.now(), isActive: true }
+          : device
+      );
+      
+      await updateDoc(userRef, {
+        fcmDevices: updatedDevices,
+        updatedAt: Timestamp.now()
+      });
+      
+      console.log('✅ Updated last active timestamp for FCM device');
+    }
   } catch (error) {
     console.error('Error updating last active:', error);
   }
@@ -454,23 +540,51 @@ export async function deleteFCMToken(
         // Try to get userId for proper device cleanup
         const userId = localStorage.getItem('retailerId') || auth.currentUser.uid;
         
-        const response = await fetch('/api/fcm/unregister-device', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            userId: userId,
-            deviceToken: currentToken,
-            userType
-          })
-        });
+        // Update user document directly to deactivate device
+        const { doc, getDoc, updateDoc, Timestamp } = await import('firebase/firestore');
+        const { db } = await import('@/lib/firebase');
+        
+        const userRef = doc(db, userType, userId);
+        const userDoc = await getDoc(userRef);
+        
+        if (userDoc.exists()) {
+          const userData = userDoc.data();
+          const devices: any[] = userData.fcmDevices || [];
+          
+          const updatedDevices = devices.map(device => 
+            device.token === currentToken 
+              ? { ...device, isActive: false, lastActive: Timestamp.now() }
+              : device
+          );
+          
+          await updateDoc(userRef, {
+            fcmDevices: updatedDevices,
+            updatedAt: Timestamp.now()
+          });
+          
+          console.log('✅ Device deactivated in user document');
+        }
+        
+        // Also try the API endpoint for backup
+        try {
+          const response = await fetch('/api/fcm/unregister-device', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              userId: userId,
+              deviceToken: currentToken,
+              userType
+            })
+          });
 
-        if (response.ok) {
-          const result = await response.json();
-          console.log('✅ Current device unregistered from backend:', result);
-        } else {
-          console.warn('⚠️ Backend unregistration failed:', response.status);
+          if (response.ok) {
+            const result = await response.json();
+            console.log('✅ Current device unregistered from API backup:', result);
+          }
+        } catch (apiError) {
+          console.warn('⚠️ API unregistration failed (but direct update succeeded):', apiError);
         }
       } catch (backendError) {
         console.warn('⚠️ Error unregistering device from backend:', backendError);

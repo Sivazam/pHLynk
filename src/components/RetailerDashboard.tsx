@@ -1606,10 +1606,7 @@ export function RetailerDashboard() {
                activeNav === 'payments' ? 'Payments' :
                activeNav === 'history' ? 'Payment History' :
                activeNav === 'settings' ? 'Settings' : 'Retailer Dashboard'}
-        subtitle={activeNav === 'overview' ? 'Manage your payments and view transaction history' :
-                  activeNav === 'payments' ? 'View and manage your payments' :
-                  activeNav === 'history' ? 'View your complete payment history' :
-                  activeNav === 'settings' ? 'Manage your account settings' : 'Manage your payments and view transaction history'}
+        subtitle="Retailer"
         user={user ? { displayName: user.displayName, email: user.email } : undefined}
         onLogout={logout}
         notificationCount={notificationCount}

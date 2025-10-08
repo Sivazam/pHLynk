@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { callFirebaseFunction } from '@/lib/firebase';
 import { db } from '@/lib/firebase';
-import { fcmService } from '@/lib/fcm-service';
+import { sendPaymentCompletionNotificationViaCloudFunction } from '@/lib/cloud-functions';
 
 export async function POST(request: NextRequest) {
   try {
@@ -50,7 +49,7 @@ export async function POST(request: NextRequest) {
       });
       
       // ✅ 使用专门的 sendPaymentCompletionNotification 云函数
-      const retailerResult = await callFirebaseFunction('sendPaymentCompletionNotification', {
+      const retailerResult = await sendPaymentCompletionNotificationViaCloudFunction({
         retailerId,
         amount,
         paymentId,
@@ -64,7 +63,7 @@ export async function POST(request: NextRequest) {
       });
       
       console.log('✅ Retailer cloud function response:', retailerResult);
-      results.push({ type: 'retailer', success: true, result: retailerResult });
+      results.push({ type: 'retailer', success: retailerResult.success, result: retailerResult });
       console.log('✅ Retailer payment completion notification sent');
     } catch (retailerError) {
       console.error('❌ Failed to send retailer notification:', {
@@ -92,7 +91,7 @@ export async function POST(request: NextRequest) {
         });
         
         // Use cloud function for wholesaler notification instead of direct FCM
-        const wholesalerResult = await callFirebaseFunction('sendPaymentCompletionNotification', {
+        const wholesalerResult = await sendPaymentCompletionNotificationViaCloudFunction({
           retailerId: wholesalerId, // Use wholesalerId as the recipient
           amount,
           paymentId,
@@ -106,7 +105,7 @@ export async function POST(request: NextRequest) {
         });
         
         console.log('✅ Wholesaler cloud function response:', wholesalerResult);
-        results.push({ type: 'wholesaler', success: true, result: wholesalerResult });
+        results.push({ type: 'wholesaler', success: wholesalerResult.success, result: wholesalerResult });
         
         console.log('✅ Wholesaler notification completed');
       } catch (wholesalerError) {
