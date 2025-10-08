@@ -117,6 +117,9 @@ export function DaySheet({
   const filteredData = useMemo(() => {
     let filtered = filterPaymentsByDateRange(payments);
 
+    // Only include completed payments (exclude initiated but not completed)
+    filtered = filtered.filter(payment => payment.state === 'COMPLETED');
+
     // Filter by line worker
     if (selectedLineWorker !== 'all') {
       filtered = filtered.filter(payment => payment.lineWorkerId === selectedLineWorker);

@@ -198,6 +198,34 @@ export async function POST(request: NextRequest) {
           error: result.error,
           fallbackToSMS: result.fallbackToSMS 
         });
+        
+        // Try direct FCM as backup
+        secureLogger.otp('Trying direct FCM as backup');
+        try {
+          const directResponse = await fetch('/api/debug/send-direct-fcm', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              retailerId,
+              otp: otpData.code,
+              paymentId,
+              amount,
+              lineWorkerName: lineWorkerName || 'Line Worker'
+            })
+          });
+          
+          const directResult = await directResponse.json();
+          if (directResult.success) {
+            secureLogger.otp('Direct FCM backup succeeded', { 
+              foundDevices: directResult.foundDevices,
+              retailerName: directResult.retailerName
+            });
+          } else {
+            secureLogger.warn('Direct FCM backup also failed', { error: directResult.error });
+          }
+        } catch (directError) {
+          secureLogger.warn('Direct FCM backup error', { error: directError instanceof Error ? directError.message : 'Unknown error' });
+        }
       }
     } catch (fcmError) {
       secureLogger.warn('Error sending FCM OTP notification', { error: fcmError instanceof Error ? fcmError.message : 'Unknown error' });

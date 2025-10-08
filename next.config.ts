@@ -109,11 +109,11 @@ const nextConfig: NextConfig = {
         ],
       },
       {
-        source: '/_next/static/css/:path*',
+        source: '/_next/static/js/:path*',
         headers: [
           {
             key: 'Content-Type',
-            value: 'text/css',
+            value: 'application/javascript; charset=utf-8',
           },
           {
             key: 'Cache-Control',
@@ -130,11 +130,32 @@ const nextConfig: NextConfig = {
         ],
       },
       {
-        source: '/_next/static/js/:path*',
+        source: '/_next/static/chunks/:path*',
         headers: [
           {
             key: 'Content-Type',
-            value: 'application/javascript',
+            value: 'application/javascript; charset=utf-8',
+          },
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=31536000, immutable',
+          },
+          {
+            key: 'Access-Control-Allow-Origin',
+            value: '*',
+          },
+          {
+            key: 'Access-Control-Allow-Methods',
+            value: 'GET, HEAD, OPTIONS',
+          },
+        ],
+      },
+      {
+        source: '/_next/static/css/:path*',
+        headers: [
+          {
+            key: 'Content-Type',
+            value: 'text/css; charset=utf-8',
           },
           {
             key: 'Cache-Control',

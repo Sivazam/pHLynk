@@ -35,15 +35,15 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 const admin = __importStar(require("firebase-admin"));
 // Enhanced getFCMTokenForUser function for retailer users (matches working version)
-async function getFCMTokenForUser(userId) {
-    var _a, _b;
+async function getFCMTokenForUser(userId, collectionName = 'retailerUsers') {
+    var _a;
     try {
-        console.log('🔧 Looking for FCM token for user:', userId);
-        // First try to get from retailerUsers collection (for retailers)
-        const retailerUserDoc = await admin.firestore().collection('retailerUsers').doc(userId).get();
-        if (retailerUserDoc.exists) {
-            const userData = retailerUserDoc.data();
-            console.log('📱 Found retailer user, checking FCM devices...');
+        console.log('🔧 Looking for FCM token for user:', userId, 'in collection:', collectionName);
+        // First try the specified collection
+        const userDoc = await admin.firestore().collection(collectionName).doc(userId).get();
+        if (userDoc.exists) {
+            const userData = userDoc.data();
+            console.log(`📱 Found user in ${collectionName}, checking FCM devices...`);
             // Check for fcmDevices array (new structure)
             const fcmDevices = (userData === null || userData === void 0 ? void 0 : userData.fcmDevices) || [];
             if (fcmDevices.length > 0) {
@@ -62,32 +62,14 @@ async function getFCMTokenForUser(userId) {
                 console.log('✅ Found single FCM token (old structure)');
                 return userData.fcmToken;
             }
-            console.log('❌ No FCM devices found for retailer user');
+            console.log(`❌ No FCM devices found for user in ${collectionName}`);
         }
         else {
-            // Try users collection (for other user types)
-            console.log('🔍 Checking users collection...');
-            const userDoc = await admin.firestore().collection('users').doc(userId).get();
-            if (userDoc.exists) {
-                const userData = userDoc.data();
-                // Check for fcmDevices array first
-                const fcmDevices = (userData === null || userData === void 0 ? void 0 : userData.fcmDevices) || [];
-                if (fcmDevices.length > 0) {
-                    const activeDevice = fcmDevices.reduce((latest, device) => {
-                        var _a, _b, _c, _d;
-                        const deviceTime = ((_b = (_a = device.lastActive) === null || _a === void 0 ? void 0 : _a.toDate) === null || _b === void 0 ? void 0 : _b.call(_a)) || new Date(0);
-                        const latestTime = ((_d = (_c = latest === null || latest === void 0 ? void 0 : latest.lastActive) === null || _c === void 0 ? void 0 : _c.toDate) === null || _d === void 0 ? void 0 : _d.call(_c)) || new Date(0);
-                        return deviceTime > latestTime ? device : latest;
-                    }, fcmDevices[0]);
-                    console.log(`✅ Found ${fcmDevices.length} FCM devices in users collection, using most recent:`, ((_b = activeDevice.token) === null || _b === void 0 ? void 0 : _b.substring(0, 20)) + '...');
-                    return activeDevice.token || null;
-                }
-                // Fallback to single fcmToken field
-                if (userData === null || userData === void 0 ? void 0 : userData.fcmToken) {
-                    console.log('✅ Found single FCM token in users collection');
-                    return userData.fcmToken;
-                }
-                console.log('❌ No FCM devices found for user');
+            console.log(`❌ User document not found in ${collectionName}`);
+            // If we didn't find in retailers collection, try retailerUsers as fallback for OTP notifications
+            if (collectionName === 'retailers') {
+                console.log('🔍 Trying fallback to retailerUsers collection...');
+                return await getFCMTokenForUser(userId, 'retailerUsers');
             }
         }
         console.log('❌ User document not found');

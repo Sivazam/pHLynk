@@ -38,6 +38,7 @@ const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
+// Version: 2.0.2 - Force update for Service Worker cache-busting
 // Initialize Firebase Admin with service account JSON file
 function getServiceAccountConfig() {
     var _a;
@@ -682,21 +683,10 @@ exports.sendOTPNotification = functions.https.onCall(async (request) => {
             lineWorkerName: data.lineWorkerName,
             caller: context.auth ? context.auth.uid : 'NEXTJS_API'
         });
-        // Get retailer user details
-        const retailerUsersQuery = await admin.firestore()
-            .collection('retailerUsers')
-            .where('retailerId', '==', data.retailerId)
-            .limit(1)
-            .get();
-        if (retailerUsersQuery.empty) {
-            throw new functions.https.HttpsError('not-found', `Retailer user not found for retailerId: ${data.retailerId}`);
-        }
-        const retailerUser = retailerUsersQuery.docs[0];
-        const retailerUserId = retailerUser.id;
-        // Get FCM token for retailer user
-        const fcmToken = await getFCMTokenForUser(retailerUserId);
+        // Get FCM token for retailer from retailers collection (not retailerUsers)
+        const fcmToken = await getFCMTokenForUser(data.retailerId, 'retailers');
         if (!fcmToken) {
-            console.warn('⚠️ FCM token not found for retailer user:', retailerUserId);
+            console.warn('⚠️ FCM token not found for retailer:', data.retailerId);
             return {
                 success: false,
                 error: 'FCM token not found',
@@ -778,7 +768,7 @@ exports.sendOTPNotification = functions.https.onCall(async (request) => {
             type: 'OTP_NOTIFICATION',
             retailerId: data.retailerId,
             paymentId: data.paymentId,
-            userId: retailerUserId,
+            userId: data.retailerId, // Using retailerId since we're getting tokens from retailers collection
             token: fcmToken.substring(0, 8) + '...',
             status: 'SENT',
             messageId: response,
