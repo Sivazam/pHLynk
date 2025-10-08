@@ -68,6 +68,7 @@ interface DashboardNavigationProps {
   onLogout?: () => void;
   onNotificationRead?: (notificationId: string) => void;
   onAllNotificationsRead?: () => void;
+  hasFixedSelector?: boolean; // New prop to indicate if there's a fixed selector below
 }
 
 export function DashboardNavigation({
@@ -81,7 +82,8 @@ export function DashboardNavigation({
   user,
   onLogout,
   onNotificationRead,
-  onAllNotificationsRead
+  onAllNotificationsRead,
+  hasFixedSelector = false
 }: DashboardNavigationProps) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
@@ -299,7 +301,7 @@ export function DashboardNavigation({
       </header>
 
       {/* Desktop Navigation Tabs */}
-      <div className="hidden lg:block pt-16 sm:pt-20 border-b border-gray-200">
+      <div className={`hidden lg:block border-b border-gray-200 ${hasFixedSelector ? 'pt-28 sm:pt-32' : 'pt-16 sm:pt-20'}`}>
         <div className="px-4 sm:px-6 lg:px-8">
           <nav className="flex space-x-1 overflow-x-auto py-3" aria-label="Tabs">
             {navItems.map((item) => {

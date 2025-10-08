@@ -1610,11 +1610,12 @@ export function RetailerDashboard() {
         notifications={notifications}
         onNotificationRead={markNotificationAsRead}
         onAllNotificationsRead={markAllNotificationsAsRead}
+        hasFixedSelector={availableTenants.length > 1}
       />
 
       {/* Wholesaler Selector - Full Width Below Navigation */}
       {availableTenants.length > 1 && (
-        <div className="w-full bg-white border-b border-gray-200 px-4 sm:px-6 py-3">
+        <div className="fixed top-16 left-0 right-0 z-30 bg-white border-b border-gray-200 px-4 sm:px-6 py-3">
           <div className="max-w-7xl mx-auto">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <div className="flex items-center space-x-3">
@@ -1643,7 +1644,7 @@ export function RetailerDashboard() {
       )}
 
       {/* Main Content Area */}
-      <div className={`${availableTenants.length > 1 ? 'pt-4 sm:pt-6' : 'pt-20 sm:pt-16'} pb-20 lg:pb-0`}> {/* Adjust spacing based on dropdown presence */}
+      <div className={`${availableTenants.length > 1 ? 'pt-24 sm:pt-28' : 'pt-20 sm:pt-16'} pb-20 lg:pb-0`}> {/* Adjust spacing based on dropdown presence - 64px header + 48px selector = 112px total */}
         <div className="p-4 sm:p-6">
             {/* Header */}
             <div className="mb-6">
