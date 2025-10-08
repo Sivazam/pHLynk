@@ -136,7 +136,7 @@ export function DaySheet({
       const retailer = getRetailerDetails(payment.retailerId);
       const lineWorkerName = getLineWorkerName(payment.lineWorkerId);
       const lineWorkerAreas = getLineWorkerAreas(payment.lineWorkerId);
-      const lineWorkerAreaNames = lineWorkerAreas.map(areaId => getAreaName(areaId)).join(', ');
+      const lineWorkerAreaNames = lineWorkerAreas.map(areaId => getAreaName(areaId || '')).join(', ');
 
       return {
         paymentId: payment.id,
@@ -146,7 +146,7 @@ export function DaySheet({
         lineWorkerArea: lineWorkerAreaNames || 'No assigned area',
         retailerName: retailer.name,
         retailerAddress: retailer.address,
-        retailerArea: getAreaName(retailer.areaId),
+        retailerArea: getAreaName(retailer.areaId || ''),
         amount: payment.totalPaid,
         paymentMethod: payment.method
       } as DaySheetData;
@@ -216,7 +216,7 @@ export function DaySheet({
     }).filter(Boolean))];
     return areaIds.map(id => ({
       id,
-      name: getAreaName(id)
+      name: getAreaName(id || '')
     }));
   }, [payments, retailers, areas]);
 
