@@ -46,14 +46,24 @@ export function CreateRetailerForm({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (name.trim() && phone.trim() && (formMode === 'update' || foundRetailer || zipcodes.length > 0)) {
+    console.log('🔍 Form submission attempt:', {
+      name: name.trim(),
+      phone: phone.trim(),
+      formMode,
+      foundRetailer: !!foundRetailer,
+      zipcodesLength: zipcodes.length,
+      areaId,
+      canSubmit: name.trim() && phone.trim() && (formMode === 'update' || foundRetailer || zipcodes.length > 0 || areaId === 'no-specific-area')
+    });
+    
+    if (name.trim() && phone.trim() && (formMode === 'update' || foundRetailer || zipcodes.length > 0 || areaId === 'no-specific-area')) {
       setIsSubmitting(true);
       try {
         await onSubmit({
           name: name.trim(),
           phone: phone.trim(),
           address: address.trim() || undefined,
-          areaId: areaId || undefined,
+          areaId: areaId === 'no-specific-area' ? undefined : (areaId || undefined),
           zipcodes: zipcodes.filter(z => z.trim())
         });
         // Show success state and trigger confetti
@@ -70,6 +80,8 @@ export function CreateRetailerForm({
       } finally {
         setIsSubmitting(false);
       }
+    } else {
+      console.log('❌ Form validation failed');
     }
   };
 
@@ -160,7 +172,7 @@ export function CreateRetailerForm({
   const handleAreaChange = (selectedAreaId: string) => {
     if (!isSubmitting) {
       setAreaId(selectedAreaId);
-      if (selectedAreaId) {
+      if (selectedAreaId && selectedAreaId !== 'no-specific-area') {
         const selectedArea = areas.find(a => a.id === selectedAreaId);
         if (selectedArea) {
           setZipcodes(selectedArea.zipcodes);
@@ -328,7 +340,10 @@ export function CreateRetailerForm({
                   <Button 
                     type="button" 
                     variant="outline" 
-                    onClick={() => setFormMode('lookup')} 
+                    onClick={() => {
+                      console.log('🔍 Search Retailer button clicked');
+                      setFormMode('lookup');
+                    }} 
                     disabled={isSubmitting}
                   >
                     <Search className="w-4 h-4 mr-2" />
@@ -337,7 +352,10 @@ export function CreateRetailerForm({
                 )}
                 <Button 
                   type="submit" 
-                  disabled={isSubmitting || !name.trim() || !phone.trim() || (formMode !== 'update' && !foundRetailer && zipcodes.length === 0)}
+                  disabled={isSubmitting || !name.trim() || !phone.trim() || (formMode !== 'update' && !foundRetailer && zipcodes.length === 0 && areaId !== 'no-specific-area')}
+                  onClick={() => {
+                    console.log('🔍 Submit button clicked');
+                  }}
                 >
                   {isSubmitting ? (
                     <>
