@@ -159,6 +159,42 @@ export function DaySheet({
 
   // Generate Excel file
   const generateExcel = () => {
+    // Create workbook
+    const wb = XLSX.utils.book_new();
+
+    // Create header data for the main sheet
+    const headerData = [
+      ['', ''], // Empty rows for spacing
+      ['', ''],
+      [wholesalerName.toUpperCase(), ''], // Business name
+      ['Business Address', ''], // Address placeholder
+      ['', ''], // Empty row for spacing
+      ['', ''],
+      ['DAY SHEET REPORT', ''],
+      ['Date Range:', `${formatTimestamp(dateRange.startDate)} - ${formatTimestamp(dateRange.endDate)}`],
+      ['Generated on:', formatTimestampWithTime(new Date())],
+      ['', ''], // Empty row for spacing
+      ['', ''],
+      ['TOTAL COLLECTIONS', totalCollections],
+      ['TOTAL AMOUNT', totalAmount],
+      ['', ''], // Empty row for spacing
+      ['', ''],
+    ];
+
+    // Column headers
+    const columnHeaders = [
+      'Payment ID',
+      'Date',
+      'Time',
+      'Line Worker Name',
+      'Assigned Areas',
+      'Retailer Name',
+      'Retailer Address',
+      'Retailer Area',
+      'Amount',
+      'Payment Method'
+    ];
+
     // Prepare data for Excel
     const excelData = filteredData.map(item => ({
       'Payment ID': item.paymentId,
@@ -167,27 +203,118 @@ export function DaySheet({
       'Line Worker Name': item.lineWorkerName,
       'Assigned Areas': item.lineWorkerArea,
       'Retailer Name': item.retailerName,
-      'Retailer Address': item.retailerAddress,
+      'Retailer Address': item.retailerAddress || 'Not provided',
       'Retailer Area': item.retailerArea,
       'Amount': item.amount,
       'Payment Method': item.paymentMethod
     }));
 
-    // Create workbook
-    const ws = XLSX.utils.json_to_sheet(excelData);
-    const wb = XLSX.utils.book_new();
+    // Convert to worksheet format
+    const wsData = [
+      ...headerData,
+      columnHeaders,
+      ...excelData.map(row => [
+        row['Payment ID'],
+        row['Date'],
+        row['Time'],
+        row['Line Worker Name'],
+        row['Assigned Areas'],
+        row['Retailer Name'],
+        row['Retailer Address'],
+        row['Retailer Area'],
+        row['Amount'],
+        row['Payment Method']
+      ])
+    ];
+
+    // Create worksheet
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+    // Set column widths
+    const colWidths = [
+      { wch: 15 }, // Payment ID
+      { wch: 12 }, // Date
+      { wch: 10 }, // Time
+      { wch: 20 }, // Line Worker Name
+      { wch: 25 }, // Assigned Areas
+      { wch: 20 }, // Retailer Name
+      { wch: 30 }, // Retailer Address
+      { wch: 20 }, // Retailer Area
+      { wch: 12 }, // Amount
+      { wch: 15 }  // Payment Method
+    ];
+    ws['!cols'] = colWidths;
+
+    // Apply styling to header rows
+    const headerRange = XLSX.utils.decode_range(ws['!ref'] || 'A1');
+    
+    // Make business name bold and larger
+    if (ws['A3']) {
+      ws['A3'].s = { font: { bold: true, sz: 16 } };
+    }
+    
+    // Make report title bold
+    if (ws['A7']) {
+      ws['A7'].s = { font: { bold: true, sz: 14 } };
+    }
+    
+    // Make column headers bold
+    for (let i = 0; i < columnHeaders.length; i++) {
+      const cellAddress = XLSX.utils.encode_cell({ r: headerData.length, c: i });
+      if (ws[cellAddress]) {
+        ws[cellAddress].s = { font: { bold: true } };
+      }
+    }
+
     XLSX.utils.book_append_sheet(wb, ws, 'Day Sheet');
 
-    // Add summary sheet
+    // Add summary sheet with more detailed information
     const summaryData = [
-      { 'Metric': 'Total Collections', 'Value': totalCollections },
-      { 'Metric': 'Total Amount', 'Value': totalAmount },
-      { 'Metric': 'Average Collection', 'Value': totalCollections > 0 ? totalAmount / totalCollections : 0 },
-      { 'Metric': 'Date Range', 'Value': `${formatTimestamp(dateRange.startDate)} - ${formatTimestamp(dateRange.endDate)}` },
-      { 'Metric': 'Wholesaler', 'Value': wholesalerName },
-      { 'Metric': 'Generated On', 'Value': formatTimestampWithTime(new Date()) }
+      ['SUMMARY REPORT', ''],
+      ['', ''],
+      ['BUSINESS INFORMATION', ''],
+      ['Wholesaler Name', wholesalerName],
+      ['Report Period', `${formatTimestamp(dateRange.startDate)} - ${formatTimestamp(dateRange.endDate)}`],
+      ['Generated On', formatTimestampWithTime(new Date())],
+      ['', ''],
+      ['COLLECTION SUMMARY', ''],
+      ['Total Collections', totalCollections],
+      ['Total Amount Collected', totalAmount],
+      ['Average Collection', totalCollections > 0 ? totalAmount / totalCollections : 0],
+      ['', ''],
+      ['FILTERS APPLIED', ''],
+      ['Line Worker', selectedLineWorker === 'all' ? 'All Line Workers' : getLineWorkerName(selectedLineWorker)],
+      ['Area', selectedArea === 'all' ? 'All Areas' : getAreaName(selectedArea)],
+      ['Retailer', selectedRetailer === 'all' ? 'All Retailers' : getRetailerName(selectedRetailer)],
+      ['', ''],
+      ['BREAKDOWN BY LINE WORKER', ''],
+      ...Object.entries(
+        filteredData.reduce((acc, item) => {
+          acc[item.lineWorkerName] = (acc[item.lineWorkerName] || 0) + item.amount;
+          return acc;
+        }, {} as Record<string, number>)
+      ).map(([name, amount]) => [name, amount]),
+      ['', ''],
+      ['BREAKDOWN BY PAYMENT METHOD', ''],
+      ...Object.entries(
+        filteredData.reduce((acc, item) => {
+          acc[item.paymentMethod] = (acc[item.paymentMethod] || 0) + item.amount;
+          return acc;
+        }, {} as Record<string, number>)
+      ).map(([method, amount]) => [method, amount])
     ];
-    const summaryWs = XLSX.utils.json_to_sheet(summaryData);
+
+    const summaryWs = XLSX.utils.aoa_to_sheet(summaryData);
+    summaryWs['!cols'] = [{ wch: 25 }, { wch: 15 }];
+    
+    // Apply styling to summary headers
+    if (summaryWs['A1']) summaryWs['A1'].s = { font: { bold: true, sz: 14 } };
+    if (summaryWs['A4']) summaryWs['A4'].s = { font: { bold: true } };
+    if (summaryWs['A9']) summaryWs['A9'].s = { font: { bold: true } };
+    if (summaryWs['A14']) summaryWs['A14'].s = { font: { bold: true } };
+    if (summaryWs['A19']) summaryWs['A19'].s = { font: { bold: true } };
+    if (summaryWs['A24']) summaryWs['A24'].s = { font: { bold: true } };
+
     XLSX.utils.book_append_sheet(wb, summaryWs, 'Summary');
 
     // Generate file name
@@ -241,7 +368,7 @@ export function DaySheet({
       </Button>
 
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
-        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-[95vw] w-full max-h-[90vh] overflow-y-auto p-4 md:p-6">
           <DialogHeader>
             <DialogTitle className="text-xl font-bold flex items-center space-x-2">
               <FileSpreadsheet className="h-5 w-5" />
@@ -250,7 +377,7 @@ export function DaySheet({
           </DialogHeader>
 
           {/* Filters */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
             <div className="space-y-2">
               <label className="text-sm font-medium flex items-center space-x-1">
                 <Users className="h-4 w-4" />
@@ -324,7 +451,7 @@ export function DaySheet({
           </div>
 
           {/* Summary Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Total Collections</CardTitle>
@@ -386,14 +513,14 @@ export function DaySheet({
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Time</TableHead>
-                      <TableHead>Line Worker</TableHead>
-                      <TableHead>Assigned Areas</TableHead>
-                      <TableHead>Retailer</TableHead>
-                      <TableHead>Retailer Area</TableHead>
-                      <TableHead className="text-right">Amount</TableHead>
-                      <TableHead>Method</TableHead>
+                      <TableHead className="whitespace-nowrap">Date</TableHead>
+                      <TableHead className="whitespace-nowrap">Time</TableHead>
+                      <TableHead className="whitespace-nowrap min-w-[120px]">Line Worker</TableHead>
+                      <TableHead className="whitespace-nowrap min-w-[150px]">Assigned Areas</TableHead>
+                      <TableHead className="whitespace-nowrap min-w-[120px]">Retailer</TableHead>
+                      <TableHead className="whitespace-nowrap min-w-[120px]">Retailer Area</TableHead>
+                      <TableHead className="whitespace-nowrap text-right min-w-[100px]">Amount</TableHead>
+                      <TableHead className="whitespace-nowrap min-w-[100px]">Method</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
