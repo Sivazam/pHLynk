@@ -95,17 +95,47 @@ export function EnhancedReceipt({
     setIsGenerating(true);
     try {
       const element = document.getElementById('receipt-content');
-      if (!element) return;
+      if (!element) {
+        throw new Error('Receipt content element not found');
+      }
+
+      console.log('Starting PDF generation...');
+      
+      // Wait a bit for any pending renders
+      await new Promise(resolve => setTimeout(resolve, 100));
 
       const canvas = await html2canvas(element, {
         scale: 2,
         useCORS: true,
         allowTaint: true,
-        backgroundColor: '#ffffff'
+        backgroundColor: '#ffffff',
+        logging: false, // Disable logging to reduce console noise
+        removeContainer: false,
+        foreignObjectRendering: false,
+        imageTimeout: 15000,
+        onclone: (clonedDoc) => {
+          // Ensure images are loaded in the cloned document
+          const images = clonedDoc.querySelectorAll('img');
+          const promises = Array.from(images).map(img => {
+            if (img.complete) return Promise.resolve();
+            return new Promise((resolve, reject) => {
+              img.onload = resolve;
+              img.onerror = reject;
+              setTimeout(reject, 5000); // Timeout after 5 seconds
+            });
+          });
+          return Promise.all(promises);
+        }
       });
 
-      const imgData = canvas.toDataURL('image/png');
-      const pdf = new jsPDF('p', 'mm', 'a4');
+      console.log('Canvas generated successfully');
+
+      const imgData = canvas.toDataURL('image/png', 1.0);
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4'
+      });
       
       const imgWidth = 210; // A4 width in mm
       const pageHeight = 297; // A4 height in mm
@@ -113,9 +143,11 @@ export function EnhancedReceipt({
       let heightLeft = imgHeight;
       let position = 0;
 
+      // Add first page
       pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
       heightLeft -= pageHeight;
 
+      // Add additional pages if needed
       while (heightLeft >= 0) {
         position = heightLeft - imgHeight;
         pdf.addPage();
@@ -123,10 +155,12 @@ export function EnhancedReceipt({
         heightLeft -= pageHeight;
       }
 
+      console.log('PDF generated successfully, saving...');
       pdf.save(`receipt-${payment.id}.pdf`);
+      
     } catch (error) {
       console.error('Error generating PDF:', error);
-      alert('Failed to generate PDF. Please try again.');
+      alert(`Failed to generate PDF: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again.`);
     } finally {
       setIsGenerating(false);
     }
@@ -136,17 +170,46 @@ export function EnhancedReceipt({
     setIsGenerating(true);
     try {
       const element = document.getElementById('receipt-content');
-      if (!element) return;
+      if (!element) {
+        throw new Error('Receipt content element not found');
+      }
+
+      console.log('Starting share PDF generation...');
+      
+      // Wait a bit for any pending renders
+      await new Promise(resolve => setTimeout(resolve, 100));
 
       const canvas = await html2canvas(element, {
         scale: 2,
         useCORS: true,
         allowTaint: true,
-        backgroundColor: '#ffffff'
+        backgroundColor: '#ffffff',
+        logging: false,
+        removeContainer: false,
+        foreignObjectRendering: false,
+        imageTimeout: 15000,
+        onclone: (clonedDoc) => {
+          const images = clonedDoc.querySelectorAll('img');
+          const promises = Array.from(images).map(img => {
+            if (img.complete) return Promise.resolve();
+            return new Promise((resolve, reject) => {
+              img.onload = resolve;
+              img.onerror = reject;
+              setTimeout(reject, 5000);
+            });
+          });
+          return Promise.all(promises);
+        }
       });
 
-      const imgData = canvas.toDataURL('image/png');
-      const pdf = new jsPDF('p', 'mm', 'a4');
+      console.log('Share canvas generated successfully');
+
+      const imgData = canvas.toDataURL('image/png', 1.0);
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4'
+      });
       
       const imgWidth = 210; // A4 width in mm
       const pageHeight = 297; // A4 height in mm
@@ -164,17 +227,21 @@ export function EnhancedReceipt({
         heightLeft -= pageHeight;
       }
 
+      console.log('Share PDF generated successfully, creating blob...');
       const pdfBlob = pdf.output('blob');
       const pdfFile = new File([pdfBlob], `receipt-${payment.id}.pdf`, { type: 'application/pdf' });
 
-      if (navigator.share && navigator.canShare({ files: [pdfFile] })) {
+      if (navigator.share && navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
         try {
+          console.log('Attempting to share via Web Share API...');
           await navigator.share({
             title: 'PharmaLync Payment Receipt',
             text: `Payment receipt for ${formatCurrency(payment.totalPaid)} from ${retailer?.name || 'Unknown Retailer'}`,
             files: [pdfFile]
           });
-        } catch (error) {
+          console.log('Share successful');
+        } catch (shareError) {
+          console.log('Share failed, falling back to download:', shareError);
           // Fallback to download if share fails
           const url = URL.createObjectURL(pdfBlob);
           const a = document.createElement('a');
@@ -184,6 +251,7 @@ export function EnhancedReceipt({
           URL.revokeObjectURL(url);
         }
       } else {
+        console.log('Web Share API not available, falling back to download');
         // Fallback to download
         const url = URL.createObjectURL(pdfBlob);
         const a = document.createElement('a');
@@ -194,7 +262,7 @@ export function EnhancedReceipt({
       }
     } catch (error) {
       console.error('Error sharing receipt:', error);
-      alert('Failed to share receipt. Please try again.');
+      alert(`Failed to share receipt: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again.`);
     } finally {
       setIsGenerating(false);
     }
@@ -216,6 +284,15 @@ export function EnhancedReceipt({
                 src="/logoMain.png" 
                 alt="PharmaLync" 
                 className="h-12 w-12 mr-3"
+                onError={(e) => {
+                  // Fallback if image fails to load
+                  const target = e.target as HTMLImageElement;
+                  target.style.display = 'none';
+                  const fallback = document.createElement('div');
+                  fallback.className = 'h-12 w-12 mr-3 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold text-xl';
+                  fallback.textContent = 'P';
+                  target.parentNode?.insertBefore(fallback, target);
+                }}
               />
               <h1 className="text-2xl font-bold text-gray-900">PharmaLync</h1>
             </div>

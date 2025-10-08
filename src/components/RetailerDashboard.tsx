@@ -1614,10 +1614,10 @@ export function RetailerDashboard() {
 
       {/* Wholesaler Selector - Full Width Below Navigation */}
       {availableTenants.length > 1 && (
-        <div className="w-full bg-white border-b border-gray-200 px-4 sm:px-6 py-3 relative z-50">
+        <div className="w-full bg-white border-b border-gray-200 px-4 sm:px-6 py-3">
           <div className="max-w-7xl mx-auto">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <div className="flex items-center space-x-3 relative z-[60]">
+              <div className="flex items-center space-x-3">
                 <Store className="h-5 w-5 text-purple-600 flex-shrink-0" />
                 <Select value={tenantId || 'all'} onValueChange={handleTenantSwitch}>
                   <SelectTrigger className="w-full sm:w-64">
@@ -1625,7 +1625,7 @@ export function RetailerDashboard() {
                       {tenantId === 'all' ? '🏢 All Wholesalers' : (wholesalerNames[tenantId || ''] || 'Loading...')}
                     </SelectValue>
                   </SelectTrigger>
-                  <SelectContent className="z-[70]">
+                  <SelectContent>
                     <SelectItem value="all">
                       🏢 All Wholesalers
                     </SelectItem>
@@ -1643,7 +1643,7 @@ export function RetailerDashboard() {
       )}
 
       {/* Main Content Area */}
-      <div className="pt-20 sm:pt-16 pb-20 lg:pb-0"> {/* Always account for fixed navbar height */}
+      <div className={`${availableTenants.length > 1 ? 'pt-4 sm:pt-6' : 'pt-20 sm:pt-16'} pb-20 lg:pb-0`}> {/* Adjust spacing based on dropdown presence */}
         <div className="p-4 sm:p-6">
             {/* Header */}
             <div className="mb-6">
