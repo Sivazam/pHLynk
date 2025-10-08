@@ -91,17 +91,17 @@ export async function sendOTPNotificationViaCloudFunction(
   data: SendOTPNotificationData
 ): Promise<CloudFunctionResponse> {
   try {
-    console.log('🔐 Sending OTP notification via cloud function:', {
+    console.log('🔐 Sending OTP notification via sendFCMNotification cloud function:', {
       retailerId: data.retailerId,
       paymentId: data.paymentId,
       amount: data.amount,
       lineWorkerName: data.lineWorkerName
     });
 
-    const response = await callCloudFunction('sendOTPNotification', data);
+    const response = await callCloudFunction('sendFCMNotification', data);
     
     if (response.success || response.type === 'fcm_sent') {
-      console.log('✅ OTP notification sent successfully via cloud function:', {
+      console.log('✅ OTP notification sent successfully via sendFCMNotification:', {
         messageId: response.messageId,
         type: response.type
       });
@@ -112,7 +112,7 @@ export async function sendOTPNotificationViaCloudFunction(
         data: response.data
       };
     } else {
-      console.warn('⚠️ OTP notification failed via cloud function:', response.error);
+      console.warn('⚠️ OTP notification failed via sendFCMNotification:', response.error);
       return {
         success: false,
         error: response.error || 'Unknown error',
@@ -120,7 +120,7 @@ export async function sendOTPNotificationViaCloudFunction(
       };
     }
   } catch (error) {
-    console.error('❌ Error sending OTP notification via cloud function:', error);
+    console.error('❌ Error sending OTP notification via sendFCMNotification:', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',
