@@ -264,7 +264,7 @@ export function DaySheet({
                   <SelectItem value="all">All Line Workers</SelectItem>
                   {uniqueLineWorkers.map(worker => (
                     <SelectItem key={worker.id} value={worker.id}>
-                      {worker.displayName || 'Unknown Line Worker'}
+                      {worker.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
