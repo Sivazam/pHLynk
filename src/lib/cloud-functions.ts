@@ -98,7 +98,31 @@ export async function sendOTPNotificationViaCloudFunction(
       lineWorkerName: data.lineWorkerName
     });
 
-    const response = await callCloudFunction('sendFCMNotification', data);
+    // Transform data to match sendFCMNotification expected format
+    const fcmData = {
+      retailerId: data.retailerId,
+      notification: {
+        title: '🔐 Payment OTP Required',
+        body: `Your OTP code is: **${data.otp}** for ₹${data.amount.toLocaleString()} by ${data.lineWorkerName}`,
+        data: {
+          type: 'otp',
+          otp: data.otp,
+          amount: data.amount.toString(),
+          paymentId: data.paymentId,
+          retailerId: data.retailerId,
+          lineWorkerName: data.lineWorkerName,
+          tag: `otp-${data.paymentId}`,
+          requireInteraction: 'true',
+          clickAction: '/retailer'
+        },
+        icon: '/notification-large-192x192.png',
+        badge: '/badge-72x72.png',
+        tag: `otp-${data.paymentId}`,
+        clickAction: '/retailer'
+      }
+    };
+
+    const response = await callCloudFunction('sendFCMNotification', fcmData);
     
     if (response.success || response.type === 'fcm_sent') {
       console.log('✅ OTP notification sent successfully via sendFCMNotification:', {
