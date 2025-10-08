@@ -58,6 +58,7 @@ import {
 } from 'lucide-react';
 import { StatusBarColor } from './ui/StatusBarColor';
 import { Confetti } from './ui/Confetti';
+import { WholesalerSlider } from './ui/wholesaler-slider';
 
 export function RetailerDashboard() {
   const { user, logout } = useAuth();
@@ -1669,8 +1670,45 @@ Thank you for your payment!
         onAllNotificationsRead={markAllNotificationsAsRead}
       />
 
+      {/* Wholesaler Selector - Full Width Below Navigation */}
+      {availableTenants.length > 1 && (
+        <div className="w-full bg-white border-b border-gray-200 px-4 sm:px-6 py-3">
+          <div className="max-w-7xl mx-auto">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <Store className="h-5 w-5 text-purple-600" />
+                <Label className="text-sm font-medium text-gray-700">Select Wholesaler:</Label>
+                <Select value={tenantId || 'all'} onValueChange={handleTenantSwitch}>
+                  <SelectTrigger className="w-64">
+                    <SelectValue placeholder="Select wholesaler">
+                      {tenantId === 'all' ? '🏢 All Wholesalers (Consolidated)' : (wholesalerNames[tenantId || ''] || 'Loading...')}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">
+                      🏢 All Wholesalers (Consolidated)
+                    </SelectItem>
+                    {availableTenants.map((tenantIdOption) => (
+                      <SelectItem key={tenantIdOption} value={tenantIdOption}>
+                        {wholesalerNames[tenantIdOption] || 'Loading...'}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="text-sm text-gray-500">
+                {tenantId === 'all' 
+                  ? `Showing data from ${availableTenants.length} wholesalers` 
+                  : `Individual view (${availableTenants.length} total)`
+                }
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Main Content Area */}
-      <div className="pt-20 sm:pt-16 pb-20 lg:pb-0"> {/* Add padding for fixed header and bottom nav */}
+      <div className={`${availableTenants.length > 1 ? 'pt-16 sm:pt-12' : 'pt-20 sm:pt-16'} pb-20 lg:pb-0`}> {/* Adjust padding based on dropdown visibility */}
         <div className="p-4 sm:p-6">
             {/* Header */}
             <div className="flex items-center justify-between mb-6">
@@ -1769,55 +1807,11 @@ Thank you for your payment!
                         </CardContent>
                       </Card>
 
-                      <Card>
-                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                          <CardTitle className="text-sm font-medium text-gray-600">Wholesaler</CardTitle>
-                          <div className="bg-purple-100 p-2 rounded-full">
-                            <Store className="h-4 w-4 text-purple-600" />
-                          </div>
-                        </CardHeader>
-                        <CardContent>
-                          {availableTenants.length > 1 ? (
-                            <div className="space-y-2">
-                              <Select value={tenantId || 'all'} onValueChange={handleTenantSwitch}>
-                                <SelectTrigger className="w-full">
-                                  <SelectValue placeholder="Select wholesaler">
-                                    {tenantId === 'all' ? 'All Wholesalers' : (wholesalerNames[tenantId || ''] || 'Loading...')}
-                                  </SelectValue>
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="all">
-                                    🏢 All Wholesalers (Consolidated)
-                                  </SelectItem>
-                                  {availableTenants.map((tenantIdOption) => (
-                                    <SelectItem key={tenantIdOption} value={tenantIdOption}>
-                                      {wholesalerNames[tenantIdOption] || 'Loading...'}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                              <p className="text-xs text-gray-500">
-                                {tenantId === 'all' 
-                                  ? `Showing consolidated data from ${availableTenants.length} wholesalers` 
-                                  : `Individual wholesaler view (${availableTenants.length} total)`
-                                }
-                              </p>
-                            </div>
-                          ) : (
-                            <div>
-                              <div className="text-2xl font-bold text-gray-900">
-                                {tenantId === 'all' ? 'All Wholesalers' : (wholesalerNames[tenantId || ''] || 'Loading...')}
-                              </div>
-                              <p className="text-xs text-gray-500">
-                                {tenantId === 'all' 
-                                  ? `Consolidated view (${availableTenants.length} wholesalers)` 
-                                  : `Your wholesaler ${availableTenants.length > 0 ? `(${availableTenants.length} total)` : ''}`
-                                }
-                              </p>
-                            </div>
-                          )}
-                        </CardContent>
-                      </Card>
+                      <WholesalerSlider
+                        wholesalerNames={wholesalerNames}
+                        availableTenants={availableTenants}
+                        currentTenantId={tenantId}
+                      />
                     </div>
 
                     {/* Active OTP Cards - Clickable to reopen popup */}

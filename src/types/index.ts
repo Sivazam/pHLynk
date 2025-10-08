@@ -1,6 +1,16 @@
 import { Timestamp } from 'firebase/firestore';
 import { ROLES, PAYMENT_STATES, PAYMENT_METHODS, TENANT_STATUSES } from '@/lib/firebase';
 
+// FCM Device interface for push notifications
+export interface FCMDevice {
+  token: string;
+  deviceId: string;
+  userAgent: string;
+  lastActive: Timestamp;
+  createdAt: Timestamp;
+  isActive: boolean;
+}
+
 // Base interface with common fields
 export interface BaseDocument {
   id: string;
@@ -28,6 +38,7 @@ export interface User extends BaseDocument {
   active: boolean;
   assignedAreas?: string[];
   assignedZips?: string[];
+  fcmDevices?: FCMDevice[];
 }
 
 // Area
@@ -88,6 +99,7 @@ export interface Retailer extends BaseDocument {
   // Additional fields
   gstNumber?: string;
   paymentTerms?: string;
+  fcmDevices?: FCMDevice[];
   
   // Active OTPs for this retailer
   activeOTPs?: Array<{

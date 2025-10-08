@@ -3,9 +3,10 @@ import { fcmService } from '@/lib/fcm-service';
 import { auth } from '@/lib/firebase';
 
 interface RegisterDeviceRequest {
-  retailerId: string;
+  userId: string;
   deviceToken: string;
   userAgent?: string;
+  userType?: 'users' | 'retailers' | 'wholesalers' | 'lineWorkers' | 'superAdmins';
   isNewUser?: boolean;
   timestamp?: string;
 }
@@ -33,10 +34,18 @@ export async function POST(request: NextRequest) {
     }
 
     const body: RegisterDeviceRequest = await request.json();
-    const { retailerId, deviceToken, userAgent, isNewUser = true, timestamp } = body;
+    const { 
+      userId, 
+      deviceToken, 
+      userAgent, 
+      userType = 'retailers', 
+      isNewUser = true, 
+      timestamp 
+    } = body;
 
     console.log('📱 FCM API: Received device registration request:', {
-      retailerId,
+      userId,
+      userType,
       tokenLength: deviceToken?.length || 0,
       tokenPrefix: deviceToken?.substring(0, 20) + '...',
       userAgent: userAgent?.substring(0, 50) + '...',
@@ -45,55 +54,55 @@ export async function POST(request: NextRequest) {
       hasAuth: !!authToken
     });
 
-    if (!retailerId || !deviceToken) {
-      console.error('❌ FCM API: Missing required fields:', { retailerId: !!retailerId, deviceToken: !!deviceToken });
+    if (!userId || !deviceToken) {
+      console.error('❌ FCM API: Missing required fields:', { userId: !!userId, deviceToken: !!deviceToken });
       return NextResponse.json(
-        { error: 'Missing required fields: retailerId, deviceToken' },
+        { error: 'Missing required fields: userId, deviceToken' },
         { status: 400 }
       );
     }
 
-    // 🔐 SECURITY: Verify retailer exists and is active before allowing device registration
+    // 🔐 SECURITY: Verify user exists and is active before allowing device registration
     // TEMPORARILY DISABLED FOR DEBUGGING
-    console.log('🔍 DEBUG: Skipping retailer verification for debugging');
+    console.log('🔍 DEBUG: Skipping user verification for debugging');
     
     /*
     try {
       const { doc, getDoc } = await import('firebase/firestore');
       const { db } = await import('@/lib/firebase');
       
-      const retailerRef = doc(db, 'retailers', retailerId);
-      const retailerDoc = await getDoc(retailerRef);
+      const userRef = doc(db, userType, userId);
+      const userDoc = await getDoc(userRef);
       
-      if (!retailerDoc.exists()) {
-        console.error('❌ FCM API: Retailer not found:', retailerId);
+      if (!userDoc.exists()) {
+        console.error(`❌ FCM API: ${userType} not found:`, userId);
         return NextResponse.json(
-          { error: 'Retailer not found' },
+          { error: `${userType} not found` },
           { status: 404 }
         );
       }
       
-      const retailerData = retailerDoc.data();
-      if (!retailerData.isActive) {
-        console.error('❌ FCM API: Retailer is inactive:', retailerId);
+      const userData = userDoc.data();
+      if (userData.hasOwnProperty('active') && !userData.active) {
+        console.error(`❌ FCM API: ${userType} is inactive:`, userId);
         return NextResponse.json(
-          { error: 'Retailer account is inactive' },
+          { error: `${userType} account is inactive` },
           { status: 403 }
         );
       }
       
-      console.log('✅ FCM API: Retailer verified and active:', retailerId);
+      console.log(`✅ FCM API: ${userType} verified and active:`, userId);
     } catch (verificationError) {
-      console.error('❌ FCM API: Error verifying retailer:', verificationError);
+      console.error('❌ FCM API: Error verifying user:', verificationError);
       return NextResponse.json(
-        { error: 'Failed to verify retailer account' },
+        { error: 'Failed to verify user account' },
         { status: 500 }
       );
     }
     */
 
-    console.log(`📱 Registering device for ${isNewUser ? 'new' : 'returning'} user:`, {
-      retailerId,
+    console.log(`📱 Registering device for ${isNewUser ? 'new' : 'returning'} ${userType}:`, {
+      userId,
       userAgent: userAgent?.substring(0, 50) + '...',
       timestamp: timestamp || new Date().toISOString()
     });
@@ -108,20 +117,21 @@ export async function POST(request: NextRequest) {
     }
 
     console.log('✅ FCM API: FCM service configured, calling registerDevice...');
-    const result = await fcmService.registerDevice(retailerId, deviceToken, userAgent);
+    const result = await fcmService.registerDevice(userId, deviceToken, userAgent, userType);
 
     console.log('🔧 FCM API: Service returned result:', result);
 
     if (result.success) {
-      console.log(`✅ Device registered successfully for ${isNewUser ? 'new' : 'returning'} user:`, retailerId);
+      console.log(`✅ Device registered successfully for ${isNewUser ? 'new' : 'returning'} ${userType}:`, userId);
       return NextResponse.json({
         success: true,
         message: result.message,
+        userType,
         isNewUser,
         timestamp: timestamp || new Date().toISOString()
       });
     } else {
-      console.warn(`⚠️ Device registration failed for ${isNewUser ? 'new' : 'returning'} user:`, result.message);
+      console.warn(`⚠️ Device registration failed for ${isNewUser ? 'new' : 'returning'} ${userType}:`, result.message);
       return NextResponse.json(
         { error: result.message },
         { status: 400 }

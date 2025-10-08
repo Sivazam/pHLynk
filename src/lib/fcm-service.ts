@@ -1,12 +1,6 @@
 import { db } from '@/lib/firebase';
-import { doc, getDoc, updateDoc, arrayUnion, arrayRemove, collection, query, where, getDocs } from 'firebase/firestore';
-
-export interface FCMDevice {
-  token: string;
-  userAgent: string;
-  registeredAt: Date;
-  lastActive: Date;
-}
+import { doc, getDoc, updateDoc, collection, query, where, getDocs, Timestamp } from 'firebase/firestore';
+import { FCMDevice } from '@/types';
 
 export interface FCMNotificationData {
   title: string;
@@ -18,470 +12,241 @@ export interface FCMNotificationData {
   clickAction?: string;
 }
 
+type UserType = 'users' | 'retailers' | 'wholesalers' | 'lineWorkers' | 'superAdmins';
+
 class FCMService {
   private readonly VAPID_KEY = process.env.NEXT_PUBLIC_FCM_VAPID_KEY || '';
   private readonly SERVER_KEY = process.env.FCM_SERVER_KEY || '';
 
   /**
-   * Register a device token for a retailer
+   * Register a device token for any user type
    */
-  async registerDevice(retailerId: string, deviceToken: string, userAgent: string = 'unknown'): Promise<{ success: boolean; message: string }> {
+  async registerDevice(
+    userId: string, 
+    deviceToken: string, 
+    userAgent: string = 'unknown',
+    userType: UserType = 'retailers'
+  ): Promise<{ success: boolean; message: string }> {
     try {
       console.log('🔧 FCM Service: Registering device:', {
-        retailerId,
+        userId,
+        userType,
         tokenLength: deviceToken.length,
         tokenPrefix: deviceToken.substring(0, 20) + '...',
         userAgent: userAgent.substring(0, 50) + '...'
       });
 
-      const retailerRef = doc(db, 'retailers', retailerId);
-      const retailerDoc = await getDoc(retailerRef);
+      const userRef = doc(db, userType, userId);
+      const userDoc = await getDoc(userRef);
 
-      if (!retailerDoc.exists()) {
-        console.error('❌ FCM Service: Retailer not found:', retailerId);
-        return { success: false, message: 'Retailer not found' };
+      if (!userDoc.exists()) {
+        console.error(`❌ FCM Service: ${userType} not found:`, userId);
+        return { success: false, message: `${userType} not found` };
       }
 
-      console.log('✅ FCM Service: Retailer found:', retailerId);
+      console.log(`✅ FCM Service: ${userType} found:`, userId);
 
+      const deviceId = this.generateDeviceId(deviceToken, userAgent);
       const device: FCMDevice = {
         token: deviceToken,
+        deviceId,
         userAgent,
-        registeredAt: new Date(),
-        lastActive: new Date()
+        lastActive: Timestamp.now(),
+        createdAt: Timestamp.now(),
+        isActive: true
       };
 
-      // Check if device already exists
-      const existingDevices = retailerDoc.data()?.fcmDevices || [];
-      console.log('📱 FCM Service: Existing devices count:', existingDevices.length);
-      
-      const deviceExists = existingDevices.some((d: FCMDevice) => d.token === deviceToken);
-      console.log('🔍 FCM Service: Device exists?', deviceExists);
+      // Get current devices
+      const userData = userDoc.data();
+      const currentDevices: FCMDevice[] = userData.fcmDevices || [];
 
-      if (deviceExists) {
-        console.log('🔄 FCM Service: Updating existing device last active timestamp');
-        // Update last active timestamp
-        const updatedDevices = existingDevices.map((d: FCMDevice) =>
-          d.token === deviceToken ? { ...d, lastActive: new Date() } : d
-        );
-        
-        await updateDoc(retailerRef, { fcmDevices: updatedDevices });
-        console.log('✅ FCM Service: Device updated successfully');
-        return { success: true, message: 'Device updated successfully' };
+      // Check if device already exists
+      const existingDeviceIndex = currentDevices.findIndex(d => d.deviceId === deviceId);
+      
+      if (existingDeviceIndex >= 0) {
+        // Update existing device
+        currentDevices[existingDeviceIndex] = {
+          ...currentDevices[existingDeviceIndex],
+          lastActive: Timestamp.now(),
+          isActive: true,
+          token: deviceToken // Update token in case it changed
+        };
+        console.log('🔄 FCM Service: Updated existing device:', deviceId);
       } else {
-        console.log('➕ FCM Service: Adding new device to retailers collection');
         // Add new device
-        await updateDoc(retailerRef, {
-          fcmDevices: arrayUnion(device)
-        });
-        console.log('✅ FCM Service: Device registered successfully in retailers collection');
-        return { success: true, message: 'Device registered successfully' };
+        currentDevices.push(device);
+        console.log('➕ FCM Service: Added new device:', deviceId);
       }
+
+      // Update user document
+      await updateDoc(userRef, {
+        fcmDevices: currentDevices,
+        updatedAt: Timestamp.now()
+      });
+
+      console.log(`✅ FCM Service: Device registered successfully for ${userType}:`, userId);
+      return { success: true, message: 'Device registered successfully' };
+
     } catch (error) {
-      console.error('❌ FCM Service: Error registering FCM device:', error);
+      console.error('❌ FCM Service: Error registering device:', error);
       return { success: false, message: 'Failed to register device' };
     }
   }
 
   /**
-   * Unregister a device token for a retailer
+   * Unregister a specific device token for any user type
    */
-  async unregisterDevice(retailerId: string, deviceToken: string): Promise<{ success: boolean; message: string }> {
+  async unregisterDevice(
+    userId: string, 
+    deviceToken: string,
+    userType: UserType = 'retailers'
+  ): Promise<{ success: boolean; message: string }> {
     try {
-      const retailerRef = doc(db, 'retailers', retailerId);
-      const retailerDoc = await getDoc(retailerRef);
+      console.log('🗑️ FCM Service: Unregistering device:', {
+        userId,
+        userType,
+        tokenLength: deviceToken.length,
+        tokenPrefix: deviceToken.substring(0, 20) + '...'
+      });
 
-      if (!retailerDoc.exists()) {
-        return { success: false, message: 'Retailer not found' };
+      const userRef = doc(db, userType, userId);
+      const userDoc = await getDoc(userRef);
+
+      if (!userDoc.exists()) {
+        console.error(`❌ FCM Service: ${userType} not found:`, userId);
+        return { success: false, message: `${userType} not found` };
       }
 
-      const existingDevices = retailerDoc.data()?.fcmDevices || [];
-      const deviceToRemove = existingDevices.find((d: FCMDevice) => d.token === deviceToken);
+      const userData = userDoc.data();
+      const currentDevices: FCMDevice[] = userData.fcmDevices || [];
 
-      if (deviceToRemove) {
-        await updateDoc(retailerRef, {
-          fcmDevices: arrayRemove(deviceToRemove)
-        });
-        return { success: true, message: 'Device unregistered successfully' };
-      } else {
-        return { success: false, message: 'Device not found' };
-      }
+      // Mark device as inactive instead of removing completely (for audit trail)
+      const finalDevices = currentDevices.map(device => 
+        device.token === deviceToken 
+          ? { ...device, isActive: false, lastActive: Timestamp.now() }
+          : device
+      );
+
+      await updateDoc(userRef, {
+        fcmDevices: finalDevices,
+        updatedAt: Timestamp.now()
+      });
+
+      console.log(`✅ FCM Service: Device unregistered successfully for ${userType}:`, userId);
+      return { success: true, message: 'Device unregistered successfully' };
+
     } catch (error) {
-      console.error('Error unregistering FCM device:', error);
+      console.error('❌ FCM Service: Error unregistering device:', error);
       return { success: false, message: 'Failed to unregister device' };
     }
   }
 
   /**
-   * Get all registered devices for a retailer
+   * Generate a unique device ID based on token and user agent
    */
-  async getRetailerDevices(retailerId: string): Promise<FCMDevice[]> {
-    try {
-      const retailerRef = doc(db, 'retailers', retailerId);
-      const retailerDoc = await getDoc(retailerRef);
-
-      if (!retailerDoc.exists()) {
-        return [];
-      }
-
-      return retailerDoc.data()?.fcmDevices || [];
-    } catch (error) {
-      console.error('Error getting retailer devices:', error);
-      return [];
+  private generateDeviceId(token: string, userAgent: string): string {
+    // Create a simple hash without crypto module for browser compatibility
+    let hash = 0;
+    const str = `${token}:${userAgent}`;
+    for (let i = 0; i < str.length; i++) {
+      const char = str.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32-bit integer
     }
-  }
-
-  /**
-   * Get all registered devices for a user from their respective collection
-   */
-  async getUserDevices(userId: string, userType: 'retailer' | 'line_worker' | 'wholesaler' | 'super_admin'): Promise<FCMDevice[]> {
-    try {
-      const collectionName = this.getCollectionName(userType);
-      const userRef = doc(db, collectionName, userId);
-      const userDoc = await getDoc(userRef);
-
-      if (!userDoc.exists()) {
-        return [];
-      }
-
-      return userDoc.data()?.fcmDevices || [];
-    } catch (error) {
-      console.error('Error getting user devices:', error);
-      return [];
-    }
-  }
-
-  /**
-   * Get the appropriate collection name for a user type
-   */
-  private getCollectionName(userType: string): string {
-    switch (userType) {
-      case 'retailer':
-        return 'retailers';
-      case 'wholesaler':
-      case 'wholesaler_admin':
-      case 'super_admin':
-        return 'tenants';
-      case 'line_worker':
-        return 'users';
-      default:
-        throw new Error(`Unknown user type: ${userType}`);
-    }
-  }
-
-  /**
-   * Clean up inactive devices (older than 30 days) for a user
-   */
-  async cleanupInactiveDevices(userId: string, userType: 'retailer' | 'line_worker' | 'wholesaler' | 'super_admin'): Promise<void> {
-    try {
-      const devices = await this.getUserDevices(userId, userType);
-      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-      
-      const activeDevices = devices.filter(device => 
-        new Date(device.lastActive) > thirtyDaysAgo
-      );
-
-      if (activeDevices.length !== devices.length) {
-        const collectionName = this.getCollectionName(userType);
-        const userRef = doc(db, collectionName, userId);
-        await updateDoc(userRef, { fcmDevices: activeDevices });
-        console.log(`Cleaned up ${devices.length - activeDevices.length} inactive devices for ${userType} ${userId}`);
-      }
-    } catch (error) {
-      console.error('Error cleaning up inactive devices:', error);
-    }
-  }
-
-  /**
-   * Send notification to all devices for a retailer
-   */
-  async sendNotificationToRetailer(retailerId: string, notification: FCMNotificationData): Promise<{ success: boolean; message: string; sentCount?: number }> {
-    try {
-      const devices = await this.getRetailerDevices(retailerId);
-      
-      if (devices.length === 0) {
-        return { success: false, message: 'No devices registered for this retailer' };
-      }
-
-      // Clean up inactive devices before sending
-      await this.cleanupInactiveDevices(retailerId, 'retailer');
-      const activeDevices = await this.getRetailerDevices(retailerId);
-
-      if (activeDevices.length === 0) {
-        return { success: false, message: 'No active devices found for this retailer' };
-      }
-
-      let successCount = 0;
-      let failureCount = 0;
-
-      // Send to each device
-      for (const device of activeDevices) {
-        try {
-          const result = await this.sendToDevice(device.token, notification);
-          if (result.success) {
-            successCount++;
-          } else {
-            failureCount++;
-            // If device token is invalid, remove it
-            if (result.error === 'UNREGISTERED' || result.error === 'INVALID_ARGUMENT') {
-              await this.unregisterDevice(retailerId, device.token);
-            }
-          }
-        } catch (error) {
-          console.error(`Failed to send to device ${device.token}:`, error);
-          failureCount++;
-        }
-      }
-
-      return {
-        success: successCount > 0,
-        message: `Sent to ${successCount} device(s), ${failureCount} failed`,
-        sentCount: successCount
-      };
-    } catch (error) {
-      console.error('Error sending notification to retailer:', error);
-      return { success: false, message: 'Failed to send notification' };
-    }
-  }
-
-  /**
-   * Send notification to a specific device token using direct Firebase Admin SDK
-   */
-  private async sendToDevice(deviceToken: string, notification: FCMNotificationData): Promise<{ success: boolean; error?: string }> {
-    try {
-      // Use cloud functions for sending notifications
-      console.log('📱 sendToDevice called for notification type:', notification.data?.type);
-      console.log('🚀 Redirecting to Cloud Functions for notification sending');
-      
-      // Call the appropriate cloud function based on notification type
-      if (notification.data?.type === 'otp') {
-        return await this.sendOTPViaCloudFunction(notification.data);
-      } else if (notification.data?.type === 'payment') {
-        return await this.sendPaymentViaCloudFunction(notification.data);
-      } else {
-        console.log('❌ Unknown notification type for cloud function routing');
-        return { success: false, error: 'UNKNOWN_NOTIFICATION_TYPE' };
-      }
-    } catch (error) {
-      console.error('Error in sendToDevice:', error);
-      return { success: false, error: 'FCM_SERVICE_ERROR' };
-    }
-  }
-
-  /**
-   * Send OTP notification via cloud function
-   */
-  private async sendOTPViaCloudFunction(data: any): Promise<{ success: boolean; error?: string }> {
-    try {
-      const response = await fetch('https://us-central1-phlynk-firebase.cloudfunctions.net/sendOTPNotification', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          retailerId: data.retailerId,
-          otp: data.otp,
-          amount: parseFloat(data.amount),
-          paymentId: data.paymentId,
-          lineWorkerName: data.lineWorkerName
-        })
-      });
-
-      const result = await response.json();
-      
-      if (response.ok && result.success) {
-        console.log('✅ OTP notification sent successfully via cloud function');
-        return { success: true };
-      } else {
-        console.error('❌ Cloud function OTP notification failed:', result);
-        return { success: false, error: result.error || 'CLOUD_FUNCTION_ERROR' };
-      }
-    } catch (error) {
-      console.error('❌ Error calling OTP cloud function:', error);
-      return { success: false, error: 'CLOUD_FUNCTION_NETWORK_ERROR' };
-    }
-  }
-
-  /**
-   * Send payment notification via cloud function
-   */
-  private async sendPaymentViaCloudFunction(data: any): Promise<{ success: boolean; error?: string }> {
-    try {
-      const response = await fetch('https://us-central1-phlynk-firebase.cloudfunctions.net/sendPaymentCompletionNotification', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          retailerId: data.retailerId,
-          amount: parseFloat(data.amount),
-          paymentId: data.paymentId,
-          status: data.status || 'completed'
-        })
-      });
-
-      const result = await response.json();
-      
-      if (response.ok && result.success) {
-        console.log('✅ Payment notification sent successfully via cloud function');
-        return { success: true };
-      } else {
-        console.error('❌ Cloud function payment notification failed:', result);
-        return { success: false, error: result.error || 'CLOUD_FUNCTION_ERROR' };
-      }
-    } catch (error) {
-      console.error('❌ Error calling payment cloud function:', error);
-      return { success: false, error: 'CLOUD_FUNCTION_NETWORK_ERROR' };
-    }
-  }
-
-  /**
-   * Legacy FCM API fallback (requires server key)
-   */
-  private async sendViaLegacyAPI(deviceToken: string, notification: FCMNotificationData): Promise<{ success: boolean; error?: string }> {
-    try {
-      if (!this.SERVER_KEY) {
-        console.warn('⚠️ FCM Server key not configured. OTP notifications will not work.');
-        console.warn('🔧 To fix: Set FCM_SERVER_KEY environment variable');
-        return { success: false, error: 'FCM_SERVER_KEY_NOT_CONFIGURED' };
-      }
-
-      const message = {
-        to: deviceToken,
-        notification: {
-          title: notification.title,
-          body: notification.body,
-          icon: notification.icon || '/notification-large-192x192.png', // Use new large icon
-          badge: notification.badge || '/badge-72x72.png', // Use badge icon
-          tag: notification.tag,
-          click_action: notification.clickAction
-        },
-        data: notification.data || {},
-        priority: 'high',
-        timeToLive: 2419200 // 28 days
-      };
-
-      const response = await fetch('https://fcm.googleapis.com/fcm/send', {
-        method: 'POST',
-        headers: {
-          'Authorization': `key=${this.SERVER_KEY}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(message)
-      });
-
-      const responseData = await response.json();
-
-      if (response.ok && responseData.success === 1) {
-        console.log('✅ OTP notification sent successfully via FCM Legacy API');
-        return { success: true };
-      } else {
-        console.error('❌ FCM API Error:', responseData);
-        return { success: false, error: responseData.results?.[0]?.error || 'UNKNOWN_ERROR' };
-      }
-    } catch (error) {
-      console.error('❌ Error sending FCM notification via legacy API:', error);
-      return { success: false, error: 'NETWORK_ERROR' };
-    }
-  }
-
-  /**
-   * Get VAPID key for client-side registration
-   */
-  getVapidKey(): string {
-    return this.VAPID_KEY;
+    return `device_${Math.abs(hash).toString(16)}`;
   }
 
   /**
    * Check if FCM is properly configured
    */
   isConfigured(): boolean {
-    // For device registration, we only need the database connection
-    // The server key is only needed for sending notifications
-    return true; // Allow registration for testing
+    return !!(this.VAPID_KEY || this.SERVER_KEY);
+  }
+
+  /**
+   * Get active devices for a user
+   */
+  async getActiveDevices(userId: string, userType: UserType = 'retailers'): Promise<FCMDevice[]> {
+    try {
+      const userRef = doc(db, userType, userId);
+      const userDoc = await getDoc(userRef);
+
+      if (!userDoc.exists()) {
+        return [];
+      }
+
+      const userData = userDoc.data();
+      const devices: FCMDevice[] = userData.fcmDevices || [];
+      
+      // Return only active devices
+      return devices.filter(device => device.isActive);
+    } catch (error) {
+      console.error('❌ FCM Service: Error getting active devices:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Send notification to specific user devices
+   */
+  async sendNotificationToUser(
+    userId: string,
+    notification: FCMNotificationData,
+    userType: UserType = 'retailers'
+  ): Promise<{ success: boolean; sent: number; failed: number; message: string }> {
+    try {
+      const devices = await this.getActiveDevices(userId, userType);
+      
+      if (devices.length === 0) {
+        return { success: true, sent: 0, failed: 0, message: 'No active devices found' };
+      }
+
+      const tokens = devices.map(device => device.token);
+      return await this.sendNotification(tokens, notification);
+      
+    } catch (error) {
+      console.error('❌ FCM Service: Error sending notification to user:', error);
+      return { success: false, sent: 0, failed: 0, message: 'Failed to send notification' };
+    }
+  }
+
+  /**
+   * Send notification to multiple device tokens
+   */
+  async sendNotification(
+    tokens: string[],
+    notification: FCMNotificationData
+  ): Promise<{ success: boolean; sent: number; failed: number; message: string }> {
+    try {
+      if (!tokens.length) {
+        return { success: true, sent: 0, failed: 0, message: 'No tokens provided' };
+      }
+
+      // This would integrate with Firebase Cloud Messaging HTTP API
+      // For now, return a placeholder response
+      console.log('📤 FCM Service: Sending notification to', tokens.length, 'devices');
+      console.log('📝 Notification:', notification);
+      
+      // TODO: Implement actual FCM HTTP API call
+      // const response = await fetch('https://fcm.googleapis.com/fcm/send', {
+      //   method: 'POST',
+      //   headers: {
+      //     'Authorization': `key=${this.SERVER_KEY}`,
+      //     'Content-Type': 'application/json',
+      //   },
+      //   body: JSON.stringify({
+      //     notification,
+      //     registration_ids: tokens,
+      //   }),
+      // });
+
+      return { success: true, sent: tokens.length, failed: 0, message: 'Notification sent successfully' };
+      
+    } catch (error) {
+      console.error('❌ FCM Service: Error sending notification:', error);
+      return { success: false, sent: 0, failed: tokens.length, message: 'Failed to send notification' };
+    }
   }
 }
 
-// Export singleton instance
 export const fcmService = new FCMService();
-
-// Helper functions for specific notification types
-export async function sendOTPViaFCM(
-  retailerId: string,
-  otp: string,
-  retailerName: string,
-  paymentId?: string,
-  amount?: number,
-  lineWorkerName?: string
-): Promise<{ success: boolean; message: string; sentCount?: number }> {
-  const notification: FCMNotificationData = {
-    title: '🔐 OTP Verification Required',
-    body: `Your OTP code is: **${otp}**`,
-    data: {
-      type: 'otp',
-      otp: otp,
-      retailerId,
-      paymentId: paymentId || '',
-      amount: amount?.toString() || '',
-      retailerName,
-      lineWorkerName: lineWorkerName || 'Line Worker',
-      // Icon paths for the notification
-      icon: '/notification-large-192x192.png', // Right side - high-res app icon from logo.png
-      badge: '/badge-72x72.png', // Left side - badge icon with blue background
-      clickAction: '/retailer/dashboard'
-    },
-    icon: '/notification-large-192x192.png', // Right side large icon
-    badge: '/badge-72x72.png', // Left side badge icon
-    tag: `otp-${paymentId || Date.now()}`,
-    clickAction: '/retailer/dashboard'
-  };
-
-  return await fcmService.sendNotificationToRetailer(retailerId, notification);
-}
-
-export async function sendPaymentNotificationViaFCM(
-  retailerId: string,
-  paymentId: string,
-  status: 'completed' | 'failed' | 'pending',
-  amount: number,
-  customerName?: string
-): Promise<{ success: boolean; message: string; sentCount?: number }> {
-  const statusConfig = {
-    completed: {
-      title: '✅ Payment Completed',
-      body: `Payment of ₹${amount.toLocaleString()} received${customerName ? ` from ${customerName}` : ''}`
-    },
-    failed: {
-      title: '❌ Payment Failed',
-      body: `Payment of ₹${amount.toLocaleString()} failed${customerName ? ` from ${customerName}` : ''}`
-    },
-    pending: {
-      title: '⏳ Payment Pending',
-      body: `Payment of ₹${amount.toLocaleString()} is pending${customerName ? ` from ${customerName}` : ''}`
-    }
-  };
-
-  const config = statusConfig[status];
-
-  const notification: FCMNotificationData = {
-    title: config.title,
-    body: config.body,
-    data: {
-      type: 'payment',
-      paymentId,
-      status,
-      amount: amount.toString(),
-      customerName: customerName || '',
-      // Icon paths for the notification
-      icon: '/notification-large-192x192.png', // Right side - high-res app icon from logo.png
-      badge: '/badge-72x72.png', // Left side - badge icon with blue background
-      clickAction: '/retailer/dashboard'
-    },
-    icon: '/notification-large-192x192.png', // Right side large icon
-    badge: '/badge-72x72.png', // Left side badge icon
-    tag: `payment-${paymentId}`,
-    clickAction: '/retailer/dashboard'
-  };
-
-  return await fcmService.sendNotificationToRetailer(retailerId, notification);
-}

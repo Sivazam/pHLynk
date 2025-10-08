@@ -243,14 +243,17 @@ export async function getFCMToken(): Promise<string | null> {
 /**
  * Initialize FCM and register device token
  */
-export async function initializeFCM(retailerId?: string): Promise<string | null> {
+export async function initializeFCM(
+  userId?: string, 
+  userType: 'users' | 'retailers' | 'wholesalers' | 'lineWorkers' | 'superAdmins' = 'retailers'
+): Promise<string | null> {
   try {
     if (!auth.currentUser) {
       console.warn('⚠️ User not authenticated, cannot initialize FCM');
       return null;
     }
 
-    console.log('🔧 Initializing FCM for user:', auth.currentUser.uid);
+    console.log('🔧 Initializing FCM for user:', auth.currentUser.uid, 'type:', userType);
 
     // Get FCM token
     const token = await getFCMToken();
@@ -261,22 +264,22 @@ export async function initializeFCM(retailerId?: string): Promise<string | null>
     }
 
     // Check if token is already registered
-    const isAlreadyRegistered = await checkIfTokenRegistered(token);
+    const isAlreadyRegistered = await checkIfTokenRegistered(token, userType);
     
     if (isAlreadyRegistered) {
       console.log('✅ FCM token already registered, updating last active');
-      await updateLastActive(token);
+      await updateLastActive(token, userType);
       return token;
     }
 
     // Register new token with backend
     try {
-      // Use provided retailerId or fall back to auth.currentUser.uid
-      const userId = retailerId || auth.currentUser.uid;
+      // Use provided userId or fall back to auth.currentUser.uid
+      const finalUserId = userId || auth.currentUser.uid;
       
       console.log('🔔 Registering FCM device:', {
-        userId,
-        userIdType: retailerId ? 'retailerId' : 'auth.uid',
+        userId: finalUserId,
+        userType,
         tokenLength: token.length,
         tokenPrefix: token.substring(0, 20) + '...',
         userAgent: navigator.userAgent.substring(0, 50) + '...'
@@ -288,9 +291,10 @@ export async function initializeFCM(retailerId?: string): Promise<string | null>
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          retailerId: userId,
+          userId: finalUserId,
           deviceToken: token,
           userAgent: navigator.userAgent,
+          userType,
           isNewUser: false, // Flag for returning users
           timestamp: new Date().toISOString()
         })
@@ -330,7 +334,10 @@ export async function initializeFCM(retailerId?: string): Promise<string | null>
 /**
  * Check if token is already registered for this user
  */
-async function checkIfTokenRegistered(token: string): Promise<boolean> {
+async function checkIfTokenRegistered(
+  token: string, 
+  userType: 'users' | 'retailers' | 'wholesalers' | 'lineWorkers' | 'superAdmins' = 'retailers'
+): Promise<boolean> {
   try {
     if (!auth.currentUser) return false;
     
@@ -341,7 +348,8 @@ async function checkIfTokenRegistered(token: string): Promise<boolean> {
       },
       body: JSON.stringify({
         token: token,
-        userId: auth.currentUser.uid
+        userId: auth.currentUser.uid,
+        userType
       })
     });
 
@@ -359,7 +367,10 @@ async function checkIfTokenRegistered(token: string): Promise<boolean> {
 /**
  * Update last active timestamp for existing token
  */
-async function updateLastActive(token: string): Promise<void> {
+async function updateLastActive(
+  token: string, 
+  userType: 'users' | 'retailers' | 'wholesalers' | 'lineWorkers' | 'superAdmins' = 'retailers'
+): Promise<void> {
   try {
     if (!auth.currentUser) return;
     
@@ -370,7 +381,8 @@ async function updateLastActive(token: string): Promise<void> {
       },
       body: JSON.stringify({
         token: token,
-        userId: auth.currentUser.uid
+        userId: auth.currentUser.uid,
+        userType
       })
     });
   } catch (error) {
@@ -403,7 +415,9 @@ export function onMessageListener() {
 /**
  * Delete FCM token (for logout)
  */
-export async function deleteFCMToken(): Promise<boolean> {
+export async function deleteFCMToken(
+  userType: 'users' | 'retailers' | 'wholesalers' | 'lineWorkers' | 'superAdmins' = 'retailers'
+): Promise<boolean> {
   try {
     console.log('🗑️ Starting FCM token deletion process...');
     
@@ -437,8 +451,8 @@ export async function deleteFCMToken(): Promise<boolean> {
       try {
         console.log('📡 Unregistering current device from backend...');
         
-        // Try to get retailerId for proper device cleanup
-        const retailerId = localStorage.getItem('retailerId') || auth.currentUser.uid;
+        // Try to get userId for proper device cleanup
+        const userId = localStorage.getItem('retailerId') || auth.currentUser.uid;
         
         const response = await fetch('/api/fcm/unregister-device', {
           method: 'POST',
@@ -446,9 +460,9 @@ export async function deleteFCMToken(): Promise<boolean> {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            retailerId: retailerId,
+            userId: userId,
             deviceToken: currentToken,
-            userId: auth.currentUser.uid
+            userType
           })
         });
 

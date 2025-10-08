@@ -2,27 +2,27 @@ import { NextRequest, NextResponse } from 'next/server';
 import { fcmService } from '@/lib/fcm-service';
 
 interface UnregisterDeviceRequest {
-  retailerId: string;
-  deviceToken: string;
   userId: string;
+  deviceToken: string;
+  userType?: 'users' | 'retailers' | 'wholesalers' | 'lineWorkers' | 'superAdmins';
 }
 
 export async function POST(request: NextRequest) {
   try {
     const body: UnregisterDeviceRequest = await request.json();
-    const { retailerId, deviceToken, userId } = body;
+    const { userId, deviceToken, userType = 'retailers' } = body;
 
     console.log('📱 FCM API: Received device unregistration request:', {
-      retailerId,
+      userId,
+      userType,
       tokenLength: deviceToken?.length || 0,
-      tokenPrefix: deviceToken?.substring(0, 20) + '...',
-      userId
+      tokenPrefix: deviceToken?.substring(0, 20) + '...'
     });
 
-    if (!retailerId || !deviceToken) {
-      console.error('❌ FCM API: Missing required fields:', { retailerId: !!retailerId, deviceToken: !!deviceToken });
+    if (!userId || !deviceToken) {
+      console.error('❌ FCM API: Missing required fields:', { userId: !!userId, deviceToken: !!deviceToken });
       return NextResponse.json(
-        { error: 'Missing required fields: retailerId, deviceToken' },
+        { error: 'Missing required fields: userId, deviceToken' },
         { status: 400 }
       );
     }
@@ -37,19 +37,20 @@ export async function POST(request: NextRequest) {
     }
 
     console.log('🗑️ Unregistering device for user:', {
-      retailerId,
-      userId
+      userId,
+      userType
     });
 
-    const result = await fcmService.unregisterDevice(retailerId, deviceToken);
+    const result = await fcmService.unregisterDevice(userId, deviceToken, userType);
 
     console.log('🔧 FCM API: Unregister service returned result:', result);
 
     if (result.success) {
-      console.log('✅ Device unregistered successfully:', retailerId);
+      console.log('✅ Device unregistered successfully:', userId);
       return NextResponse.json({
         success: true,
-        message: result.message
+        message: result.message,
+        userType
       });
     } else {
       console.warn('⚠️ Device unregistration failed:', result.message);
