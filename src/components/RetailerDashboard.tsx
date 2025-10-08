@@ -1644,10 +1644,10 @@ export function RetailerDashboard() {
       )}
 
       {/* Main Content Area */}
-      <div className={`${availableTenants.length > 1 ? 'pt-24 sm:pt-28' : 'pt-20 sm:pt-16'} pb-20 lg:pb-0`}> {/* Adjust spacing based on dropdown presence - 64px header + 48px selector = 112px total */}
+      <div className={`${availableTenants.length > 1 ? 'pt-32 sm:pt-28' : 'pt-20 sm:pt-16'} pb-20 lg:pb-0`}> {/* Adjust spacing based on dropdown presence - Mobile needs more space: 128px, Desktop: 112px */}
         <div className="p-4 sm:p-6">
             {/* Header */}
-            <div className="mb-6">
+            <div className="mb-6 mt-2 sm:mt-0"> {/* Extra top margin for mobile to prevent cramped feeling */}
               <div>
                 <h1 className="text-2xl font-bold text-gray-900">Retailer Dashboard</h1>
                 <p className="text-gray-600">Manage your payments and view transaction history</p>

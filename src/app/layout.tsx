@@ -80,7 +80,7 @@ export default function RootLayout({
           <PWAInstallPrompt />
           {children}
           {/* TEMPORARY: FCM Debug Panel - Remove after FCM issues are resolved */}
-          <FCMDebugPanel />
+          {/* <FCMDebugPanel /> */}
         </AuthProvider>
         <Toaster />
         <script

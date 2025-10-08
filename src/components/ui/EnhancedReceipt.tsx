@@ -91,6 +91,84 @@ export function EnhancedReceipt({
   
   const lineWorkerName = payment.lineWorkerName || lineWorkerNames[payment.lineWorkerId] || 'Unknown Line Worker';
 
+  const generateCanvas = async (element: HTMLElement) => {
+    // Create a temporary style element to override problematic CSS
+    const style = document.createElement('style');
+    style.textContent = `
+      #receipt-content * {
+        color: rgb(17, 24, 39) !important;
+        background-color: rgb(255, 255, 255) !important;
+        border-color: rgb(229, 231, 235) !important;
+      }
+      #receipt-content .text-gray-900 { color: rgb(17, 24, 39) !important; }
+      #receipt-content .text-gray-800 { color: rgb(31, 41, 55) !important; }
+      #receipt-content .text-gray-700 { color: rgb(55, 65, 81) !important; }
+      #receipt-content .text-gray-600 { color: rgb(75, 85, 99) !important; }
+      #receipt-content .text-gray-500 { color: rgb(107, 114, 128) !important; }
+      #receipt-content .text-gray-400 { color: rgb(156, 163, 175) !important; }
+      #receipt-content .text-green-600 { color: rgb(22, 163, 74) !important; }
+      #receipt-content .text-blue-600 { color: rgb(37, 99, 235) !important; }
+      #receipt-content .bg-white { background-color: rgb(255, 255, 255) !important; }
+      #receipt-content .bg-gray-50 { background-color: rgb(249, 250, 251) !important; }
+      #receipt-content .bg-blue-600 { background-color: rgb(37, 99, 235) !important; }
+      #receipt-content .border-gray-200 { border-color: rgb(229, 231, 235) !important; }
+      #receipt-content .border-gray-300 { border-color: rgb(209, 213, 219) !important; }
+      #receipt-content .border-gray-800 { border-color: rgb(31, 41, 55) !important; }
+    `;
+    document.head.appendChild(style);
+
+    try {
+      const canvas = await html2canvas(element, {
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: '#ffffff',
+        logging: false,
+        removeContainer: false,
+        foreignObjectRendering: false,
+        imageTimeout: 15000,
+        willReadFrequently: true,
+        onclone: (clonedDoc) => {
+          // Apply the same style overrides to the cloned document
+          const clonedStyle = clonedDoc.createElement('style');
+          clonedStyle.textContent = style.textContent;
+          clonedDoc.head.appendChild(clonedStyle);
+
+          // Ensure images are loaded in the cloned document
+          const images = clonedDoc.querySelectorAll('img');
+          const promises = Array.from(images).map(img => {
+            if (img.complete) return Promise.resolve();
+            return new Promise((resolve, reject) => {
+              img.onload = resolve;
+              img.onerror = () => {
+                // Replace broken images with fallback
+                const fallback = clonedDoc.createElement('div');
+                fallback.className = 'h-12 w-12 mr-3 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold text-xl';
+                fallback.textContent = 'P';
+                fallback.style.backgroundColor = 'rgb(37, 99, 235)';
+                fallback.style.color = 'rgb(255, 255, 255)';
+                img.parentNode?.replaceChild(fallback, img);
+                resolve({});
+              };
+              setTimeout(reject, 5000);
+            });
+          });
+          return Promise.all(promises);
+        }
+      });
+
+      // Remove the temporary style
+      document.head.removeChild(style);
+      return canvas;
+    } catch (error) {
+      // Make sure to remove the style even if an error occurs
+      if (document.head.contains(style)) {
+        document.head.removeChild(style);
+      }
+      throw error;
+    }
+  };
+
   const downloadPDF = async () => {
     setIsGenerating(true);
     try {
@@ -104,29 +182,7 @@ export function EnhancedReceipt({
       // Wait a bit for any pending renders
       await new Promise(resolve => setTimeout(resolve, 100));
 
-      const canvas = await html2canvas(element, {
-        scale: 2,
-        useCORS: true,
-        allowTaint: true,
-        backgroundColor: '#ffffff',
-        logging: false, // Disable logging to reduce console noise
-        removeContainer: false,
-        foreignObjectRendering: false,
-        imageTimeout: 15000,
-        onclone: (clonedDoc) => {
-          // Ensure images are loaded in the cloned document
-          const images = clonedDoc.querySelectorAll('img');
-          const promises = Array.from(images).map(img => {
-            if (img.complete) return Promise.resolve();
-            return new Promise((resolve, reject) => {
-              img.onload = resolve;
-              img.onerror = reject;
-              setTimeout(reject, 5000); // Timeout after 5 seconds
-            });
-          });
-          return Promise.all(promises);
-        }
-      });
+      const canvas = await generateCanvas(element);
 
       console.log('Canvas generated successfully');
 
@@ -179,28 +235,7 @@ export function EnhancedReceipt({
       // Wait a bit for any pending renders
       await new Promise(resolve => setTimeout(resolve, 100));
 
-      const canvas = await html2canvas(element, {
-        scale: 2,
-        useCORS: true,
-        allowTaint: true,
-        backgroundColor: '#ffffff',
-        logging: false,
-        removeContainer: false,
-        foreignObjectRendering: false,
-        imageTimeout: 15000,
-        onclone: (clonedDoc) => {
-          const images = clonedDoc.querySelectorAll('img');
-          const promises = Array.from(images).map(img => {
-            if (img.complete) return Promise.resolve();
-            return new Promise((resolve, reject) => {
-              img.onload = resolve;
-              img.onerror = reject;
-              setTimeout(reject, 5000);
-            });
-          });
-          return Promise.all(promises);
-        }
-      });
+      const canvas = await generateCanvas(element);
 
       console.log('Share canvas generated successfully');
 
