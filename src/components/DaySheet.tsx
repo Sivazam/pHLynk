@@ -17,7 +17,9 @@ import {
   Filter,
   FileSpreadsheet,
   TrendingUp,
-  Clock
+  Clock,
+  X,
+  Building2
 } from 'lucide-react';
 import { formatTimestamp, formatTimestampWithTime, formatCurrency, toDate } from '@/lib/timestamp-utils';
 import * as XLSX from 'xlsx';
@@ -29,7 +31,7 @@ interface DaySheetProps {
   lineWorkers: User[];
   areas: Area[];
   retailers: Retailer[];
-  wholesalerName: string;
+  wholesalerBusinessName: string;
   wholesalerAddress?: string;
   tenantId: string;
 }
@@ -52,7 +54,7 @@ export function DaySheet({
   lineWorkers,
   areas,
   retailers,
-  wholesalerName,
+  wholesalerBusinessName,
   wholesalerAddress,
   tenantId
 }: DaySheetProps) {
@@ -171,11 +173,17 @@ export function DaySheet({
         const uniqueWorkers = [...new Set(filteredData.map(item => item.lineWorkerName))];
         return uniqueWorkers.map(name => {
           const worker = lineWorkers.find(lw => lw.displayName === name);
-          return `${name}: ${worker?.phone || 'No phone'}`;
-        }).join(', ');
+          return {
+            name: name,
+            phone: worker?.phone || 'No phone'
+          };
+        });
       } else {
         const worker = lineWorkers.find(lw => lw.id === selectedLineWorker);
-        return `${worker?.displayName || 'Unknown'}: ${worker?.phone || 'No phone'}`;
+        return [{
+          name: worker?.displayName || 'Unknown',
+          phone: worker?.phone || 'No phone'
+        }];
       }
     };
 
@@ -183,7 +191,7 @@ export function DaySheet({
     const headerData = [
       ['', '', '', '', '', '', '', '', '', ''], // Empty row for spacing
       ['', '', '', '', '', '', '', '', '', ''], // Empty row for spacing
-      [wholesalerName.toUpperCase(), '', '', '', '', '', '', '', '', ''], // Business name
+      [wholesalerBusinessName.toUpperCase(), '', '', '', '', '', '', '', '', ''], // Business name
       [wholesalerAddress || 'Address not provided', '', '', '', '', '', '', '', '', ''], // Actual address
       ['', '', '', '', '', '', '', '', '', ''], // Empty row for spacing
       ['', '', '', '', '', '', '', '', '', ''], // Empty row for spacing
@@ -191,10 +199,17 @@ export function DaySheet({
       ['Date Range:', `${formatTimestamp(dateRange.startDate)} - ${formatTimestamp(dateRange.endDate)}`, '', '', '', '', '', '', '', ''],
       ['Generated on:', formatTimestampWithTime(new Date()), '', '', '', '', '', '', '', ''],
       ['', '', '', '', '', '', '', '', '', ''], // Empty row for spacing
-      ['LINE WORKER DETAILS:', '', '', '', '', '', '', '', '', ''],
-      [getLineWorkerDetails(), '', '', '', '', '', '', '', '', ''],
-      ['', '', '', '', '', '', '', '', '', ''], // Empty row for spacing
-      ['', '', '', '', '', '', '', '', '', ''],
+      ['', '', '', '', '', '', '', '', '', ''], // Empty row for spacing for line worker table
+    ];
+
+    // Add line worker details table
+    const lineWorkerData = getLineWorkerDetails();
+    const lineWorkerTable = [
+      ['LINE WORKER DETAILS', '', '', '', '', '', '', '', '', ''],
+      ['Name', 'Contact Number', '', '', '', '', '', '', '', ''],
+      ...lineWorkerData.map(worker => [worker.name, worker.phone, '', '', '', '', '', '', '', '']),
+      ['', '', '', '', '', '', '', '', '', ''], // Empty row after line worker table
+      ['', '', '', '', '', '', '', '', '', ''], // Empty row before column headers
     ];
 
     // Column headers
@@ -228,6 +243,7 @@ export function DaySheet({
     // Convert to worksheet format
     const wsData = [
       ...headerData,
+      ...lineWorkerTable,
       columnHeaders,
       ...excelData.map(row => [
         row['Payment ID'],
@@ -281,15 +297,64 @@ export function DaySheet({
       ws['A7'].s = { font: { bold: true, sz: 14 } };
     }
     
-    // Make line worker details label bold
-    if (ws['A12']) {
-      ws['A12'].s = { font: { bold: true } };
+    // Style line worker table
+    const lineWorkerStartRow = headerData.length + 1;
+    
+    // Line worker details header with blue background and white text
+    if (ws[`A${lineWorkerStartRow}`]) {
+      ws[`A${lineWorkerStartRow}`].s = { 
+        font: { bold: true, color: { rgb: "FFFFFF" } }, 
+        fill: { fgColor: { rgb: "4472C4" } },
+        alignment: { horizontal: "center" }
+      };
+    }
+    
+    // Line worker column headers with blue background and white text
+    const headerRow = lineWorkerStartRow + 1;
+    if (ws[`A${headerRow}`]) {
+      ws[`A${headerRow}`].s = { 
+        font: { bold: true, color: { rgb: "FFFFFF" } }, 
+        fill: { fgColor: { rgb: "4472C4" } }
+      };
+    }
+    if (ws[`B${headerRow}`]) {
+      ws[`B${headerRow}`].s = { 
+        font: { bold: true, color: { rgb: "FFFFFF" } }, 
+        fill: { fgColor: { rgb: "4472C4" } }
+      };
+    }
+    
+    // Add borders to line worker data cells
+    for (let i = 0; i < lineWorkerData.length; i++) {
+      const dataRow = headerRow + 1 + i;
+      // Name cell
+      if (ws[`A${dataRow}`]) {
+        ws[`A${dataRow}`].s = { 
+          border: { 
+            top: { style: "thin", color: { rgb: "000000" } },
+            bottom: { style: "thin", color: { rgb: "000000" } },
+            left: { style: "thin", color: { rgb: "000000" } },
+            right: { style: "thin", color: { rgb: "000000" } }
+          }
+        };
+      }
+      // Phone cell
+      if (ws[`B${dataRow}`]) {
+        ws[`B${dataRow}`].s = { 
+          border: { 
+            top: { style: "thin", color: { rgb: "000000" } },
+            bottom: { style: "thin", color: { rgb: "000000" } },
+            left: { style: "thin", color: { rgb: "000000" } },
+            right: { style: "thin", color: { rgb: "000000" } }
+          }
+        };
+      }
     }
     
     // Make column headers bold
-    const headerRow = headerData.length;
+    const columnHeaderRow = headerData.length + lineWorkerTable.length;
     for (let i = 0; i < columnHeaders.length; i++) {
-      const cellAddress = XLSX.utils.encode_cell({ r: headerRow, c: i });
+      const cellAddress = XLSX.utils.encode_cell({ r: columnHeaderRow, c: i });
       if (ws[cellAddress]) {
         ws[cellAddress].s = { font: { bold: true } };
       }
@@ -319,7 +384,7 @@ export function DaySheet({
       ['SUMMARY REPORT', ''],
       ['', ''],
       ['BUSINESS INFORMATION', ''],
-      ['Wholesaler Name', wholesalerName],
+      ['Wholesaler Business Name', wholesalerBusinessName],
       ['Wholesaler Address', wholesalerAddress || 'Not provided'],
       ['Report Period', `${formatTimestamp(dateRange.startDate)} - ${formatTimestamp(dateRange.endDate)}`],
       ['Generated On', formatTimestampWithTime(new Date())],
@@ -379,7 +444,7 @@ export function DaySheet({
     XLSX.utils.book_append_sheet(wb, summaryWs, 'Summary');
 
     // Generate file name
-    const fileName = `DaySheet_${wholesalerName.replace(/\s+/g, '_')}_${formatTimestamp(dateRange.startDate)}.xlsx`;
+    const fileName = `DaySheet_${wholesalerBusinessName.replace(/\s+/g, '_')}_${formatTimestamp(dateRange.startDate)}.xlsx`;
 
     // Save file
     const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
@@ -428,17 +493,31 @@ export function DaySheet({
         <span>Day Sheet</span>
       </Button>
 
-      <Dialog open={isOpen} onOpenChange={setIsOpen}>
-        <DialogContent className="w-[95vw] max-w-4xl max-h-[90vh] overflow-y-auto p-4 md:p-6">
-          <DialogHeader>
-            <DialogTitle className="text-xl font-bold flex items-center space-x-2">
-              <FileSpreadsheet className="h-5 w-5" />
-              <span>Day Sheet - {wholesalerName}</span>
-            </DialogTitle>
-          </DialogHeader>
+      {isOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col">
+            {/* Header */}
+            <div className="p-6 border-b">
+              <div className="flex items-center justify-between">
+                <div className="text-xl font-bold flex items-center space-x-2">
+                  <FileSpreadsheet className="h-5 w-5" />
+                  <span>Day Sheet - {wholesalerBusinessName}</span>
+                </div>
+                <button
+                  onClick={() => setIsOpen(false)}
+                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+            </div>
 
-          {/* Filters */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto p-6">
+
+              <div className="space-y-6">
+                {/* Filters */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="space-y-2">
               <label className="text-sm font-medium flex items-center space-x-1">
                 <Users className="h-4 w-4" />
@@ -511,8 +590,8 @@ export function DaySheet({
             </div>
           </div>
 
-          {/* Summary Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
+                {/* Summary Cards */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Total Collections</CardTitle>
@@ -571,7 +650,8 @@ export function DaySheet({
             </CardHeader>
             <CardContent className="p-0">
               {/* Desktop Table View */}
-              <div className="hidden lg:block">
+                <div className="hidden lg:block">
+                  <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -610,10 +690,12 @@ export function DaySheet({
                     )}
                   </TableBody>
                 </Table>
-              </div>
+                  </div>
+                </div>
 
-              {/* Tablet View */}
-              <div className="hidden md:block lg:hidden">
+                {/* Tablet View */}
+                <div className="hidden md:block lg:hidden">
+                  <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -651,10 +733,11 @@ export function DaySheet({
                     )}
                   </TableBody>
                 </Table>
-              </div>
+                  </div>
+                </div>
 
-              {/* Mobile Card View */}
-              <div className="md:hidden space-y-3">
+                {/* Mobile Card View */}
+                <div className="md:hidden p-4 space-y-3">
                 {filteredData.length === 0 ? (
                   <div className="text-center py-8 text-gray-500">
                     No collections found for the selected criteria
@@ -699,19 +782,22 @@ export function DaySheet({
             </CardContent>
           </Card>
 
-          {/* Footer Summary */}
-          <div className="mt-6 p-4 bg-gray-50 rounded-lg">
-            <div className="flex justify-between items-center">
-              <div className="text-sm text-gray-600">
-                <strong>Summary:</strong> {totalCollections} collections totaling {formatCurrency(totalAmount)}
-              </div>
-              <div className="text-sm text-gray-500">
-                Generated on {formatTimestampWithTime(new Date())}
+                {/* Footer Summary */}
+                <div className="p-4 bg-gray-50 rounded-lg">
+                  <div className="flex justify-between items-center">
+                    <div className="text-sm text-gray-600">
+                      <strong>Summary:</strong> {totalCollections} collections totaling {formatCurrency(totalAmount)}
+                    </div>
+                    <div className="text-sm text-gray-500">
+                      Generated on {formatTimestampWithTime(new Date())}
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
-        </DialogContent>
-      </Dialog>
+        </div>
+      )}
     </>
   );
 }
