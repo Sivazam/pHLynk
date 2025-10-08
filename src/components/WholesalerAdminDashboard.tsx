@@ -1353,9 +1353,13 @@ export function WholesalerAdminDashboard() {
             lineWorkers={lineWorkers}
             areas={areas}
             retailers={retailers}
-            wholesalerName={isSuperAdmin && selectedTenant ? 
+            wholesalerBusinessName={isSuperAdmin && selectedTenant ? 
               tenants.find(t => t.id === selectedTenant)?.name || 'Unknown Wholesaler' :
               user?.displayName || 'Wholesaler'
+            }
+            wholesalerAddress={isSuperAdmin && selectedTenant ? 
+              tenants.find(t => t.id === selectedTenant)?.address || '' :
+              ''
             }
             tenantId={getCurrentTenantId() || ''}
           />
