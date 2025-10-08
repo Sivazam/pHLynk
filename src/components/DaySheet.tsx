@@ -88,7 +88,7 @@ export function DaySheet({
   // Get line worker name by ID
   const getLineWorkerName = (lineWorkerId: string): string => {
     const worker = lineWorkers.find(w => w.id === lineWorkerId);
-    return worker?.displayName || worker?.name || 'Unknown Line Worker';
+    return worker?.displayName || 'Unknown Line Worker';
   };
 
   // Get line worker assigned areas
@@ -264,7 +264,7 @@ export function DaySheet({
                   <SelectItem value="all">All Line Workers</SelectItem>
                   {uniqueLineWorkers.map(worker => (
                     <SelectItem key={worker.id} value={worker.id}>
-                      {worker.name}
+                      {worker.displayName || 'Unknown Line Worker'}
                     </SelectItem>
                   ))}
                 </SelectContent>
