@@ -46,7 +46,7 @@ export function CreateRetailerForm({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (name.trim() && phone.trim() && zipcodes.length > 0) {
+    if (name.trim() && phone.trim() && (formMode === 'update' || foundRetailer || zipcodes.length > 0)) {
       setIsSubmitting(true);
       try {
         await onSubmit({
@@ -93,9 +93,9 @@ export function CreateRetailerForm({
     if (foundRetailer && onAddExistingRetailer) {
       setIsSubmitting(true);
       try {
-        // Get area zipcodes if area is selected
+        // Get area zipcodes if area is selected, otherwise use empty array
         const areaZipcodes = areaId ? areas.find(a => a.id === areaId)?.zipcodes || [] : [];
-        await onAddExistingRetailer(foundRetailer, areaId, areaZipcodes);
+        await onAddExistingRetailer(foundRetailer, areaId || undefined, areaZipcodes);
         setShowSuccess(true);
         setTriggerConfetti(true);
         
@@ -237,7 +237,7 @@ export function CreateRetailerForm({
                     onChange={(e) => setName(e.target.value)}
                     placeholder="Enter retailer name"
                     required
-                    disabled={isSubmitting || !!foundRetailer}
+                    disabled={isSubmitting}
                   />
                 </div>
 
@@ -250,7 +250,7 @@ export function CreateRetailerForm({
                     onChange={(e) => setPhone(e.target.value)}
                     placeholder="Enter phone number"
                     required
-                    disabled={isSubmitting || !!foundRetailer}
+                    disabled={isSubmitting}
                   />
                 </div>
               </div>
@@ -263,13 +263,13 @@ export function CreateRetailerForm({
                   onChange={(e) => setAddress(e.target.value)}
                   placeholder="Enter retailer address (optional)"
                   rows={3}
-                  disabled={isSubmitting || !!foundRetailer}
+                  disabled={isSubmitting}
                 />
               </div>
 
               <div>
                 <Label htmlFor="area">Service Area</Label>
-                <Select value={areaId} onValueChange={handleAreaChange} disabled={isSubmitting || !!foundRetailer}>
+                <Select value={areaId} onValueChange={handleAreaChange} disabled={isSubmitting}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select service area" />
                   </SelectTrigger>
@@ -284,38 +284,41 @@ export function CreateRetailerForm({
                 </Select>
               </div>
 
-              <div>
-                <Label htmlFor="zipcodes">Service Zipcodes</Label>
-                <div className="space-y-2">
-                  <div className="flex gap-2">
-                    <Input
-                      id="zipcodes"
-                      value={newZipcode}
-                      onChange={(e) => setNewZipcode(e.target.value)}
-                      onKeyPress={handleKeyPress}
-                      placeholder="Enter zipcode"
-                      disabled={isSubmitting || !!foundRetailer}
-                    />
-                    <Button type="button" onClick={addZipcode} variant="outline" disabled={isSubmitting || !!foundRetailer}>
-                      <Plus className="h-4 w-4" />
-                    </Button>
-                  </div>
-                  
-                  {zipcodes.length > 0 && (
-                    <div className="flex flex-wrap gap-2">
-                      {zipcodes.map((zipcode) => (
-                        <Badge key={zipcode} variant="secondary" className="flex items-center gap-1">
-                          {zipcode}
-                          <X
-                            className="h-3 w-3 cursor-pointer"
-                            onClick={() => !foundRetailer && removeZipcode(zipcode)}
-                          />
-                        </Badge>
-                      ))}
+              {/* Only show zipcode section for new retailers (not existing ones) */}
+              {!foundRetailer && (
+                <div>
+                  <Label htmlFor="zipcodes">Service Zipcodes</Label>
+                  <div className="space-y-2">
+                    <div className="flex gap-2">
+                      <Input
+                        id="zipcodes"
+                        value={newZipcode}
+                        onChange={(e) => setNewZipcode(e.target.value)}
+                        onKeyPress={handleKeyPress}
+                        placeholder="Enter zipcode"
+                        disabled={isSubmitting}
+                      />
+                      <Button type="button" onClick={addZipcode} variant="outline" disabled={isSubmitting}>
+                        <Plus className="h-4 w-4" />
+                      </Button>
                     </div>
-                  )}
+                    
+                    {zipcodes.length > 0 && (
+                      <div className="flex flex-wrap gap-2">
+                        {zipcodes.map((zipcode) => (
+                          <Badge key={zipcode} variant="secondary" className="flex items-center gap-1">
+                            {zipcode}
+                            <X
+                              className="h-3 w-3 cursor-pointer"
+                              onClick={() => removeZipcode(zipcode)}
+                            />
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
+              )}
 
               <div className="flex justify-end space-x-2">
                 <Button type="button" variant="outline" onClick={handleCancel} disabled={isSubmitting}>
@@ -334,7 +337,7 @@ export function CreateRetailerForm({
                 )}
                 <Button 
                   type="submit" 
-                  disabled={isSubmitting || !name.trim() || !phone.trim() || zipcodes.length === 0}
+                  disabled={isSubmitting || !name.trim() || !phone.trim() || (formMode !== 'update' && !foundRetailer && zipcodes.length === 0)}
                 >
                   {isSubmitting ? (
                     <>

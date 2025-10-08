@@ -234,6 +234,7 @@ export function RetailerPhoneLookup({
                   type="button" 
                   onClick={onAddNewRetailer}
                   disabled={loading}
+                  className="bg-green-600 hover:bg-green-700"
                 >
                   <Plus className="w-4 h-4 mr-2" />
                   Create New Retailer
