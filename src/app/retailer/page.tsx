@@ -103,11 +103,12 @@ export default function RetailerDashboard() {
   }
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold">Retailer Dashboard</h1>
-          <p className="text-muted-foreground">
+    <div className="container mx-auto p-4 sm:p-6 space-y-4 sm:space-y-6">
+      {/* Retailer Dashboard Title - Only show on main dashboard */}
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+        <div className="space-y-1">
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Retailer Dashboard</h1>
+          <p className="text-sm sm:text-base text-muted-foreground">
             Manage your payments and view transaction history
           </p>
         </div>
@@ -116,14 +117,16 @@ export default function RetailerDashboard() {
             variant="outline"
             onClick={() => fetchDashboardData(true)}
             disabled={refreshing}
+            size="sm"
           >
             <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
-            Refresh
+            <span className="hidden sm:inline">Refresh</span>
           </Button>
           <Link href="/retailer/payment-history">
-            <Button>
+            <Button size="sm">
               <History className="mr-2 h-4 w-4" />
-              View Payment History
+              <span className="hidden sm:inline">View Payment History</span>
+              <span className="sm:hidden">History</span>
             </Button>
           </Link>
         </div>

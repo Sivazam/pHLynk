@@ -288,6 +288,7 @@ export function WholesalerAdminDashboard() {
   const [tenants, setTenants] = useState<any[]>([]);
   const [selectedTenant, setSelectedTenant] = useState<string>('');
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [currentTenantData, setCurrentTenantData] = useState<any>(null); // For regular wholesaler admin
   
   // Retailer assignment state
   const [showRetailerAssignment, setShowRetailerAssignment] = useState(false);
@@ -308,6 +309,9 @@ export function WholesalerAdminDashboard() {
     setIsSuperAdmin(isSuperAdminUser);
     if (isSuperAdminUser) {
       fetchTenants();
+    } else {
+      // Fetch current tenant data for regular wholesaler admin
+      fetchCurrentTenantData();
     }
   }, [isSuperAdminUser]);
 
@@ -320,6 +324,18 @@ export function WholesalerAdminDashboard() {
       }
     } catch (error) {
       console.error('Error fetching tenants:', error);
+    }
+  };
+
+  // Fetch current tenant data for regular wholesaler admin
+  const fetchCurrentTenantData = async () => {
+    if (!isSuperAdmin && user?.tenantId && user.tenantId !== 'system') {
+      try {
+        const tenantData = await tenantService.getById(user.tenantId, 'system'); // Use 'system' as tenantId for tenant documents
+        setCurrentTenantData(tenantData);
+      } catch (error) {
+        console.error('Error fetching current tenant data:', error);
+      }
     }
   };
 
@@ -1355,11 +1371,11 @@ export function WholesalerAdminDashboard() {
             retailers={retailers}
             wholesalerBusinessName={isSuperAdmin && selectedTenant ? 
               tenants.find(t => t.id === selectedTenant)?.name || 'Unknown Wholesaler' :
-              user?.displayName || 'Wholesaler'
+              currentTenantData?.name || user?.displayName || 'Wholesaler'
             }
             wholesalerAddress={isSuperAdmin && selectedTenant ? 
               tenants.find(t => t.id === selectedTenant)?.address || 'Address not provided' :
-              'Address not provided'
+              currentTenantData?.address || 'Address not provided'
             }
             tenantId={getCurrentTenantId() || ''}
           />
@@ -3019,7 +3035,7 @@ export function WholesalerAdminDashboard() {
       )}
 
       {/* Main Content */}
-      <main className="flex-1 pt-20 sm:pt-16 p-3 sm:p-4 lg:p-6 overflow-y-auto pb-20 lg:pb-6">
+      <main className="flex-1 pt-24 sm:pt-16 p-3 sm:p-4 lg:p-6 overflow-y-auto pb-20 lg:pb-6">
         {error && (
           <Alert className="border-red-200 bg-red-50 mb-4 sm:mb-6">
             <AlertCircle className="h-4 w-4 text-red-600" />

@@ -92,32 +92,110 @@ export function EnhancedReceipt({
   const lineWorkerName = payment.lineWorkerName || lineWorkerNames[payment.lineWorkerId] || 'Unknown Line Worker';
 
   const generateCanvas = async (element: HTMLElement) => {
-    // Create a temporary style element to override problematic CSS
+    // Create a comprehensive style override to replace all oklch and other problematic CSS
     const style = document.createElement('style');
+    style.id = 'receipt-pdf-fix';
     style.textContent = `
+      /* Reset all colors and backgrounds to safe RGB values */
+      #receipt-content,
       #receipt-content * {
         color: rgb(17, 24, 39) !important;
         background-color: rgb(255, 255, 255) !important;
         border-color: rgb(229, 231, 235) !important;
+        box-shadow: none !important;
+        text-shadow: none !important;
       }
-      #receipt-content .text-gray-900 { color: rgb(17, 24, 39) !important; }
-      #receipt-content .text-gray-800 { color: rgb(31, 41, 55) !important; }
-      #receipt-content .text-gray-700 { color: rgb(55, 65, 81) !important; }
-      #receipt-content .text-gray-600 { color: rgb(75, 85, 99) !important; }
-      #receipt-content .text-gray-500 { color: rgb(107, 114, 128) !important; }
-      #receipt-content .text-gray-400 { color: rgb(156, 163, 175) !important; }
-      #receipt-content .text-green-600 { color: rgb(22, 163, 74) !important; }
-      #receipt-content .text-blue-600 { color: rgb(37, 99, 235) !important; }
-      #receipt-content .bg-white { background-color: rgb(255, 255, 255) !important; }
-      #receipt-content .bg-gray-50 { background-color: rgb(249, 250, 251) !important; }
-      #receipt-content .bg-blue-600 { background-color: rgb(37, 99, 235) !important; }
-      #receipt-content .border-gray-200 { border-color: rgb(229, 231, 235) !important; }
-      #receipt-content .border-gray-300 { border-color: rgb(209, 213, 219) !important; }
-      #receipt-content .border-gray-800 { border-color: rgb(31, 41, 55) !important; }
+      
+      /* Explicit RGB color overrides */
+      #receipt-content .text-gray-900,
+      #receipt-content .text-gray-900 * { color: rgb(17, 24, 39) !important; }
+      #receipt-content .text-gray-800,
+      #receipt-content .text-gray-800 * { color: rgb(31, 41, 55) !important; }
+      #receipt-content .text-gray-700,
+      #receipt-content .text-gray-700 * { color: rgb(55, 65, 81) !important; }
+      #receipt-content .text-gray-600,
+      #receipt-content .text-gray-600 * { color: rgb(75, 85, 99) !important; }
+      #receipt-content .text-gray-500,
+      #receipt-content .text-gray-500 * { color: rgb(107, 114, 128) !important; }
+      #receipt-content .text-gray-400,
+      #receipt-content .text-gray-400 * { color: rgb(156, 163, 175) !important; }
+      #receipt-content .text-green-600,
+      #receipt-content .text-green-600 * { color: rgb(22, 163, 74) !important; }
+      #receipt-content .text-blue-600,
+      #receipt-content .text-blue-600 * { color: rgb(37, 99, 235) !important; }
+      
+      /* Background color overrides */
+      #receipt-content .bg-white,
+      #receipt-content .bg-white * { background-color: rgb(255, 255, 255) !important; }
+      #receipt-content .bg-gray-50,
+      #receipt-content .bg-gray-50 * { background-color: rgb(249, 250, 251) !important; }
+      #receipt-content .bg-blue-600,
+      #receipt-content .bg-blue-600 * { background-color: rgb(37, 99, 235) !important; }
+      
+      /* Border color overrides */
+      #receipt-content .border-gray-200,
+      #receipt-content .border-gray-200 * { border-color: rgb(229, 231, 235) !important; }
+      #receipt-content .border-gray-300,
+      #receipt-content .border-gray-300 * { border-color: rgb(209, 213, 219) !important; }
+      #receipt-content .border-gray-800,
+      #receipt-content .border-gray-800 * { border-color: rgb(31, 41, 55) !important; }
+      #receipt-content .border-b,
+      #receipt-content .border-b * { border-bottom-color: rgb(229, 231, 235) !important; }
+      #receipt-content .border-t,
+      #receipt-content .border-t * { border-top-color: rgb(229, 231, 235) !important; }
+      
+      /* Force inline styles for critical elements */
+      #receipt-content h1,
+      #receipt-content h2,
+      #receipt-content .text-2xl,
+      #receipt-content .text-lg,
+      #receipt-content .text-xl {
+        color: rgb(17, 24, 39) !important;
+        font-weight: bold !important;
+      }
+      
+      #receipt-content .text-green-600 {
+        color: rgb(22, 163, 74) !important;
+        font-weight: bold !important;
+      }
+      
+      #receipt-content .text-sm,
+      #receipt-content .text-xs {
+        color: rgb(75, 85, 99) !important;
+      }
+      
+      /* Override any CSS variables */
+      #receipt-content {
+        --tw-text-opacity: 1 !important;
+        --tw-bg-opacity: 1 !important;
+        --tw-border-opacity: 1 !important;
+      }
     `;
+    
+    // Apply the style to the document
     document.head.appendChild(style);
+    
+    // Also apply inline styles directly to the element for maximum compatibility
+    const originalStyles = new Map();
+    const allElements = element.querySelectorAll('*');
+    allElements.forEach(el => {
+      const element = el as HTMLElement;
+      originalStyles.set(element, {
+        color: element.style.color,
+        backgroundColor: element.style.backgroundColor,
+        borderColor: element.style.borderColor
+      });
+      
+      // Force RGB colors
+      element.style.color = 'rgb(17, 24, 39)';
+      element.style.backgroundColor = 'rgb(255, 255, 255)';
+      element.style.borderColor = 'rgb(229, 231, 235)';
+    });
 
     try {
+      // Wait a bit for styles to apply
+      await new Promise(resolve => setTimeout(resolve, 200));
+      
       const canvas = await html2canvas(element, {
         scale: 2,
         useCORS: true,
@@ -133,6 +211,15 @@ export function EnhancedReceipt({
           clonedStyle.textContent = style.textContent;
           clonedDoc.head.appendChild(clonedStyle);
 
+          // Apply inline styles to cloned elements as well
+          const clonedElements = clonedDoc.querySelectorAll('#receipt-content *');
+          clonedElements.forEach(el => {
+            const element = el as HTMLElement;
+            element.style.color = 'rgb(17, 24, 39)';
+            element.style.backgroundColor = 'rgb(255, 255, 255)';
+            element.style.borderColor = 'rgb(229, 231, 235)';
+          });
+
           // Ensure images are loaded in the cloned document
           const images = clonedDoc.querySelectorAll('img');
           const promises = Array.from(images).map(img => {
@@ -146,6 +233,9 @@ export function EnhancedReceipt({
                 fallback.textContent = 'P';
                 fallback.style.backgroundColor = 'rgb(37, 99, 235)';
                 fallback.style.color = 'rgb(255, 255, 255)';
+                fallback.style.display = 'flex';
+                fallback.style.alignItems = 'center';
+                fallback.style.justifyContent = 'center';
                 img.parentNode?.replaceChild(fallback, img);
                 resolve({});
               };
@@ -156,10 +246,35 @@ export function EnhancedReceipt({
         }
       });
 
+      // Restore original styles
+      allElements.forEach(el => {
+        const element = el as HTMLElement;
+        const original = originalStyles.get(element);
+        if (original) {
+          element.style.color = original.color;
+          element.style.backgroundColor = original.backgroundColor;
+          element.style.borderColor = original.borderColor;
+        }
+      });
+
       // Remove the temporary style
-      document.head.removeChild(style);
+      if (document.head.contains(style)) {
+        document.head.removeChild(style);
+      }
+      
       return canvas;
     } catch (error) {
+      // Restore original styles in case of error
+      allElements.forEach(el => {
+        const element = el as HTMLElement;
+        const original = originalStyles.get(element);
+        if (original) {
+          element.style.color = original.color;
+          element.style.backgroundColor = original.backgroundColor;
+          element.style.borderColor = original.borderColor;
+        }
+      });
+      
       // Make sure to remove the style even if an error occurs
       if (document.head.contains(style)) {
         document.head.removeChild(style);
@@ -215,7 +330,13 @@ export function EnhancedReceipt({
       
     } catch (error) {
       console.error('Error generating PDF:', error);
-      alert(`Failed to generate PDF: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again.`);
+      // Provide more specific error message
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      if (errorMessage.includes('oklch') || errorMessage.includes('color')) {
+        alert('Failed to generate PDF due to a color rendering issue. Please try again or contact support if the issue persists.');
+      } else {
+        alert(`Failed to generate PDF: ${errorMessage}. Please try again.`);
+      }
     } finally {
       setIsGenerating(false);
     }
@@ -296,7 +417,13 @@ export function EnhancedReceipt({
       }
     } catch (error) {
       console.error('Error sharing receipt:', error);
-      alert(`Failed to share receipt: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again.`);
+      // Provide more specific error message
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      if (errorMessage.includes('oklch') || errorMessage.includes('color')) {
+        alert('Failed to share receipt due to a color rendering issue. Please try again or contact support if the issue persists.');
+      } else {
+        alert(`Failed to share receipt: ${errorMessage}. Please try again.`);
+      }
     } finally {
       setIsGenerating(false);
     }

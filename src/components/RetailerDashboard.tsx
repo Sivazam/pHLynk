@@ -1602,8 +1602,14 @@ export function RetailerDashboard() {
         navItems={navItems}
         activeNav={activeNav}
         setActiveNav={setActiveNav}
-        title="Retailer Dashboard"
-        subtitle="Manage your payments and view transaction history"
+        title={activeNav === 'overview' ? 'Retailer Dashboard' : 
+               activeNav === 'payments' ? 'Payments' :
+               activeNav === 'history' ? 'Payment History' :
+               activeNav === 'settings' ? 'Settings' : 'Retailer Dashboard'}
+        subtitle={activeNav === 'overview' ? 'Manage your payments and view transaction history' :
+                  activeNav === 'payments' ? 'View and manage your payments' :
+                  activeNav === 'history' ? 'View your complete payment history' :
+                  activeNav === 'settings' ? 'Manage your account settings' : 'Manage your payments and view transaction history'}
         user={user ? { displayName: user.displayName, email: user.email } : undefined}
         onLogout={logout}
         notificationCount={notificationCount}
@@ -1644,16 +1650,8 @@ export function RetailerDashboard() {
       )}
 
       {/* Main Content Area */}
-      <div className={`${availableTenants.length > 1 ? 'pt-32 sm:pt-28' : 'pt-20 sm:pt-16'} pb-20 lg:pb-0`}> {/* Adjust spacing based on dropdown presence - Mobile needs more space: 128px, Desktop: 112px */}
+      <div className={`${availableTenants.length > 1 ? 'pt-20 sm:pt-24' : 'pt-20 sm:pt-16'} pb-20 lg:pb-0`}> {/* Further reduced mobile spacing to match desktop */}
         <div className="p-4 sm:p-6">
-            {/* Header */}
-            <div className="mb-6 mt-2 sm:mt-0"> {/* Extra top margin for mobile to prevent cramped feeling */}
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">Retailer Dashboard</h1>
-                <p className="text-gray-600">Manage your payments and view transaction history</p>
-              </div>
-            </div>
-
             {/* Error Display */}
             {error && (
               <Alert className="mb-6 border-red-200 bg-red-50">

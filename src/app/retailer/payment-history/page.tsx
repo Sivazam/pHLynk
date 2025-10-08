@@ -163,38 +163,41 @@ export default function PaymentHistoryPage() {
   }
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold">Payment History</h1>
-          <p className="text-muted-foreground">
+    <div className="container mx-auto p-4 sm:p-6 space-y-4 sm:space-y-6 pt-20 sm:pt-24">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+        <div className="space-y-1">
+          <h1 className="text-2xl sm:text-3xl font-bold">Payment History</h1>
+          <p className="text-sm sm:text-base text-muted-foreground">
             View and analyze your payment history across all wholesalers
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button
             variant="outline"
             onClick={() => fetchPaymentHistory()}
             disabled={loading}
+            size="sm"
           >
             <RefreshCw className={cn('mr-2 h-4 w-4', loading && 'animate-spin')} />
-            Refresh
+            <span className="hidden sm:inline">Refresh</span>
           </Button>
           <Button
             variant="outline"
             onClick={() => exportData('csv')}
             disabled={exporting}
+            size="sm"
           >
             <Download className="mr-2 h-4 w-4" />
-            Export CSV
+            <span className="hidden sm:inline">Export CSV</span>
           </Button>
           <Button
             variant="outline"
             onClick={() => exportData('json')}
             disabled={exporting}
+            size="sm"
           >
             <Download className="mr-2 h-4 w-4" />
-            Export JSON
+            <span className="hidden sm:inline">Export JSON</span>
           </Button>
         </div>
       </div>

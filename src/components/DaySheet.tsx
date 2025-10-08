@@ -483,7 +483,7 @@ export function DaySheet({
   }, [payments, retailers]);
 
   return (
-    <React.Fragment>
+    <>
       <Button
         onClick={() => setIsOpen(true)}
         className="flex items-center space-x-2"
@@ -798,6 +798,6 @@ export function DaySheet({
           </div>
         </div>
       )}
-    </React.Fragment>
+    </>
   );
 }
