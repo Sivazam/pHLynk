@@ -2,34 +2,34 @@ import { NextRequest, NextResponse } from 'next/server';
 import { fcmService } from '@/lib/fcm-service';
 
 interface CleanupUserDevicesRequest {
-  retailerId: string;
   userId: string;
+  userType?: 'users' | 'retailers' | 'wholesalers' | 'lineWorkers' | 'superAdmins';
 }
 
 export async function POST(request: NextRequest) {
   try {
     const body: CleanupUserDevicesRequest = await request.json();
-    const { retailerId, userId } = body;
+    const { userId, userType = 'retailers' } = body;
 
     console.log('🧹 FCM API: Received cleanup user devices request:', {
-      retailerId,
-      userId
+      userId,
+      userType
     });
 
-    if (!retailerId || !userId) {
-      console.error('❌ FCM API: Missing required fields:', { retailerId: !!retailerId, userId: !!userId });
+    if (!userId) {
+      console.error('❌ FCM API: Missing required field: userId');
       return NextResponse.json(
-        { error: 'Missing required fields: retailerId, userId' },
+        { error: 'Missing required field: userId' },
         { status: 400 }
       );
     }
 
-    // Get all devices for the retailer
-    const devices = await fcmService.getRetailerDevices(retailerId);
-    console.log(`📱 Found ${devices.length} devices for retailer:`, retailerId);
+    // Get all devices for the user
+    const devices = await fcmService.getActiveDevices(userId, userType);
+    console.log(`📱 Found ${devices.length} devices for ${userType}:`, userId);
 
     if (devices.length === 0) {
-      console.log('✅ No devices to cleanup for retailer:', retailerId);
+      console.log('✅ No devices to cleanup for user:', userId);
       return NextResponse.json({
         success: true,
         message: 'No devices found to cleanup',
@@ -37,11 +37,11 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Remove all devices for this retailer
+    // Remove all devices for this user
     let cleanedCount = 0;
     for (const device of devices) {
       try {
-        const result = await fcmService.unregisterDevice(retailerId, device.token);
+        const result = await fcmService.unregisterDevice(userId, device.token, userType);
         if (result.success) {
           cleanedCount++;
           console.log(`✅ Cleaned device: ${device.token.substring(0, 20)}...`);
@@ -53,13 +53,14 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    console.log(`✅ Cleanup completed for retailer ${retailerId}. Cleaned ${cleanedCount}/${devices.length} devices`);
+    console.log(`✅ Cleanup completed for ${userType} ${userId}. Cleaned ${cleanedCount}/${devices.length} devices`);
 
     return NextResponse.json({
       success: true,
       message: `Successfully cleaned ${cleanedCount} device(s)`,
       cleanedCount,
-      totalDevices: devices.length
+      totalDevices: devices.length,
+      userType
     });
 
   } catch (error) {

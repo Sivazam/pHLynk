@@ -91,13 +91,13 @@ export async function GET(request: NextRequest) {
     // Test 3: FCM Service Test
     try {
       const fcmServiceModule = await import('@/lib/fcm-service');
-      const devices = await fcmServiceModule.fcmService.getUserDevices(userId, userType as any);
+      const devices = await fcmServiceModule.fcmService.getActiveDevices(userId, userType as any);
       results.serviceTest = {
         serviceDevicesFound: devices.length,
         devices: devices.map(d => ({
           token: d.token?.substring(0, 20) + '...',
           userAgent: d.userAgent,
-          registeredAt: d.registeredAt,
+          createdAt: d.createdAt,
           lastActive: d.lastActive
         })),
         success: true
@@ -181,9 +181,8 @@ export async function POST(request: NextRequest) {
     const result = await sendOTPViaFCM(
       retailerId,
       otp,
-      retailerName,
-      paymentId,
       amount,
+      paymentId,
       lineWorkerName
     );
 
@@ -191,7 +190,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: true,
         message: result.message,
-        sentCount: result.sentCount
+        sentCount: 1 // Placeholder for backward compatibility
       });
     } else {
       return NextResponse.json(

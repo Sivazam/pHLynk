@@ -3,7 +3,7 @@ import { fcmService } from '@/lib/fcm-service';
 
 export async function POST(request: NextRequest) {
   try {
-    const { token, userId } = await request.json();
+    const { token, userId, userType = 'retailers' } = await request.json();
 
     if (!token || !userId) {
       return NextResponse.json(
@@ -12,10 +12,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log(`🔍 Checking if token ${token.substring(0, 20)}... is registered for user ${userId}`);
+    console.log(`🔍 Checking if token ${token.substring(0, 20)}... is registered for ${userType} ${userId}`);
 
     // Check if token exists for this user
-    const devices = await fcmService.getRetailerDevices(userId);
+    const devices = await fcmService.getActiveDevices(userId, userType);
     const tokenExists = devices.some(device => device.token === token);
 
     console.log(`📱 Token check result: ${tokenExists ? 'EXISTS' : 'NOT_FOUND'} for user ${userId}`);

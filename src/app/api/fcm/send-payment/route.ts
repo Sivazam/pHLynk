@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: true,
         message: result.message,
-        sentCount: result.sentCount
+        sentCount: 1 // Placeholder for backward compatibility
       });
     } else {
       return NextResponse.json(

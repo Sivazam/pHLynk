@@ -247,6 +247,132 @@ class FCMService {
       return { success: false, sent: 0, failed: tokens.length, message: 'Failed to send notification' };
     }
   }
+
+  /**
+   * Send OTP notification via FCM
+   */
+  async sendOTPViaFCM(
+    retailerId: string,
+    otp: string,
+    amount: number,
+    paymentId: string,
+    lineWorkerName?: string
+  ): Promise<{ success: boolean; message: string }> {
+    try {
+      const notification: FCMNotificationData = {
+        title: '🔔 New OTP Received',
+        body: `OTP: ${otp} for ₹${amount} from ${lineWorkerName || 'Line Worker'}`,
+        data: {
+          type: 'otp',
+          otp,
+          amount: amount.toString(),
+          paymentId,
+          retailerId,
+          lineWorkerName: lineWorkerName || ''
+        },
+        tag: `otp-${paymentId}`,
+        clickAction: '/dashboard'
+      };
+
+      const result = await this.sendNotificationToUser(retailerId, notification, 'retailers');
+      
+      if (result.success) {
+        console.log('✅ OTP notification sent successfully:', { retailerId, paymentId });
+        return { success: true, message: 'OTP notification sent successfully' };
+      } else {
+        console.error('❌ Failed to send OTP notification:', { retailerId, paymentId });
+        return { success: false, message: 'Failed to send OTP notification' };
+      }
+    } catch (error) {
+      console.error('❌ Error sending OTP via FCM:', error);
+      return { success: false, message: 'Error sending OTP notification' };
+    }
+  }
+
+  /**
+   * Send payment notification via FCM
+   */
+  async sendPaymentNotificationViaFCM(
+    retailerId: string,
+    paymentId: string,
+    status: 'completed' | 'failed' | 'pending',
+    amount: number,
+    customerName?: string
+  ): Promise<{ success: boolean; message: string }> {
+    try {
+      let notification: FCMNotificationData;
+
+      switch (status) {
+        case 'completed':
+          notification = {
+            title: '✅ Payment Completed',
+            body: `Payment of ₹${amount} has been completed successfully${customerName ? ` for ${customerName}` : ''}`,
+            data: {
+              type: 'payment_completed',
+              paymentId,
+              retailerId,
+              amount: amount.toString(),
+              status,
+              customerName: customerName || ''
+            },
+            tag: `payment-${paymentId}`,
+            clickAction: '/dashboard'
+          };
+          break;
+        case 'failed':
+          notification = {
+            title: '❌ Payment Failed',
+            body: `Payment of ₹${amount} has failed${customerName ? ` for ${customerName}` : ''}. Please try again.`,
+            data: {
+              type: 'payment_failed',
+              paymentId,
+              retailerId,
+              amount: amount.toString(),
+              status,
+              customerName: customerName || ''
+            },
+            tag: `payment-${paymentId}`,
+            clickAction: '/dashboard'
+          };
+          break;
+        case 'pending':
+          notification = {
+            title: '⏳ Payment Pending',
+            body: `Payment of ₹${amount} is pending confirmation${customerName ? ` for ${customerName}` : ''}`,
+            data: {
+              type: 'payment_pending',
+              paymentId,
+              retailerId,
+              amount: amount.toString(),
+              status,
+              customerName: customerName || ''
+            },
+            tag: `payment-${paymentId}`,
+            clickAction: '/dashboard'
+          };
+          break;
+        default:
+          throw new Error(`Invalid payment status: ${status}`);
+      }
+
+      const result = await this.sendNotificationToUser(retailerId, notification, 'retailers');
+      
+      if (result.success) {
+        console.log('✅ Payment notification sent successfully:', { retailerId, paymentId, status });
+        return { success: true, message: 'Payment notification sent successfully' };
+      } else {
+        console.error('❌ Failed to send payment notification:', { retailerId, paymentId, status });
+        return { success: false, message: 'Failed to send payment notification' };
+      }
+    } catch (error) {
+      console.error('❌ Error sending payment notification via FCM:', error);
+      return { success: false, message: 'Error sending payment notification' };
+    }
+  }
 }
 
 export const fcmService = new FCMService();
+
+// Export individual methods for direct import
+export const sendOTPViaFCM = fcmService.sendOTPViaFCM.bind(fcmService);
+export const sendPaymentNotificationViaFCM = fcmService.sendPaymentNotificationViaFCM.bind(fcmService);

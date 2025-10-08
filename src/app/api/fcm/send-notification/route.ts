@@ -64,9 +64,9 @@ export async function POST(request: NextRequest) {
       const result = await sendOTPViaFCM(
         retailerId,
         data?.otp || '000000',
-        data?.retailerName || 'Retailer',
-        data?.paymentId,
-        data?.amount ? parseFloat(data.amount) : undefined
+        data?.amount ? parseFloat(data.amount) : 0,
+        data?.paymentId || '',
+        data?.retailerName || 'Retailer'
       );
 
       if (result.success) {

@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { fcmService } from '@/lib/fcm-service';
 import { db } from '@/lib/firebase';
-import { doc, updateDoc, getDoc } from 'firebase/firestore';
+import { doc, updateDoc, getDoc, Timestamp } from 'firebase/firestore';
 
 export async function POST(request: NextRequest) {
   try {
-    const { token, userId } = await request.json();
+    const { token, userId, userType = 'retailers' } = await request.json();
 
     if (!token || !userId) {
       return NextResponse.json(
@@ -14,29 +14,33 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log(`🔄 Updating last active for token ${token.substring(0, 20)}... for user ${userId}`);
+    console.log(`🔄 Updating last active for token ${token.substring(0, 20)}... for ${userType} ${userId}`);
 
     // Update last active timestamp for the device
-    const userRef = doc(db, 'retailers', userId);
+    const userRef = doc(db, userType, userId);
     const userDoc = await getDoc(userRef);
 
     if (userDoc.exists()) {
       const devices = userDoc.data()?.fcmDevices || [];
       const updatedDevices = devices.map((device: any) =>
         device.token === token
-          ? { ...device, lastActive: new Date() }
+          ? { ...device, lastActive: Timestamp.now() }
           : device
       );
 
-      await updateDoc(userRef, { fcmDevices: updatedDevices });
+      await updateDoc(userRef, { 
+        fcmDevices: updatedDevices,
+        updatedAt: Timestamp.now()
+      });
       console.log(`✅ Updated last active for token ${token.substring(0, 20)}...`);
     } else {
-      console.warn(`⚠️ User ${userId} not found in retailers collection`);
+      console.warn(`⚠️ User ${userId} not found in ${userType} collection`);
     }
 
     return NextResponse.json({ 
       success: true,
-      message: 'Last active timestamp updated'
+      message: 'Last active timestamp updated',
+      userType
     });
 
   } catch (error) {
