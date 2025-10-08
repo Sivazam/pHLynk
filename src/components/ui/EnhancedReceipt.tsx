@@ -127,7 +127,6 @@ export function EnhancedReceipt({
         removeContainer: false,
         foreignObjectRendering: false,
         imageTimeout: 15000,
-        willReadFrequently: true,
         onclone: (clonedDoc) => {
           // Apply the same style overrides to the cloned document
           const clonedStyle = clonedDoc.createElement('style');
