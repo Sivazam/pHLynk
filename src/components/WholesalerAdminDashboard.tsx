@@ -47,6 +47,7 @@ import { WholesalerAnalytics } from '@/components/WholesalerAnalytics';
 import { SuccessFeedback } from '@/components/SuccessFeedback';
 import { Confetti } from '@/components/ui/Confetti';
 import { useSuccessFeedback } from '@/hooks/useSuccessFeedback';
+import { DaySheet } from '@/components/DaySheet';
 import { 
   // Navigation
   LayoutDashboard,
@@ -1347,6 +1348,17 @@ export function WholesalerAdminDashboard() {
         </div>
         <div className="flex space-x-2">
           <DateRangeFilter value={selectedDateRangeOption} onValueChange={handleDateRangeChange} />
+          <DaySheet
+            payments={payments}
+            lineWorkers={lineWorkers}
+            areas={areas}
+            retailers={retailers}
+            wholesalerName={isSuperAdmin && selectedTenant ? 
+              tenants.find(t => t.id === selectedTenant)?.name || 'Unknown Wholesaler' :
+              user?.displayName || 'Wholesaler'
+            }
+            tenantId={getCurrentTenantId() || ''}
+          />
           <LoadingButton
             isLoading={mainLoadingState.loadingState.isRefreshing}
             loadingText="Refreshing..."

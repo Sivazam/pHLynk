@@ -9,6 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { EnhancedReceipt } from '@/components/ui/EnhancedReceipt';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { DashboardNavigation, NavItem } from '@/components/DashboardNavigation';
 import { PWANotificationManager } from '@/components/PWANotificationManager';
@@ -85,6 +86,8 @@ export function RetailerDashboard() {
   const [showOTPPopup, setShowOTPPopup] = useState(false);
   const [otpCountdowns, setOtpCountdowns] = useState<Map<string, number>>(new Map());
   const [showSettlementPopup, setShowSettlementPopup] = useState(false);
+  const [showReceiptDialog, setShowReceiptDialog] = useState(false);
+  const [selectedPaymentForReceipt, setSelectedPaymentForReceipt] = useState<Payment | null>(null);
   const [newPayment, setNewPayment] = useState<Payment | null>(null);
   const [newCompletedPayment, setNewCompletedPayment] = useState<{
     amount: number;
@@ -1559,76 +1562,15 @@ export function RetailerDashboard() {
     }
   };
 
-  // Generate receipt content
-  const generateReceiptContent = (payment: any) => {
-    const wholesalerName = tenantId === 'all' 
-      ? (wholesalerNames[payment.tenantId || ''] || 'Unknown Wholesaler')
-      : (wholesalerNames[tenantId || ''] || 'Unknown Wholesaler');
-    const lineWorkerName = lineWorkerNames[payment.lineWorkerId] || 'Unknown Line Worker';
-    
-    return `
-PAYMENT RECEIPT
-
-==============================
-${wholesalerName}
-==============================
-
-Date: ${formatTimestampWithTime(payment.createdAt)}
-Receipt ID: ${payment.id}
-
-RETAILER INFORMATION
-Name: ${retailer?.name || 'Unknown'}
-${retailer?.phone ? `Phone: ${retailer.phone}` : ''}
-${retailer?.address ? `Address: ${retailer.address}` : ''}
-
-PAYMENT DETAILS
-Amount: ${formatCurrency(payment.totalPaid)}
-Payment Method: ${payment.method}
-Status: ${payment.state}
-
-COLLECTED BY
-Line Worker: ${lineWorkerName}
-
-==============================
-Thank you for your payment!
-==============================
-    `.trim();
+  // Enhanced receipt functions
+  const openReceiptDialog = (payment: Payment) => {
+    setSelectedPaymentForReceipt(payment);
+    setShowReceiptDialog(true);
   };
 
-  // Download receipt
-  const downloadReceipt = (payment: any) => {
-    const content = generateReceiptContent(payment);
-    const blob = new Blob([content], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `receipt-${payment.id}.txt`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
-
-  // Share receipt
-  const shareReceipt = async (payment: any) => {
-    const content = generateReceiptContent(payment);
-    
-    if (navigator.share) {
-      try {
-        await navigator.share({
-          title: 'Payment Receipt',
-          text: content,
-        });
-      } catch (error) {
-        // Fallback to copying to clipboard
-        await navigator.clipboard.writeText(content);
-        alert('Receipt copied to clipboard!');
-      }
-    } else {
-      // Fallback to copying to clipboard
-      await navigator.clipboard.writeText(content);
-      alert('Receipt copied to clipboard!');
-    }
+  const closeReceiptDialog = () => {
+    setShowReceiptDialog(false);
+    setSelectedPaymentForReceipt(null);
   };
 
   // Calculate statistics
@@ -1672,7 +1614,7 @@ Thank you for your payment!
 
       {/* Wholesaler Selector - Full Width Below Navigation */}
       {availableTenants.length > 1 && (
-        <div className="w-full bg-white border-b border-gray-200 px-4 sm:px-6 py-3">
+        <div className="w-full bg-white border-b border-gray-200 px-4 sm:px-6 py-3 relative z-30">
           <div className="max-w-7xl mx-auto">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <div className="flex items-center space-x-3">
@@ -1701,34 +1643,13 @@ Thank you for your payment!
       )}
 
       {/* Main Content Area */}
-      <div className="pt-20 sm:pt-16 pb-20 lg:pb-0"> {/* Consistent spacing for fixed header */}
+      <div className={`${availableTenants.length > 1 ? 'pt-4 sm:pt-6' : 'pt-20 sm:pt-16'} pb-20 lg:pb-0`}> {/* Adjust spacing based on dropdown presence */}
         <div className="p-4 sm:p-6">
             {/* Header */}
-            <div className="flex items-center justify-between mb-6">
+            <div className="mb-6">
               <div>
                 <h1 className="text-2xl font-bold text-gray-900">Retailer Dashboard</h1>
                 <p className="text-gray-600">Manage your payments and view transaction history</p>
-              </div>
-              <div className="flex items-center space-x-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={refreshData}
-                  disabled={mainLoadingState.loadingState.isRefreshing}
-                >
-                  <RefreshCw className={`h-4 w-4 mr-2 ${mainLoadingState.loadingState.isRefreshing ? 'animate-spin' : ''}`} />
-                  Refresh
-                </Button>
-                
-                {/* Debug button for testing notifications */}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={testOTPNotification}
-                  className="text-xs"
-                >
-                  🧪 Test OTP
-                </Button>
               </div>
             </div>
 
@@ -1956,9 +1877,7 @@ Thank you for your payment!
                                   <Button
                                     variant="outline"
                                     size="sm"
-                                    onClick={() => {
-                                      downloadReceipt(payment);
-                                    }}
+                                    onClick={() => openReceiptDialog(payment)}
                                     className="h-7 px-2 text-xs"
                                   >
                                     <Download className="h-3 w-3 mr-1" />
@@ -2044,20 +1963,11 @@ Thank you for your payment!
                                           <Button
                                             variant="outline"
                                             size="sm"
-                                            onClick={() => downloadReceipt(payment)}
+                                            onClick={() => openReceiptDialog(payment)}
                                             className="h-7 px-2 text-xs"
                                           >
                                             <Download className="h-3 w-3 mr-1" />
-                                            Download
-                                          </Button>
-                                          <Button
-                                            variant="outline"
-                                            size="sm"
-                                            onClick={() => shareReceipt(payment)}
-                                            className="h-7 px-2 text-xs"
-                                          >
-                                            <Share className="h-3 w-3 mr-1" />
-                                            Share
+                                            Receipt
                                           </Button>
                                         </>
                                       )}
@@ -2134,20 +2044,11 @@ Thank you for your payment!
                                         <Button
                                           variant="outline"
                                           size="sm"
-                                          onClick={() => downloadReceipt(payment)}
+                                          onClick={() => openReceiptDialog(payment)}
                                           className="h-7 px-2 text-xs"
                                         >
                                           <Download className="h-3 w-3 mr-1" />
-                                          Download
-                                        </Button>
-                                        <Button
-                                          variant="outline"
-                                          size="sm"
-                                          onClick={() => shareReceipt(payment)}
-                                          className="h-7 px-2 text-xs"
-                                        >
-                                          <Share className="h-3 w-3 mr-1" />
-                                          Share
+                                          Receipt
                                         </Button>
                                       </>
                                     )}
@@ -2337,6 +2238,19 @@ Thank you for your payment!
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Enhanced Receipt Dialog */}
+      {selectedPaymentForReceipt && (
+        <EnhancedReceipt
+          payment={selectedPaymentForReceipt}
+          retailer={retailer}
+          wholesalerNames={wholesalerNames}
+          lineWorkerNames={lineWorkerNames}
+          tenantId={tenantId}
+          isOpen={showReceiptDialog}
+          onClose={closeReceiptDialog}
+        />
+      )}
     </div>
   );
 }
