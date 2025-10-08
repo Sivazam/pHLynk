@@ -318,7 +318,7 @@ export function DaySheet({
               </label>
               <DateRangeFilter
                 value={selectedDateRangeOption}
-                onChange={handleDateRangeChange}
+                onValueChange={handleDateRangeChange}
               />
             </div>
           </div>
