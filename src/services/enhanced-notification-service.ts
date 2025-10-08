@@ -139,7 +139,7 @@ class EnhancedNotificationService {
       });
       
       console.log(`🔔 Cloud function OTP delivery ${result.success ? 'succeeded' : 'failed'} for retailer: ${retailerId}`);
-      return result.success;
+      return result.success ?? false;
     } catch (error) {
       console.warn('⚠️ Cloud function OTP delivery failed:', error);
       return false;
@@ -185,7 +185,7 @@ class EnhancedNotificationService {
         });
         
         console.log(`🔔 Cloud function payment delivery ${result.success ? 'succeeded' : 'failed'} for ${targetRole}: ${retailerId}`);
-        return result.success;
+        return result.success ?? false;
       } catch (error) {
         console.warn('⚠️ Cloud function payment delivery failed:', error);
         return false;

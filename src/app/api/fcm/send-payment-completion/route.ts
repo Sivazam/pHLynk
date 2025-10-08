@@ -63,7 +63,7 @@ export async function POST(request: NextRequest) {
       });
       
       console.log('✅ Retailer cloud function response:', retailerResult);
-      results.push({ type: 'retailer', success: retailerResult.success, result: retailerResult });
+      results.push({ type: 'retailer', success: retailerResult.success ?? false, result: retailerResult });
       console.log('✅ Retailer payment completion notification sent');
     } catch (retailerError) {
       console.error('❌ Failed to send retailer notification:', {
@@ -105,7 +105,7 @@ export async function POST(request: NextRequest) {
         });
         
         console.log('✅ Wholesaler cloud function response:', wholesalerResult);
-        results.push({ type: 'wholesaler', success: wholesalerResult.success, result: wholesalerResult });
+        results.push({ type: 'wholesaler', success: wholesalerResult.success ?? false, result: wholesalerResult });
         
         console.log('✅ Wholesaler notification completed');
       } catch (wholesalerError) {
