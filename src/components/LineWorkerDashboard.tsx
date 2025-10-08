@@ -916,6 +916,63 @@ Thank you for your payment!
         .slice(0, 3);
     };
 
+    // Check if retailer has completed payments today
+    const hasCompletedPaymentToday = (retailerId: string) => {
+      const today = new Date();
+      const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+      const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
+      
+      return payments.some(p => 
+        p.retailerId === retailerId && 
+        p.state === 'COMPLETED' && 
+        p.createdAt.toDate() >= startOfDay && 
+        p.createdAt.toDate() <= endOfDay
+      );
+    };
+
+    // Get the last completed payment date for a retailer
+    const getLastCompletedPaymentDate = (retailerId: string) => {
+      const completedPayments = payments
+        .filter(p => p.retailerId === retailerId && p.state === 'COMPLETED')
+        .sort((a, b) => b.createdAt.toDate().getTime() - a.createdAt.toDate().getTime());
+      
+      if (completedPayments.length > 0) {
+        return formatTimestamp(completedPayments[0].createdAt);
+      }
+      return null;
+    };
+
+    // Get the last completed payment amount for a retailer
+    const getLastCompletedPaymentAmount = (retailerId: string) => {
+      const completedPayments = payments
+        .filter(p => p.retailerId === retailerId && p.state === 'COMPLETED')
+        .sort((a, b) => b.createdAt.toDate().getTime() - a.createdAt.toDate().getTime());
+      
+      if (completedPayments.length > 0) {
+        return completedPayments[0].totalPaid;
+      }
+      return 0;
+    };
+
+    // Sort retailers: those with completed payments today go to bottom
+    const sortedFilteredRetailers = [...filteredRetailers].sort((a, b) => {
+      const aCompletedToday = hasCompletedPaymentToday(a.id);
+      const bCompletedToday = hasCompletedPaymentToday(b.id);
+      
+      // If both have same status, maintain original order
+      if (aCompletedToday === bCompletedToday) {
+        return 0;
+      }
+      
+      // If a completed today and b didn't, a goes to bottom (return 1)
+      if (aCompletedToday && !bCompletedToday) {
+        return 1;
+      }
+      
+      // If b completed today and a didn't, b goes to bottom (return -1)
+      return -1;
+    });
+
     if (filteredRetailers.length === 0) {
       return (
         <Card>
@@ -933,9 +990,12 @@ Thank you for your payment!
 
     return (
       <div className="space-y-4">
-        {filteredRetailers.map((retailer) => {
+        {sortedFilteredRetailers.map((retailer) => {
           const isExpanded = expandedRetailerId === retailer.id;
           const recentPayments = getRecentPayments(retailer.id);
+          const hasCompletedToday = hasCompletedPaymentToday(retailer.id);
+          const lastPaymentDate = getLastCompletedPaymentDate(retailer.id);
+          const lastPaymentAmount = getLastCompletedPaymentAmount(retailer.id);
           
           return (
             <div key={retailer.id} id={`retailer-card-${retailer.id}`} className="border border-gray-200 rounded-lg overflow-hidden">
@@ -950,6 +1010,17 @@ Thank you for your payment!
                         <Badge variant="secondary" className="bg-green-100 text-green-800">
                           Active
                         </Badge>
+                        {hasCompletedToday && lastPaymentDate && (
+                          <div className="flex items-center gap-1">
+                            <Badge variant="secondary" className="bg-blue-100 text-blue-800 border-blue-200">
+                              <CheckCircle className="h-3 w-3 mr-1" />
+                              Collected {formatCurrency(lastPaymentAmount)}
+                            </Badge>
+                            <div className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                              {lastPaymentDate}
+                            </div>
+                          </div>
+                        )}
                       </div>
                       
                       <div className="space-y-1 text-sm text-gray-600">
@@ -1512,7 +1583,12 @@ Thank you for your payment!
                         </div>
                         {searchTerm && (
                           <div className="mt-2 text-sm text-gray-600">
-                            Showing {filteredRetailers.length} of {retailers.length} retailers
+                            Showing {sortedFilteredRetailers.length} of {retailers.length} retailers
+                            {sortedFilteredRetailers.length < filteredRetailers.length && (
+                              <span className="ml-2 text-blue-600">
+                                ({filteredRetailers.length - sortedFilteredRetailers.length} with completed payments moved to bottom)
+                              </span>
+                            )}
                           </div>
                         )}
                       </CardContent>

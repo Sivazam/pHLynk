@@ -1356,7 +1356,7 @@ export function WholesalerAdminDashboard() {
 
   // Overview Component
   const Overview = () => (
-    <div className="space-y-6">
+    <div className="space-y-6 pt-6">
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
         <div>
           <h2 className="text-2xl font-bold text-gray-900">Dashboard Overview</h2>
