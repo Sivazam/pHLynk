@@ -112,11 +112,11 @@ export function CreateRetailerForm({
   };
 
   const handleAddNewRetailer = () => {
-    setFormMode('create');
     // Keep phone number if already entered
     const currentPhone = phone;
     resetForm();
     setPhone(currentPhone);
+    setFormMode('create');
   };
 
   const resetForm = () => {
@@ -237,7 +237,7 @@ export function CreateRetailerForm({
                     onChange={(e) => setName(e.target.value)}
                     placeholder="Enter retailer name"
                     required
-                    disabled={isSubmitting}
+                    disabled={isSubmitting || foundRetailer !== null}
                   />
                 </div>
 
@@ -250,7 +250,7 @@ export function CreateRetailerForm({
                     onChange={(e) => setPhone(e.target.value)}
                     placeholder="Enter phone number"
                     required
-                    disabled={isSubmitting}
+                    disabled={isSubmitting || foundRetailer !== null}
                   />
                 </div>
               </div>
@@ -263,7 +263,7 @@ export function CreateRetailerForm({
                   onChange={(e) => setAddress(e.target.value)}
                   placeholder="Enter retailer address (optional)"
                   rows={3}
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || foundRetailer !== null}
                 />
               </div>
 
