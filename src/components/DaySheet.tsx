@@ -213,10 +213,10 @@ export function DaySheet({
     const areaIds = [...new Set(payments.map(p => {
       const retailer = retailers.find(r => r.id === p.retailerId);
       return retailer?.areaId;
-    }).filter(Boolean))];
+    }).filter((id): id is string => Boolean(id)))];
     return areaIds.map(id => ({
       id,
-      name: getAreaName(id || '')
+      name: getAreaName(id)
     }));
   }, [payments, retailers, areas]);
 
