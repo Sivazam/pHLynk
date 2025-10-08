@@ -1674,19 +1674,18 @@ Thank you for your payment!
       {availableTenants.length > 1 && (
         <div className="w-full bg-white border-b border-gray-200 px-4 sm:px-6 py-3">
           <div className="max-w-7xl mx-auto">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <div className="flex items-center space-x-3">
-                <Store className="h-5 w-5 text-purple-600" />
-                <Label className="text-sm font-medium text-gray-700">Select Wholesaler:</Label>
+                <Store className="h-5 w-5 text-purple-600 flex-shrink-0" />
                 <Select value={tenantId || 'all'} onValueChange={handleTenantSwitch}>
-                  <SelectTrigger className="w-64">
+                  <SelectTrigger className="w-full sm:w-64">
                     <SelectValue placeholder="Select wholesaler">
-                      {tenantId === 'all' ? '🏢 All Wholesalers (Consolidated)' : (wholesalerNames[tenantId || ''] || 'Loading...')}
+                      {tenantId === 'all' ? '🏢 All Wholesalers' : (wholesalerNames[tenantId || ''] || 'Loading...')}
                     </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">
-                      🏢 All Wholesalers (Consolidated)
+                      🏢 All Wholesalers
                     </SelectItem>
                     {availableTenants.map((tenantIdOption) => (
                       <SelectItem key={tenantIdOption} value={tenantIdOption}>
@@ -1696,19 +1695,13 @@ Thank you for your payment!
                   </SelectContent>
                 </Select>
               </div>
-              <div className="text-sm text-gray-500">
-                {tenantId === 'all' 
-                  ? `Showing data from ${availableTenants.length} wholesalers` 
-                  : `Individual view (${availableTenants.length} total)`
-                }
-              </div>
             </div>
           </div>
         </div>
       )}
 
       {/* Main Content Area */}
-      <div className={`${availableTenants.length > 1 ? 'pt-16 sm:pt-12' : 'pt-20 sm:pt-16'} pb-20 lg:pb-0`}> {/* Adjust padding based on dropdown visibility */}
+      <div className="pt-20 sm:pt-16 pb-20 lg:pb-0"> {/* Consistent spacing for fixed header */}
         <div className="p-4 sm:p-6">
             {/* Header */}
             <div className="flex items-center justify-between mb-6">
