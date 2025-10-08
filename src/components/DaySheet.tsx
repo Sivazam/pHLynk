@@ -30,6 +30,7 @@ interface DaySheetProps {
   areas: Area[];
   retailers: Retailer[];
   wholesalerName: string;
+  wholesalerAddress?: string;
   tenantId: string;
 }
 
@@ -52,6 +53,7 @@ export function DaySheet({
   areas,
   retailers,
   wholesalerName,
+  wholesalerAddress,
   tenantId
 }: DaySheetProps) {
   const [isOpen, setIsOpen] = useState(false);
@@ -162,23 +164,37 @@ export function DaySheet({
     // Create workbook
     const wb = XLSX.utils.book_new();
 
+    // Get line worker details for the header
+    const getLineWorkerDetails = () => {
+      if (selectedLineWorker === 'all') {
+        // Get all unique line workers from filtered data
+        const uniqueWorkers = [...new Set(filteredData.map(item => item.lineWorkerName))];
+        return uniqueWorkers.map(name => {
+          const worker = lineWorkers.find(lw => lw.displayName === name);
+          return `${name}: ${worker?.phone || 'No phone'}`;
+        }).join(', ');
+      } else {
+        const worker = lineWorkers.find(lw => lw.id === selectedLineWorker);
+        return `${worker?.displayName || 'Unknown'}: ${worker?.phone || 'No phone'}`;
+      }
+    };
+
     // Create header data for the main sheet
     const headerData = [
-      ['', ''], // Empty rows for spacing
-      ['', ''],
-      [wholesalerName.toUpperCase(), ''], // Business name
-      ['Business Address', ''], // Address placeholder
-      ['', ''], // Empty row for spacing
-      ['', ''],
-      ['DAY SHEET REPORT', ''],
-      ['Date Range:', `${formatTimestamp(dateRange.startDate)} - ${formatTimestamp(dateRange.endDate)}`],
-      ['Generated on:', formatTimestampWithTime(new Date())],
-      ['', ''], // Empty row for spacing
-      ['', ''],
-      ['TOTAL COLLECTIONS', totalCollections],
-      ['TOTAL AMOUNT', totalAmount],
-      ['', ''], // Empty row for spacing
-      ['', ''],
+      ['', '', '', '', '', '', '', '', '', ''], // Empty row for spacing
+      ['', '', '', '', '', '', '', '', '', ''], // Empty row for spacing
+      [wholesalerName.toUpperCase(), '', '', '', '', '', '', '', '', ''], // Business name
+      [wholesalerAddress || 'Address not provided', '', '', '', '', '', '', '', '', ''], // Actual address
+      ['', '', '', '', '', '', '', '', '', ''], // Empty row for spacing
+      ['', '', '', '', '', '', '', '', '', ''], // Empty row for spacing
+      ['DAY SHEET REPORT', '', '', '', '', '', '', '', '', ''], // Report title
+      ['Date Range:', `${formatTimestamp(dateRange.startDate)} - ${formatTimestamp(dateRange.endDate)}`, '', '', '', '', '', '', '', ''],
+      ['Generated on:', formatTimestampWithTime(new Date()), '', '', '', '', '', '', '', ''],
+      ['', '', '', '', '', '', '', '', '', ''], // Empty row for spacing
+      ['LINE WORKER DETAILS:', '', '', '', '', '', '', '', '', ''],
+      [getLineWorkerDetails(), '', '', '', '', '', '', '', '', ''],
+      ['', '', '', '', '', '', '', '', '', ''], // Empty row for spacing
+      ['', '', '', '', '', '', '', '', '', ''],
     ];
 
     // Column headers
@@ -224,7 +240,11 @@ export function DaySheet({
         row['Retailer Area'],
         row['Amount'],
         row['Payment Method']
-      ])
+      ]),
+      ['', '', '', '', '', '', '', '', '', ''], // Empty row before totals
+      ['', '', '', '', '', '', '', '', '', ''], // Empty row before totals
+      ['', '', '', '', '', '', '', 'TOTAL COLLECTIONS:', totalCollections, ''],
+      ['', '', '', '', '', '', '', 'TOTAL AMOUNT:', totalAmount, ''],
     ];
 
     // Create worksheet
@@ -246,11 +266,14 @@ export function DaySheet({
     ws['!cols'] = colWidths;
 
     // Apply styling to header rows
-    const headerRange = XLSX.utils.decode_range(ws['!ref'] || 'A1');
-    
     // Make business name bold and larger
     if (ws['A3']) {
       ws['A3'].s = { font: { bold: true, sz: 16 } };
+    }
+    
+    // Make address normal
+    if (ws['A4']) {
+      ws['A4'].s = { font: { sz: 12 } };
     }
     
     // Make report title bold
@@ -258,12 +281,35 @@ export function DaySheet({
       ws['A7'].s = { font: { bold: true, sz: 14 } };
     }
     
+    // Make line worker details label bold
+    if (ws['A12']) {
+      ws['A12'].s = { font: { bold: true } };
+    }
+    
     // Make column headers bold
+    const headerRow = headerData.length;
     for (let i = 0; i < columnHeaders.length; i++) {
-      const cellAddress = XLSX.utils.encode_cell({ r: headerData.length, c: i });
+      const cellAddress = XLSX.utils.encode_cell({ r: headerRow, c: i });
       if (ws[cellAddress]) {
         ws[cellAddress].s = { font: { bold: true } };
       }
+    }
+
+    // Make totals bold
+    const totalRow1 = wsData.length - 2;
+    const totalRow2 = wsData.length - 1;
+    
+    if (ws[`H${totalRow1 + 1}`]) {
+      ws[`H${totalRow1 + 1}`].s = { font: { bold: true } };
+    }
+    if (ws[`I${totalRow1 + 1}`]) {
+      ws[`I${totalRow1 + 1}`].s = { font: { bold: true } };
+    }
+    if (ws[`H${totalRow2 + 1}`]) {
+      ws[`H${totalRow2 + 1}`].s = { font: { bold: true } };
+    }
+    if (ws[`I${totalRow2 + 1}`]) {
+      ws[`I${totalRow2 + 1}`].s = { font: { bold: true } };
     }
 
     XLSX.utils.book_append_sheet(wb, ws, 'Day Sheet');
@@ -274,6 +320,7 @@ export function DaySheet({
       ['', ''],
       ['BUSINESS INFORMATION', ''],
       ['Wholesaler Name', wholesalerName],
+      ['Wholesaler Address', wholesalerAddress || 'Not provided'],
       ['Report Period', `${formatTimestamp(dateRange.startDate)} - ${formatTimestamp(dateRange.endDate)}`],
       ['Generated On', formatTimestampWithTime(new Date())],
       ['', ''],
@@ -286,6 +333,19 @@ export function DaySheet({
       ['Line Worker', selectedLineWorker === 'all' ? 'All Line Workers' : getLineWorkerName(selectedLineWorker)],
       ['Area', selectedArea === 'all' ? 'All Areas' : getAreaName(selectedArea)],
       ['Retailer', selectedRetailer === 'all' ? 'All Retailers' : getRetailerName(selectedRetailer)],
+      ['', ''],
+      ['LINE WORKER DETAILS', ''],
+      ...(
+        selectedLineWorker === 'all' 
+          ? [...new Set(filteredData.map(item => item.lineWorkerName))].map(name => {
+              const worker = lineWorkers.find(lw => lw.displayName === name);
+              return [name, worker?.phone || 'No phone'];
+            })
+          : (() => {
+              const worker = lineWorkers.find(lw => lw.id === selectedLineWorker);
+              return [[worker?.displayName || 'Unknown', worker?.phone || 'No phone']];
+            })()
+      ),
       ['', ''],
       ['BREAKDOWN BY LINE WORKER', ''],
       ...Object.entries(
@@ -314,6 +374,7 @@ export function DaySheet({
     if (summaryWs['A14']) summaryWs['A14'].s = { font: { bold: true } };
     if (summaryWs['A19']) summaryWs['A19'].s = { font: { bold: true } };
     if (summaryWs['A24']) summaryWs['A24'].s = { font: { bold: true } };
+    if (summaryWs['A29']) summaryWs['A29'].s = { font: { bold: true } };
 
     XLSX.utils.book_append_sheet(wb, summaryWs, 'Summary');
 
@@ -368,7 +429,7 @@ export function DaySheet({
       </Button>
 
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
-        <DialogContent className="max-w-[95vw] w-full max-h-[90vh] overflow-y-auto p-4 md:p-6">
+        <DialogContent className="w-[95vw] max-w-4xl max-h-[90vh] overflow-y-auto p-4 md:p-6">
           <DialogHeader>
             <DialogTitle className="text-xl font-bold flex items-center space-x-2">
               <FileSpreadsheet className="h-5 w-5" />
@@ -508,19 +569,20 @@ export function DaySheet({
                 <span>Export Excel</span>
               </Button>
             </CardHeader>
-            <CardContent>
-              <div className="overflow-x-auto">
+            <CardContent className="p-0">
+              {/* Desktop Table View */}
+              <div className="hidden lg:block">
                 <Table>
                   <TableHeader>
                     <TableRow>
                       <TableHead className="whitespace-nowrap">Date</TableHead>
                       <TableHead className="whitespace-nowrap">Time</TableHead>
-                      <TableHead className="whitespace-nowrap min-w-[120px]">Line Worker</TableHead>
-                      <TableHead className="whitespace-nowrap min-w-[150px]">Assigned Areas</TableHead>
-                      <TableHead className="whitespace-nowrap min-w-[120px]">Retailer</TableHead>
-                      <TableHead className="whitespace-nowrap min-w-[120px]">Retailer Area</TableHead>
-                      <TableHead className="whitespace-nowrap text-right min-w-[100px]">Amount</TableHead>
-                      <TableHead className="whitespace-nowrap min-w-[100px]">Method</TableHead>
+                      <TableHead className="whitespace-nowrap">Line Worker</TableHead>
+                      <TableHead className="whitespace-nowrap">Assigned Areas</TableHead>
+                      <TableHead className="whitespace-nowrap">Retailer</TableHead>
+                      <TableHead className="whitespace-nowrap">Retailer Area</TableHead>
+                      <TableHead className="whitespace-nowrap text-right">Amount</TableHead>
+                      <TableHead className="whitespace-nowrap">Method</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -548,6 +610,91 @@ export function DaySheet({
                     )}
                   </TableBody>
                 </Table>
+              </div>
+
+              {/* Tablet View */}
+              <div className="hidden md:block lg:hidden">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="whitespace-nowrap">Date</TableHead>
+                      <TableHead className="whitespace-nowrap">Line Worker</TableHead>
+                      <TableHead className="whitespace-nowrap">Retailer</TableHead>
+                      <TableHead className="whitespace-nowrap text-right">Amount</TableHead>
+                      <TableHead className="whitespace-nowrap">Method</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredData.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={5} className="text-center py-8 text-gray-500">
+                          No collections found for the selected criteria
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      filteredData.map((item, index) => (
+                        <TableRow key={`${item.paymentId}-${index}`}>
+                          <TableCell>
+                            <div>
+                              <div className="font-medium">{formatTimestamp(item.date)}</div>
+                              <div className="text-xs text-gray-500">{item.time}</div>
+                            </div>
+                          </TableCell>
+                          <TableCell className="font-medium">{item.lineWorkerName}</TableCell>
+                          <TableCell className="font-medium">{item.retailerName}</TableCell>
+                          <TableCell className="text-right font-bold">{formatCurrency(item.amount)}</TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className="text-xs">{item.paymentMethod}</Badge>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Mobile Card View */}
+              <div className="md:hidden space-y-3">
+                {filteredData.length === 0 ? (
+                  <div className="text-center py-8 text-gray-500">
+                    No collections found for the selected criteria
+                  </div>
+                ) : (
+                  filteredData.map((item, index) => (
+                    <Card key={`${item.paymentId}-${index}`} className="p-4">
+                      <div className="space-y-2">
+                        <div className="flex justify-between items-start">
+                          <div className="flex-1">
+                            <div className="font-semibold text-lg">{formatCurrency(item.amount)}</div>
+                            <div className="text-sm text-gray-600">{item.paymentMethod}</div>
+                          </div>
+                          <div className="text-right text-sm text-gray-500">
+                            <div>{formatTimestamp(item.date)}</div>
+                            <div>{item.time}</div>
+                          </div>
+                        </div>
+                        
+                        <div className="border-t pt-2 space-y-1">
+                          <div className="flex justify-between">
+                            <span className="text-sm font-medium">Line Worker:</span>
+                            <span className="text-sm">{item.lineWorkerName}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-sm font-medium">Retailer:</span>
+                            <span className="text-sm">{item.retailerName}</span>
+                          </div>
+                          <div className="text-xs text-gray-500 space-y-1">
+                            <div><strong>Worker Areas:</strong> {item.lineWorkerArea}</div>
+                            <div><strong>Retailer Area:</strong> {item.retailerArea}</div>
+                            {item.retailerAddress && (
+                              <div><strong>Address:</strong> {item.retailerAddress}</div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </Card>
+                  ))
+                )}
               </div>
             </CardContent>
           </Card>
