@@ -1669,9 +1669,9 @@ export function RetailerDashboard() {
               <>
                 {/* Overview Stats */}
                 {activeNav === 'overview' && (
-                  <div className="space-y-6">
+                  <div className="mt-6 space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                      <Card>
+                      {/* <Card>
                         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                           <CardTitle className="text-sm font-medium text-gray-600">Total Paid</CardTitle>
                           <div className="bg-green-100 p-2 rounded-full">
@@ -1682,7 +1682,7 @@ export function RetailerDashboard() {
                           <div className="text-2xl font-bold text-gray-900">{formatCurrency(totalPaid)}</div>
                           <p className="text-xs text-gray-500">All time payments</p>
                         </CardContent>
-                      </Card>
+                      </Card> */}
 
                       <Card>
                         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -1692,7 +1692,7 @@ export function RetailerDashboard() {
                           </div>
                         </CardHeader>
                         <CardContent>
-                          <div className="text-2xl font-bold text-gray-900">{formatCurrency(todayPaid)}</div>
+                          <div className="text-2xl font-bold tnpm run devext-gray-900">{formatCurrency(todayPaid)}</div>
                           <p className="text-xs text-gray-500">{todayPayments.length} transactions</p>
                         </CardContent>
                       </Card>
@@ -1892,7 +1892,7 @@ export function RetailerDashboard() {
                     </Card>
 
                     {/* PWA Notification Manager */}
-                    <PWANotificationManager userRole="RETAILER" />
+                    {/* <PWANotificationManager userRole="RETAILER" /> */}
                   </div>
                 )}
 
@@ -2077,7 +2077,7 @@ export function RetailerDashboard() {
                     </div>
 
                     {/* Notification De-duplicator Debug */}
-                    <NotificationDeduplicatorDebug />
+                    {/* <NotificationDeduplicatorDebug /> */}
                   </div>
                 )}
               </>

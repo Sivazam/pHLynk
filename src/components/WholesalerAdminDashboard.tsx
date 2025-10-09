@@ -1356,7 +1356,7 @@ export function WholesalerAdminDashboard() {
 
   // Overview Component
   const Overview = () => (
-    <div className="space-y-6 pt-6">
+    <div className="space-y-6 sm:pt-6 pt-2">
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
         <div>
           <h2 className="text-2xl font-bold text-gray-900">Dashboard Overview</h2>
@@ -1379,14 +1379,14 @@ export function WholesalerAdminDashboard() {
             }
             tenantId={getCurrentTenantId() || ''}
           />
-          <LoadingButton
+          {/* <LoadingButton
             isLoading={mainLoadingState.loadingState.isRefreshing}
             loadingText="Refreshing..."
             onClick={handleManualRefresh}
             variant="outline"
           >
             <RefreshCw className="h-4 w-4" />
-          </LoadingButton>
+          </LoadingButton> */}
         </div>
       </div>
       <StatsCards />
@@ -1619,7 +1619,6 @@ export function WholesalerAdminDashboard() {
             onClick={handleManualRefresh}
           >
             <RefreshCw className="h-4 w-4 mr-2" />
-            Refresh
           </LoadingButton>
           <Dialog key="retailer-dialog" open={showCreateRetailer} onOpenChange={handleRetailerDialogChange}>
             <DialogTrigger asChild>

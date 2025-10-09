@@ -1294,11 +1294,11 @@ Thank you for your payment!
         <div className="p-4 sm:p-6">
             {/* Header */}
             <div className="flex items-center justify-between mb-8">
-              <div>
+              {/* <div>
                 <h1 className="text-3xl font-bold text-gray-900">Line Worker Dashboard</h1>
                 <p className="text-gray-600 mt-1">Manage your assigned retailers and collect payments</p>
-              </div>
-              <div className="flex items-center space-x-3">
+              </div> */}
+              {/* <div className="flex items-center space-x-3">
                 <Button
                   variant="outline"
                   size="sm"
@@ -1309,7 +1309,7 @@ Thank you for your payment!
                   <RefreshCw className={`h-4 w-4 mr-2 ${mainLoadingState.loadingState.isRefreshing ? 'animate-spin' : ''}`} />
                   Refresh Data
                 </Button>
-              </div>
+              </div> */}
             </div>
 
             {/* Error Display */}
@@ -1347,7 +1347,7 @@ Thank you for your payment!
                         </CardContent>
                       </Card>
 
-                      <Card className="border border-gray-200 shadow-sm">
+                      {/* <Card className="border border-gray-200 shadow-sm">
                         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
                           <CardTitle className="text-sm font-medium text-gray-600">Total Collected</CardTitle>
                           <div className="bg-green-100 p-2.5 rounded-full">
@@ -1358,7 +1358,7 @@ Thank you for your payment!
                           <div className="text-2xl font-bold text-gray-900">{formatCurrency(totalCollected)}</div>
                           <p className="text-xs text-gray-500 mt-1">All time</p>
                         </CardContent>
-                      </Card>
+                      </Card> */}
 
                       <Card className="border border-gray-200 shadow-sm">
                         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
@@ -1372,7 +1372,7 @@ Thank you for your payment!
                           <p className="text-xs text-gray-500 mt-1">{todayPayments.length} payments</p>
                         </CardContent>
                       </Card>
-
+{/* 
                       <Card className="border border-gray-200 shadow-sm">
                         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
                           <CardTitle className="text-sm font-medium text-gray-600">Success Rate</CardTitle>
@@ -1386,7 +1386,7 @@ Thank you for your payment!
                           </div>
                           <p className="text-xs text-gray-500 mt-1">Payment success rate</p>
                         </CardContent>
-                      </Card>
+                      </Card> */}
                     </div>
 
                     {/* Quick Actions */}
@@ -1412,20 +1412,20 @@ Thank you for your payment!
                             <Store className="h-8 w-8 mb-3 text-gray-600" />
                             <span className="font-medium">View Retailers</span>
                           </Button>
-                          <Button
+                          {/* <Button
                             variant="outline"
                             onClick={() => setActiveNav('history')}
                             className="h-24 flex-col border-gray-300 text-gray-700 hover:bg-gray-50"
                           >
                             <History className="h-8 w-8 mb-3 text-gray-600" />
                             <span className="font-medium">Payment History</span>
-                          </Button>
+                          </Button> */}
                         </div>
                       </CardContent>
                     </Card>
 
                     {/* Test Notifications */}
-                    <Card className="border border-gray-200 shadow-sm">
+                    {/* <Card className="border border-gray-200 shadow-sm">
                       <CardHeader className="pb-4">
                         <CardTitle className="text-lg font-semibold text-gray-900">Test Notifications</CardTitle>
                         <CardDescription className="text-gray-600">Test the enhanced notification system</CardDescription>
@@ -1467,7 +1467,7 @@ Thank you for your payment!
                           </Button>
                         </div>
                       </CardContent>
-                    </Card>
+                    </Card> */}
 
                     {/* Recent Activity */}
                     <Card className="border border-gray-200 shadow-sm">
@@ -1520,7 +1520,7 @@ Thank you for your payment!
                           <Plus className="h-4 w-4 mr-2" />
                           Collect Payment
                         </Button>
-                        <div className="flex space-x-1">
+                        {/* <div className="flex space-x-1">
                           <Button
                             variant="outline"
                             size="sm"
@@ -1539,7 +1539,7 @@ Thank you for your payment!
                             <Download className="h-4 w-4 mr-1" />
                             Export JSON
                           </Button>
-                        </div>
+                        </div> */}
                       </div>
                     </div>
 
@@ -1605,10 +1605,10 @@ Thank you for your payment!
                     <div className="flex items-center justify-between">
                       <h2 className="text-xl font-semibold">Payment Collections</h2>
                       <div className="flex space-x-2">
-                        <Button onClick={() => handleOpenPaymentDialog()}>
+                        {/* <Button onClick={() => handleOpenPaymentDialog()}>
                           <Plus className="h-4 w-4 mr-2" />
                           New Collection
-                        </Button>
+                        </Button> */}
                         <div className="flex space-x-1">
                           <Button
                             variant="outline"
