@@ -16,12 +16,13 @@ interface OTPRequest {
   paymentId: string;
   amount: number;
   lineWorkerName?: string;
+  lineWorkerId?: string;
 }
 
 export async function POST(request: NextRequest) {
   try {
     const body: OTPRequest = await request.json();
-    const { retailerId, paymentId, amount, lineWorkerName } = body;
+    const { retailerId, paymentId, amount, lineWorkerName, lineWorkerId } = body;
 
     if (!retailerId || !paymentId || !amount) {
       return NextResponse.json(
@@ -143,6 +144,7 @@ export async function POST(request: NextRequest) {
       paymentId,
       amount,
       lineWorkerName,
+      lineWorkerId,
       hasPhone: !!retailerUser.phone
     });
 
@@ -214,7 +216,8 @@ export async function POST(request: NextRequest) {
         otp: otpData.code,
         paymentId,
         amount,
-        lineWorkerName: lineWorkerName || 'Line Worker'
+        lineWorkerName: lineWorkerName || 'Line Worker',
+        lineWorkerId: lineWorkerId || ''
       });
 
       if (fcmResult.success) {

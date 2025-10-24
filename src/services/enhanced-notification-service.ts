@@ -113,7 +113,7 @@ class EnhancedNotificationService {
   }
 
   // Role-specific notification methods
-  async sendOTPNotification(retailerId: string, otp: string, amount: number, lineWorkerName: string): Promise<boolean> {
+  async sendOTPNotification(retailerId: string, otp: string, amount: number, lineWorkerName: string, lineWorkerId?: string): Promise<boolean> {
     // Add to in-app notifications
     this.addNotification({
       type: 'otp',
@@ -135,7 +135,8 @@ class EnhancedNotificationService {
         otp,
         amount,
         paymentId: `otp-${Date.now()}`,
-        lineWorkerName
+        lineWorkerName,
+        lineWorkerId: lineWorkerId || ''
       });
       
       console.log(`🔔 Cloud function OTP delivery ${result.success ? 'succeeded' : 'failed'} for retailer: ${retailerId}`);

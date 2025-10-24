@@ -21,6 +21,7 @@ interface SendOTPNotificationData {
   amount: number;
   paymentId: string;
   lineWorkerName: string;
+  lineWorkerId?: string;
 }
 
 interface SendPaymentCompletionNotificationData {
@@ -95,15 +96,17 @@ export async function sendOTPNotificationViaCloudFunction(
       retailerId: data.retailerId,
       paymentId: data.paymentId,
       amount: data.amount,
-      lineWorkerName: data.lineWorkerName
+      lineWorkerName: data.lineWorkerName,
+      lineWorkerId: data.lineWorkerId
     });
 
     // Transform data to match sendFCMNotification expected format
     const fcmData = {
       retailerId: data.retailerId,
+      lineWorkerId: data.lineWorkerId,
       notification: {
-        title: '🔐 Payment OTP Required',
-        body: `Your OTP code is: **${data.otp}** for ₹${data.amount.toLocaleString()} by ${data.lineWorkerName}`,
+        title: 'Payment Verification Required',
+        body: `Your OTP code is ${data.otp} for payment of ₹${data.amount.toLocaleString()} collected by ${data.lineWorkerName}`,
         data: {
           type: 'otp',
           otp: data.otp,
@@ -111,6 +114,7 @@ export async function sendOTPNotificationViaCloudFunction(
           paymentId: data.paymentId,
           retailerId: data.retailerId,
           lineWorkerName: data.lineWorkerName,
+          lineWorkerId: data.lineWorkerId,
           tag: `otp-${data.paymentId}`,
           requireInteraction: 'true',
           clickAction: '/retailer'

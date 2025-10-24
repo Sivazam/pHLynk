@@ -790,14 +790,52 @@ export const sendOTPNotification = functions.https.onCall(async (request: any) =
       throw new functions.https.HttpsError('invalid-argument', 'Invalid or missing lineWorkerName');
     }
     
+    // lineWorkerId is optional (for backwards compatibility)
+    if (data.lineWorkerId && typeof data.lineWorkerId !== 'string') {
+      console.error('❌ FCM CLOUD FUNCTION - Invalid lineWorkerId:', data.lineWorkerId);
+      throw new functions.https.HttpsError('invalid-argument', 'Invalid lineWorkerId');
+    }
+    
     console.log('📱 FCM - OTP Notification Request:', {
       retailerId: data.retailerId,
       paymentId: data.paymentId,
       amount: data.amount,
       otp: data.otp,
       lineWorkerName: data.lineWorkerName,
+      lineWorkerId: data.lineWorkerId,
       caller: context.auth ? context.auth.uid : 'NEXTJS_API'
     });
+
+    // Fetch line worker to get tenantId for wholesaler name
+    let wholesalerName = '';
+    if (data.lineWorkerId) {
+      try {
+        const lineWorkerDoc = await admin.firestore().collection('users').doc(data.lineWorkerId).get();
+        if (lineWorkerDoc.exists) {
+          const lineWorkerData = lineWorkerDoc.data();
+          const tenantId = lineWorkerData?.tenantId;
+          
+          if (tenantId) {
+            // Fetch tenant details to get wholesaler name
+            const tenantDoc = await admin.firestore().collection('tenants').doc(tenantId).get();
+            if (tenantDoc.exists) {
+              const tenantData = tenantDoc.data();
+              wholesalerName = tenantData?.name || '';
+              console.log('✅ FCM - Fetched wholesaler name:', wholesalerName);
+            } else {
+              console.warn('⚠️ FCM - Tenant not found for tenantId:', tenantId);
+            }
+          } else {
+            console.warn('⚠️ FCM - Line worker has no tenantId');
+          }
+        } else {
+          console.warn('⚠️ FCM - Line worker not found for lineWorkerId:', data.lineWorkerId);
+        }
+      } catch (error) {
+        console.error('❌ FCM - Error fetching wholesaler name:', error);
+        // Continue without wholesaler name if fetch fails
+      }
+    }
 
     // Get FCM token for retailer from retailers collection (not retailerUsers)
     const fcmToken = await getFCMTokenForUser(data.retailerId, 'retailers');
@@ -811,11 +849,14 @@ export const sendOTPNotification = functions.https.onCall(async (request: any) =
       };
     }
 
-    // Create FCM message with proper icons and bold OTP
+    // Create FCM message with proper icons and updated format
+    const wholesalerPart = wholesalerName ? ` from ${wholesalerName}` : '';
+    const messageBody = `Your OTP code is ${data.otp} for payment of ₹${data.amount.toLocaleString()} collected by ${data.lineWorkerName}${wholesalerPart}\n-- PharmaLync`;
+    
     const message = {
       notification: {
-        title: '🔐 Payment OTP Required',
-        body: `Your OTP code is: **${data.otp}** for ₹${data.amount.toLocaleString()} by ${data.lineWorkerName}`,
+        title: 'Payment Verification Required',
+        body: messageBody,
       },
       data: {
         type: 'otp',
@@ -824,6 +865,7 @@ export const sendOTPNotification = functions.https.onCall(async (request: any) =
         paymentId: data.paymentId,
         retailerId: data.retailerId,
         lineWorkerName: data.lineWorkerName,
+        wholesalerName: wholesalerName,
         tag: `otp-${data.paymentId}`,
         requireInteraction: 'true',
         clickAction: '/retailer/dashboard'
@@ -863,8 +905,8 @@ export const sendOTPNotification = functions.https.onCall(async (request: any) =
           themeColor: '#20439f' // Brand blue
         },
         notification: {
-          title: '🔐 Payment OTP Required',
-          body: `Your OTP code is: **${data.otp}** for ₹${data.amount.toLocaleString()} by ${data.lineWorkerName}`,
+          title: 'Payment Verification Required',
+          body: messageBody,
           icon: '/notification-large-192x192.png',
           badge: '/badge-72x72.png',
           tag: `otp-${data.paymentId}`,
@@ -1265,6 +1307,37 @@ export const sendFCMNotification = functions.https.onCall(async (request: any) =
       caller: context.auth ? context.auth.uid : 'NEXTJS_API'
     });
 
+    // Fetch line worker to get tenantId for wholesaler name (if lineWorkerId is provided)
+    let wholesalerName = '';
+    if (data.lineWorkerId) {
+      try {
+        const lineWorkerDoc = await admin.firestore().collection('users').doc(data.lineWorkerId).get();
+        if (lineWorkerDoc.exists) {
+          const lineWorkerData = lineWorkerDoc.data();
+          const tenantId = lineWorkerData?.tenantId;
+          
+          if (tenantId) {
+            // Fetch tenant details to get wholesaler name
+            const tenantDoc = await admin.firestore().collection('tenants').doc(tenantId).get();
+            if (tenantDoc.exists) {
+              const tenantData = tenantDoc.data();
+              wholesalerName = tenantData?.name || '';
+              console.log('✅ FCM - Fetched wholesaler name:', wholesalerName);
+            } else {
+              console.warn('⚠️ FCM - Tenant not found for tenantId:', tenantId);
+            }
+          } else {
+            console.warn('⚠️ FCM - Line worker has no tenantId');
+          }
+        } else {
+          console.warn('⚠️ FCM - Line worker not found for lineWorkerId:', data.lineWorkerId);
+        }
+      } catch (error) {
+        console.error('❌ FCM - Error fetching wholesaler name:', error);
+        // Continue without wholesaler name if fetch fails
+      }
+    }
+
     // Get retailer document
     const retailerDoc = await admin.firestore()
       .collection('retailers')
@@ -1313,11 +1386,19 @@ export const sendFCMNotification = functions.https.onCall(async (request: any) =
     }
 
     // Prepare notification message with proper FCM format
+    // Update notification body for OTP notifications to include wholesaler name
+    let updatedNotification = { ...notification };
+    if (notification.title === 'Payment Verification Required' && notification.body && wholesalerName) {
+      // Check if this is an OTP notification and we have a wholesaler name
+      const wholesalerPart = wholesalerName ? ` from ${wholesalerName}` : '';
+      updatedNotification.body = `${notification.body}${wholesalerPart}\n-- PharmaLync`;
+    }
+    
     const message: any = {
       notification: {
-        title: notification.title,
-        body: notification.body,
-        ...(notification.image && { image: notification.image }), // Only include if image exists
+        title: updatedNotification.title,
+        body: updatedNotification.body,
+        ...(updatedNotification.image && { image: updatedNotification.image }), // Only include if image exists
       },
       data: {
         ...notification.data,

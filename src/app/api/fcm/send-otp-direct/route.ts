@@ -7,9 +7,9 @@ export async function POST(request: NextRequest) {
     console.log('🚀 DIRECT FCM API - send-otp-notification called');
     
     const body = await request.json();
-    const { retailerId, otp, amount, paymentId, lineWorkerName } = body;
+    const { retailerId, otp, amount, paymentId, lineWorkerName, lineWorkerId } = body;
     
-    console.log('📤 DIRECT FCM API - Request data:', { retailerId, otp, amount, paymentId, lineWorkerName });
+    console.log('📤 DIRECT FCM API - Request data:', { retailerId, otp, amount, paymentId, lineWorkerName, lineWorkerId });
 
     // Input validation
     if (!retailerId || !otp || !amount || !paymentId || !lineWorkerName) {
@@ -22,6 +22,35 @@ export async function POST(request: NextRequest) {
 
     const db = getFirebaseFirestore();
     const messaging = getFirebaseMessaging();
+
+    // Fetch line worker to get tenantId
+    let wholesalerName = '';
+    try {
+      const lineWorkerDoc = await db.collection('users').doc(lineWorkerId).get();
+      if (lineWorkerDoc.exists) {
+        const lineWorkerData = lineWorkerDoc.data();
+        const tenantId = lineWorkerData?.tenantId;
+        
+        if (tenantId) {
+          // Fetch tenant details to get wholesaler name
+          const tenantDoc = await db.collection('tenants').doc(tenantId).get();
+          if (tenantDoc.exists) {
+            const tenantData = tenantDoc.data();
+            wholesalerName = tenantData?.name || '';
+            console.log('✅ DIRECT FCM API - Fetched wholesaler name:', wholesalerName);
+          } else {
+            console.warn('⚠️ DIRECT FCM API - Tenant not found for tenantId:', tenantId);
+          }
+        } else {
+          console.warn('⚠️ DIRECT FCM API - Line worker has no tenantId');
+        }
+      } else {
+        console.warn('⚠️ DIRECT FCM API - Line worker not found for lineWorkerId:', lineWorkerId);
+      }
+    } catch (error) {
+      console.error('❌ DIRECT FCM API - Error fetching wholesaler name:', error);
+      // Continue without wholesaler name if fetch fails
+    }
 
     // Get retailer user details
     const retailerUsersQuery = await db
@@ -63,11 +92,37 @@ export async function POST(request: NextRequest) {
     const fcmToken = activeDevice.token;
     console.log('✅ DIRECT FCM API - Using FCM token:', fcmToken.substring(0, 20) + '...');
 
+    // Get wholesaler name if lineWorkerId is provided
+    let wholesalerName = 'Wholesaler';
+    if (lineWorkerId) {
+      try {
+        const lineWorkerDoc = await db.collection('users').doc(lineWorkerId).get();
+        if (lineWorkerDoc.exists) {
+          const lineWorkerData = lineWorkerDoc.data();
+          const tenantId = lineWorkerData?.tenantId;
+          
+          if (tenantId) {
+            const tenantDoc = await db.collection('tenants').doc(tenantId).get();
+            if (tenantDoc.exists) {
+              const tenantData = tenantDoc.data();
+              wholesalerName = tenantData?.name || 'Wholesaler';
+              console.log('✅ DIRECT FCM API - Found wholesaler name:', wholesalerName);
+            }
+          }
+        }
+      } catch (error) {
+        console.warn('⚠️ DIRECT FCM API - Error fetching wholesaler name:', error);
+      }
+    }
+
     // Create FCM message with proper icons and bold OTP
+    const wholesalerPart = wholesalerName ? ` from ${wholesalerName}` : '';
+    const messageBody = `Your OTP code is ${otp} for payment of ₹${amount.toLocaleString()} collected by ${lineWorkerName}${wholesalerPart}\n-- PharmaLync`;
+    
     const message = {
       notification: {
-        title: '🔐 Payment OTP Required',
-        body: `Your OTP code is: **${otp}** for ₹${amount.toLocaleString()} by ${lineWorkerName}`,
+        title: 'Payment Verification Required',
+        body: messageBody,
       },
       data: {
         type: 'otp',
@@ -76,6 +131,7 @@ export async function POST(request: NextRequest) {
         paymentId: paymentId,
         retailerId: retailerId,
         lineWorkerName: lineWorkerName,
+        wholesalerName: wholesalerName,
         tag: `otp-${paymentId}`,
         requireInteraction: 'true',
         // Icon paths for the notification
@@ -118,8 +174,8 @@ export async function POST(request: NextRequest) {
           themeColor: '#20439f' // Brand blue
         },
         notification: {
-          title: '🔐 Payment OTP Required',
-          body: `Your OTP code is: **${otp}** for ₹${amount.toLocaleString()} by ${lineWorkerName}`,
+          title: 'Payment Verification Required',
+          body: messageBody,
           icon: '/notification-large-192x192.png',
           badge: '/badge-72x72.png',
           tag: `otp-${paymentId}`,
