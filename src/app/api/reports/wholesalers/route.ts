@@ -27,20 +27,34 @@ export async function GET(request: NextRequest) {
     const retailerId = searchParams.get('retailerId');
 
     console.log('🆔 Retailer ID from params:', retailerId)
-    console.log('📧 User email from session:', session.user.email)
 
     if (!retailerId) {
       return NextResponse.json({ error: 'Retailer ID is required' }, { status: 400 });
     }
 
-    // First, get the retailer document to find their tenantIds
-    console.log('🔍 Fetching retailer document for:', retailerId)
-    const retailersRef = collection(db, 'retailers');
-    const retailerQuery = query(retailersRef, where('phone', '==', session.user.email || ''));
-    const retailerSnapshot = await getDocs(retailerQuery);
-    
-    if (retailerSnapshot.empty) {
-      console.log('❌ No retailer found for email:', session.user.email)
+    // Follow the exact same approach as the dashboard
+    // Step 1: Get retailer user data using RetailerAuthService
+    console.log('🔍 Step 1: Getting retailer user data for:', retailerId)
+    let retailerUserData;
+    try {
+      const { RetailerAuthService } = await import('@/services/retailer-auth');
+      retailerUserData = await RetailerAuthService.getRetailerUserByRetailerId(retailerId);
+      if (!retailerUserData) {
+        console.log('❌ No retailer user data found for retailerId:', retailerId)
+        return NextResponse.json({
+          success: true,
+          data: {
+            wholesalers: [],
+          },
+        });
+      }
+      console.log('✅ Retailer user data found:', {
+        name: retailerUserData.name,
+        retailerId: retailerUserData.retailerId,
+        tenantId: retailerUserData.tenantId
+      })
+    } catch (error) {
+      console.error('❌ Error getting retailer user data:', error)
       return NextResponse.json({
         success: true,
         data: {
@@ -49,20 +63,57 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    const retailerDoc = retailerSnapshot.docs[0];
-    const retailerData = retailerDoc.data();
-    console.log('🏪 Retailer data found:', {
-      name: retailerData.name,
-      tenantIds: retailerData.tenantIds,
-      phone: retailerData.phone
-    })
+    // Step 2: Fetch retailer document using retailerId (same as dashboard)
+    console.log('🔍 Step 2: Fetching retailer document for:', retailerId)
+    let retailerData;
+    try {
+      const retailerRef = doc(db, 'retailers', retailerId);
+      const retailerDoc = await getDoc(retailerRef);
+      
+      if (retailerDoc.exists()) {
+        retailerData = {
+          id: retailerId,
+          ...retailerDoc.data()
+        };
+        console.log('✅ Retailer document found:', {
+          name: retailerData.name,
+          tenantIds: retailerData.tenantIds
+        })
+      } else {
+        console.log('⚠️ Retailer document not found, using fallback data')
+        // Fallback to user data (same as dashboard)
+        retailerData = {
+          id: retailerUserData.retailerId,
+          name: retailerUserData.name,
+          phone: retailerUserData.phone,
+          email: retailerUserData.email || '',
+          tenantId: retailerUserData.tenantId,
+          address: retailerUserData.address || 'Address not specified',
+          areaId: '',
+          zipcodes: []
+        };
+      }
+    } catch (error) {
+      console.error('❌ Error accessing retailer document:', error)
+      // Fallback to user data (same as dashboard)
+      retailerData = {
+        id: retailerUserData.retailerId,
+        name: retailerUserData.name,
+        phone: retailerUserData.phone,
+        email: retailerUserData.email || '',
+        tenantId: retailerUserData.tenantId,
+        address: retailerUserData.address || 'Address not specified',
+        areaId: '',
+        zipcodes: []
+      };
+    }
 
-    // Get tenantIds from retailer document
-    const retailerTenants = retailerData.tenantIds || [];
-    console.log('🏢 Available tenant IDs:', retailerTenants)
+    // Step 3: Get tenantIds (same as dashboard logic)
+    const retailerTenants = retailerData.tenantIds || [retailerUserData.tenantId];
+    console.log('🏢 Step 3: Available tenant IDs:', retailerTenants)
 
     if (retailerTenants.length === 0) {
-      console.log('⚠️ No tenant IDs found for retailer')
+      console.log('⚠️ No tenant IDs found')
       return NextResponse.json({
         success: true,
         data: {
@@ -71,7 +122,8 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Fetch wholesaler details from tenants collection (same as dashboard)
+    // Step 4: Fetch wholesaler details from tenants collection (same as dashboard)
+    console.log('🔍 Step 4: Fetching wholesalers from tenants collection')
     const wholesalers: any[] = [];
     for (const tenantId of retailerTenants) {
       try {
@@ -94,7 +146,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    console.log('📊 Final wholesalers list:', wholesalers)
+    console.log('📊 Step 5: Final wholesalers list:', wholesalers)
 
     return NextResponse.json({
       success: true,
