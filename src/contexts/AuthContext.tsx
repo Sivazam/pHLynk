@@ -348,9 +348,55 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Continue with logout even if FCM unregistration fails
       }
       
-      // 🔐 SECURITY: FCM token cleanup is already handled by deleteFCMToken() above
-      // No need for additional cleanup here as it would remove all devices for the retailer
-      console.log('✅ FCM token cleanup completed by deleteFCMToken()');
+      // 🔐 SECURITY: Additional cleanup - mark all devices as inactive for this user
+      try {
+        if (user && user.isRetailer && user.retailerId) {
+          console.log('🔐 Marking all devices as inactive for retailer:', user.retailerId);
+          const response = await fetch('/api/fcm/cleanup-user-devices', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              userId: user.retailerId,
+              userType: 'retailers',
+              markAllInactive: true
+            })
+          });
+          
+          if (response.ok) {
+            const result = await response.json();
+            console.log('✅ All devices marked as inactive:', result);
+          } else {
+            console.warn('⚠️ Failed to mark all devices as inactive');
+          }
+        } else if (user && user.uid) {
+          console.log('🔐 Marking all devices as inactive for user:', user.uid);
+          const response = await fetch('/api/fcm/cleanup-user-devices', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              userId: user.uid,
+              userType: 'users',
+              markAllInactive: true
+            })
+          });
+          
+          if (response.ok) {
+            const result = await response.json();
+            console.log('✅ All devices marked as inactive:', result);
+          } else {
+            console.warn('⚠️ Failed to mark all devices as inactive');
+          }
+        }
+      } catch (cleanupError) {
+        console.warn('⚠️ Error during device cleanup:', cleanupError);
+        // Continue with logout even if cleanup fails
+      }
+      
+      console.log('✅ FCM token cleanup completed');
       
       // 🔌 Disconnect socket connections
       try {
