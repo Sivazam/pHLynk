@@ -33,25 +33,14 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Retailer ID is required' }, { status: 400 });
     }
 
-    // Fetch payments from Firebase to get unique tenantIds
-    console.log('🔍 Fetching payments for retailer:', retailerId)
-    const paymentsRef = collection(db, 'payments');
-    const paymentsQuery = query(paymentsRef, where('retailerId', '==', retailerId));
-    const paymentSnapshot = await getDocs(paymentsQuery);
+    // First, get the retailer document to find their tenantIds
+    console.log('🔍 Fetching retailer document for:', retailerId)
+    const retailersRef = collection(db, 'retailers');
+    const retailerQuery = query(retailersRef, where('phone', '==', session.user.email || ''));
+    const retailerSnapshot = await getDocs(retailerQuery);
     
-    const payments = paymentSnapshot.docs.map(doc => doc.data() as any);
-    console.log('💳 Found payments:', payments.length)
-    
-    // Get unique tenantIds from payments
-    const uniqueTenantIds = [...new Set(payments
-      .map(p => p.tenantId)
-      .filter(Boolean)
-    )];
-
-    console.log('🏢 Unique tenant IDs:', uniqueTenantIds)
-
-    if (uniqueTenantIds.length === 0) {
-      console.log('⚠️ No tenant IDs found in payments')
+    if (retailerSnapshot.empty) {
+      console.log('❌ No retailer found for email:', session.user.email)
       return NextResponse.json({
         success: true,
         data: {
@@ -60,23 +49,45 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Fetch wholesaler details from users collection
+    const retailerDoc = retailerSnapshot.docs[0];
+    const retailerData = retailerDoc.data();
+    console.log('🏪 Retailer data found:', {
+      name: retailerData.name,
+      tenantIds: retailerData.tenantIds,
+      phone: retailerData.phone
+    })
+
+    // Get tenantIds from retailer document
+    const retailerTenants = retailerData.tenantIds || [];
+    console.log('🏢 Available tenant IDs:', retailerTenants)
+
+    if (retailerTenants.length === 0) {
+      console.log('⚠️ No tenant IDs found for retailer')
+      return NextResponse.json({
+        success: true,
+        data: {
+          wholesalers: [],
+        },
+      });
+    }
+
+    // Fetch wholesaler details from tenants collection (same as dashboard)
     const wholesalers: any[] = [];
-    for (const tenantId of uniqueTenantIds) {
+    for (const tenantId of retailerTenants) {
       try {
         console.log('🔍 Fetching wholesaler for tenant:', tenantId)
-        const userDoc = await getDoc(doc(db, 'users', tenantId));
-        if (userDoc.exists()) {
-          const userData = userDoc.data();
+        const tenantDoc = await getDoc(doc(db, 'tenants', tenantId));
+        if (tenantDoc.exists()) {
+          const tenantData = tenantDoc.data();
           const wholesaler = {
             id: tenantId,
-            name: userData.displayName || userData.name || 'Unknown Wholesaler',
-            email: userData.email || '',
+            name: tenantData.name || 'Unknown Wholesaler',
+            email: tenantData.email || '',
           };
           console.log('✅ Found wholesaler:', wholesaler)
           wholesalers.push(wholesaler);
         } else {
-          console.log('⚠️ No user document found for tenant:', tenantId)
+          console.log('⚠️ No tenant document found for tenant:', tenantId)
         }
       } catch (error) {
         console.error('❌ Error fetching wholesaler:', tenantId, error);
