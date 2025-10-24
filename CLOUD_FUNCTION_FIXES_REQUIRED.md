@@ -9,7 +9,7 @@
 
 ## Fixes Applied to Code
 
-### 1. Firebase Function Calling Mechanism (`src/lib/firebase.ts`)
+### 1. Firebasse Function Calling Mechanism (`src/lib/firebase.ts`)
 
 **Issue**: The HTTP calling mechanism was not structuring data correctly for callable functions.
 
