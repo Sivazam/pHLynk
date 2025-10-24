@@ -162,62 +162,67 @@ export async function POST(request: NextRequest) {
 
     secureLogger.otp('OTP generated', { maskedCode: otpData.code.substring(0, 1) + '***' });
 
-    // Send OTP to retailer and FCM notification in parallel
-    const [smsResult, fcmResult] = await Promise.allSettled([
-      // Send OTP via SMS
-      (async () => {
-        try {
-          const { sendOTPToRetailer } = await import('@/lib/otp-store');
-          return await sendOTPToRetailer(retailerUser.phone, otpData.code, amount);
-        } catch (error) {
-          secureLogger.error('Failed to send OTP to retailer', { error: error instanceof Error ? error.message : 'Unknown error' });
-          return false;
-        }
-      })(),
-      // Send FCM notification
-      (async () => {
-        try {
-          secureLogger.otp('Sending FCM OTP notification via cloud function');
-          const { sendOTPNotificationViaCloudFunction } = await import('@/lib/cloud-functions');
-          const result = await sendOTPNotificationViaCloudFunction({
-            retailerId,
-            otp: otpData.code,
-            paymentId,
-            amount,
-            lineWorkerName: lineWorkerName || 'Line Worker'
-          });
-
-          if (result.success) {
-            secureLogger.otp('FCM OTP notification sent successfully via cloud function', { 
-              success: true, 
-              messageId: result.messageId,
-              type: result.type 
-            });
-            return result;
-          } else {
-            secureLogger.warn('FCM OTP notification failed via cloud function', { 
-              error: result.error,
-              fallbackToSMS: result.fallbackToSMS 
-            });
-            return null;
-          }
-        } catch (fcmError) {
-          secureLogger.warn('Error sending FCM OTP notification', { error: fcmError instanceof Error ? fcmError.message : 'Unknown error' });
-          return null;
-        }
-      })()
-    ]);
+    // Send OTP notification with FCM as primary and SMS as fallback
+    let notificationSent = false;
+    let notificationMethod = '';
     
-    secureLogger.otp('Parallel operations completed', { 
-      smsSuccess: smsResult.status === 'fulfilled' && smsResult.value,
-      fcmSuccess: fcmResult.status === 'fulfilled' && fcmResult.value
+    try {
+      // First, try to send FCM notification
+      secureLogger.otp('Attempting to send FCM OTP notification first');
+      const { sendOTPNotificationViaCloudFunction } = await import('@/lib/cloud-functions');
+      const fcmResult = await sendOTPNotificationViaCloudFunction({
+        retailerId,
+        otp: otpData.code,
+        paymentId,
+        amount,
+        lineWorkerName: lineWorkerName || 'Line Worker'
+      });
+
+      if (fcmResult.success) {
+        secureLogger.otp('FCM OTP notification sent successfully', { 
+          success: true, 
+          messageId: fcmResult.messageId,
+          type: fcmResult.type 
+        });
+        notificationSent = true;
+        notificationMethod = 'fcm';
+      } else {
+        secureLogger.warn('FCM OTP notification failed, falling back to SMS', { 
+          error: fcmResult.error,
+          fallbackToSMS: fcmResult.fallbackToSMS 
+        });
+      }
+    } catch (fcmError) {
+      secureLogger.warn('Error sending FCM OTP notification, falling back to SMS', { error: fcmError instanceof Error ? fcmError.message : 'Unknown error' });
+    }
+    
+    // If FCM failed, send SMS as fallback
+    if (!notificationSent) {
+      try {
+        secureLogger.otp('Sending OTP via SMS as fallback');
+        const { sendOTPToRetailer } = await import('@/lib/otp-store');
+        const smsResult = await sendOTPToRetailer(retailerUser.phone, otpData.code, amount);
+        
+        if (smsResult) {
+          secureLogger.otp('SMS OTP sent successfully as fallback');
+          notificationSent = true;
+          notificationMethod = 'sms';
+        } else {
+          secureLogger.error('Failed to send SMS OTP fallback');
+        }
+      } catch (smsError) {
+        secureLogger.error('Error sending SMS OTP fallback', { error: smsError instanceof Error ? smsError.message : 'Unknown error' });
+      }
+    }
+    
+    secureLogger.otp('Notification process completed', { 
+      notificationSent,
+      notificationMethod
     });
     
-    const sent = smsResult.status === 'fulfilled' && smsResult.value;
-    
-    if (!sent) {
+    if (!notificationSent) {
       return NextResponse.json(
-        { error: 'Failed to send OTP' },
+        { error: 'Failed to send OTP via both FCM and SMS' },
         { status: 500 }
       );
     }
@@ -253,7 +258,8 @@ export async function POST(request: NextRequest) {
       expiresAt: otpData.expiresAt,
       retailerName: retailerUser.name,
       retailerPhone: retailerUser.phone,
-      usedCloudFunction: false // Always false now since we removed cloud functions
+      notificationMethod, // 'fcm' or 'sms'
+      usedCloudFunction: notificationMethod === 'fcm' // true if FCM was used
     });
 
   } catch (error) {
