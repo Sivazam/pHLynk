@@ -59,10 +59,10 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Get retailer user details from retailerUsers collection with retry logic
+    // Get retailer user details from retailerUsers collection with optimized retry logic
     let retailerUser: any = null;
     let retryCount = 0;
-    const maxRetries = 3;
+    const maxRetries = 2; // Reduced from 3 to 2
     
     while (retryCount < maxRetries && !retailerUser) {
       try {
@@ -86,8 +86,8 @@ export async function POST(request: NextRequest) {
       
       retryCount++;
       if (retryCount < maxRetries) {
-        // Wait 1 second before retrying
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        // Reduced wait time from 1 second to 500ms
+        await new Promise(resolve => setTimeout(resolve, 500));
       }
     }
     
@@ -162,79 +162,58 @@ export async function POST(request: NextRequest) {
 
     secureLogger.otp('OTP generated', { maskedCode: otpData.code.substring(0, 1) + '***' });
 
-    // Send OTP to retailer
-    const sent = await (async () => {
-      try {
-        const { sendOTPToRetailer } = await import('@/lib/otp-store');
-        return await sendOTPToRetailer(retailerUser.phone, otpData.code, amount);
-      } catch (error) {
-        secureLogger.error('Failed to send OTP to retailer', { error: error instanceof Error ? error.message : 'Unknown error' });
-        return false;
-      }
-    })();
-    
-    secureLogger.otp('OTP send result', { success: sent });
-    
-    // Send FCM notification to retailer using cloud function
-    try {
-      secureLogger.otp('Sending FCM OTP notification via cloud function');
-      const { sendOTPNotificationViaCloudFunction } = await import('@/lib/cloud-functions');
-      const result = await sendOTPNotificationViaCloudFunction({
-        retailerId,
-        otp: otpData.code,
-        paymentId,
-        amount,
-        lineWorkerName: lineWorkerName || 'Line Worker'
-      });
-
-      if (result.success) {
-        secureLogger.otp('FCM OTP notification sent successfully via cloud function', { 
-          success: true, 
-          messageId: result.messageId,
-          type: result.type 
-        });
-      } else {
-        secureLogger.warn('FCM OTP notification failed via cloud function', { 
-          error: result.error,
-          fallbackToSMS: result.fallbackToSMS 
-        });
-        
-        // Try direct FCM as backup
-        secureLogger.otp('Trying direct FCM as backup');
+    // Send OTP to retailer and FCM notification in parallel
+    const [smsResult, fcmResult] = await Promise.allSettled([
+      // Send OTP via SMS
+      (async () => {
         try {
-          const directResponse = await fetch('/api/debug/send-direct-fcm', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              retailerId,
-              otp: otpData.code,
-              paymentId,
-              amount,
-              lineWorkerName: lineWorkerName || 'Line Worker'
-            })
-          });
-          
-          const directResult = await directResponse.json();
-          if (directResult.success) {
-            secureLogger.otp('Direct FCM backup succeeded', { 
-              foundDevices: directResult.foundDevices,
-              retailerName: directResult.retailerName
-            });
-          } else {
-            secureLogger.warn('Direct FCM backup also failed', { error: directResult.error });
-          }
-        } catch (directError) {
-          secureLogger.warn('Direct FCM backup error', { error: directError instanceof Error ? directError.message : 'Unknown error' });
+          const { sendOTPToRetailer } = await import('@/lib/otp-store');
+          return await sendOTPToRetailer(retailerUser.phone, otpData.code, amount);
+        } catch (error) {
+          secureLogger.error('Failed to send OTP to retailer', { error: error instanceof Error ? error.message : 'Unknown error' });
+          return false;
         }
-      }
-    } catch (fcmError) {
-      secureLogger.warn('Error sending FCM OTP notification', { error: fcmError instanceof Error ? fcmError.message : 'Unknown error' });
-      secureLogger.otp('FCM error - OTP will be available in retailer dashboard');
-      // Don't fail the request if FCM fails
-    }
+      })(),
+      // Send FCM notification
+      (async () => {
+        try {
+          secureLogger.otp('Sending FCM OTP notification via cloud function');
+          const { sendOTPNotificationViaCloudFunction } = await import('@/lib/cloud-functions');
+          const result = await sendOTPNotificationViaCloudFunction({
+            retailerId,
+            otp: otpData.code,
+            paymentId,
+            amount,
+            lineWorkerName: lineWorkerName || 'Line Worker'
+          });
 
-    // PWA notifications are now handled by FCM - no need for duplicate local notifications
-    secureLogger.otp('FCM notification sent - skipping local PWA notification to avoid duplicates');
+          if (result.success) {
+            secureLogger.otp('FCM OTP notification sent successfully via cloud function', { 
+              success: true, 
+              messageId: result.messageId,
+              type: result.type 
+            });
+            return result;
+          } else {
+            secureLogger.warn('FCM OTP notification failed via cloud function', { 
+              error: result.error,
+              fallbackToSMS: result.fallbackToSMS 
+            });
+            return null;
+          }
+        } catch (fcmError) {
+          secureLogger.warn('Error sending FCM OTP notification', { error: fcmError instanceof Error ? fcmError.message : 'Unknown error' });
+          return null;
+        }
+      })()
+    ]);
+    
+    secureLogger.otp('Parallel operations completed', { 
+      smsSuccess: smsResult.status === 'fulfilled' && smsResult.value,
+      fcmSuccess: fcmResult.status === 'fulfilled' && fcmResult.value
+    });
+    
+    const sent = smsResult.status === 'fulfilled' && smsResult.value;
     
     if (!sent) {
       return NextResponse.json(
@@ -243,22 +222,29 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Clean up expired OTPs
-    await secureOTPStorage.cleanupExpiredOTPs();
+    // Update payment state to OTP_SENT (run asynchronously to not block response)
+    (async () => {
+      try {
+        const paymentRef = doc(db, 'payments', paymentId);
+        await updateDoc(paymentRef, {
+          state: 'OTP_SENT',
+          'timeline.otpSentAt': new Date(),
+          updatedAt: new Date()
+        });
+        secureLogger.otp('Payment state updated to OTP_SENT');
+      } catch (paymentUpdateError) {
+        secureLogger.error('Error updating payment state to OTP_SENT', { error: paymentUpdateError instanceof Error ? paymentUpdateError.message : 'Unknown error' });
+      }
+    })();
 
-    // Update payment state to OTP_SENT
-    try {
-      const paymentRef = doc(db, 'payments', paymentId);
-      await updateDoc(paymentRef, {
-        state: 'OTP_SENT',
-        'timeline.otpSentAt': new Date(),
-        updatedAt: new Date()
-      });
-      secureLogger.otp('Payment state updated to OTP_SENT');
-    } catch (paymentUpdateError) {
-      secureLogger.error('Error updating payment state to OTP_SENT', { error: paymentUpdateError instanceof Error ? paymentUpdateError.message : 'Unknown error' });
-      // Don't fail the request if payment update fails
-    }
+    // Clean up expired OTPs (run asynchronously to not block response)
+    (async () => {
+      try {
+        await secureOTPStorage.cleanupExpiredOTPs();
+      } catch (cleanupError) {
+        secureLogger.warn('Failed to cleanup expired OTPs', { error: cleanupError instanceof Error ? cleanupError.message : 'Unknown error' });
+      }
+    })();
 
     return NextResponse.json({
       success: true,

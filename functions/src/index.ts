@@ -989,11 +989,14 @@ export const sendPaymentCompletionNotification = functions.https.onCall(async (r
 
       console.log(`📱 Found ${fcmDevices.length} FCM devices for wholesaler`);
 
-      // Filter active devices (last active within 30 days)
+      // Filter active devices (isActive: true AND last active within 30 days)
       const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
       const activeDevices = fcmDevices.filter((device: any) => {
         const lastActive = device.lastActive?.toDate?.() || new Date(device.lastActive);
-        return lastActive > thirtyDaysAgo;
+        const isRecentlyActive = lastActive > thirtyDaysAgo;
+        const isCurrentlyActive = device.isActive !== false; // Check isActive flag
+        console.log(`🔍 Device ${device.deviceId}: isActive=${device.isActive}, lastActive=${lastActive.toISOString()}, recentlyActive=${isRecentlyActive}, currentlyActive=${isCurrentlyActive}`);
+        return isRecentlyActive && isCurrentlyActive;
       });
 
       console.log(`📱 ${activeDevices.length} active devices after filtering`);
@@ -1053,11 +1056,14 @@ export const sendPaymentCompletionNotification = functions.https.onCall(async (r
 
       console.log(`📱 Found ${fcmDevices.length} FCM devices for retailer`);
 
-      // Filter active devices (last active within 30 days)
+      // Filter active devices (isActive: true AND last active within 30 days)
       const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
       const activeDevices = fcmDevices.filter((device: any) => {
         const lastActive = device.lastActive?.toDate?.() || new Date(device.lastActive);
-        return lastActive > thirtyDaysAgo;
+        const isRecentlyActive = lastActive > thirtyDaysAgo;
+        const isCurrentlyActive = device.isActive !== false; // Check isActive flag
+        console.log(`🔍 Device ${device.deviceId}: isActive=${device.isActive}, lastActive=${lastActive.toISOString()}, recentlyActive=${isRecentlyActive}, currentlyActive=${isCurrentlyActive}`);
+        return isRecentlyActive && isCurrentlyActive;
       });
 
       console.log(`📱 ${activeDevices.length} active devices after filtering`);
@@ -1262,11 +1268,14 @@ export const sendFCMNotification = functions.https.onCall(async (request: any) =
 
     console.log(`📱 Found ${fcmDevices.length} FCM devices for retailer`);
 
-    // Filter active devices (last active within 30 days)
+    // Filter active devices (isActive: true AND last active within 30 days)
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     const activeDevices = fcmDevices.filter((device: any) => {
       const lastActive = device.lastActive?.toDate?.() || new Date(device.lastActive);
-      return lastActive > thirtyDaysAgo;
+      const isRecentlyActive = lastActive > thirtyDaysAgo;
+      const isCurrentlyActive = device.isActive !== false; // Check isActive flag
+      console.log(`🔍 Device ${device.deviceId}: isActive=${device.isActive}, lastActive=${lastActive.toISOString()}, recentlyActive=${isRecentlyActive}, currentlyActive=${isCurrentlyActive}`);
+      return isRecentlyActive && isCurrentlyActive;
     });
 
     console.log(`📱 ${activeDevices.length} active devices after filtering`);

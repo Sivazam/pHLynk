@@ -11,12 +11,14 @@ export default function WholesalerSignupPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [isRedirecting, setIsRedirecting] = useState(false);
 
   const handleSignup = async (data: any) => {
     console.log('🚀 Starting wholesaler signup process:', { businessName: data.businessName, email: data.email });
     setLoading(true);
     setError(null);
     setSuccess(null);
+    setIsRedirecting(false);
 
     try {
       console.log('📤 Sending request to API...');
@@ -34,7 +36,7 @@ export default function WholesalerSignupPage() {
       console.log('📥 Wholesaler signup API response:', result);
 
       if (result.success) {
-        console.log('✅ Wholesaler signup successful, showing success message...');
+        console.log('✅ Wholesaler signup successful, preparing to redirect...');
         console.log('📄 Success details:', { 
           message: result.message, 
           tenantId: result.tenantId, 
@@ -42,14 +44,17 @@ export default function WholesalerSignupPage() {
           status: result.status 
         });
         
-        // Show success message on this page first
+        // Set redirecting state to prevent further interactions
+        setIsRedirecting(true);
+        
+        // Show brief success message, then redirect immediately
         setSuccess(result.message || 'Account created successfully! Please wait for admin approval.');
         
-        // Wait a moment to show the success message, then redirect
+        // Redirect after a brief delay to show success message
         setTimeout(() => {
           console.log('🔄 Redirecting to login page with success message...');
           router.push('/?message=' + encodeURIComponent(result.message || 'Account created successfully. Please wait for admin approval.'));
-        }, 3000);
+        }, 1500);
       } else {
         console.error('❌ Wholesaler signup failed:', result.error);
         setError(result.error || 'Failed to create account');
@@ -63,7 +68,9 @@ export default function WholesalerSignupPage() {
       });
       setError(err.message || 'An unexpected error occurred. Please try again.');
     } finally {
-      setLoading(false);
+      if (!isRedirecting) {
+        setLoading(false);
+      }
       console.log('🏁 Signup process completed, loading set to false');
     }
   };
@@ -79,13 +86,14 @@ export default function WholesalerSignupPage() {
         <div className="fixed bottom-4 right-4 bg-black bg-opacity-75 text-white p-4 rounded-lg text-xs z-50 max-w-xs">
           <p><strong>Debug Info:</strong></p>
           <p>Loading: {loading ? 'Yes' : 'No'}</p>
+          <p>Redirecting: {isRedirecting ? 'Yes' : 'No'}</p>
           <p>Error: {error || 'None'}</p>
           <p>Success: {success || 'None'}</p>
         </div>
       )}
       
       {/* Loading Overlay */}
-      {loading && (
+      {loading && !isRedirecting && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 flex flex-col items-center">
             <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mb-4"></div>
@@ -101,6 +109,12 @@ export default function WholesalerSignupPage() {
             <CheckCircle className="h-4 w-4 text-green-600" />
             <AlertDescription className="text-green-800">
               {success}
+              {isRedirecting && (
+                <div className="flex items-center mt-2 text-sm">
+                  <div className="w-3 h-3 border-2 border-green-600 border-t-transparent rounded-full animate-spin mr-2"></div>
+                  Redirecting to login...
+                </div>
+              )}
             </AlertDescription>
           </Alert>
         </div>
@@ -109,7 +123,7 @@ export default function WholesalerSignupPage() {
       <WholesalerSignupForm
         onSubmit={handleSignup}
         onBackToLogin={handleBackToLogin}
-        loading={loading}
+        loading={loading || isRedirecting}
         error={error}
       />
     </div>

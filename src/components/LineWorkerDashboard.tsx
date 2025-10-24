@@ -471,6 +471,9 @@ export function LineWorkerDashboard() {
 
     setIsCollectingPayment(true);
     try {
+      console.log('🚀 Starting payment collection process...');
+      
+      // Create payment first (this is fast)
       const payment = {
         retailerId: paymentData.retailerId,
         retailerName: retailers.find(r => r.id === paymentData.retailerId)?.name || 'Unknown',
@@ -493,36 +496,49 @@ export function LineWorkerDashboard() {
       });
       console.log('✅ Payment created successfully:', createdPaymentId);
       
-      // Send OTP to retailer
+      // Get retailer info early for faster setup
+      const retailer = retailers.find(r => r.id === payment.retailerId);
+      if (!retailer) {
+        throw new Error('Retailer not found');
+      }
+      
+      // Send OTP to retailer (this is the main bottleneck)
       try {
         console.log('📤 Sending OTP to retailer...');
-        const response = await fetch('/api/otp/send', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            retailerId: payment.retailerId,
-            paymentId: createdPaymentId,
-            amount: payment.totalPaid,
-            lineWorkerName: user?.displayName || 'Line Worker'
+        
+        // Start OTP sending in parallel with getting payment details
+        const [otpResponse, createdPayment] = await Promise.allSettled([
+          fetch('/api/otp/send', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              retailerId: payment.retailerId,
+              paymentId: createdPaymentId,
+              amount: payment.totalPaid,
+              lineWorkerName: user?.displayName || 'Line Worker'
+            }),
           }),
-        });
+          paymentService.getById(createdPaymentId, currentTenantId)
+        ]);
 
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || 'Failed to send OTP');
+        // Handle OTP response
+        if (otpResponse.status === 'fulfilled') {
+          const response = otpResponse.value;
+          if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Failed to send OTP');
+          }
+          const otpResult = await response.json();
+          console.log('✅ OTP sent successfully:', otpResult);
+        } else {
+          throw new Error('Failed to send OTP');
         }
 
-        const otpResult = await response.json();
-        console.log('✅ OTP sent successfully:', otpResult);
-        
-        // Get the created payment and retailer for OTP entry
-        const createdPayment = await paymentService.getById(createdPaymentId, currentTenantId);
-        const retailer = retailers.find(r => r.id === payment.retailerId);
-        
-        if (createdPayment && retailer) {
-          setSelectedPaymentForOTP(createdPayment);
+        // Handle payment details
+        if (createdPayment.status === 'fulfilled' && createdPayment.value) {
+          setSelectedPaymentForOTP(createdPayment.value);
           setSelectedRetailerForOTP(retailer);
           setShowOTPEnterDialog(true);
         } else {

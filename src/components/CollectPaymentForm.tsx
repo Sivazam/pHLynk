@@ -91,6 +91,9 @@ const CollectPaymentFormComponent = ({
     try {
       setError(null);
       console.log('🚀 Initiating payment collection...', formData);
+      
+      // Show immediate feedback that we're processing
+      console.log('📤 Creating payment record...');
       await onCollectRef.current(formData);
       
       // Show success state and trigger confetti
@@ -293,7 +296,7 @@ const CollectPaymentFormComponent = ({
                 {collectingPayment ? (
                   <div className="flex items-center justify-center">
                     <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                    Processing...
+                    Sending OTP...
                   </div>
                 ) : (
                   'Collect Payment'
