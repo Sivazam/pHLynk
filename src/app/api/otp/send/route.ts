@@ -94,6 +94,21 @@ export async function POST(request: NextRequest) {
     let retryCount = 0;
     const maxRetries = 2; // Reduced from 3 to 2
     
+    // Fetch line worker ID from payment document if not provided
+    let actualLineWorkerId = lineWorkerId;
+    if (!actualLineWorkerId && paymentId) {
+      try {
+        const paymentDoc = await getDoc(doc(db, 'payments', paymentId));
+        if (paymentDoc.exists()) {
+          const paymentData = paymentDoc.data();
+          actualLineWorkerId = paymentData?.lineWorkerId || '';
+          console.log('📋 Fetched lineWorkerId from payment:', actualLineWorkerId);
+        }
+      } catch (error) {
+        console.warn('⚠️ Error fetching lineWorkerId from payment:', error);
+      }
+    }
+    
     while (retryCount < maxRetries && !retailerUser) {
       try {
         secureLogger.otp('Attempting to find retailer user', { 
@@ -144,7 +159,7 @@ export async function POST(request: NextRequest) {
       paymentId,
       amount,
       lineWorkerName,
-      lineWorkerId,
+      lineWorkerId: actualLineWorkerId,
       hasPhone: !!retailerUser.phone
     });
 
@@ -217,7 +232,7 @@ export async function POST(request: NextRequest) {
         paymentId,
         amount,
         lineWorkerName: lineWorkerName || 'Line Worker',
-        lineWorkerId: lineWorkerId || ''
+        lineWorkerId: actualLineWorkerId || ''
       });
 
       if (fcmResult.success) {
