@@ -17,6 +17,7 @@ import {
   RefreshCw
 } from 'lucide-react'
 import Link from 'next/link'
+import ReportDialog from '@/components/ui/ReportDialog'
 
 interface PendingPayment {
   id: string
@@ -45,9 +46,15 @@ export default function RetailerDashboard() {
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
+  const [retailerId, setRetailerId] = useState<string | null>(null)
 
   useEffect(() => {
-    fetchDashboardData()
+    // Get retailer ID from localStorage
+    const storedRetailerId = localStorage.getItem('retailerId')
+    if (storedRetailerId) {
+      setRetailerId(storedRetailerId)
+      fetchDashboardData()
+    }
     
     // Set up periodic refresh to keep data current
     const refreshInterval = setInterval(() => {
@@ -286,6 +293,9 @@ export default function RetailerDashboard() {
           )}
         </CardContent>
       </Card>
+
+      {/* Floating Report Button */}
+      {retailerId && <ReportDialog retailerId={retailerId} />}
     </div>
   )
 }

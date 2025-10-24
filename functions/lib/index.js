@@ -734,7 +734,7 @@ exports.sendOTPNotification = functions.https.onCall(async (request) => {
         }
         // Create FCM message with proper icons and updated format
         const wholesalerPart = wholesalerName ? ` from ${wholesalerName}` : '';
-        const messageBody = `Your OTP code is ${data.otp} for payment of ₹${data.amount.toLocaleString()} collected by ${data.lineWorkerName}${wholesalerPart}\n-- PharmaLync`;
+        const messageBody = `Your OTP code is ${data.otp} for payment of ₹${data.amount.toLocaleString()} collected by ${data.lineWorkerName}${wholesalerPart} - PharmaLync`;
         const message = {
             notification: {
                 title: 'Payment Verification Required',

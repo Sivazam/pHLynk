@@ -63,16 +63,34 @@ export function EnhancedReceipt({
 
   useEffect(() => {
     const fetchTenantInfo = async () => {
-      if (payment.tenantId && payment.tenantId !== 'all') {
+      let actualTenantId = payment.tenantId;
+      
+      // If no tenantId in payment, try to get it from lineWorkerId
+      if (!actualTenantId && payment.lineWorkerId) {
         try {
           const db = getFirestore();
-          const tenantDoc = await getDoc(doc(db, 'tenants', payment.tenantId));
+          const lineWorkerDoc = await getDoc(doc(db, 'users', payment.lineWorkerId));
+          if (lineWorkerDoc.exists()) {
+            const lineWorkerData = lineWorkerDoc.data();
+            actualTenantId = lineWorkerData?.tenantId || '';
+            console.log('📋 Receipt: Fetched tenantId from lineWorker:', actualTenantId);
+          }
+        } catch (error) {
+          console.error('Error fetching tenantId from lineWorker:', error);
+        }
+      }
+      
+      if (actualTenantId && actualTenantId !== 'all') {
+        try {
+          const db = getFirestore();
+          const tenantDoc = await getDoc(doc(db, 'tenants', actualTenantId));
           if (tenantDoc.exists()) {
             const tenantData = tenantDoc.data();
             setTenantInfo({
               name: tenantData.name || 'Unknown Wholesaler',
               address: tenantData.address || undefined
             });
+            console.log('📋 Receipt: Fetched wholesaler name:', tenantData.name);
           }
         } catch (error) {
           console.error('Error fetching tenant info:', error);
@@ -81,7 +99,7 @@ export function EnhancedReceipt({
     };
 
     fetchTenantInfo();
-  }, [payment.tenantId]);
+  }, [payment.tenantId, payment.lineWorkerId]);
 
   const wholesalerName = tenantInfo?.name || 
     (tenantId === 'all' 

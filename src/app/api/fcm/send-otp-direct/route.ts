@@ -94,7 +94,7 @@ export async function POST(request: NextRequest) {
 
     // Create FCM message with proper icons and updated format
     const wholesalerPart = wholesalerName ? ` from ${wholesalerName}` : '';
-    const messageBody = `Your OTP code is ${otp} for payment of ₹${amount.toLocaleString()} collected by ${lineWorkerName}${wholesalerPart}\n-- PharmaLync`;
+    const messageBody = `Your OTP code is ${otp} for payment of ₹${amount.toLocaleString()} collected by ${lineWorkerName}${wholesalerPart} - PharmaLync`;
     
     const message = {
       notification: {
