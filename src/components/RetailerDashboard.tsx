@@ -60,6 +60,7 @@ import {
 import { StatusBarColor } from './ui/StatusBarColor';
 import { Confetti } from './ui/Confetti';
 import { WholesalerSlider } from './ui/wholesaler-slider';
+import ReportDialog from './ui/ReportDialog';
 
 export function RetailerDashboard() {
   const { user, logout } = useAuth();
@@ -2247,6 +2248,9 @@ export function RetailerDashboard() {
           onClose={closeReceiptDialog}
         />
       )}
+
+      {/* Floating Report Button */}
+      {retailer && <ReportDialog retailerId={retailer.id} />}
     </div>
   );
 }

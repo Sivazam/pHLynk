@@ -52,18 +52,24 @@ export default function RetailerDashboard() {
     // Fetch current retailer information from API
     const fetchCurrentRetailer = async () => {
       try {
+        console.log('🏪 Retailer Dashboard: Starting fetchCurrentRetailer')
         const response = await fetch('/api/retailer/current')
+        console.log('🏪 Retailer Dashboard: API response status:', response.status)
+        
         if (response.ok) {
           const data = await response.json()
+          console.log('🏪 Retailer Dashboard: API response data:', data)
+          
           if (data.success) {
             console.log('🏪 Retailer Dashboard: Using retailerId from API:', data.retailerId)
             setRetailerId(data.retailerId)
             fetchDashboardData()
           } else {
-            console.log('🏪 Retailer Dashboard: API returned no retailer data')
+            console.log('🏪 Retailer Dashboard: API returned no retailer data:', data.error)
           }
         } else {
-          console.log('🏪 Retailer Dashboard: API call failed')
+          const errorData = await response.json()
+          console.log('🏪 Retailer Dashboard: API call failed:', response.status, errorData)
         }
       } catch (error) {
         console.error('🏪 Retailer Dashboard: Error fetching retailer info:', error)
@@ -312,11 +318,6 @@ export default function RetailerDashboard() {
 
       {/* Floating Report Button */}
       {retailerId && <ReportDialog retailerId={retailerId} />}
-      {!retailerId && loading && (
-        <div className="fixed bottom-20 right-4 p-2 bg-yellow-100 text-yellow-800 text-xs rounded shadow z-50">
-          Loading retailer info...
-        </div>
-      )}
     </div>
   )
 }

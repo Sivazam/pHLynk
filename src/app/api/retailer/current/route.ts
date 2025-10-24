@@ -9,14 +9,19 @@ import { collection, query, where, getDocs } from 'firebase/firestore'
 
 export async function GET(request: NextRequest) {
   try {
+    console.log('🏪 Current Retailer API: Starting request')
+    
     const session = await getServerSession(authOptions)
+    console.log('🏪 Current Retailer API: Session:', session ? 'EXISTS' : 'NULL')
     
     if (!session || session.user.role !== 'RETAILER') {
+      console.log('🏪 Current Retailer API: Unauthorized - session:', session?.user?.role)
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     const retailerId = session.user.id
     console.log('🏪 Current Retailer API: session.user.id:', retailerId)
+    console.log('🏪 Current Retailer API: session.user.email:', session.user.email)
 
     // Get retailer details from retailers collection using phone as identifier
     const retailersRef = collection(db, 'retailers')
