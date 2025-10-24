@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
     
     if (!retailerSnapshot.empty) {
       const retailerDoc = retailerSnapshot.docs[0]
-      const retailerData = { id: retailerDoc.id, ...retailerDoc.data() }
+      const retailerData = { id: retailerDoc.id, ...retailerDoc.data() } as any
       console.log('🏪 Current Retailer API: Found retailer:', retailerData.name)
       
       return NextResponse.json({
