@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Fetch wholesaler details from users collection
-    const wholesalers = [];
+    const wholesalers: any[] = [];
     for (const tenantId of uniqueTenantIds) {
       try {
         const userDoc = await getDoc(doc(db, 'users', tenantId));
