@@ -1,76 +1,8 @@
 import * as functions from 'firebase-functions';
-export declare const sendRetailerPaymentSMS: functions.https.CallableFunction<any, Promise<{
-    success: boolean;
-    messageId: any;
-    phone: string;
-    status: string;
-}>, unknown>;
-export declare const sendWholesalerPaymentSMS: functions.https.CallableFunction<any, Promise<{
-    success: boolean;
-    messageId: any;
-    phone: string;
-    status: string;
-}>, unknown>;
-export declare const processSMSResponse: functions.https.CallableFunction<any, Promise<{
-    success: boolean;
-    requestId: any;
-    messages: any;
-    messageId?: undefined;
-    error?: undefined;
-} | {
-    success: boolean;
-    messageId: any;
-    error: string;
-    requestId?: undefined;
-    messages?: undefined;
-} | {
-    success: boolean;
-    error: string;
-    requestId?: undefined;
-    messages?: undefined;
-    messageId?: undefined;
-}>, unknown>;
-export declare const sendOTPNotification: functions.https.CallableFunction<any, Promise<{
-    success: boolean;
-    error: string;
-    fallbackToSMS: boolean;
-    messageId?: undefined;
-    type?: undefined;
-} | {
-    success: boolean;
-    messageId: string;
-    type: string;
-    error?: undefined;
-    fallbackToSMS?: undefined;
-}>, unknown>;
-export declare const sendPaymentCompletionNotification: functions.https.CallableFunction<any, Promise<{
-    success: boolean;
-    message: string;
-    sentCount: number;
-    failedCount: number;
-    results: any[];
-} | {
-    success: boolean;
-    message: string;
-    deviceCount: number;
-}>, unknown>;
-export declare const sendTestFCMNotification: functions.https.CallableFunction<any, Promise<{
-    success: boolean;
-    messageId: string;
-    message: string;
-}>, unknown>;
-export declare const sendFCMNotification: functions.https.CallableFunction<any, Promise<{
-    success: boolean;
-    message: string;
-    deviceCount: number;
-    sentCount?: undefined;
-    failedCount?: undefined;
-    results?: undefined;
-} | {
-    success: boolean;
-    message: string;
-    sentCount: number;
-    failedCount: number;
-    deviceCount: any;
-    results: any[];
-}>, unknown>;
+export declare const sendRetailerPaymentSMS: functions.HttpsFunction & functions.Runnable<any>;
+export declare const sendWholesalerPaymentSMS: functions.HttpsFunction & functions.Runnable<any>;
+export declare const processSMSResponse: functions.HttpsFunction & functions.Runnable<any>;
+export declare const sendOTPNotification: functions.HttpsFunction & functions.Runnable<any>;
+export declare const sendPaymentCompletionNotification: functions.HttpsFunction & functions.Runnable<any>;
+export declare const sendTestFCMNotification: functions.HttpsFunction & functions.Runnable<any>;
+export declare const sendFCMNotification: functions.HttpsFunction & functions.Runnable<any>;

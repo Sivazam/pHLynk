@@ -850,15 +850,27 @@ exports.sendPaymentCompletionNotification = functions.https.onCall(async (reques
             console.log(`📱 Found ${fcmDevices.length} FCM devices for wholesaler`);
             // Filter active devices (isActive: true AND last active within 30 days)
             const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-            const activeDevices = fcmDevices.filter((device) => {
+            let activeDevices = fcmDevices.filter((device) => {
                 var _a, _b;
                 const lastActive = ((_b = (_a = device.lastActive) === null || _a === void 0 ? void 0 : _a.toDate) === null || _b === void 0 ? void 0 : _b.call(_a)) || new Date(device.lastActive);
                 const isRecentlyActive = lastActive > thirtyDaysAgo;
-                const isCurrentlyActive = device.isActive !== false; // Check isActive flag
+                const isCurrentlyActive = device.isActive === true; // Must be explicitly true
                 console.log(`🔍 Device ${device.deviceId}: isActive=${device.isActive}, lastActive=${lastActive.toISOString()}, recentlyActive=${isRecentlyActive}, currentlyActive=${isCurrentlyActive}`);
                 return isRecentlyActive && isCurrentlyActive;
             });
-            console.log(`📱 ${activeDevices.length} active devices after filtering`);
+            // Remove duplicate devices with same token (keep the most recently active one)
+            const uniqueDevices = new Map();
+            activeDevices.forEach((device) => {
+                var _a, _b, _c, _d;
+                const existingDevice = uniqueDevices.get(device.token);
+                if (!existingDevice ||
+                    (((_b = (_a = device.lastActive) === null || _a === void 0 ? void 0 : _a.toDate) === null || _b === void 0 ? void 0 : _b.call(_a)) || new Date(device.lastActive)) >
+                        (((_d = (_c = existingDevice.lastActive) === null || _c === void 0 ? void 0 : _c.toDate) === null || _d === void 0 ? void 0 : _d.call(_c)) || new Date(existingDevice.lastActive))) {
+                    uniqueDevices.set(device.token, device);
+                }
+            });
+            activeDevices = Array.from(uniqueDevices.values());
+            console.log(`📱 ${activeDevices.length} unique active devices after filtering and deduplication`);
             if (activeDevices.length === 0) {
                 return {
                     success: false,
@@ -906,15 +918,27 @@ exports.sendPaymentCompletionNotification = functions.https.onCall(async (reques
             console.log(`📱 Found ${fcmDevices.length} FCM devices for retailer`);
             // Filter active devices (isActive: true AND last active within 30 days)
             const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-            const activeDevices = fcmDevices.filter((device) => {
+            let activeDevices = fcmDevices.filter((device) => {
                 var _a, _b;
                 const lastActive = ((_b = (_a = device.lastActive) === null || _a === void 0 ? void 0 : _a.toDate) === null || _b === void 0 ? void 0 : _b.call(_a)) || new Date(device.lastActive);
                 const isRecentlyActive = lastActive > thirtyDaysAgo;
-                const isCurrentlyActive = device.isActive !== false; // Check isActive flag
+                const isCurrentlyActive = device.isActive === true; // Must be explicitly true
                 console.log(`🔍 Device ${device.deviceId}: isActive=${device.isActive}, lastActive=${lastActive.toISOString()}, recentlyActive=${isRecentlyActive}, currentlyActive=${isCurrentlyActive}`);
                 return isRecentlyActive && isCurrentlyActive;
             });
-            console.log(`📱 ${activeDevices.length} active devices after filtering`);
+            // Remove duplicate devices with same token (keep the most recently active one)
+            const uniqueDevices = new Map();
+            activeDevices.forEach((device) => {
+                var _a, _b, _c, _d;
+                const existingDevice = uniqueDevices.get(device.token);
+                if (!existingDevice ||
+                    (((_b = (_a = device.lastActive) === null || _a === void 0 ? void 0 : _a.toDate) === null || _b === void 0 ? void 0 : _b.call(_a)) || new Date(device.lastActive)) >
+                        (((_d = (_c = existingDevice.lastActive) === null || _c === void 0 ? void 0 : _c.toDate) === null || _d === void 0 ? void 0 : _d.call(_c)) || new Date(existingDevice.lastActive))) {
+                    uniqueDevices.set(device.token, device);
+                }
+            });
+            activeDevices = Array.from(uniqueDevices.values());
+            console.log(`📱 ${activeDevices.length} unique active devices after filtering and deduplication`);
             if (activeDevices.length === 0) {
                 return {
                     success: false,
@@ -1189,7 +1213,8 @@ async function sendNotificationToDevices(activeDevices, notification) {
         data: Object.assign(Object.assign({}, notification.data), { icon: `${process.env.NEXT_PUBLIC_BASE_URL || 'https://localhost:3000'}/notification-large-192x192.png`, badge: `${process.env.NEXT_PUBLIC_BASE_URL || 'https://localhost:3000'}/badge-72x72.png`, tag: notification.tag, clickAction: notification.clickAction }),
         android: {
             priority: 'high',
-            notification: Object.assign(Object.assign({ sound: 'default' }, (notification.clickAction && { click_action: notification.clickAction })), { icon: `${process.env.NEXT_PUBLIC_BASE_URL || 'https://localhost:3000'}/notification-small-24x24.png`, color: '#000000', notificationCount: 1 })
+            notification: Object.assign(Object.assign({ sound: 'default' }, (notification.clickAction && { click_action: notification.clickAction })), { icon: `${process.env.NEXT_PUBLIC_BASE_URL || 'https://localhost:3000'}/notification-small-24x24.png`, color: '#000000', notificationCount: 1, tag: notification.tag // Android tag to prevent duplicates
+             })
         },
         apns: Object.assign({ payload: {
                 aps: {

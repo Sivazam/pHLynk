@@ -7,7 +7,7 @@ import { parse } from 'url';
 import { join } from 'path';
 
 const dev = process.env.NODE_ENV !== 'production';
-const currentPort = process.env.PORT || 3000;
+const currentPort = parseInt(process.env.PORT || '3000', 10);
 const hostname = '0.0.0.0';
 
 // Custom server with Socket.IO integration

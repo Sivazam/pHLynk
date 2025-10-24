@@ -44,6 +44,12 @@ export async function POST(request: NextRequest) {
           ? `${minutes} minute${minutes > 1 ? 's' : ''} and ${seconds} second${seconds !== 1 ? 's' : ''}`
           : `${seconds} second${seconds !== 1 ? 's' : ''}`;
         
+        secureLogger.otp('Active OTP already exists, rejecting duplicate request', {
+          paymentId,
+          timeRemaining,
+          retailerId
+        });
+        
         return NextResponse.json(
           { 
             error: `Active OTP already exists. Please wait ${timeString} for the current OTP to expire.`,
@@ -56,6 +62,29 @@ export async function POST(request: NextRequest) {
       } else {
         // OTP has expired, continue with generating new one
         secureLogger.otp('Expired OTP found, generating new one', { paymentId });
+      }
+    }
+
+    // Additional check: Prevent OTP generation spam for same payment within 30 seconds
+    const recentOTPKey = `recent_otp_${paymentId}`;
+    const recentOTP = await secureOTPStorage.getOTP(recentOTPKey);
+    if (recentOTP) {
+      const timeSinceLastOTP = (Date.now() - recentOTP.createdAt.getTime()) / 1000;
+      if (timeSinceLastOTP < 30) {
+        secureLogger.otp('OTP generation too frequent, rejecting request', {
+          paymentId,
+          timeSinceLastOTP,
+          retailerId
+        });
+        
+        return NextResponse.json(
+          { 
+            error: 'OTP was recently generated. Please wait before requesting a new one.',
+            tooFrequent: true,
+            waitTime: Math.ceil(30 - timeSinceLastOTP)
+          },
+          { status: 429 }
+        );
       }
     }
 
@@ -134,6 +163,16 @@ export async function POST(request: NextRequest) {
         lineWorkerName: lineWorkerName || 'Line Worker',
         expiresAt
       });
+
+      // Also store a recent OTP marker to prevent spam
+      await secureOTPStorage.storeOTP({
+        paymentId: `recent_otp_${paymentId}`,
+        code: 'recent_marker',
+        retailerId,
+        amount: 0,
+        lineWorkerName: lineWorkerName || 'Line Worker',
+        expiresAt: new Date(Date.now() + 30 * 1000) // 30 seconds
+      });
       
       console.log('🔍 OTP Send - Retailer ID Debug:', {
         'retailerId from request': retailerId,
@@ -182,18 +221,28 @@ export async function POST(request: NextRequest) {
         secureLogger.otp('FCM OTP notification sent successfully', { 
           success: true, 
           messageId: fcmResult.messageId,
-          type: fcmResult.type 
+          type: fcmResult.type,
+          deviceCount: fcmResult.data?.deviceCount || 0
         });
         notificationSent = true;
         notificationMethod = 'fcm';
+        
+        // Log warning if multiple devices were found
+        if (fcmResult.data?.deviceCount > 1) {
+          secureLogger.warn('Multiple active devices found for retailer', {
+            retailerId,
+            deviceCount: fcmResult.data.deviceCount,
+            paymentId
+          });
+        }
       } else {
-        secureLogger.warn('FCM OTP notification failed, falling back to SMS', { 
+        secureLogger.warn('FCM OTP notification failed', { 
           error: fcmResult.error,
           fallbackToSMS: fcmResult.fallbackToSMS 
         });
       }
     } catch (fcmError) {
-      secureLogger.warn('Error sending FCM OTP notification, falling back to SMS', { error: fcmError instanceof Error ? fcmError.message : 'Unknown error' });
+      secureLogger.warn('Error sending FCM OTP notification', { error: fcmError instanceof Error ? fcmError.message : 'Unknown error' });
     }
     
     // If FCM failed, send SMS as fallback

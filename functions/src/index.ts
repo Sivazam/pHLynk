@@ -991,15 +991,27 @@ export const sendPaymentCompletionNotification = functions.https.onCall(async (r
 
       // Filter active devices (isActive: true AND last active within 30 days)
       const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-      const activeDevices = fcmDevices.filter((device: any) => {
+      let activeDevices = fcmDevices.filter((device: any) => {
         const lastActive = device.lastActive?.toDate?.() || new Date(device.lastActive);
         const isRecentlyActive = lastActive > thirtyDaysAgo;
-        const isCurrentlyActive = device.isActive !== false; // Check isActive flag
+        const isCurrentlyActive = device.isActive === true; // Must be explicitly true
         console.log(`🔍 Device ${device.deviceId}: isActive=${device.isActive}, lastActive=${lastActive.toISOString()}, recentlyActive=${isRecentlyActive}, currentlyActive=${isCurrentlyActive}`);
         return isRecentlyActive && isCurrentlyActive;
       });
 
-      console.log(`📱 ${activeDevices.length} active devices after filtering`);
+      // Remove duplicate devices with same token (keep the most recently active one)
+      const uniqueDevices = new Map();
+      activeDevices.forEach((device: any) => {
+        const existingDevice = uniqueDevices.get(device.token);
+        if (!existingDevice || 
+            (device.lastActive?.toDate?.() || new Date(device.lastActive)) > 
+            (existingDevice.lastActive?.toDate?.() || new Date(existingDevice.lastActive))) {
+          uniqueDevices.set(device.token, device);
+        }
+      });
+      activeDevices = Array.from(uniqueDevices.values());
+
+      console.log(`📱 ${activeDevices.length} unique active devices after filtering and deduplication`);
 
       if (activeDevices.length === 0) {
         return {
@@ -1058,15 +1070,27 @@ export const sendPaymentCompletionNotification = functions.https.onCall(async (r
 
       // Filter active devices (isActive: true AND last active within 30 days)
       const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-      const activeDevices = fcmDevices.filter((device: any) => {
+      let activeDevices = fcmDevices.filter((device: any) => {
         const lastActive = device.lastActive?.toDate?.() || new Date(device.lastActive);
         const isRecentlyActive = lastActive > thirtyDaysAgo;
-        const isCurrentlyActive = device.isActive !== false; // Check isActive flag
+        const isCurrentlyActive = device.isActive === true; // Must be explicitly true
         console.log(`🔍 Device ${device.deviceId}: isActive=${device.isActive}, lastActive=${lastActive.toISOString()}, recentlyActive=${isRecentlyActive}, currentlyActive=${isCurrentlyActive}`);
         return isRecentlyActive && isCurrentlyActive;
       });
 
-      console.log(`📱 ${activeDevices.length} active devices after filtering`);
+      // Remove duplicate devices with same token (keep the most recently active one)
+      const uniqueDevices = new Map();
+      activeDevices.forEach((device: any) => {
+        const existingDevice = uniqueDevices.get(device.token);
+        if (!existingDevice || 
+            (device.lastActive?.toDate?.() || new Date(device.lastActive)) > 
+            (existingDevice.lastActive?.toDate?.() || new Date(existingDevice.lastActive))) {
+          uniqueDevices.set(device.token, device);
+        }
+      });
+      activeDevices = Array.from(uniqueDevices.values());
+
+      console.log(`📱 ${activeDevices.length} unique active devices after filtering and deduplication`);
 
       if (activeDevices.length === 0) {
         return {
@@ -1419,7 +1443,7 @@ async function sendNotificationToDevices(activeDevices: any[], notification: any
       ...notification.data,
       icon: `${process.env.NEXT_PUBLIC_BASE_URL || 'https://localhost:3000'}/notification-large-192x192.png`,
       badge: `${process.env.NEXT_PUBLIC_BASE_URL || 'https://localhost:3000'}/badge-72x72.png`,
-      tag: notification.tag,
+      tag: notification.tag, // This prevents duplicate notifications
       clickAction: notification.clickAction
     },
     android: {
@@ -1428,8 +1452,9 @@ async function sendNotificationToDevices(activeDevices: any[], notification: any
         sound: 'default',
         ...(notification.clickAction && { click_action: notification.clickAction }), // Use click_action for Android
         icon: `${process.env.NEXT_PUBLIC_BASE_URL || 'https://localhost:3000'}/notification-small-24x24.png`,
-        color: '#000000', // Your brand color
-        notificationCount: 1
+        color: '#000000', // Your brand color,
+        notificationCount: 1,
+        tag: notification.tag // Android tag to prevent duplicates
       }
     },
     apns: {
