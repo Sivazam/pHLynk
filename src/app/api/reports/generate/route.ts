@@ -89,7 +89,7 @@ export async function POST(request: NextRequest) {
     payments = payments.filter(payment => payment.state === 'COMPLETED');
 
     // Fetch retailer details
-    let retailerDetails = null;
+    let retailerDetails: any = null;
     try {
       const retailersRef = collection(db, 'retailers');
       const retailerQuery = query(retailersRef, where('phone', '==', session.user.email || ''));
