@@ -49,12 +49,28 @@ export default function RetailerDashboard() {
   const [retailerId, setRetailerId] = useState<string | null>(null)
 
   useEffect(() => {
-    // Get retailer ID from localStorage
-    const storedRetailerId = localStorage.getItem('retailerId')
-    if (storedRetailerId) {
-      setRetailerId(storedRetailerId)
-      fetchDashboardData()
+    // Fetch current retailer information from API
+    const fetchCurrentRetailer = async () => {
+      try {
+        const response = await fetch('/api/retailer/current')
+        if (response.ok) {
+          const data = await response.json()
+          if (data.success) {
+            console.log('🏪 Retailer Dashboard: Using retailerId from API:', data.retailerId)
+            setRetailerId(data.retailerId)
+            fetchDashboardData()
+          } else {
+            console.log('🏪 Retailer Dashboard: API returned no retailer data')
+          }
+        } else {
+          console.log('🏪 Retailer Dashboard: API call failed')
+        }
+      } catch (error) {
+        console.error('🏪 Retailer Dashboard: Error fetching retailer info:', error)
+      }
     }
+
+    fetchCurrentRetailer()
     
     // Set up periodic refresh to keep data current
     const refreshInterval = setInterval(() => {
@@ -296,6 +312,11 @@ export default function RetailerDashboard() {
 
       {/* Floating Report Button */}
       {retailerId && <ReportDialog retailerId={retailerId} />}
+      {!retailerId && loading && (
+        <div className="fixed bottom-20 right-4 p-2 bg-yellow-100 text-yellow-800 text-xs rounded shadow z-50">
+          Loading retailer info...
+        </div>
+      )}
     </div>
   )
 }

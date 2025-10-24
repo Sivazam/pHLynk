@@ -121,7 +121,8 @@ export default function ReportDialog({ retailerId }: ReportDialogProps) {
       <DialogTrigger asChild>
         <Button
           size="lg"
-          className="fixed bottom-20 right-4 h-14 w-14 rounded-full shadow-lg bg-primary hover:bg-primary/90 z-50 md:bottom-6 md:right-6"
+          className="fixed bottom-20 right-4 h-14 w-14 rounded-full shadow-lg bg-blue-600 hover:bg-blue-700 text-white z-50 md:bottom-6 md:right-6 border-2 border-white"
+          style={{ zIndex: 9999 }}
         >
           <FileText className="h-6 w-6" />
         </Button>
