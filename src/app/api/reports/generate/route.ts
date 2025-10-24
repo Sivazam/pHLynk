@@ -7,15 +7,29 @@ import { toDate as convertToDate } from '@/lib/timestamp-utils';
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
+    console.log('🔄 Generate Report API called')
     
-    if (!session || session.user.role !== 'RETAILER') {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const session = await getServerSession(authOptions);
+    console.log('📝 Session:', session ? 'Found' : 'Not found')
+    
+    if (!session) {
+      console.log('❌ No session found')
+      return NextResponse.json({ error: 'Unauthorized - No session' }, { status: 401 });
+    }
+
+    console.log('👤 User role:', session.user?.role)
+    
+    if (!session.user || session.user.role !== 'RETAILER') {
+      console.log('❌ User not authorized or not a retailer')
+      return NextResponse.json({ error: 'Unauthorized - Not a retailer' }, { status: 401 });
     }
 
     const { wholesalerId, dateRange, retailerId } = await request.json();
 
+    console.log('📊 Request params:', { wholesalerId, dateRange, retailerId })
+
     if (!retailerId || !dateRange) {
+      console.log('❌ Missing required parameters')
       return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 });
     }
 
@@ -88,6 +102,8 @@ export async function POST(request: NextRequest) {
     // Filter only completed payments
     payments = payments.filter(payment => payment.state === 'COMPLETED');
 
+    console.log('💳 Filtered completed payments:', payments.length)
+
     // Fetch retailer details
     let retailerDetails: any = null;
     try {
@@ -98,9 +114,12 @@ export async function POST(request: NextRequest) {
       if (!retailerSnapshot.empty) {
         const retailerDoc = retailerSnapshot.docs[0];
         retailerDetails = { id: retailerDoc.id, ...retailerDoc.data() };
+        console.log('🏪 Found retailer details:', retailerDetails.name)
+      } else {
+        console.log('⚠️ No retailer found for email:', session.user.email)
       }
     } catch (error) {
-      console.error('Error fetching retailer details:', error);
+      console.error('❌ Error fetching retailer details:', error);
     }
 
     // Fetch wholesaler and line worker details
@@ -198,6 +217,12 @@ export async function POST(request: NextRequest) {
     const csvContent = [csvHeaders, ...csvRows]
       .map((row) => row.map((cell) => `"${cell}"`).join(','))
       .join('\n');
+
+    console.log('📈 Report generated successfully:', {
+      totalPayments,
+      totalAmount,
+      csvLength: csvContent.length
+    })
 
     return NextResponse.json({
       success: true,
