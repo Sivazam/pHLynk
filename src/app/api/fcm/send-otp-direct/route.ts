@@ -92,30 +92,7 @@ export async function POST(request: NextRequest) {
     const fcmToken = activeDevice.token;
     console.log('✅ DIRECT FCM API - Using FCM token:', fcmToken.substring(0, 20) + '...');
 
-    // Get wholesaler name if lineWorkerId is provided
-    let wholesalerName = 'Wholesaler';
-    if (lineWorkerId) {
-      try {
-        const lineWorkerDoc = await db.collection('users').doc(lineWorkerId).get();
-        if (lineWorkerDoc.exists) {
-          const lineWorkerData = lineWorkerDoc.data();
-          const tenantId = lineWorkerData?.tenantId;
-          
-          if (tenantId) {
-            const tenantDoc = await db.collection('tenants').doc(tenantId).get();
-            if (tenantDoc.exists) {
-              const tenantData = tenantDoc.data();
-              wholesalerName = tenantData?.name || 'Wholesaler';
-              console.log('✅ DIRECT FCM API - Found wholesaler name:', wholesalerName);
-            }
-          }
-        }
-      } catch (error) {
-        console.warn('⚠️ DIRECT FCM API - Error fetching wholesaler name:', error);
-      }
-    }
-
-    // Create FCM message with proper icons and bold OTP
+    // Create FCM message with proper icons and updated format
     const wholesalerPart = wholesalerName ? ` from ${wholesalerName}` : '';
     const messageBody = `Your OTP code is ${otp} for payment of ₹${amount.toLocaleString()} collected by ${lineWorkerName}${wholesalerPart}\n-- PharmaLync`;
     
