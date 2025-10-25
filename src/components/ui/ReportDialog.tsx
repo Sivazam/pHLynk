@@ -50,7 +50,7 @@ export default function ReportDialog({ retailerId }: ReportDialogProps) {
   const fetchWholesalers = async () => {
     setLoading(true)
     try {
-      const response = await fetch(`/api/reports/wholesalers?retailerId=${retailerId}`)
+      const response = await fetch(`/api/reports/wholesalers`)
       
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`)
