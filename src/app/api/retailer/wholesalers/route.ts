@@ -4,7 +4,6 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
-import { retailerService } from '@/services/firestore'
 import { db } from '@/lib/firebase'
 import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore'
 
@@ -61,13 +60,18 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       wholesalers,
-      count: wholesalers.length
+      count: wholesalers.length,
+      retailerId: retailer.id,
+      debug: {
+        tenantIds,
+        wholesalerAssignments: Object.keys(retailer.wholesalerAssignments || {})
+      }
     })
 
   } catch (error) {
     console.error('Error fetching wholesalers:', error)
     return NextResponse.json(
-      { error: 'Failed to fetch wholesalers' },
+      { error: 'Failed to fetch wholesalers', details: error.message },
       { status: 500 }
     )
   }

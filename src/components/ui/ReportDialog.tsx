@@ -39,67 +39,36 @@ export default function ReportDialog({ retailerId }: ReportDialogProps) {
   const [generating, setGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [generatedReport, setGeneratedReport] = useState<any>(null)
-  const [debugInfo, setDebugInfo] = useState<string[]>([])
-  const [showDebug, setShowDebug] = useState(false)
   const router = useRouter()
-
-  // Debug function to add messages
-  const addDebugInfo = (message: string) => {
-    const timestamp = new Date().toLocaleTimeString()
-    setDebugInfo(prev => [...prev, `[${timestamp}] ${message}`])
-    console.log(message)
-  }
-
-  // Debug: Log when retailerId changes
-  useEffect(() => {
-    addDebugInfo(`Component mounted with retailerId: ${retailerId}`)
-    addDebugInfo(`RetailerId type: ${typeof retailerId}`)
-    addDebugInfo(`RetailerId length: ${retailerId?.length}`)
-  }, [retailerId])
 
   useEffect(() => {
     if (open) {
-      addDebugInfo('Dialog opened, fetching wholesalers...')
       fetchWholesalers()
     }
   }, [open])
 
   const fetchWholesalers = async () => {
     setLoading(true)
-    setDebugInfo([]) // Clear previous debug info
     try {
-      addDebugInfo(`Fetching wholesalers for retailer: ${retailerId}`)
-      addDebugInfo(`RetailerId type: ${typeof retailerId}`)
-      addDebugInfo(`RetailerId length: ${retailerId?.length}`)
-      
       const response = await fetch(`/api/reports/wholesalers?retailerId=${retailerId}`)
-      
-      addDebugInfo(`Response status: ${response.status} ${response.statusText}`)
       
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`)
       }
       
       const data = await response.json()
-      addDebugInfo(`Response data: ${JSON.stringify(data, null, 2)}`)
       
-      if (data.success && data.data) {
+      if (data.success && data.data && data.data.wholesalers) {
         const wholesalersList = data.data.wholesalers || []
-        addDebugInfo(`Setting wholesalers list: ${wholesalersList.length} items`)
-        wholesalersList.forEach((w: any, i: number) => {
-          addDebugInfo(`  ${i + 1}. ${w.name} (${w.id})`)
-        })
         setWholesalers(wholesalersList)
         
         if (wholesalersList.length === 0) {
-          addDebugInfo('⚠️ No wholesalers found for this retailer')
+          setError('No wholesalers found for this retailer')
         }
       } else {
-        addDebugInfo(`❌ Invalid response format: ${JSON.stringify(data)}`)
         setError('Invalid response format from server')
       }
     } catch (error) {
-      addDebugInfo(`❌ Error fetching wholesalers: ${error instanceof Error ? error.message : 'Unknown error'}`)
       setError(error instanceof Error ? error.message : 'Failed to fetch wholesalers. Please try again.')
     } finally {
       setLoading(false)
@@ -241,18 +210,6 @@ export default function ReportDialog({ retailerId }: ReportDialogProps) {
               }
             </DialogDescription>
           </DialogHeader>
-
-          {/* Debug Button */}
-          <div className="absolute top-2 right-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowDebug(!showDebug)}
-              className="text-xs"
-            >
-              🐛 Debug
-            </Button>
-          </div>
 
           {/* Error Display */}
           {error && (
@@ -406,120 +363,31 @@ export default function ReportDialog({ retailerId }: ReportDialogProps) {
                     ))}
                   </SelectContent>
                 </Select>
-                
-                {/* Date Range Description */}
-                <Card className="bg-muted/30">
-                  <CardContent className="p-3">
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Calendar className="h-4 w-4" />
-                      <span>{getDateRangeDescription(selectedDateRange)}</span>
-                    </div>
-                  </CardContent>
-                </Card>
+                <p className="text-xs text-muted-foreground">
+                  {getDateRangeDescription(selectedDateRange)}
+                </p>
               </div>
 
-              {/* Report Summary */}
-              <Card className="bg-blue-50 border-blue-200">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-sm text-blue-800">Report Summary</CardTitle>
-                </CardHeader>
-                <CardContent className="pt-0">
-                  <div className="space-y-2 text-sm text-blue-700">
-                    <div className="flex justify-between">
-                      <span>Wholesaler:</span>
-                      <span className="font-medium">
-                        {selectedWholesaler === 'all' ? 'All Wholesalers' : wholesalers.find(w => w.id === selectedWholesaler)?.name || 'Selected'}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Period:</span>
-                      <span className="font-medium">{dateRanges.find(r => r.value === selectedDateRange)?.label}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Format:</span>
-                      <span className="font-medium">CSV with Details</span>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Action Buttons */}
-              <div className="flex gap-3 pt-4">
-                <Button variant="outline" onClick={closeDialog} className="flex-1">
-                  Cancel
-                </Button>
-                <Button 
-                  onClick={generateReport} 
-                  disabled={generating || loading || wholesalers.length === 0}
-                  className="flex-1"
-                >
-                  {generating ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Generating...
-                    </>
-                  ) : (
-                    <>
-                      <Download className="h-4 w-4 mr-2" />
-                      Generate Report
-                    </>
-                  )}
-                </Button>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      {/* Debug Dialog */}
-      <Dialog open={showDebug} onOpenChange={setShowDebug}>
-        <DialogContent className="sm:max-w-[700px] max-h-[80vh]">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              🐛 Debug Information
-            </DialogTitle>
-            <DialogDescription>
-              Detailed debugging information for troubleshooting
-            </DialogDescription>
-          </DialogHeader>
-          
-          <div className="space-y-4">
-            <div className="flex justify-between items-center">
-              <span className="text-sm font-medium">Debug Logs:</span>
+              {/* Generate Button */}
               <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={() => setDebugInfo([])}
+                onClick={generateReport} 
+                disabled={loading || wholesalers.length === 0 || generating}
+                className="w-full"
               >
-                Clear Logs
+                {generating ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Generating Report...
+                  </>
+                ) : (
+                  <>
+                    <FileText className="h-4 w-4 mr-2" />
+                    Generate Report
+                  </>
+                )}
               </Button>
             </div>
-            
-            <div className="bg-gray-50 border rounded-lg p-4 max-h-96 overflow-y-auto">
-              {debugInfo.length === 0 ? (
-                <p className="text-gray-500 text-sm">No debug information available yet. Try opening the report dialog.</p>
-              ) : (
-                <div className="space-y-1">
-                  {debugInfo.map((log, index) => (
-                    <div key={index} className="text-xs font-mono">
-                      {log}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-            
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-              <h4 className="text-sm font-medium text-blue-800 mb-2">Quick Check:</h4>
-              <div className="space-y-1 text-xs text-blue-700">
-                <div>Retailer ID: {retailerId || 'Not provided'}</div>
-                <div>Retailer ID Type: {typeof retailerId}</div>
-                <div>Wholesalers Found: {wholesalers.length}</div>
-                <div>Loading: {loading ? 'Yes' : 'No'}</div>
-                <div>Error: {error || 'None'}</div>
-              </div>
-            </div>
-          </div>
+          )}
         </DialogContent>
       </Dialog>
     </>
