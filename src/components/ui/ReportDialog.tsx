@@ -39,42 +39,68 @@ export default function ReportDialog({ retailerId }: ReportDialogProps) {
   const [generating, setGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [generatedReport, setGeneratedReport] = useState<any>(null)
+  const [debugInfo, setDebugInfo] = useState<string[]>([])
+  const [showDebug, setShowDebug] = useState(false)
   const router = useRouter()
+
+  // Debug function to add messages
+  const addDebugInfo = (message: string) => {
+    const timestamp = new Date().toLocaleTimeString()
+    setDebugInfo(prev => [...prev, `[${timestamp}] ${message}`])
+    console.log(message)
+  }
+
+  // Debug: Log when retailerId changes
+  useEffect(() => {
+    addDebugInfo(`Component mounted with retailerId: ${retailerId}`)
+    addDebugInfo(`RetailerId type: ${typeof retailerId}`)
+    addDebugInfo(`RetailerId length: ${retailerId?.length}`)
+  }, [retailerId])
 
   useEffect(() => {
     if (open) {
+      addDebugInfo('Dialog opened, fetching wholesalers...')
       fetchWholesalers()
     }
   }, [open])
 
   const fetchWholesalers = async () => {
     setLoading(true)
+    setDebugInfo([]) // Clear previous debug info
     try {
-      console.log('🔍 Fetching wholesalers for retailer:', retailerId)
+      addDebugInfo(`Fetching wholesalers for retailer: ${retailerId}`)
+      addDebugInfo(`RetailerId type: ${typeof retailerId}`)
+      addDebugInfo(`RetailerId length: ${retailerId?.length}`)
+      
       const response = await fetch(`/api/reports/wholesalers?retailerId=${retailerId}`)
+      
+      addDebugInfo(`Response status: ${response.status} ${response.statusText}`)
       
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`)
       }
       
       const data = await response.json()
-      console.log('📊 Received wholesalers data:', data)
+      addDebugInfo(`Response data: ${JSON.stringify(data, null, 2)}`)
       
       if (data.success && data.data) {
         const wholesalersList = data.data.wholesalers || []
-        console.log('📋 Setting wholesalers list:', wholesalersList)
+        addDebugInfo(`Setting wholesalers list: ${wholesalersList.length} items`)
+        wholesalersList.forEach((w: any, i: number) => {
+          addDebugInfo(`  ${i + 1}. ${w.name} (${w.id})`)
+        })
         setWholesalers(wholesalersList)
         
         if (wholesalersList.length === 0) {
-          console.log('⚠️ No wholesalers found for this retailer')
+          addDebugInfo('⚠️ No wholesalers found for this retailer')
         }
       } else {
-        console.error('❌ Invalid response format:', data)
+        addDebugInfo(`❌ Invalid response format: ${JSON.stringify(data)}`)
+        setError('Invalid response format from server')
       }
     } catch (error) {
-      console.error('❌ Error fetching wholesalers:', error)
-      // Show error message to user
-      setError('Failed to fetch wholesalers. Please try again.')
+      addDebugInfo(`❌ Error fetching wholesalers: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      setError(error instanceof Error ? error.message : 'Failed to fetch wholesalers. Please try again.')
     } finally {
       setLoading(false)
     }
@@ -191,245 +217,311 @@ export default function ReportDialog({ retailerId }: ReportDialogProps) {
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button
-          size="lg"
-          className="fixed bottom-20 right-4 h-14 w-14 rounded-full shadow-lg bg-blue-600 hover:bg-blue-700 text-white z-50 md:bottom-6 md:right-6 border-2 border-white"
-          style={{ zIndex: 9999 }}
-        >
-          <FileText className="h-6 w-6" />
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-[600px]">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <FileText className="h-5 w-5" />
-            {generatedReport ? 'Payment Report Generated' : 'Generate Payment Report'}
-          </DialogTitle>
-          <DialogDescription>
-            {generatedReport 
-              ? 'Your payment report has been generated successfully. You can view or download it below.'
-              : 'Create a detailed report of your payments to wholesalers'
-            }
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogTrigger asChild>
+          <Button
+            size="lg"
+            className="fixed bottom-20 right-4 h-14 w-14 rounded-full shadow-lg bg-blue-600 hover:bg-blue-700 text-white z-50 md:bottom-6 md:right-6 border-2 border-white"
+            style={{ zIndex: 9999 }}
+          >
+            <FileText className="h-6 w-6" />
+          </Button>
+        </DialogTrigger>
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="h-5 w-5" />
+              {generatedReport ? 'Payment Report Generated' : 'Generate Payment Report'}
+            </DialogTitle>
+            <DialogDescription>
+              {generatedReport 
+                ? 'Your payment report has been generated successfully. You can view or download it below.'
+                : 'Create a detailed report of your payments to wholesalers'
+              }
+            </DialogDescription>
+          </DialogHeader>
 
-        {/* Error Display */}
-        {error && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-            <div className="flex items-center gap-2 text-red-800">
-              <AlertCircle className="h-4 w-4" />
-              <span className="text-sm font-medium">Error</span>
-            </div>
-            <p className="text-red-700 text-sm mt-1">{error}</p>
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={resetReport}
-              className="mt-2"
+          {/* Debug Button */}
+          <div className="absolute top-2 right-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowDebug(!showDebug)}
+              className="text-xs"
             >
-              Try Again
+              🐛 Debug
             </Button>
           </div>
-        )}
 
-        {/* Generated Report Display */}
-        {generatedReport && !error && (
-          <div className="space-y-6">
-            {/* Report Summary */}
-            <Card className="bg-green-50 border-green-200">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm text-green-800 flex items-center gap-2">
-                  <CheckCircle className="h-4 w-4" />
-                  Report Summary
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="pt-0">
-                <div className="space-y-2 text-sm text-green-700">
-                  <div className="flex justify-between">
-                    <span>Period:</span>
-                    <span className="font-medium">{dateRanges.find(r => r.value === selectedDateRange)?.label}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Wholesaler:</span>
-                    <span className="font-medium">
-                      {selectedWholesaler === 'all' ? 'All Wholesalers' : wholesalers.find(w => w.id === selectedWholesaler)?.name || 'Selected'}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Total Payments:</span>
-                    <span className="font-medium">{generatedReport.summary?.totalPayments || 0}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Total Amount:</span>
-                    <span className="font-medium">₹{(generatedReport.summary?.totalAmount || 0).toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Format:</span>
-                    <span className="font-medium">CSV with Details</span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Action Buttons */}
-            <div className="flex gap-3">
+          {/* Error Display */}
+          {error && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+              <div className="flex items-center gap-2 text-red-800">
+                <AlertCircle className="h-4 w-4" />
+                <span className="text-sm font-medium">Error</span>
+              </div>
+              <p className="text-red-700 text-sm mt-1">{error}</p>
               <Button 
                 variant="outline" 
-                onClick={viewReport}
-                className="flex-1"
-              >
-                <Eye className="h-4 w-4 mr-2" />
-                View Report
-              </Button>
-              <Button 
-                onClick={downloadReport}
-                className="flex-1"
-              >
-                <Download className="h-4 w-4 mr-2" />
-                Download CSV
-              </Button>
-            </div>
-
-            {/* Generate New Report */}
-            <div className="pt-4 border-t">
-              <Button 
-                variant="ghost" 
+                size="sm" 
                 onClick={resetReport}
-                className="w-full"
+                className="mt-2"
               >
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Generate Another Report
+                Try Again
               </Button>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* Report Generation Form */}
-        {!generatedReport && !error && (
-          <div className="space-y-6">
-            {/* Wholesaler Selection */}
-            <div className="space-y-3">
-              <Label className="text-sm font-medium">Select Wholesaler</Label>
-              {loading ? (
-                <div className="flex items-center justify-center py-4">
-                  <Loader2 className="h-6 w-6 animate-spin" />
-                  <span className="ml-2 text-sm text-muted-foreground">Loading wholesalers...</span>
-                </div>
-              ) : wholesalers.length === 0 ? (
-                <div className="text-center py-4">
-                  <Building2 className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
-                  <p className="text-sm text-muted-foreground">No wholesalers found</p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    You haven't made any payments yet
-                  </p>
-                </div>
-              ) : (
-                <RadioGroup value={selectedWholesaler} onValueChange={setSelectedWholesaler}>
-                  <div className="flex items-center space-x-2 p-3 border rounded-lg">
-                    <RadioGroupItem value="all" id="all" />
-                    <Label htmlFor="all" className="flex-1 cursor-pointer">
-                      <div className="flex items-center justify-between">
-                        <span className="font-medium">All Wholesalers</span>
-                        <Badge variant="secondary">All</Badge>
-                      </div>
-                    </Label>
-                  </div>
-                  {wholesalers.map((wholesaler) => (
-                    <div key={wholesaler.id} className="flex items-center space-x-2 p-3 border rounded-lg">
-                      <RadioGroupItem value={wholesaler.id} id={wholesaler.id} />
-                      <Label htmlFor={wholesaler.id} className="flex-1 cursor-pointer">
-                        <div className="flex items-center justify-between">
-                          <span className="font-medium">{wholesaler.name}</span>
-                          <Building2 className="h-4 w-4 text-muted-foreground" />
-                        </div>
-                      </Label>
+          {/* Generated Report Display */}
+          {generatedReport && !error && (
+            <div className="space-y-6">
+              {/* Report Summary */}
+              <Card className="bg-green-50 border-green-200">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm text-green-800 flex items-center gap-2">
+                    <CheckCircle className="h-4 w-4" />
+                    Report Summary
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="pt-0">
+                  <div className="space-y-2 text-sm text-green-700">
+                    <div className="flex justify-between">
+                      <span>Period:</span>
+                      <span className="font-medium">{dateRanges.find(r => r.value === selectedDateRange)?.label}</span>
                     </div>
-                  ))}
-                </RadioGroup>
-              )}
-            </div>
-
-            {/* Date Range Selection */}
-            <div className="space-y-3">
-              <Label className="text-sm font-medium">Select Date Range</Label>
-              <Select value={selectedDateRange} onValueChange={setSelectedDateRange}>
-                <SelectTrigger>
-                  <Calendar className="h-4 w-4 mr-2" />
-                  <SelectValue placeholder="Select date range" />
-                </SelectTrigger>
-                <SelectContent>
-                  {dateRanges.map((range) => (
-                    <SelectItem key={range.value} value={range.value}>
-                      {range.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              
-              {/* Date Range Description */}
-              <Card className="bg-muted/30">
-                <CardContent className="p-3">
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Calendar className="h-4 w-4" />
-                    <span>{getDateRangeDescription(selectedDateRange)}</span>
+                    <div className="flex justify-between">
+                      <span>Wholesaler:</span>
+                      <span className="font-medium">
+                        {selectedWholesaler === 'all' ? 'All Wholesalers' : wholesalers.find(w => w.id === selectedWholesaler)?.name || 'Selected'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Total Payments:</span>
+                      <span className="font-medium">{generatedReport.summary?.totalPayments || 0}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Total Amount:</span>
+                      <span className="font-medium">₹{(generatedReport.summary?.totalAmount || 0).toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Format:</span>
+                      <span className="font-medium">CSV with Details</span>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
+
+              {/* Action Buttons */}
+              <div className="flex gap-3">
+                <Button 
+                  variant="outline" 
+                  onClick={viewReport}
+                  className="flex-1"
+                >
+                  <Eye className="h-4 w-4 mr-2" />
+                  View Report
+                </Button>
+                <Button 
+                  onClick={downloadReport}
+                  className="flex-1"
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  Download CSV
+                </Button>
+              </div>
+
+              {/* Generate New Report */}
+              <div className="pt-4 border-t">
+                <Button 
+                  variant="ghost" 
+                  onClick={resetReport}
+                  className="w-full"
+                >
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Generate Another Report
+                </Button>
+              </div>
             </div>
+          )}
 
-            {/* Report Summary */}
-            <Card className="bg-blue-50 border-blue-200">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm text-blue-800">Report Summary</CardTitle>
-              </CardHeader>
-              <CardContent className="pt-0">
-                <div className="space-y-2 text-sm text-blue-700">
-                  <div className="flex justify-between">
-                    <span>Wholesaler:</span>
-                    <span className="font-medium">
-                      {selectedWholesaler === 'all' ? 'All Wholesalers' : wholesalers.find(w => w.id === selectedWholesaler)?.name || 'Selected'}
-                    </span>
+          {/* Report Generation Form */}
+          {!generatedReport && !error && (
+            <div className="space-y-6">
+              {/* Wholesaler Selection */}
+              <div className="space-y-3">
+                <Label className="text-sm font-medium">Select Wholesaler</Label>
+                {loading ? (
+                  <div className="flex items-center justify-center py-4">
+                    <Loader2 className="h-6 w-6 animate-spin" />
+                    <span className="ml-2 text-sm text-muted-foreground">Loading wholesalers...</span>
                   </div>
-                  <div className="flex justify-between">
-                    <span>Period:</span>
-                    <span className="font-medium">{dateRanges.find(r => r.value === selectedDateRange)?.label}</span>
+                ) : wholesalers.length === 0 ? (
+                  <div className="text-center py-4">
+                    <Building2 className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
+                    <p className="text-sm text-muted-foreground">No wholesalers found</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      You haven't made any payments yet
+                    </p>
                   </div>
-                  <div className="flex justify-between">
-                    <span>Format:</span>
-                    <span className="font-medium">CSV with Details</span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Action Buttons */}
-            <div className="flex gap-3 pt-4">
-              <Button variant="outline" onClick={closeDialog} className="flex-1">
-                Cancel
-              </Button>
-              <Button 
-                onClick={generateReport} 
-                disabled={generating || loading || wholesalers.length === 0}
-                className="flex-1"
-              >
-                {generating ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Generating...
-                  </>
                 ) : (
-                  <>
-                    <Download className="h-4 w-4 mr-2" />
-                    Generate Report
-                  </>
+                  <RadioGroup value={selectedWholesaler} onValueChange={setSelectedWholesaler}>
+                    <div className="flex items-center space-x-2 p-3 border rounded-lg">
+                      <RadioGroupItem value="all" id="all" />
+                      <Label htmlFor="all" className="flex-1 cursor-pointer">
+                        <div className="flex items-center justify-between">
+                          <span className="font-medium">All Wholesalers</span>
+                          <Badge variant="secondary">All</Badge>
+                        </div>
+                      </Label>
+                    </div>
+                    {wholesalers.map((wholesaler) => (
+                      <div key={wholesaler.id} className="flex items-center space-x-2 p-3 border rounded-lg">
+                        <RadioGroupItem value={wholesaler.id} id={wholesaler.id} />
+                        <Label htmlFor={wholesaler.id} className="flex-1 cursor-pointer">
+                          <div className="flex items-center justify-between">
+                            <span className="font-medium">{wholesaler.name}</span>
+                            <Building2 className="h-4 w-4 text-muted-foreground" />
+                          </div>
+                        </Label>
+                      </div>
+                    ))}
+                  </RadioGroup>
                 )}
+              </div>
+
+              {/* Date Range Selection */}
+              <div className="space-y-3">
+                <Label className="text-sm font-medium">Select Date Range</Label>
+                <Select value={selectedDateRange} onValueChange={setSelectedDateRange}>
+                  <SelectTrigger>
+                    <Calendar className="h-4 w-4 mr-2" />
+                    <SelectValue placeholder="Select date range" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {dateRanges.map((range) => (
+                      <SelectItem key={range.value} value={range.value}>
+                        {range.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                
+                {/* Date Range Description */}
+                <Card className="bg-muted/30">
+                  <CardContent className="p-3">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Calendar className="h-4 w-4" />
+                      <span>{getDateRangeDescription(selectedDateRange)}</span>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Report Summary */}
+              <Card className="bg-blue-50 border-blue-200">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm text-blue-800">Report Summary</CardTitle>
+                </CardHeader>
+                <CardContent className="pt-0">
+                  <div className="space-y-2 text-sm text-blue-700">
+                    <div className="flex justify-between">
+                      <span>Wholesaler:</span>
+                      <span className="font-medium">
+                        {selectedWholesaler === 'all' ? 'All Wholesalers' : wholesalers.find(w => w.id === selectedWholesaler)?.name || 'Selected'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Period:</span>
+                      <span className="font-medium">{dateRanges.find(r => r.value === selectedDateRange)?.label}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Format:</span>
+                      <span className="font-medium">CSV with Details</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Action Buttons */}
+              <div className="flex gap-3 pt-4">
+                <Button variant="outline" onClick={closeDialog} className="flex-1">
+                  Cancel
+                </Button>
+                <Button 
+                  onClick={generateReport} 
+                  disabled={generating || loading || wholesalers.length === 0}
+                  className="flex-1"
+                >
+                  {generating ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Generating...
+                    </>
+                  ) : (
+                    <>
+                      <Download className="h-4 w-4 mr-2" />
+                      Generate Report
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Debug Dialog */}
+      <Dialog open={showDebug} onOpenChange={setShowDebug}>
+        <DialogContent className="sm:max-w-[700px] max-h-[80vh]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              🐛 Debug Information
+            </DialogTitle>
+            <DialogDescription>
+              Detailed debugging information for troubleshooting
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            <div className="flex justify-between items-center">
+              <span className="text-sm font-medium">Debug Logs:</span>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => setDebugInfo([])}
+              >
+                Clear Logs
               </Button>
+            </div>
+            
+            <div className="bg-gray-50 border rounded-lg p-4 max-h-96 overflow-y-auto">
+              {debugInfo.length === 0 ? (
+                <p className="text-gray-500 text-sm">No debug information available yet. Try opening the report dialog.</p>
+              ) : (
+                <div className="space-y-1">
+                  {debugInfo.map((log, index) => (
+                    <div key={index} className="text-xs font-mono">
+                      {log}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+              <h4 className="text-sm font-medium text-blue-800 mb-2">Quick Check:</h4>
+              <div className="space-y-1 text-xs text-blue-700">
+                <div>Retailer ID: {retailerId || 'Not provided'}</div>
+                <div>Retailer ID Type: {typeof retailerId}</div>
+                <div>Wholesalers Found: {wholesalers.length}</div>
+                <div>Loading: {loading ? 'Yes' : 'No'}</div>
+                <div>Error: {error || 'None'}</div>
+              </div>
             </div>
           </div>
-        )}
-      </DialogContent>
-    </Dialog>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }
