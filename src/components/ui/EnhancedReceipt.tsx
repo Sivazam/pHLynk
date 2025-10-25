@@ -110,211 +110,147 @@ export function EnhancedReceipt({
   const lineWorkerName = payment.lineWorkerName || lineWorkerNames[payment.lineWorkerId] || 'Unknown Line Worker';
 
   const generateCanvas = async (element: HTMLElement) => {
-    // Create a comprehensive style override to replace all oklch and other problematic CSS
-    const style = document.createElement('style');
-    style.id = 'receipt-pdf-fix';
-    style.textContent = `
-      /* Reset all colors and backgrounds to safe RGB values */
-      #receipt-content,
-      #receipt-content * {
-        color: rgb(17, 24, 39) !important;
-        background-color: rgb(255, 255, 255) !important;
-        border-color: rgb(229, 231, 235) !important;
-        box-shadow: none !important;
-        text-shadow: none !important;
-      }
-      
-      /* Explicit RGB color overrides */
-      #receipt-content .text-gray-900,
-      #receipt-content .text-gray-900 * { color: rgb(17, 24, 39) !important; }
-      #receipt-content .text-gray-800,
-      #receipt-content .text-gray-800 * { color: rgb(31, 41, 55) !important; }
-      #receipt-content .text-gray-700,
-      #receipt-content .text-gray-700 * { color: rgb(55, 65, 81) !important; }
-      #receipt-content .text-gray-600,
-      #receipt-content .text-gray-600 * { color: rgb(75, 85, 99) !important; }
-      #receipt-content .text-gray-500,
-      #receipt-content .text-gray-500 * { color: rgb(107, 114, 128) !important; }
-      #receipt-content .text-gray-400,
-      #receipt-content .text-gray-400 * { color: rgb(156, 163, 175) !important; }
-      #receipt-content .text-green-600,
-      #receipt-content .text-green-600 * { color: rgb(22, 163, 74) !important; }
-      #receipt-content .text-blue-600,
-      #receipt-content .text-blue-600 * { color: rgb(37, 99, 235) !important; }
-      
-      /* Background color overrides */
-      #receipt-content .bg-white,
-      #receipt-content .bg-white * { background-color: rgb(255, 255, 255) !important; }
-      #receipt-content .bg-gray-50,
-      #receipt-content .bg-gray-50 * { background-color: rgb(249, 250, 251) !important; }
-      #receipt-content .bg-blue-600,
-      #receipt-content .bg-blue-600 * { background-color: rgb(37, 99, 235) !important; }
-      
-      /* Border color overrides */
-      #receipt-content .border-gray-200,
-      #receipt-content .border-gray-200 * { border-color: rgb(229, 231, 235) !important; }
-      #receipt-content .border-gray-300,
-      #receipt-content .border-gray-300 * { border-color: rgb(209, 213, 219) !important; }
-      #receipt-content .border-gray-800,
-      #receipt-content .border-gray-800 * { border-color: rgb(31, 41, 55) !important; }
-      #receipt-content .border-b,
-      #receipt-content .border-b * { border-bottom-color: rgb(229, 231, 235) !important; }
-      #receipt-content .border-t,
-      #receipt-content .border-t * { border-top-color: rgb(229, 231, 235) !important; }
-      
-      /* Force inline styles for critical elements */
-      #receipt-content h1,
-      #receipt-content h2,
-      #receipt-content .text-2xl,
-      #receipt-content .text-lg,
-      #receipt-content .text-xl {
-        color: rgb(17, 24, 39) !important;
-        font-weight: bold !important;
-      }
-      
-      #receipt-content .text-green-600 {
-        color: rgb(22, 163, 74) !important;
-        font-weight: bold !important;
-      }
-      
-      #receipt-content .text-sm,
-      #receipt-content .text-xs {
-        color: rgb(75, 85, 99) !important;
-      }
-      
-      /* Override any CSS variables */
-      #receipt-content {
-        --tw-text-opacity: 1 !important;
-        --tw-bg-opacity: 1 !important;
-        --tw-border-opacity: 1 !important;
-      }
-    `;
-    
-    // Apply the style to the document
-    document.head.appendChild(style);
-    
-    // Also apply inline styles directly to the element for maximum compatibility
-    const originalStyles = new Map();
-    const allElements = element.querySelectorAll('*');
-    allElements.forEach(el => {
-      const element = el as HTMLElement;
-      originalStyles.set(element, {
-        color: element.style.color,
-        backgroundColor: element.style.backgroundColor,
-        borderColor: element.style.borderColor
-      });
-      
-      // Force RGB colors
-      element.style.color = 'rgb(17, 24, 39)';
-      element.style.backgroundColor = 'rgb(255, 255, 255)';
-      element.style.borderColor = 'rgb(229, 231, 235)';
-    });
-
     try {
-      // Wait a bit for styles to apply
-      await new Promise(resolve => setTimeout(resolve, 200));
+      console.log('Starting canvas generation with simplified approach...');
       
-      const canvas = await html2canvas(element, {
+      // Create a clean, simple receipt container for PDF generation
+      const pdfContainer = document.createElement('div');
+      pdfContainer.style.cssText = `
+        position: absolute;
+        left: -9999px;
+        top: 0;
+        width: 800px;
+        background: white;
+        padding: 40px;
+        font-family: Arial, sans-serif;
+        color: #000000;
+        line-height: 1.4;
+      `;
+      
+      // Build a clean HTML structure for PDF
+      const paymentDate = formatTimestampWithTime(payment.createdAt);
+      const receiptHtml = `
+        <div style="text-align: center; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 2px solid #000;">
+          <h1 style="margin: 0; font-size: 28px; font-weight: bold; color: #000;">PharmaLync</h1>
+          <p style="margin: 5px 0; font-size: 14px; color: #666;">Verify. Collect. Track.</p>
+          <p style="margin: 10px 0 0 0; font-size: 12px; color: #888;">Payment Receipt</p>
+        </div>
+        
+        <div style="margin-bottom: 25px; padding: 15px; background: #f8f9fa; border-radius: 5px;">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; font-size: 13px;">
+            <div>
+              <strong style="color: #333;">Receipt ID:</strong><br>
+              <span style="font-family: monospace; font-size: 11px; color: #000;">${payment.id}</span>
+            </div>
+            <div>
+              <strong style="color: #333;">Date & Time:</strong><br>
+              <span style="color: #000;">${paymentDate}</span>
+            </div>
+          </div>
+        </div>
+        
+        <div style="margin-bottom: 25px;">
+          <h2 style="margin: 0 0 15px 0; font-size: 18px; font-weight: bold; color: #000; padding-bottom: 8px; border-bottom: 1px solid #ddd;">
+            Payment Details
+          </h2>
+          <div style="font-size: 14px;">
+            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #eee;">
+              <span style="color: #666;">Amount Paid:</span>
+              <span style="font-weight: bold; font-size: 16px; color: #22c55e;">${formatCurrency(payment.totalPaid)}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #eee;">
+              <span style="color: #666;">Payment Method:</span>
+              <span style="color: #000;">${payment.method}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #eee;">
+              <span style="color: #666;">Line Worker:</span>
+              <span style="color: #000;">${lineWorkerName}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; padding: 8px 0;">
+              <span style="color: #666;">Wholesaler:</span>
+              <span style="color: #000;">${wholesalerName}</span>
+            </div>
+            ${tenantInfo?.address ? `
+              <div style="padding: 8px 0;">
+                <span style="color: #666;">Wholesaler Address:</span><br>
+                <span style="color: #000;">${tenantInfo.address}</span>
+              </div>
+            ` : ''}
+          </div>
+        </div>
+        
+        <div style="margin-bottom: 25px;">
+          <h2 style="margin: 0 0 15px 0; font-size: 18px; font-weight: bold; color: #000; padding-bottom: 8px; border-bottom: 1px solid #ddd;">
+            Retailer Information
+          </h2>
+          <div style="font-size: 14px;">
+            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #eee;">
+              <span style="color: #666;">Name:</span>
+              <span style="color: #000;">${retailer?.name || 'Unknown'}</span>
+            </div>
+            ${retailer?.phone ? `
+              <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #eee;">
+                <span style="color: #666;">Phone:</span>
+                <span style="color: #000;">${retailer.phone}</span>
+              </div>
+            ` : ''}
+            ${retailer?.address ? `
+              <div style="padding: 8px 0;">
+                <span style="color: #666;">Address:</span><br>
+                <span style="color: #000;">${retailer.address}</span>
+              </div>
+            ` : ''}
+          </div>
+        </div>
+        
+        <div style="margin-top: 40px; padding-top: 20px; border-top: 2px solid #000; text-align: center;">
+          <p style="margin: 0 0 8px 0; font-size: 14px; color: #666;">Thank you for your payment!</p>
+          <p style="margin: 0; font-size: 11px; color: #888;">This is a computer-generated receipt and does not require a signature.</p>
+          <div style="margin-top: 15px; font-size: 10px; color: #aaa;">
+            Powered by PharmaLync - Your Trusted Pharmacy Management System
+          </div>
+        </div>
+      `;
+      
+      pdfContainer.innerHTML = receiptHtml;
+      document.body.appendChild(pdfContainer);
+      
+      // Wait for the content to render
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      // Generate canvas from our clean container
+      const canvas = await html2canvas(pdfContainer, {
         scale: 2,
         useCORS: true,
         allowTaint: true,
         backgroundColor: '#ffffff',
         logging: false,
         removeContainer: false,
-        foreignObjectRendering: false,
-        imageTimeout: 15000,
-        onclone: (clonedDoc) => {
-          // Apply the same style overrides to the cloned document
-          const clonedStyle = clonedDoc.createElement('style');
-          clonedStyle.textContent = style.textContent;
-          clonedDoc.head.appendChild(clonedStyle);
-
-          // Apply inline styles to cloned elements as well
-          const clonedElements = clonedDoc.querySelectorAll('#receipt-content *');
-          clonedElements.forEach(el => {
-            const element = el as HTMLElement;
-            element.style.color = 'rgb(17, 24, 39)';
-            element.style.backgroundColor = 'rgb(255, 255, 255)';
-            element.style.borderColor = 'rgb(229, 231, 235)';
-          });
-
-          // Ensure images are loaded in the cloned document
-          const images = clonedDoc.querySelectorAll('img');
-          const promises = Array.from(images).map(img => {
-            if (img.complete) return Promise.resolve();
-            return new Promise((resolve, reject) => {
-              img.onload = resolve;
-              img.onerror = () => {
-                // Replace broken images with fallback
-                const fallback = clonedDoc.createElement('div');
-                fallback.className = 'h-12 w-12 mr-3 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold text-xl';
-                fallback.textContent = 'P';
-                fallback.style.backgroundColor = 'rgb(37, 99, 235)';
-                fallback.style.color = 'rgb(255, 255, 255)';
-                fallback.style.display = 'flex';
-                fallback.style.alignItems = 'center';
-                fallback.style.justifyContent = 'center';
-                img.parentNode?.replaceChild(fallback, img);
-                resolve({});
-              };
-              setTimeout(reject, 5000);
-            });
-          });
-          return Promise.all(promises);
-        }
+        width: 800,
+        height: pdfContainer.scrollHeight
       });
-
-      // Restore original styles
-      allElements.forEach(el => {
-        const element = el as HTMLElement;
-        const original = originalStyles.get(element);
-        if (original) {
-          element.style.color = original.color;
-          element.style.backgroundColor = original.backgroundColor;
-          element.style.borderColor = original.borderColor;
-        }
-      });
-
-      // Remove the temporary style
-      if (document.head.contains(style)) {
-        document.head.removeChild(style);
-      }
       
+      // Clean up
+      document.body.removeChild(pdfContainer);
+      
+      console.log('Canvas generated successfully with simplified approach');
       return canvas;
-    } catch (error) {
-      // Restore original styles in case of error
-      allElements.forEach(el => {
-        const element = el as HTMLElement;
-        const original = originalStyles.get(element);
-        if (original) {
-          element.style.color = original.color;
-          element.style.backgroundColor = original.backgroundColor;
-          element.style.borderColor = original.borderColor;
-        }
-      });
       
-      // Make sure to remove the style even if an error occurs
-      if (document.head.contains(style)) {
-        document.head.removeChild(style);
-      }
-      throw error;
+    } catch (error) {
+      console.error('Error in simplified canvas generation:', error);
+      throw new Error('Failed to generate receipt image. Please try again.');
     }
   };
 
   const downloadPDF = async () => {
     setIsGenerating(true);
     try {
-      const element = document.getElementById('receipt-content');
-      if (!element) {
-        throw new Error('Receipt content element not found');
-      }
-
       console.log('Starting PDF generation...');
       
       // Wait a bit for any pending renders
       await new Promise(resolve => setTimeout(resolve, 100));
 
-      const canvas = await generateCanvas(element);
+      const canvas = await generateCanvas(document.getElementById('receipt-content')!);
 
       console.log('Canvas generated successfully');
 
@@ -344,17 +280,15 @@ export function EnhancedReceipt({
       }
 
       console.log('PDF generated successfully, saving...');
-      pdf.save(`receipt-${payment.id}.pdf`);
+      
+      // Generate unique filename
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+      const filename = `receipt-${payment.id}-${timestamp}.pdf`;
+      pdf.save(filename);
       
     } catch (error) {
       console.error('Error generating PDF:', error);
-      // Provide more specific error message
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      if (errorMessage.includes('oklch') || errorMessage.includes('color')) {
-        alert('Failed to generate PDF due to a color rendering issue. Please try again or contact support if the issue persists.');
-      } else {
-        alert(`Failed to generate PDF: ${errorMessage}. Please try again.`);
-      }
+      alert('Failed to generate PDF. Please try again or contact support if the issue persists.');
     } finally {
       setIsGenerating(false);
     }
@@ -363,17 +297,12 @@ export function EnhancedReceipt({
   const shareReceipt = async () => {
     setIsGenerating(true);
     try {
-      const element = document.getElementById('receipt-content');
-      if (!element) {
-        throw new Error('Receipt content element not found');
-      }
-
       console.log('Starting share PDF generation...');
       
       // Wait a bit for any pending renders
       await new Promise(resolve => setTimeout(resolve, 100));
 
-      const canvas = await generateCanvas(element);
+      const canvas = await generateCanvas(document.getElementById('receipt-content')!);
 
       console.log('Share canvas generated successfully');
 
@@ -402,7 +331,11 @@ export function EnhancedReceipt({
 
       console.log('Share PDF generated successfully, creating blob...');
       const pdfBlob = pdf.output('blob');
-      const pdfFile = new File([pdfBlob], `receipt-${payment.id}.pdf`, { type: 'application/pdf' });
+      
+      // Generate unique filename
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+      const filename = `receipt-${payment.id}-${timestamp}.pdf`;
+      const pdfFile = new File([pdfBlob], filename, { type: 'application/pdf' });
 
       if (navigator.share && navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
         try {
@@ -419,7 +352,7 @@ export function EnhancedReceipt({
           const url = URL.createObjectURL(pdfBlob);
           const a = document.createElement('a');
           a.href = url;
-          a.download = `receipt-${payment.id}.pdf`;
+          a.download = filename;
           a.click();
           URL.revokeObjectURL(url);
         }
@@ -429,19 +362,13 @@ export function EnhancedReceipt({
         const url = URL.createObjectURL(pdfBlob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `receipt-${payment.id}.pdf`;
+        a.download = filename;
         a.click();
         URL.revokeObjectURL(url);
       }
     } catch (error) {
       console.error('Error sharing receipt:', error);
-      // Provide more specific error message
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      if (errorMessage.includes('oklch') || errorMessage.includes('color')) {
-        alert('Failed to share receipt due to a color rendering issue. Please try again or contact support if the issue persists.');
-      } else {
-        alert(`Failed to share receipt: ${errorMessage}. Please try again.`);
-      }
+      alert('Failed to share receipt. Please try again or contact support if the issue persists.');
     } finally {
       setIsGenerating(false);
     }
