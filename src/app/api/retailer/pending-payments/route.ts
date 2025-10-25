@@ -61,7 +61,10 @@ export async function GET(request: NextRequest) {
 
     // Apply wholesaler filter if provided
     if (wholesalerId && wholesalerId !== 'all') {
-      payments = payments.filter(payment => payment.tenantId === wholesalerId)
+      payments = payments.filter(payment => 
+        (payment.tenantIds && payment.tenantIds.includes(wholesalerId)) || 
+        payment.tenantId === wholesalerId
+      );
     }
 
     // Filter payments for pending status

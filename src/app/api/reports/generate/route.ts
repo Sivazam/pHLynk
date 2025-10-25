@@ -86,7 +86,11 @@ export async function POST(request: NextRequest) {
 
     // Apply wholesaler filter if provided
     if (wholesalerId && wholesalerId !== 'all') {
-      payments = payments.filter(payment => payment.tenantId === wholesalerId);
+      payments = payments.filter(payment => 
+        (payment.tenantIds && payment.tenantIds.includes(wholesalerId)) || 
+        payment.tenantId === wholesalerId
+      );
+      console.log(`🏢 Filtered by wholesaler ${wholesalerId}: ${payments.length} payments`);
     }
 
     // Apply date filter
@@ -126,13 +130,48 @@ export async function POST(request: NextRequest) {
         let lineWorkerName = 'Unknown Line Worker';
 
         try {
-          // Try to get wholesaler name from users collection if tenantId exists
-          if (payment.tenantId) {
-            const wholesalerDoc = await getDoc(doc(db, 'users', payment.tenantId));
+          // Try to get wholesaler name from tenants collection if tenantIds exists
+          if (payment.tenantIds && payment.tenantIds.length > 0) {
+            // Use the first tenantId from the array
+            const tenantId = payment.tenantIds[0];
+            console.log(`🔍 Looking for wholesaler with tenantId: ${tenantId}`);
+            const wholesalerDoc = await getDoc(doc(db, 'tenants', tenantId));
             if (wholesalerDoc.exists()) {
               const wholesalerData = wholesalerDoc.data();
-              wholesalerName = wholesalerData.displayName || wholesalerData.name || wholesalerName;
+              wholesalerName = wholesalerData.name || wholesalerName;
+              console.log(`✅ Found wholesaler name: ${wholesalerName}`);
+            } else {
+              console.log(`❌ No tenant found with ID: ${tenantId}`);
+              
+              // Fallback: try users collection
+              const userDoc = await getDoc(doc(db, 'users', tenantId));
+              if (userDoc.exists()) {
+                const userData = userDoc.data();
+                wholesalerName = userData.displayName || userData.name || wholesalerName;
+                console.log(`✅ Found wholesaler name from users: ${wholesalerName}`);
+              }
             }
+          } else if (payment.tenantId) {
+            // Fallback for single tenantId (if exists)
+            console.log(`🔍 Looking for wholesaler with single tenantId: ${payment.tenantId}`);
+            const wholesalerDoc = await getDoc(doc(db, 'tenants', payment.tenantId));
+            if (wholesalerDoc.exists()) {
+              const wholesalerData = wholesalerDoc.data();
+              wholesalerName = wholesalerData.name || wholesalerName;
+              console.log(`✅ Found wholesaler name: ${wholesalerName}`);
+            } else {
+              console.log(`❌ No tenant found with ID: ${payment.tenantId}`);
+              
+              // Fallback: try users collection
+              const userDoc = await getDoc(doc(db, 'users', payment.tenantId));
+              if (userDoc.exists()) {
+                const userData = userDoc.data();
+                wholesalerName = userData.displayName || userData.name || wholesalerName;
+                console.log(`✅ Found wholesaler name from users: ${wholesalerName}`);
+              }
+            }
+          } else {
+            console.log(`❌ No tenantId or tenantIds found for payment: ${payment.paymentId}`);
           }
 
           // Try to get line worker name

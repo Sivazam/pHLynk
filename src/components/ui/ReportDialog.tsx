@@ -144,11 +144,25 @@ export default function ReportDialog({ retailerId, retailerPhone }: ReportDialog
   const viewReport = () => {
     if (!generatedReport) return
     
-    // Open report in new tab
-    const reportData = btoa(JSON.stringify(generatedReport))
-    const newWindow = window.open(`/retailer/report-preview?data=${reportData}`, '_blank')
-    if (!newWindow) {
-      // Fallback: navigate in same tab
+    try {
+      // Open report in new tab with better data handling
+      const reportData = btoa(encodeURIComponent(JSON.stringify(generatedReport)))
+      const newWindow = window.open(`/retailer/report-preview?data=${reportData}`, '_blank', 'noopener,noreferrer')
+      
+      if (!newWindow) {
+        console.log('🔍 Popup blocked, navigating in same tab')
+        // Fallback: navigate in same tab
+        router.push(`/retailer/report-preview?data=${reportData}`)
+        setOpen(false)
+      } else {
+        console.log('✅ Opened report in new window')
+        // Focus the new window (optional)
+        newWindow.focus()
+      }
+    } catch (error) {
+      console.error('❌ Error opening report:', error)
+      // Fallback: try without encoding
+      const reportData = btoa(JSON.stringify(generatedReport))
       router.push(`/retailer/report-preview?data=${reportData}`)
       setOpen(false)
     }
@@ -344,7 +358,6 @@ export default function ReportDialog({ retailerId, retailerPhone }: ReportDialog
                         <Label htmlFor={wholesaler.id} className="flex-1 cursor-pointer">
                           <div className="flex items-center justify-between">
                             <span className="font-medium">{wholesaler.name}</span>
-                            <Building2 className="h-4 w-4 text-muted-foreground" />
                           </div>
                         </Label>
                       </div>

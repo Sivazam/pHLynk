@@ -59,11 +59,24 @@ export default function ReportPreview() {
     
     if (dataParam) {
       try {
-        const decodedData = JSON.parse(atob(dataParam))
-        setReportData(decodedData)
+        // Try to decode with URL decoding first
+        let decodedData = decodeURIComponent(atob(dataParam))
+        const parsedData = JSON.parse(decodedData)
+        setReportData(parsedData)
+        console.log('✅ Report data loaded successfully')
       } catch (error) {
-        console.error('Error parsing report data:', error)
+        console.error('❌ Error parsing report data with URL decode, trying direct decode:', error)
+        try {
+          // Fallback: try without URL decoding
+          const decodedData = JSON.parse(atob(dataParam))
+          setReportData(decodedData)
+          console.log('✅ Report data loaded with direct decode')
+        } catch (fallbackError) {
+          console.error('❌ Error parsing report data with both methods:', fallbackError)
+        }
       }
+    } else {
+      console.log('❌ No data parameter found in URL')
     }
     setLoading(false)
   }, [])
