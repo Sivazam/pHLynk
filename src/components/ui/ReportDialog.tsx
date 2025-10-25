@@ -4,18 +4,13 @@ import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { FileText, Download, Calendar, Building2, Loader2, CheckCircle, AlertCircle, Eye, RefreshCw } from 'lucide-react'
+import { FileText, Download, Calendar, Building2, Loader2, CheckCircle, AlertCircle, RefreshCw } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-
-interface Wholesaler {
-  id: string
-  name: string
-  email: string
-}
+import { ReportTableModal } from './ReportTableModal'
+import { useWholesalers } from '@/hooks/useWholesalers'
 
 interface ReportDialogProps {
   retailerId: string
@@ -33,50 +28,20 @@ const dateRanges = [
 
 export default function ReportDialog({ retailerId, retailerPhone }: ReportDialogProps) {
   const [open, setOpen] = useState(false)
-  const [wholesalers, setWholesalers] = useState<Wholesaler[]>([])
   const [selectedWholesaler, setSelectedWholesaler] = useState('all')
   const [selectedDateRange, setSelectedDateRange] = useState('today')
-  const [loading, setLoading] = useState(false)
   const [generating, setGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [generatedReport, setGeneratedReport] = useState<any>(null)
+  const [showReportModal, setShowReportModal] = useState(false)
   const router = useRouter()
 
-  useEffect(() => {
-    if (open) {
-      fetchWholesalers()
-    }
-  }, [open])
-
-  const fetchWholesalers = async () => {
-    setLoading(true)
-    try {
-      // Add phone parameter to the API call
-      const phoneParam = retailerPhone ? `?phone=${retailerPhone}` : ''
-      const response = await fetch(`/api/reports/wholesalers${phoneParam}`)
-      
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
-      }
-      
-      const data = await response.json()
-      
-      if (data.success && data.data && data.data.wholesalers) {
-        const wholesalersList = data.data.wholesalers || []
-        setWholesalers(wholesalersList)
-        
-        if (wholesalersList.length === 0) {
-          setError('No wholesalers found for this retailer')
-        }
-      } else {
-        setError('Invalid response format from server')
-      }
-    } catch (error) {
-      setError(error instanceof Error ? error.message : 'Failed to fetch wholesalers. Please try again.')
-    } finally {
-      setLoading(false)
-    }
-  }
+  // Use the wholesalers hook with background fetching
+  const { wholesalers, loading, error: wholesalersError, isEmpty, refresh } = useWholesalers({
+    retailerId,
+    retailerPhone,
+    autoFetch: true // Fetch on component mount
+  })
 
   const generateReport = async () => {
     setGenerating(true)
@@ -131,7 +96,10 @@ export default function ReportDialog({ retailerId, retailerPhone }: ReportDialog
     const link = document.createElement('a')
     const url = URL.createObjectURL(blob)
     
-    const filename = `payment-report-${selectedDateRange}-${new Date().toISOString().split('T')[0]}.csv`
+    // Generate dynamic filename with timestamp and random suffix
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5)
+    const randomSuffix = Math.random().toString(36).substring(2, 8)
+    const filename = `payment-report-${selectedDateRange}-${timestamp}-${randomSuffix}.csv`
     
     link.setAttribute('href', url)
     link.setAttribute('download', filename)
@@ -139,33 +107,12 @@ export default function ReportDialog({ retailerId, retailerPhone }: ReportDialog
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
+    URL.revokeObjectURL(url)
   }
 
   const viewReport = () => {
     if (!generatedReport) return
-    
-    try {
-      // Open report in new tab with better data handling
-      const reportData = btoa(encodeURIComponent(JSON.stringify(generatedReport)))
-      const newWindow = window.open(`/retailer/report-preview?data=${reportData}`, '_blank', 'noopener,noreferrer')
-      
-      if (!newWindow) {
-        console.log('🔍 Popup blocked, navigating in same tab')
-        // Fallback: navigate in same tab
-        router.push(`/retailer/report-preview?data=${reportData}`)
-        setOpen(false)
-      } else {
-        console.log('✅ Opened report in new window')
-        // Focus the new window (optional)
-        newWindow.focus()
-      }
-    } catch (error) {
-      console.error('❌ Error opening report:', error)
-      // Fallback: try without encoding
-      const reportData = btoa(JSON.stringify(generatedReport))
-      router.push(`/retailer/report-preview?data=${reportData}`)
-      setOpen(false)
-    }
+    setShowReportModal(true)
   }
 
   const resetReport = () => {
@@ -232,17 +179,20 @@ export default function ReportDialog({ retailerId, retailerPhone }: ReportDialog
           </DialogHeader>
 
           {/* Error Display */}
-          {error && (
+          {(error || wholesalersError) && (
             <div className="bg-red-50 border border-red-200 rounded-lg p-4">
               <div className="flex items-center gap-2 text-red-800">
                 <AlertCircle className="h-4 w-4" />
                 <span className="text-sm font-medium">Error</span>
               </div>
-              <p className="text-red-700 text-sm mt-1">{error}</p>
+              <p className="text-red-700 text-sm mt-1">{error || wholesalersError}</p>
               <Button 
                 variant="outline" 
                 size="sm" 
-                onClick={resetReport}
+                onClick={() => {
+                  setError(null)
+                  refresh()
+                }}
                 className="mt-2"
               >
                 Try Again
@@ -251,7 +201,7 @@ export default function ReportDialog({ retailerId, retailerPhone }: ReportDialog
           )}
 
           {/* Generated Report Display */}
-          {generatedReport && !error && (
+          {generatedReport && !error && !wholesalersError && (
             <div className="space-y-6">
               {/* Report Summary */}
               <Card className="bg-green-50 border-green-200">
@@ -296,7 +246,7 @@ export default function ReportDialog({ retailerId, retailerPhone }: ReportDialog
                   onClick={viewReport}
                   className="flex-1"
                 >
-                  <Eye className="h-4 w-4 mr-2" />
+                  <FileText className="h-4 w-4 mr-2" />
                   View Report
                 </Button>
                 <Button 
@@ -323,7 +273,7 @@ export default function ReportDialog({ retailerId, retailerPhone }: ReportDialog
           )}
 
           {/* Report Generation Form */}
-          {!generatedReport && !error && (
+          {!generatedReport && !error && !wholesalersError && (
             <div className="space-y-6">
               {/* Wholesaler Selection */}
               <div className="space-y-3">
@@ -333,7 +283,7 @@ export default function ReportDialog({ retailerId, retailerPhone }: ReportDialog
                     <Loader2 className="h-6 w-6 animate-spin" />
                     <span className="ml-2 text-sm text-muted-foreground">Loading wholesalers...</span>
                   </div>
-                ) : wholesalers.length === 0 ? (
+                ) : isEmpty ? (
                   <div className="text-center py-4">
                     <Building2 className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
                     <p className="text-sm text-muted-foreground">No wholesalers found</p>
@@ -342,27 +292,79 @@ export default function ReportDialog({ retailerId, retailerPhone }: ReportDialog
                     </p>
                   </div>
                 ) : (
-                  <RadioGroup value={selectedWholesaler} onValueChange={setSelectedWholesaler}>
-                    <div className="flex items-center space-x-2 p-3 border rounded-lg">
-                      <RadioGroupItem value="all" id="all" />
-                      <Label htmlFor="all" className="flex-1 cursor-pointer">
-                        <div className="flex items-center justify-between">
-                          <span className="font-medium">All Wholesalers</span>
-                          <Badge variant="secondary">All</Badge>
-                        </div>
-                      </Label>
-                    </div>
-                    {wholesalers.map((wholesaler) => (
-                      <div key={wholesaler.id} className="flex items-center space-x-2 p-3 border rounded-lg">
-                        <RadioGroupItem value={wholesaler.id} id={wholesaler.id} />
-                        <Label htmlFor={wholesaler.id} className="flex-1 cursor-pointer">
-                          <div className="flex items-center justify-between">
-                            <span className="font-medium">{wholesaler.name}</span>
+                  <div className="grid grid-cols-1 gap-3">
+                    {/* All Wholesalers Card */}
+                    <div
+                      className={`p-4 border-2 rounded-lg cursor-pointer transition-all duration-200 hover:shadow-md ${
+                        selectedWholesaler === 'all'
+                          ? 'bg-blue-600 border-blue-600 text-white'
+                          : 'bg-white border-gray-200 hover:border-gray-300'
+                      }`}
+                      onClick={() => setSelectedWholesaler('all')}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div
+                            className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                              selectedWholesaler === 'all'
+                                ? 'bg-white border-white'
+                                : 'border-gray-300'
+                            }`}
+                          >
+                            {selectedWholesaler === 'all' && (
+                              <div className="w-2 h-2 rounded-full bg-blue-600"></div>
+                            )}
                           </div>
-                        </Label>
+                          <span className={`font-medium ${selectedWholesaler === 'all' ? 'text-white' : 'text-gray-900'}`}>
+                            All Wholesalers
+                          </span>
+                        </div>
+                        <Badge
+                          variant={selectedWholesaler === 'all' ? 'secondary' : 'outline'}
+                          className={selectedWholesaler === 'all' ? 'bg-white text-blue-600' : ''}
+                        >
+                          All
+                        </Badge>
+                      </div>
+                    </div>
+
+                    {/* Individual Wholesaler Cards */}
+                    {wholesalers.map((wholesaler) => (
+                      <div
+                        key={wholesaler.id}
+                        className={`p-4 border-2 rounded-lg cursor-pointer transition-all duration-200 hover:shadow-md ${
+                          selectedWholesaler === wholesaler.id
+                            ? 'bg-blue-600 border-blue-600 text-white'
+                            : 'bg-white border-gray-200 hover:border-gray-300'
+                        }`}
+                        onClick={() => setSelectedWholesaler(wholesaler.id)}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div
+                              className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                                selectedWholesaler === wholesaler.id
+                                  ? 'bg-white border-white'
+                                  : 'border-gray-300'
+                              }`}
+                            >
+                              {selectedWholesaler === wholesaler.id && (
+                                <div className="w-2 h-2 rounded-full bg-blue-600"></div>
+                              )}
+                            </div>
+                            <span className={`font-medium ${selectedWholesaler === wholesaler.id ? 'text-white' : 'text-gray-900'}`}>
+                              {wholesaler.name}
+                            </span>
+                          </div>
+                          <Building2
+                            className={`h-4 w-4 ${
+                              selectedWholesaler === wholesaler.id ? 'text-white' : 'text-muted-foreground'
+                            }`}
+                          />
+                        </div>
                       </div>
                     ))}
-                  </RadioGroup>
+                  </div>
                 )}
               </div>
 
@@ -390,7 +392,7 @@ export default function ReportDialog({ retailerId, retailerPhone }: ReportDialog
               {/* Generate Button */}
               <Button 
                 onClick={generateReport} 
-                disabled={loading || wholesalers.length === 0 || generating}
+                disabled={loading || isEmpty || generating}
                 className="w-full"
               >
                 {generating ? (
@@ -409,6 +411,13 @@ export default function ReportDialog({ retailerId, retailerPhone }: ReportDialog
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Report Table Modal */}
+      <ReportTableModal 
+        open={showReportModal}
+        onOpenChange={setShowReportModal}
+        reportData={generatedReport}
+      />
     </>
   )
 }

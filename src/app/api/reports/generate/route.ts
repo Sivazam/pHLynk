@@ -237,7 +237,7 @@ export async function POST(request: NextRequest) {
       payment.retailer?.phone || 'N/A',
       payment.wholesalerName,
       payment.lineWorkerName,
-      (payment.totalPaid || 0).toFixed(2),
+      (payment.totalPaid || 0).toString(),
       payment.method || 'CASH',
       payment.state || 'COMPLETED',
       payment.updatedAt ? convertToDate(payment.updatedAt).toLocaleString('en-IN') : 'N/A',
@@ -247,7 +247,7 @@ export async function POST(request: NextRequest) {
     csvRows.push([]);
     csvRows.push(['SUMMARY', '', '', '', '', '', '', '', '', '', '']);
     csvRows.push(['Total Payments', totalPayments.toString(), '', '', '', '', '', '', '', '', '']);
-    csvRows.push(['Total Amount', `₹${totalAmount.toFixed(2)}`, '', '', '', '', '', '', '', '', '']);
+    csvRows.push(['Total Amount', totalAmount.toString(), '', '', '', '', '', '', '', '', '']);
     csvRows.push(['Report Generated', new Date().toLocaleString('en-IN'), '', '', '', '', '', '', '', '', '']);
 
     const csvContent = [csvHeaders, ...csvRows]
