@@ -47,6 +47,7 @@ export default function RetailerDashboard() {
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [retailerId, setRetailerId] = useState<string | null>(null)
+  const [retailerPhone, setRetailerPhone] = useState<string | null>(null)
 
   useEffect(() => {
     // Fetch current retailer information from API
@@ -63,6 +64,7 @@ export default function RetailerDashboard() {
           if (data.success) {
             console.log('🏪 Retailer Dashboard: Using retailerId from API:', data.retailerId)
             setRetailerId(data.retailerId)
+            setRetailerPhone(data.retailerData?.phone || null)
             fetchDashboardData()
           } else {
             console.log('🏪 Retailer Dashboard: API returned no retailer data:', data.error)
@@ -317,7 +319,7 @@ export default function RetailerDashboard() {
       </Card>
 
       {/* Floating Report Button */}
-      {retailerId && <ReportDialog retailerId={retailerId} />}
+      {retailerId && retailerPhone && <ReportDialog retailerId={retailerId} retailerPhone={retailerPhone} />}
     </div>
   )
 }

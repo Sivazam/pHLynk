@@ -19,6 +19,7 @@ interface Wholesaler {
 
 interface ReportDialogProps {
   retailerId: string
+  retailerPhone?: string
 }
 
 const dateRanges = [
@@ -30,7 +31,7 @@ const dateRanges = [
   { value: 'last_1_year', label: 'Last 1 Year' },
 ]
 
-export default function ReportDialog({ retailerId }: ReportDialogProps) {
+export default function ReportDialog({ retailerId, retailerPhone }: ReportDialogProps) {
   const [open, setOpen] = useState(false)
   const [wholesalers, setWholesalers] = useState<Wholesaler[]>([])
   const [selectedWholesaler, setSelectedWholesaler] = useState('all')
@@ -50,7 +51,9 @@ export default function ReportDialog({ retailerId }: ReportDialogProps) {
   const fetchWholesalers = async () => {
     setLoading(true)
     try {
-      const response = await fetch(`/api/reports/wholesalers`)
+      // Add phone parameter to the API call
+      const phoneParam = retailerPhone ? `?phone=${retailerPhone}` : ''
+      const response = await fetch(`/api/reports/wholesalers${phoneParam}`)
       
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`)
@@ -82,10 +85,13 @@ export default function ReportDialog({ retailerId }: ReportDialogProps) {
       console.log('🔄 Generating report with params:', {
         retailerId,
         wholesalerId: selectedWholesaler,
-        dateRange: selectedDateRange
+        dateRange: selectedDateRange,
+        phone: retailerPhone
       })
 
-      const response = await fetch('/api/reports/generate', {
+      // Add phone parameter to the API call
+      const phoneParam = retailerPhone ? `?phone=${retailerPhone}` : ''
+      const response = await fetch(`/api/reports/generate${phoneParam}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
