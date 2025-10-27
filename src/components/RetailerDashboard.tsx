@@ -2007,7 +2007,6 @@ const PaymentStatusCell: React.FC<{ state: string }> = ({ state }) => {
                                 <TableHead>Amount</TableHead>
                                 <TableHead>Method</TableHead>
                                 <TableHead>Wholesaler</TableHead>
-                                <TableHead>Status</TableHead>
                                 <TableHead>Line Worker</TableHead>
                                 <TableHead>Actions</TableHead>
                               </TableRow>
@@ -2019,34 +2018,29 @@ const PaymentStatusCell: React.FC<{ state: string }> = ({ state }) => {
                                   <TableCell>{formatCurrency(payment.totalPaid)}</TableCell>
                                   <TableCell>{payment.method}</TableCell>
                                   <TableCell>
-                                    <WholesalerNameCell tenantId={payment.tenantId || ''} />
-                                  </TableCell>
-                                  <TableCell>
-                                    <PaymentStatusCell state={payment.state} />
+                                    <Badge variant="outline" className="text-xs">
+                                      {wholesalerNames[payment.tenantId || ''] || 'Unknown Wholesaler'}
+                                    </Badge>
                                   </TableCell>
                                   <TableCell>{lineWorkerNames[payment.lineWorkerId] || 'Loading...'}</TableCell>
                                   <TableCell>
                                     <div className="flex space-x-2">
-                                      {payment.state === 'COMPLETED' && (
-                                        <>
-                                          <Button
-                                            variant="outline"
-                                            size="sm"
-                                            onClick={() => openReceiptDialog(payment)}
-                                            className="h-7 px-2 text-xs"
-                                          >
-                                            <Download className="h-3 w-3 mr-1" />
-                                            Receipt
-                                          </Button>
-                                        </>
-                                      )}
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => openReceiptDialog(payment)}
+                                        className="h-7 px-2 text-xs"
+                                      >
+                                        <Download className="h-3 w-3 mr-1" />
+                                        View Receipt
+                                      </Button>
                                     </div>
                                   </TableCell>
                                 </TableRow>
                               ))}
                               {filteredPayments.length === 0 && (
                                 <TableRow>
-                                  <TableCell colSpan={6} className="text-center py-8 text-gray-500">
+                                  <TableCell colSpan={5} className="text-center py-8 text-gray-500">
                                     No payments found
                                   </TableCell>
                                 </TableRow>
@@ -2095,32 +2089,20 @@ const PaymentStatusCell: React.FC<{ state: string }> = ({ state }) => {
                                   </Badge>
                                 </TableCell>
                                 <TableCell>
-                                  <Badge className={
-                                    payment.state === 'COMPLETED' 
-                                      ? 'bg-green-100 text-green-800' 
-                                      : payment.state === 'OTP_SENT' 
-                                        ? 'bg-blue-100 text-blue-800' 
-                                        : 'bg-yellow-100 text-yellow-800'
-                                  }>
-                                    {payment.state}
-                                  </Badge>
+                                  <PaymentStatusCell state={payment.state} />
                                 </TableCell>
                                 <TableCell>{lineWorkerNames[payment.lineWorkerId] || 'Loading...'}</TableCell>
                                 <TableCell>
                                   <div className="flex space-x-2">
-                                    {payment.state === 'COMPLETED' && (
-                                      <>
-                                        <Button
-                                          variant="outline"
-                                          size="sm"
-                                          onClick={() => openReceiptDialog(payment)}
-                                          className="h-7 px-2 text-xs"
-                                        >
-                                          <Download className="h-3 w-3 mr-1" />
-                                          Receipt
-                                        </Button>
-                                      </>
-                                    )}
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => openReceiptDialog(payment)}
+                                      className="h-7 px-2 text-xs"
+                                    >
+                                      <Download className="h-3 w-3 mr-1" />
+                                      View Receipt
+                                    </Button>
                                   </div>
                                 </TableCell>
                               </TableRow>
