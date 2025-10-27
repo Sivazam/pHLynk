@@ -349,9 +349,6 @@ export function RetailerDashboard() {
         // Fetch payments for the specific tenant
         paymentsData = await paymentService.getPaymentsByRetailer(newTenantId, retailer.id);
         setTenantId(newTenantId);
-        
-        // Fetch wholesaler name for the new tenant
-        await getWholesalerName(newTenantId);
       }
       
       setPayments(paymentsData);

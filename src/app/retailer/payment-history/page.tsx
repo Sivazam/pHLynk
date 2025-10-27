@@ -24,7 +24,7 @@ interface Payment {
   id: string
   amount: number
   method: 'CASH' | 'UPI' | 'BANK_TRANSFER'
-  status: 'COMPLETED' | 'PENDING' | 'FAILED'
+  status: 'COMPLETED' | 'OTP_SENT' | 'CANCELLED' | 'INITIATED' | 'OTP_VERIFIED'
   date: string
   wholesaler: Wholesaler
   referenceNumber?: string
