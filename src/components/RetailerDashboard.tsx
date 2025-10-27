@@ -2018,9 +2018,7 @@ const PaymentStatusCell: React.FC<{ state: string }> = ({ state }) => {
                                   <TableCell>{formatCurrency(payment.totalPaid)}</TableCell>
                                   <TableCell>{payment.method}</TableCell>
                                   <TableCell>
-                                    <Badge variant="outline" className="text-xs">
-                                      {wholesalerNames[payment.tenantId || ''] || 'Unknown Wholesaler'}
-                                    </Badge>
+                                    <WholesalerNameCell tenantId={payment.tenantId || ''} />
                                   </TableCell>
                                   <TableCell>{lineWorkerNames[payment.lineWorkerId] || 'Loading...'}</TableCell>
                                   <TableCell>
@@ -2094,15 +2092,17 @@ const PaymentStatusCell: React.FC<{ state: string }> = ({ state }) => {
                                 <TableCell>{lineWorkerNames[payment.lineWorkerId] || 'Loading...'}</TableCell>
                                 <TableCell>
                                   <div className="flex space-x-2">
-                                    <Button
-                                      variant="outline"
-                                      size="sm"
-                                      onClick={() => openReceiptDialog(payment)}
-                                      className="h-7 px-2 text-xs"
-                                    >
-                                      <Download className="h-3 w-3 mr-1" />
-                                      View Receipt
-                                    </Button>
+                                    {payment.state === 'COMPLETED' && (
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => openReceiptDialog(payment)}
+                                        className="h-7 px-2 text-xs"
+                                      >
+                                        <Download className="h-3 w-3 mr-1" />
+                                        View Receipt
+                                      </Button>
+                                    )}
                                   </div>
                                 </TableCell>
                               </TableRow>
