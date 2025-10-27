@@ -146,12 +146,33 @@ export default function PaymentHistoryPage() {
     switch (status) {
       case 'COMPLETED':
         return 'bg-green-100 text-green-800'
-      case 'PENDING':
-        return 'bg-yellow-100 text-yellow-800'
-      case 'FAILED':
+      case 'OTP_SENT':
+        return 'bg-blue-100 text-blue-800'
+      case 'CANCELLED':
         return 'bg-red-100 text-red-800'
+      case 'INITIATED':
+        return 'bg-yellow-100 text-yellow-800'
+      case 'OTP_VERIFIED':
+        return 'bg-purple-100 text-purple-800'
       default:
         return 'bg-gray-100 text-gray-800'
+    }
+  }
+
+  const getDisplayStatus = (status: Payment['status']) => {
+    switch (status) {
+      case 'OTP_SENT':
+        return 'OTP_Received' // Retailer perspective: they receive OTP
+      case 'COMPLETED':
+        return 'Completed'
+      case 'CANCELLED':
+        return 'Cancelled'
+      case 'INITIATED':
+        return 'Initiated'
+      case 'OTP_VERIFIED':
+        return 'OTP_Verified'
+      default:
+        return status
     }
   }
 
@@ -395,7 +416,7 @@ export default function PaymentHistoryPage() {
                       </td>
                       <td className="p-2">
                         <Badge className={getStatusColor(payment.status)}>
-                          {payment.status}
+                          {getDisplayStatus(payment.status)}
                         </Badge>
                       </td>
                       <td className="p-2 text-muted-foreground">
