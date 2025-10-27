@@ -1301,8 +1301,17 @@ export class RetailerService extends FirestoreService<Retailer> {
       // Update the wholesaler data
       wholesalerData[tenantId] = updatedWholesalerData;
       
+      // Also update wholesalerAssignments for backward compatibility
+      let wholesalerAssignments = retailerData.wholesalerAssignments || {};
+      wholesalerAssignments[tenantId] = {
+        areaId: updatedWholesalerData.currentAreaId,
+        zipcodes: updatedWholesalerData.currentZipcodes,
+        assignedAt: updatedWholesalerData.assignedAt
+      };
+      
       await updateDoc(retailerRef, {
         wholesalerData: wholesalerData,
+        wholesalerAssignments: wholesalerAssignments,
         updatedAt: now
       });
       
