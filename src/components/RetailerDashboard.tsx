@@ -434,30 +434,48 @@ export function RetailerDashboard() {
   const [wholesalerNames, setWholesalerNames] = useState<Record<string, string>>({});
   const [lineWorkerNames, setLineWorkerNames] = useState<Record<string, string>>({});
 
-  // Get wholesaler/tenant name by tenantId
-  const getWholesalerName = async (tenantId: string): Promise<string> => {
-    if (tenantId === 'all') {
-      return 'All Wholesalers';
-    }
-    
-    if (wholesalerNames[tenantId]) {
-      return wholesalerNames[tenantId];
-    }
-    
-    try {
-      const tenantDoc = await getDoc(doc(db, 'tenants', tenantId));
-      if (tenantDoc.exists()) {
-        const tenantData = tenantDoc.data();
-        const name = tenantData.name || 'Unknown Wholesaler';
-        setWholesalerNames(prev => ({ ...prev, [tenantId]: name }));
-        return name;
+  // Direct wholesaler name fetch component for inline use
+const WholesalerNameCell: React.FC<{ tenantId: string }> = ({ tenantId }) => {
+  const [wholesalerName, setWholesalerName] = useState<string>('Loading...');
+  
+  useEffect(() => {
+    const fetchWholesalerName = async () => {
+      if (!tenantId || tenantId === 'all') {
+        setWholesalerName('All Wholesalers');
+        return;
       }
-    } catch (error) {
-      logger.error('Error fetching wholesaler name', error, { context: 'RetailerDashboard' });
-    }
+      
+      // Check cache first
+      if (wholesalerNames[tenantId]) {
+        setWholesalerName(wholesalerNames[tenantId]);
+        return;
+      }
+      
+      try {
+        const tenantDoc = await getDoc(doc(db, 'tenants', tenantId));
+        if (tenantDoc.exists()) {
+          const tenantData = tenantDoc.data();
+          const name = tenantData.name || 'Unknown Wholesaler';
+          setWholesalerNames(prev => ({ ...prev, [tenantId]: name }));
+          setWholesalerName(name);
+        } else {
+          setWholesalerName('Unknown Wholesaler');
+        }
+      } catch (error) {
+        console.error('Error fetching wholesaler name:', error);
+        setWholesalerName('Unknown Wholesaler');
+      }
+    };
     
-    return 'Unknown Wholesaler';
-  };
+    fetchWholesalerName();
+  }, [tenantId]);
+  
+  return (
+    <Badge variant="outline" className="bg-blue-50 text-blue-800 border-blue-200">
+      {wholesalerName}
+    </Badge>
+  );
+};
 
   // Get line worker name by userId
   const getLineWorkerName = async (lineWorkerId: string): Promise<string> => {
@@ -480,54 +498,28 @@ export function RetailerDashboard() {
     return 'Unknown Line Worker';
   };
 
-  // Load all necessary data
+  // Load all necessary data (line workers only, wholesaler names fetched inline)
   const loadAdditionalData = async () => {
     if (!payments.length) return;
     
-    // Get unique tenantIds and lineWorkerIds
-    const uniqueTenantIds = new Set<string>();
+    // Get unique lineWorkerIds only (wholesaler names fetched inline)
     const uniqueLineWorkerIds = new Set<string>();
     
-    // Add current tenantId if it exists and is not 'all'
-    if (tenantId && tenantId !== 'all') {
-      uniqueTenantIds.add(tenantId);
-    }
-    
-    // Extract tenantIds and lineWorkerIds from payments
+    // Extract lineWorkerIds from payments
     payments.forEach(payment => {
-      if (payment.tenantId) {
-        uniqueTenantIds.add(payment.tenantId);
-      }
       if (payment.lineWorkerId) {
         uniqueLineWorkerIds.add(payment.lineWorkerId);
       }
     });
     
-    // Fetch wholesaler names
-    for (const tenantId of uniqueTenantIds) {
-      await getWholesalerName(tenantId);
-    }
-    
-    // Also fetch names for all available tenants if this is a multi-tenant retailer
-    if (availableTenants.length > 1) {
-      for (const tenantId of availableTenants) {
-        await getWholesalerName(tenantId);
-      }
-    }
-    
-    // Fetch line worker names
+    // Fetch line worker names only
     for (const lineWorkerId of uniqueLineWorkerIds) {
       await getLineWorkerName(lineWorkerId);
     }
   };
 
   useEffect(() => {
-    console.log('🔄 RetailerDashboard useEffect triggered', {
-      hasUser: !!user,
-      userId: user?.uid,
-      retailerId: user?.retailerId,
-      timestamp: new Date().toISOString()
-    });
+    if (!user) return;
     
     // Get retailerId from AuthContext user or fallback to localStorage for backward compatibility
     let retailerId: string | undefined = user?.retailerId;
@@ -1940,9 +1932,7 @@ export function RetailerDashboard() {
                                   <TableCell>{formatCurrency(payment.totalPaid)}</TableCell>
                                   <TableCell>{payment.method}</TableCell>
                                   <TableCell>
-                                    <Badge variant="outline" className="text-xs">
-                                      {wholesalerNames[payment.tenantId || ''] || 'Unknown Wholesaler'}
-                                    </Badge>
+                                    <WholesalerNameCell tenantId={payment.tenantId || ''} />
                                   </TableCell>
                                   <TableCell>
                                     <Badge className={
