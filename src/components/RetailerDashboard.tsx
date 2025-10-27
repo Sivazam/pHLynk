@@ -349,6 +349,9 @@ export function RetailerDashboard() {
         // Fetch payments for the specific tenant
         paymentsData = await paymentService.getPaymentsByRetailer(newTenantId, retailer.id);
         setTenantId(newTenantId);
+        
+        // Fetch wholesaler name for the new tenant
+        await getWholesalerName(newTenantId);
       }
       
       setPayments(paymentsData);
@@ -465,7 +468,7 @@ const WholesalerNameCell: React.FC<{ tenantId: string }> = ({ tenantId }) => {
     };
     
     fetchWholesalerName();
-  }, [tenantId]);
+  }, [tenantId, wholesalerNames]); // Add wholesalerNames to dependency array
   
   return (
     <Badge variant="outline" className="bg-blue-50 text-blue-800 border-blue-200">
@@ -519,7 +522,30 @@ const PaymentStatusCell: React.FC<{ state: string }> = ({ state }) => {
   );
 };
 
-  // Get line worker name by userId
+  // Get wholesaler/tenant name by tenantId - direct fetch like EnhancedReceipt
+  const getWholesalerName = async (tenantId: string): Promise<string> => {
+    if (tenantId === 'all') {
+      return 'All Wholesalers';
+    }
+    
+    if (wholesalerNames[tenantId]) {
+      return wholesalerNames[tenantId];
+    }
+    
+    try {
+      const tenantDoc = await getDoc(doc(db, 'tenants', tenantId));
+      if (tenantDoc.exists()) {
+        const tenantData = tenantDoc.data();
+        const name = tenantData.name || 'Unknown Wholesaler';
+        setWholesalerNames(prev => ({ ...prev, [tenantId]: name }));
+        return name;
+      }
+    } catch (error) {
+      logger.error('Error fetching wholesaler name', error, { context: 'RetailerDashboard' });
+    }
+    
+    return 'Unknown Wholesaler';
+  };
   const getLineWorkerName = async (lineWorkerId: string): Promise<string> => {
     if (lineWorkerNames[lineWorkerId]) {
       return lineWorkerNames[lineWorkerId];
@@ -540,11 +566,11 @@ const PaymentStatusCell: React.FC<{ state: string }> = ({ state }) => {
     return 'Unknown Line Worker';
   };
 
-  // Load all necessary data (line workers only, wholesaler names fetched inline)
+  // Load all necessary data (line workers and available wholesalers)
   const loadAdditionalData = async () => {
     if (!payments.length) return;
     
-    // Get unique lineWorkerIds only (wholesaler names fetched inline)
+    // Get unique lineWorkerIds from payments
     const uniqueLineWorkerIds = new Set<string>();
     
     // Extract lineWorkerIds from payments
@@ -554,7 +580,14 @@ const PaymentStatusCell: React.FC<{ state: string }> = ({ state }) => {
       }
     });
     
-    // Fetch line worker names only
+    // Always fetch names for all available tenants (for dropdown and slider)
+    if (availableTenants.length > 0) {
+      for (const tenantId of availableTenants) {
+        await getWholesalerName(tenantId);
+      }
+    }
+    
+    // Fetch line worker names
     for (const lineWorkerId of uniqueLineWorkerIds) {
       await getLineWorkerName(lineWorkerId);
     }
@@ -972,6 +1005,18 @@ const PaymentStatusCell: React.FC<{ state: string }> = ({ state }) => {
       loadAdditionalData();
     }
   }, [payments]);
+
+  // Load wholesaler names when availableTenants change
+  useEffect(() => {
+    if (availableTenants.length > 0) {
+      const loadWholesalerNames = async () => {
+        for (const tenantId of availableTenants) {
+          await getWholesalerName(tenantId);
+        }
+      };
+      loadWholesalerNames();
+    }
+  }, [availableTenants]);
 
   // Countdown timer for OTPs
   useEffect(() => {
