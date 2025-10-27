@@ -5,7 +5,21 @@ import { NextRequest, NextResponse } from 'next/server'
 import { retailerService, paymentService } from '@/services/firestore'
 import { toDate as convertToDate } from '@/lib/timestamp-utils'
 import { db } from '@/lib/firebase'
-import { collection, query, where, getDocs } from 'firebase/firestore'
+import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore'
+
+// Function to fetch wholesaler name by tenant ID
+async function getWholesalerName(tenantId: string): Promise<string> {
+  try {
+    const tenantDoc = await getDoc(doc(db, 'tenants', tenantId))
+    if (tenantDoc.exists()) {
+      return tenantDoc.data().name || 'Unknown Wholesaler'
+    }
+    return 'Unknown Wholesaler'
+  } catch (error) {
+    console.error('Error fetching wholesaler name:', error)
+    return 'Unknown Wholesaler'
+  }
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -81,24 +95,40 @@ export async function GET(request: NextRequest) {
       return dateB - dateA
     })
 
+    // Fetch wholesaler names for payments that don't have initiatedByTenantName
+    const uniqueTenantIds = [...new Set(pendingPayments.map(payment => payment.tenantId).filter(Boolean))]
+    const wholesalerNameCache = new Map()
+    
+    for (const tenantId of uniqueTenantIds) {
+      const wholesalerName = await getWholesalerName(tenantId)
+      wholesalerNameCache.set(tenantId, wholesalerName)
+    }
+
     return NextResponse.json({
-      payments: pendingPayments.map(payment => ({
-        id: payment.id,
-        amount: payment.totalPaid || 0,
-        method: payment.method,
-        date: payment.createdAt ? convertToDate(payment.createdAt).toISOString() : new Date().toISOString(),
-        lineWorker: {
-          name: payment.lineWorkerName || 'Unknown',
-          phone: ''
-        },
-        retailer: {
-          name: payment.retailerName || 'Unknown'
-        },
-        wholesaler: {
-          id: payment.tenantId,
-          name: payment.initiatedByTenantName || 'Unknown Wholesaler'
+      payments: pendingPayments.map(payment => {
+        const wholesalerId = payment.tenantId
+        const wholesalerName = payment.initiatedByTenantName || 
+                              (wholesalerId ? wholesalerNameCache.get(wholesalerId) : null) || 
+                              'Unknown Wholesaler'
+        
+        return {
+          id: payment.id,
+          amount: payment.totalPaid || 0,
+          method: payment.method,
+          date: payment.createdAt ? convertToDate(payment.createdAt).toISOString() : new Date().toISOString(),
+          lineWorker: {
+            name: payment.lineWorkerName || 'Unknown',
+            phone: ''
+          },
+          retailer: {
+            name: payment.retailerName || 'Unknown'
+          },
+          wholesaler: {
+            id: wholesalerId,
+            name: wholesalerName
+          }
         }
-      })),
+      }),
       count: pendingPayments.length
     })
 

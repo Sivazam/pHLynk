@@ -108,219 +108,275 @@ export function ReportTableModal({ open, onOpenChange, reportData }: ReportTable
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-7xl w-[95vw] max-h-[90vh] overflow-y-auto mx-auto">
-        <DialogHeader className="pb-4">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div className="min-w-0 flex-1">
-              <DialogTitle className="flex items-center gap-2 text-lg sm:text-xl truncate">
-                <FileText className="h-5 w-5 flex-shrink-0" />
-                <span className="truncate">Payment Report Details</span>
-              </DialogTitle>
-              <DialogDescription className="text-sm mt-1">
-                Complete payment history and analysis for the selected period
-              </DialogDescription>
+      <DialogContent className="max-w-4xl w-[95vw] sm:w-[90vw] lg:w-[85vw] max-h-[90vh] overflow-hidden mx-auto">
+        <DialogHeader className="pb-4 px-4 sm:px-6">
+          <div className="flex flex-col gap-3">
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0 flex-1">
+                <DialogTitle className="flex items-center gap-2 text-lg sm:text-xl">
+                  <FileText className="h-5 w-5 flex-shrink-0" />
+                  <span className="truncate">Payment Report Details</span>
+                </DialogTitle>
+                <DialogDescription className="text-sm mt-1">
+                  Complete payment history and analysis for the selected period
+                </DialogDescription>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => onOpenChange(false)}
+                className="h-8 w-8 p-0 flex-shrink-0"
+              >
+                <X className="h-4 w-4" />
+              </Button>
             </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => onOpenChange(false)}
-              className="h-8 w-8 p-0 flex-shrink-0"
-            >
-              <X className="h-4 w-4" />
-            </Button>
           </div>
         </DialogHeader>
 
-        <div className="space-y-4 sm:space-y-6">
-          {/* Report Summary Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium truncate">Total Payments</CardTitle>
-                <FileText className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-xl sm:text-2xl font-bold">{reportData.summary.totalPayments}</div>
-                <p className="text-xs text-muted-foreground">
-                  Transactions in period
-                </p>
-              </CardContent>
-            </Card>
+        <div className="flex flex-col h-[calc(90vh-8rem)] overflow-hidden">
+          {/* Scrollable Content */}
+          <div className="flex-1 overflow-y-auto px-4 sm:px-6">
+            <div className="space-y-4 sm:space-y-6 pb-6">
+              {/* Report Summary Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium truncate">Total Payments</CardTitle>
+                    <FileText className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-xl sm:text-2xl font-bold">{reportData.summary.totalPayments}</div>
+                    <p className="text-xs text-muted-foreground">
+                      Transactions in period
+                    </p>
+                  </CardContent>
+                </Card>
 
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium truncate">Total Amount</CardTitle>
-                <IndianRupee className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-xl sm:text-2xl font-bold">{formatCurrency(reportData.summary.totalAmount)}</div>
-                <p className="text-xs text-muted-foreground">
-                  Total transaction value
-                </p>
-              </CardContent>
-            </Card>
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium truncate">Total Amount</CardTitle>
+                    <IndianRupee className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-xl sm:text-2xl font-bold">{formatCurrency(reportData.summary.totalAmount)}</div>
+                    <p className="text-xs text-muted-foreground">
+                      Total transaction value
+                    </p>
+                  </CardContent>
+                </Card>
 
-            <Card className="sm:col-span-2 lg:col-span-1">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium truncate">Period</CardTitle>
-                <Calendar className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-base sm:text-lg font-bold truncate">{getDateRangeLabel(reportData.summary.dateRange.label)}</div>
-                <p className="text-xs text-muted-foreground">
-                  {new Date(reportData.summary.dateRange.start).toLocaleDateString('en-IN')} - {new Date(reportData.summary.dateRange.end).toLocaleDateString('en-IN')}
-                </p>
-              </CardContent>
-            </Card>
-          </div>
+                <Card className="sm:col-span-2 lg:col-span-1">
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium truncate">Period</CardTitle>
+                    <Calendar className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-base sm:text-lg font-bold truncate">{getDateRangeLabel(reportData.summary.dateRange.label)}</div>
+                    <p className="text-xs text-muted-foreground">
+                      {new Date(reportData.summary.dateRange.start).toLocaleDateString('en-IN')} - {new Date(reportData.summary.dateRange.end).toLocaleDateString('en-IN')}
+                    </p>
+                  </CardContent>
+                </Card>
+              </div>
 
-          {/* Payments Table */}
-          <Card>
-            <CardHeader className="pb-4">
-              <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
-                <CheckCircle className="h-5 w-5 text-green-600 flex-shrink-0" />
-                <span>Payment Details</span>
-              </CardTitle>
-              <CardDescription className="text-sm">
-                Complete list of payments in the selected period
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="p-0 sm:p-6">
-              {reportData.payments.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground px-4">
-                  No payments found in the selected period
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {/* Mobile Card View */}
-                  <div className="sm:hidden space-y-3 px-4 pb-4">
-                    {reportData.payments.map((payment) => (
-                      <Card key={payment.paymentId} className="p-3 border">
-                        <div className="space-y-2">
-                          <div className="flex justify-between items-start">
-                            <div className="min-w-0 flex-1">
-                              <p className="font-medium text-sm truncate">{payment.wholesalerName}</p>
-                              <p className="text-xs text-muted-foreground">
-                                {new Date(payment.createdAt).toLocaleDateString('en-IN')}
-                              </p>
-                            </div>
-                            <div className="text-right ml-2">
-                              <p className="font-bold text-sm">{formatCurrency(payment.totalPaid || 0)}</p>
-                              <Badge variant="outline" className="text-xs">
-                                {payment.method || 'CASH'}
-                              </Badge>
-                            </div>
-                          </div>
-                          <div className="flex justify-between items-center">
-                            <p className="text-xs text-muted-foreground">
-                              ID: {payment.paymentId.substring(0, 8)}...
-                            </p>
-                            <Badge variant="default" className="bg-green-100 text-green-800 text-xs">
-                              {payment.state}
-                            </Badge>
-                          </div>
-                        </div>
-                      </Card>
-                    ))}
-                  </div>
-
-                  {/* Desktop Table View */}
-                  <div className="hidden sm:block rounded-md border max-h-96 overflow-y-auto">
-                    <Table>
-                      <TableHeader className="sticky top-0 bg-background">
-                        <TableRow>
-                          <TableHead className="w-[100px]">Payment ID</TableHead>
-                          <TableHead className="min-w-[140px]">Date & Time</TableHead>
-                          <TableHead className="min-w-[150px]">Wholesaler</TableHead>
-                          <TableHead className="min-w-[140px]">Line Worker</TableHead>
-                          <TableHead className="text-right w-[120px]">Amount</TableHead>
-                          <TableHead className="w-[100px]">Method</TableHead>
-                          <TableHead className="w-[100px]">Status</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
+              {/* Payments Table */}
+              <Card>
+                <CardHeader className="pb-4">
+                  <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+                    <CheckCircle className="h-5 w-5 text-green-600 flex-shrink-0" />
+                    <span>Payment Details</span>
+                  </CardTitle>
+                  <CardDescription className="text-sm">
+                    Complete list of payments in the selected period
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="p-0">
+                  {reportData.payments.length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground px-4">
+                      No payments found in the selected period
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {/* Mobile Card View - Always visible for mobile-first approach */}
+                      <div className="sm:hidden space-y-3 px-4 pb-4">
                         {reportData.payments.map((payment) => (
-                          <TableRow key={payment.paymentId}>
-                            <TableCell className="font-mono text-xs">
-                              {payment.paymentId.substring(0, 8)}...
-                            </TableCell>
-                            <TableCell>
-                              <div>
-                                <div className="font-medium text-sm">
-                                  {new Date(payment.createdAt).toLocaleDateString('en-IN')}
+                          <Card key={payment.paymentId} className="p-4 border shadow-sm">
+                            <div className="space-y-3">
+                              {/* Header with amount and status */}
+                              <div className="flex justify-between items-start">
+                                <div className="min-w-0 flex-1">
+                                  <p className="font-semibold text-base text-primary truncate">{payment.wholesalerName}</p>
+                                  <p className="text-xs text-muted-foreground mt-1">
+                                    {new Date(payment.createdAt).toLocaleDateString('en-IN', {
+                                      day: 'numeric',
+                                      month: 'short',
+                                      year: 'numeric'
+                                    })}
+                                  </p>
                                 </div>
-                                <div className="text-xs text-muted-foreground">
-                                  {new Date(payment.createdAt).toLocaleTimeString('en-IN')}
+                                <div className="text-right ml-3">
+                                  <p className="font-bold text-lg text-primary">{formatCurrency(payment.totalPaid || 0)}</p>
+                                  <Badge variant="default" className="bg-green-100 text-green-800 text-xs mt-1">
+                                    {payment.state}
+                                  </Badge>
                                 </div>
                               </div>
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex items-center gap-2">
-                                <Building2 className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                                <span className="truncate">{payment.wholesalerName}</span>
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex items-center gap-2">
-                                <User className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                                <span className="truncate">{payment.lineWorkerName}</span>
-                              </div>
-                            </TableCell>
-                            <TableCell className="text-right font-medium">
-                              {formatCurrency(payment.totalPaid || 0)}
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant="outline" className="text-xs">
-                                {payment.method || 'CASH'}
-                              </Badge>
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant="default" className="bg-green-100 text-green-800 text-xs">
-                                {payment.state}
-                              </Badge>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
 
-                  {/* Total Summary */}
-                  <div className="border-t pt-4 mt-4 px-4 sm:px-0">
-                    <div className="bg-muted/30 rounded-lg p-4">
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div className="flex justify-between items-center">
-                          <span className="text-sm font-medium text-muted-foreground">Total Payments:</span>
-                          <span className="font-bold">{reportData.summary.totalPayments}</span>
-                        </div>
-                        <div className="flex justify-between items-center">
-                          <span className="text-sm font-medium text-muted-foreground">Total Amount:</span>
-                          <span className="font-bold text-lg">{formatCurrency(reportData.summary.totalAmount)}</span>
+                              {/* Payment details */}
+                              <div className="grid grid-cols-2 gap-3 text-sm">
+                                <div>
+                                  <p className="text-xs text-muted-foreground mb-1">Payment ID</p>
+                                  <p className="font-mono text-xs bg-muted px-2 py-1 rounded">
+                                    {payment.paymentId.substring(0, 8)}...
+                                  </p>
+                                </div>
+                                <div>
+                                  <p className="text-xs text-muted-foreground mb-1">Method</p>
+                                  <Badge variant="outline" className="text-xs">
+                                    {payment.method || 'CASH'}
+                                  </Badge>
+                                </div>
+                              </div>
+
+                              {/* Line worker info */}
+                              <div className="flex items-center gap-2 text-sm">
+                                <User className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                                <span className="text-muted-foreground">Line Worker:</span>
+                                <span className="font-medium truncate">{payment.lineWorkerName}</span>
+                              </div>
+
+                              {/* Time info */}
+                              <div className="text-xs text-muted-foreground border-t pt-2">
+                                {new Date(payment.createdAt).toLocaleTimeString('en-IN', {
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                })}
+                              </div>
+                            </div>
+                          </Card>
+                        ))}
+                      </div>
+
+                      {/* Desktop Table View - Improved responsive design */}
+                      <div className="hidden sm:block">
+                        <div className="overflow-x-auto -mx-4 sm:mx-0">
+                          <div className="inline-block min-w-full align-middle">
+                            <div className="overflow-hidden border rounded-lg">
+                              <Table>
+                                <TableHeader className="bg-muted/30">
+                                  <TableRow>
+                                    <TableHead className="px-4 py-3 text-left">
+                                      <span className="text-xs font-semibold">Payment ID</span>
+                                    </TableHead>
+                                    <TableHead className="px-4 py-3 text-left">
+                                      <span className="text-xs font-semibold">Date</span>
+                                    </TableHead>
+                                    <TableHead className="px-4 py-3 text-left">
+                                      <span className="text-xs font-semibold">Wholesaler</span>
+                                    </TableHead>
+                                    <TableHead className="px-4 py-3 text-left hidden lg:table-cell">
+                                      <span className="text-xs font-semibold">Line Worker</span>
+                                    </TableHead>
+                                    <TableHead className="px-4 py-3 text-right">
+                                      <span className="text-xs font-semibold">Amount</span>
+                                    </TableHead>
+                                    <TableHead className="px-4 py-3 text-center hidden md:table-cell">
+                                      <span className="text-xs font-semibold">Method</span>
+                                    </TableHead>
+                                    <TableHead className="px-4 py-3 text-center">
+                                      <span className="text-xs font-semibold">Status</span>
+                                    </TableHead>
+                                  </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                  {reportData.payments.map((payment) => (
+                                    <TableRow key={payment.paymentId} className="hover:bg-muted/50">
+                                      <TableCell className="px-4 py-3">
+                                        <span className="font-mono text-xs">
+                                          {payment.paymentId.substring(0, 8)}...
+                                        </span>
+                                      </TableCell>
+                                      <TableCell className="px-4 py-3">
+                                        <div>
+                                          <div className="font-medium text-sm">
+                                            {new Date(payment.createdAt).toLocaleDateString('en-IN')}
+                                          </div>
+                                          <div className="text-xs text-muted-foreground lg:hidden">
+                                            {new Date(payment.createdAt).toLocaleTimeString('en-IN', {
+                                              hour: '2-digit',
+                                              minute: '2-digit'
+                                            })}
+                                          </div>
+                                        </div>
+                                      </TableCell>
+                                      <TableCell className="px-4 py-3">
+                                        <div className="flex items-center gap-2 max-w-[120px] lg:max-w-none">
+                                          <Building2 className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                                          <span className="truncate text-sm">{payment.wholesalerName}</span>
+                                        </div>
+                                      </TableCell>
+                                      <TableCell className="px-4 py-3 hidden lg:table-cell">
+                                        <div className="flex items-center gap-2 max-w-[120px]">
+                                          <User className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                                          <span className="truncate text-sm">{payment.lineWorkerName}</span>
+                                        </div>
+                                      </TableCell>
+                                      <TableCell className="px-4 py-3 text-right">
+                                        <span className="font-semibold text-sm">
+                                          {formatCurrency(payment.totalPaid || 0)}
+                                        </span>
+                                      </TableCell>
+                                      <TableCell className="px-4 py-3 text-center hidden md:table-cell">
+                                        <Badge variant="outline" className="text-xs">
+                                          {payment.method || 'CASH'}
+                                        </Badge>
+                                      </TableCell>
+                                      <TableCell className="px-4 py-3 text-center">
+                                        <Badge variant="default" className="bg-green-100 text-green-800 text-xs">
+                                          {payment.state}
+                                        </Badge>
+                                      </TableCell>
+                                    </TableRow>
+                                  ))}
+                                </TableBody>
+                              </Table>
+                            </div>
+                          </div>
                         </div>
                       </div>
-                      <div className="mt-3 pt-3 border-t border-muted/50">
-                        <div className="flex justify-between items-center">
-                          <span className="text-sm text-muted-foreground">
-                            Report generated on {new Date().toLocaleString('en-IN')}
-                          </span>
-                          <div className="flex gap-2">
-                            <Button onClick={downloadCSV} size="sm" className="hidden sm:flex">
-                              <Download className="mr-2 h-4 w-4" />
-                              Download CSV
-                            </Button>
-                            <Button onClick={downloadCSV} size="sm" className="sm:hidden">
-                              <Download className="mr-2 h-4 w-4" />
-                              Download
-                            </Button>
+
+                      {/* Total Summary */}
+                      <div className="border-t pt-4 mt-4 px-4 sm:px-6">
+                        <div className="bg-muted/30 rounded-lg p-4">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div className="flex justify-between items-center">
+                              <span className="text-sm font-medium text-muted-foreground">Total Payments:</span>
+                              <span className="font-bold text-lg">{reportData.summary.totalPayments}</span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                              <span className="text-sm font-medium text-muted-foreground">Total Amount:</span>
+                              <span className="font-bold text-lg text-primary">{formatCurrency(reportData.summary.totalAmount)}</span>
+                            </div>
+                          </div>
+                          <div className="mt-4 pt-3 border-t border-muted/50">
+                            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
+                              <span className="text-xs text-muted-foreground text-center sm:text-left">
+                                Report generated on {new Date().toLocaleString('en-IN')}
+                              </span>
+                              <Button onClick={downloadCSV} size="sm" className="w-full sm:w-auto">
+                                <Download className="mr-2 h-4 w-4" />
+                                Download CSV
+                              </Button>
+                            </div>
                           </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          </div>
         </div>
       </DialogContent>
     </Dialog>

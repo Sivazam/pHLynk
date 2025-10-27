@@ -7,7 +7,21 @@ import { authOptions } from '@/lib/auth'
 import { retailerService, paymentService } from '@/services/firestore'
 import { toDate as convertToDate } from '@/lib/timestamp-utils'
 import { db } from '@/lib/firebase'
-import { collection, query, where, getDocs } from 'firebase/firestore'
+import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore'
+
+// Function to fetch wholesaler name by tenant ID
+async function getWholesalerName(tenantId: string): Promise<string> {
+  try {
+    const tenantDoc = await getDoc(doc(db, 'tenants', tenantId))
+    if (tenantDoc.exists()) {
+      return tenantDoc.data().name || 'Unknown Wholesaler'
+    }
+    return 'Unknown Wholesaler'
+  } catch (error) {
+    console.error('Error fetching wholesaler name:', error)
+    return 'Unknown Wholesaler'
+  }
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -100,13 +114,24 @@ export async function GET(request: NextRequest) {
 
     // Calculate breakdown by wholesaler
     const wholesalerMap = new Map()
+    
+    // First, fetch all unique wholesaler names to avoid duplicate queries
+    const uniqueTenantIds = [...new Set(payments.map(payment => payment.tenantId).filter(Boolean))]
+    const wholesalerNameCache = new Map()
+    
+    for (const tenantId of uniqueTenantIds) {
+      const wholesalerName = await getWholesalerName(tenantId)
+      wholesalerNameCache.set(tenantId, wholesalerName)
+    }
+    
     payments.forEach(payment => {
       const wholesalerId = payment.tenantId || 'unknown'
+      let wholesalerName = payment.initiatedByTenantName || wholesalerNameCache.get(wholesalerId) || 'Unknown Wholesaler'
       
       if (!wholesalerMap.has(wholesalerId)) {
         wholesalerMap.set(wholesalerId, {
           wholesalerId,
-          wholesalerName: payment.initiatedByTenantName || 'Unknown Wholesaler',
+          wholesalerName,
           totalPaid: 0,
           paymentCount: 0
         })
@@ -120,22 +145,29 @@ export async function GET(request: NextRequest) {
     summary.wholesalerBreakdown = Array.from(wholesalerMap.values())
 
     return NextResponse.json({
-      payments: payments.map(payment => ({
-        id: payment.id,
-        amount: payment.totalPaid || 0,
-        method: payment.method,
-        status: payment.state,
-        date: payment.createdAt ? convertToDate(payment.createdAt).toISOString() : new Date().toISOString(),
-        retailer: {
-          id: payment.retailerId,
-          name: payment.retailerName || 'Unknown'
-        },
-        wholesaler: {
-          id: payment.tenantId,
-          name: payment.initiatedByTenantName || 'Unknown Wholesaler'
-        },
-        referenceNumber: payment.id
-      })),
+      payments: payments.map(payment => {
+        const wholesalerId = payment.tenantId
+        const wholesalerName = payment.initiatedByTenantName || 
+                              (wholesalerId ? wholesalerNameCache.get(wholesalerId) : null) || 
+                              'Unknown Wholesaler'
+        
+        return {
+          id: payment.id,
+          amount: payment.totalPaid || 0,
+          method: payment.method,
+          status: payment.state,
+          date: payment.createdAt ? convertToDate(payment.createdAt).toISOString() : new Date().toISOString(),
+          retailer: {
+            id: payment.retailerId,
+            name: payment.retailerName || 'Unknown'
+          },
+          wholesaler: {
+            id: wholesalerId,
+            name: wholesalerName
+          },
+          referenceNumber: payment.id
+        }
+      }),
       summary
     })
 
