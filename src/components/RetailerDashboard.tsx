@@ -482,19 +482,22 @@ export function RetailerDashboard() {
 
   // Load all necessary data
   const loadAdditionalData = async () => {
-    if (!tenantId || !payments.length) return;
+    if (!payments.length) return;
     
     // Get unique tenantIds and lineWorkerIds
     const uniqueTenantIds = new Set<string>();
     const uniqueLineWorkerIds = new Set<string>();
     
-    // Add tenantId
-    if (tenantId) {
+    // Add current tenantId if it exists and is not 'all'
+    if (tenantId && tenantId !== 'all') {
       uniqueTenantIds.add(tenantId);
     }
     
-    // Add lineWorkerIds from payments
+    // Extract tenantIds and lineWorkerIds from payments
     payments.forEach(payment => {
+      if (payment.tenantId) {
+        uniqueTenantIds.add(payment.tenantId);
+      }
       if (payment.lineWorkerId) {
         uniqueLineWorkerIds.add(payment.lineWorkerId);
       }
@@ -1938,7 +1941,7 @@ export function RetailerDashboard() {
                                   <TableCell>{payment.method}</TableCell>
                                   <TableCell>
                                     <Badge variant="outline" className="text-xs">
-                                      {wholesalerNames[payment.tenantId || ''] || 'Unknown'}
+                                      {wholesalerNames[payment.tenantId || ''] || 'Unknown Wholesaler'}
                                     </Badge>
                                   </TableCell>
                                   <TableCell>
@@ -2019,7 +2022,7 @@ export function RetailerDashboard() {
                                 <TableCell>{payment.method}</TableCell>
                                 <TableCell>
                                   <Badge variant="outline" className="text-xs">
-                                    {wholesalerNames[payment.tenantId || ''] || 'Unknown'}
+                                    {wholesalerNames[payment.tenantId || ''] || 'Unknown Wholesaler'}
                                   </Badge>
                                 </TableCell>
                                 <TableCell>
