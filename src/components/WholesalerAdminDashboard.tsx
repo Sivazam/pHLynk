@@ -1130,12 +1130,12 @@ export function WholesalerAdminDashboard() {
     const currentTenantId = getCurrentTenantId();
     if (!currentTenantId) return;
     
-    if (confirm('Are you sure you want to delete this retailer? This action cannot be undone.')) {
+    if (confirm('Are you sure you want to remove this retailer from your business? This will remove their association with you but preserve all transaction history and their account for other wholesalers.')) {
       try {
         await retailerService.delete(retailerId, currentTenantId);
         await fetchDashboardData();
       } catch (err: any) {
-        setError(err.message || 'Failed to delete retailer');
+        setError(err.message || 'Failed to remove retailer');
       }
     }
   };

@@ -775,6 +775,65 @@ export class RetailerService extends FirestoreService<Retailer> {
   }
 
   /**
+   * Override delete method for retailers - soft delete that only removes tenant association
+   * This preserves the retailer document and all historical transaction data
+   */
+  async delete(retailerId: string, tenantId: string): Promise<void> {
+    try {
+      console.log(`🗑️  Soft removing retailer ${retailerId} from tenant ${tenantId}`);
+      
+      const retailerRef = doc(db, COLLECTIONS.RETAILERS, retailerId);
+      const retailerDoc = await getDoc(retailerRef);
+      
+      if (!retailerDoc.exists()) {
+        throw new Error('Retailer not found');
+      }
+      
+      const retailerData = retailerDoc.data();
+      const currentTenantIds = retailerData.tenantIds || [];
+      
+      // Check if retailer is associated with this tenant
+      if (!currentTenantIds.includes(tenantId)) {
+        console.log(`ℹ️  Retailer ${retailerId} is not associated with tenant ${tenantId}`);
+        return;
+      }
+      
+      // Remove tenant from tenantIds array
+      const updatedTenantIds = currentTenantIds.filter((id: string) => id !== tenantId);
+      
+      // Remove wholesaler-specific data for this tenant
+      let wholesalerData = retailerData.wholesalerData || {};
+      let wholesalerAssignments = retailerData.wholesalerAssignments || {};
+      
+      delete wholesalerData[tenantId];
+      delete wholesalerAssignments[tenantId];
+      
+      // Clear assigned line worker for this tenant if this was the last tenant
+      let updateData: any = {
+        tenantIds: updatedTenantIds,
+        wholesalerData: wholesalerData,
+        wholesalerAssignments: wholesalerAssignments,
+        updatedAt: Timestamp.now()
+      };
+      
+      // If no more tenants associated, clear the assigned line worker
+      if (updatedTenantIds.length === 0) {
+        updateData.assignedLineWorkerId = null;
+        console.log(`🔧 Cleared assigned line worker for retailer ${retailerId} - no more tenant associations`);
+      }
+      
+      await updateDoc(retailerRef, updateData);
+      
+      logger.success(`Soft removed retailer ${retailerId} from tenant ${tenantId} - document preserved`, { context: 'RetailerService' });
+      console.log(`✅ Retailer ${retailerId} disassociated from tenant ${tenantId}, historical data preserved`);
+      
+    } catch (error) {
+      logger.error('Error soft removing retailer from tenant', error, { context: 'RetailerService' });
+      throw error;
+    }
+  }
+
+  /**
    * Get all retailers for a specific tenant (from tenantIds array)
    */
   async getRetailersForTenant(tenantId: string): Promise<Retailer[]> {
