@@ -477,6 +477,51 @@ const WholesalerNameCell: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   );
 };
 
+// Status display component for retailer perspective
+const PaymentStatusCell: React.FC<{ state: string }> = ({ state }) => {
+  const getDisplayStatus = (originalState: string) => {
+    switch (originalState) {
+      case 'OTP_SENT':
+        return 'OTP_Received';
+      case 'COMPLETED':
+        return 'Completed';
+      case 'CANCELLED':
+        return 'Cancelled';
+      case 'INITIATED':
+        return 'Initiated';
+      case 'OTP_VERIFIED':
+        return 'OTP_Verified';
+      default:
+        return originalState;
+    }
+  };
+
+  const getStatusColor = (originalState: string) => {
+    switch (originalState) {
+      case 'COMPLETED':
+        return 'bg-green-100 text-green-800';
+      case 'OTP_SENT':
+        return 'bg-blue-100 text-blue-800';
+      case 'CANCELLED':
+        return 'bg-red-100 text-red-800';
+      case 'INITIATED':
+        return 'bg-yellow-100 text-yellow-800';
+      case 'OTP_VERIFIED':
+        return 'bg-purple-100 text-purple-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const displayStatus = getDisplayStatus(state);
+  
+  return (
+    <Badge className={getStatusColor(state)}>
+      {displayStatus}
+    </Badge>
+  );
+};
+
   // Get line worker name by userId
   const getLineWorkerName = async (lineWorkerId: string): Promise<string> => {
     if (lineWorkerNames[lineWorkerId]) {
@@ -1935,15 +1980,7 @@ const WholesalerNameCell: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                                     <WholesalerNameCell tenantId={payment.tenantId || ''} />
                                   </TableCell>
                                   <TableCell>
-                                    <Badge className={
-                                      payment.state === 'COMPLETED' 
-                                        ? 'bg-green-100 text-green-800' 
-                                        : payment.state === 'OTP_SENT' 
-                                          ? 'bg-blue-100 text-blue-800' 
-                                          : 'bg-yellow-100 text-yellow-800'
-                                    }>
-                                      {payment.state}
-                                    </Badge>
+                                    <PaymentStatusCell state={payment.state} />
                                   </TableCell>
                                   <TableCell>{lineWorkerNames[payment.lineWorkerId] || 'Loading...'}</TableCell>
                                   <TableCell>

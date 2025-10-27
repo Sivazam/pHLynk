@@ -23,6 +23,24 @@ async function getWholesalerName(tenantId: string): Promise<string> {
   }
 }
 
+// Function to transform status for retailer perspective
+function getRetailerStatus(originalState: string): string {
+  switch (originalState) {
+    case 'OTP_SENT':
+      return 'OTP_Received';
+    case 'COMPLETED':
+      return 'Completed';
+    case 'CANCELLED':
+      return 'Cancelled';
+    case 'INITIATED':
+      return 'Initiated';
+    case 'OTP_VERIFIED':
+      return 'OTP_Verified';
+    default:
+      return originalState;
+  }
+}
+
 export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
@@ -155,7 +173,7 @@ export async function GET(request: NextRequest) {
           id: payment.id,
           amount: payment.totalPaid || 0,
           method: payment.method,
-          status: payment.state,
+          status: getRetailerStatus(payment.state), // Transform status for retailer perspective
           date: payment.createdAt ? convertToDate(payment.createdAt).toISOString() : new Date().toISOString(),
           retailer: {
             id: payment.retailerId,
