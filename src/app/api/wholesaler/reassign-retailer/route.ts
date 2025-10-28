@@ -3,46 +3,177 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from 'next/server';
 import { retailerService } from '@/services/firestore';
+import { RetailerAssignmentService } from '@/services/retailer-profile-service';
+import { UserService } from '@/services/firestore';
+import { doc, getDoc, getDocs, collection, query, where } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 
 interface ReassignRetailerRequest {
-  retailerId: string;
+  retailerId?: string;     // For single retailer reassignment
   tenantId: string;
   newLineWorkerId: string;
+  areaId?: string;        // For area-based assignment
 }
 
 export async function POST(request: NextRequest) {
   try {
-    console.log('🔄 Reassign retailer to line worker API called');
+    console.log('🔄 Enhanced reassign retailer API called');
     
     const body: ReassignRetailerRequest = await request.json();
-    const { retailerId, tenantId, newLineWorkerId } = body;
+    const { retailerId, tenantId, newLineWorkerId, areaId } = body;
     
-    if (!retailerId || !tenantId || !newLineWorkerId) {
+    if (!tenantId || !newLineWorkerId) {
       return NextResponse.json(
-        { error: 'Retailer ID, Tenant ID, and new Line Worker ID are required' },
+        { error: 'Tenant ID and new Line Worker ID are required' },
         { status: 400 }
       );
     }
     
-    console.log('📋 Reassigning retailer:', {
+    if (!retailerId && !areaId) {
+      return NextResponse.json(
+        { error: 'Either retailer ID or area ID is required' },
+        { status: 400 }
+      );
+    }
+    
+    console.log('📋 Reassignment request:', {
       retailerId,
       tenantId,
-      newLineWorkerId
+      newLineWorkerId,
+      areaId
     });
     
-    // Perform the reassignment using RetailerService
-    await retailerService.reassignRetailerToLineWorker(retailerId, tenantId, newLineWorkerId);
+    // Verify line worker exists and belongs to tenant
+    const lineWorkerRef = doc(db, 'users', newLineWorkerId);
+    const lineWorkerDoc = await getDoc(lineWorkerRef);
     
-    return NextResponse.json({
-      success: true,
-      message: 'Retailer reassigned successfully'
-    });
+    if (!lineWorkerDoc.exists()) {
+      return NextResponse.json(
+        { error: 'Line worker not found' },
+        { status: 404 }
+      );
+    }
+    
+    const lineWorkerData = lineWorkerDoc.data();
+    if (lineWorkerData.tenantId !== tenantId) {
+      return NextResponse.json(
+        { error: 'Line worker does not belong to this tenant' },
+        { status: 403 }
+      );
+    }
+    
+    let updatedRetailers: any[] = [];
+    
+    if (areaId) {
+      // Area-based assignment
+      console.log('📍 Processing area-based assignment');
+      
+      // Verify area exists and belongs to tenant
+      const areaRef = doc(db, 'areas', areaId);
+      const areaDoc = await getDoc(areaRef);
+      
+      if (!areaDoc.exists()) {
+        return NextResponse.json(
+          { error: 'Area not found' },
+          { status: 404 }
+        );
+      }
+      
+      const areaData = areaDoc.data();
+      if (!areaData.tenantIds || !areaData.tenantIds.includes(tenantId)) {
+        return NextResponse.json(
+          { error: 'Area does not belong to this tenant' },
+          { status: 403 }
+        );
+      }
+      
+      // Assign area to line worker
+      const userService = new UserService();
+      await userService.assignAreasToUser(newLineWorkerId, tenantId, [areaId]);
+      
+      // Get all retailer assignments in this area
+      const assignmentsRef = collection(db, 'retailerAssignments');
+      const areaQuery = query(
+        assignmentsRef,
+        where('tenantId', '==', tenantId),
+        where('areaId', '==', areaId)
+      );
+      const assignmentSnapshot = await getDocs(areaQuery);
+      
+      // Update all retailer assignments in this area
+      for (const assignmentDoc of assignmentSnapshot.docs) {
+        const assignmentData = assignmentDoc.data();
+        
+        await RetailerAssignmentService.updateRetailerAssignment(
+          tenantId,
+          assignmentData.retailerId,
+          {
+            assignedLineWorkerId: newLineWorkerId
+          }
+        );
+        
+        updatedRetailers.push({
+          retailerId: assignmentData.retailerId,
+          aliasName: assignmentData.aliasName,
+          assignmentId: assignmentDoc.id
+        });
+      }
+      
+      return NextResponse.json({
+        success: true,
+        message: `Line worker has been assigned to area "${areaData.name}" with ${updatedRetailers.length} retailer(s).`,
+        assignment: {
+          tenantId,
+          lineWorkerId: newLineWorkerId,
+          lineWorkerName: lineWorkerData.displayName || lineWorkerData.email,
+          areaId,
+          areaName: areaData.name
+        },
+        retailers: updatedRetailers,
+        summary: {
+          totalRetailersInArea: updatedRetailers.length,
+          areaName: areaData.name,
+          lineWorkerName: lineWorkerData.displayName || lineWorkerData.email
+        }
+      });
+      
+    } else {
+      // Single retailer assignment
+      console.log('👤 Processing single retailer assignment');
+      
+      // Perform the reassignment using existing service
+      await retailerService.reassignRetailerToLineWorker(retailerId!, tenantId, newLineWorkerId);
+      
+      // Also update in new assignment system
+      await RetailerAssignmentService.updateRetailerAssignment(
+        tenantId,
+        retailerId!,
+        {
+          assignedLineWorkerId: newLineWorkerId
+        }
+      );
+      
+      updatedRetailers.push({
+        retailerId,
+        lineWorkerId: newLineWorkerId
+      });
+      
+      return NextResponse.json({
+        success: true,
+        message: 'Retailer reassigned successfully',
+        retailer: {
+          retailerId,
+          newLineWorkerId,
+          lineWorkerName: lineWorkerData.displayName || lineWorkerData.email
+        }
+      });
+    }
     
   } catch (error) {
     console.error('❌ Error reassigning retailer:', error);
     return NextResponse.json(
       { 
-        error: 'Internal server error',
+        error: 'Reassignment failed',
         details: error instanceof Error ? error.message : 'Unknown error'
       },
       { status: 500 }
