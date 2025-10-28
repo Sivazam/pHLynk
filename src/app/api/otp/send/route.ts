@@ -17,18 +17,30 @@ interface OTPRequest {
   amount: number;
   lineWorkerName?: string;
   lineWorkerId?: string;
+  purpose?: 'PAYMENT' | 'RETAILER_VERIFICATION'; // Add purpose field
 }
 
 export async function POST(request: NextRequest) {
   try {
     const body: OTPRequest = await request.json();
-    const { retailerId, paymentId, amount, lineWorkerName, lineWorkerId } = body;
+    const { retailerId, paymentId, amount, lineWorkerName, lineWorkerId, purpose = 'PAYMENT' } = body;
 
-    if (!retailerId || !paymentId || !amount) {
-      return NextResponse.json(
-        { error: 'Missing required fields' },
-        { status: 400 }
-      );
+    // For retailer verification, we only need phone and paymentId (can be a dummy ID)
+    if (purpose === 'RETAILER_VERIFICATION') {
+      if (!retailerId) {
+        return NextResponse.json(
+          { error: 'Retailer ID is required for verification' },
+          { status: 400 }
+        );
+      }
+    } else {
+      // For payment, require all fields
+      if (!retailerId || !paymentId || !amount) {
+        return NextResponse.json(
+          { error: 'Missing required fields' },
+          { status: 400 }
+        );
+      }
     }
 
     // Check if there's already an active OTP for this payment
@@ -89,14 +101,33 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Get retailer user details from retailerUsers collection with optimized retry logic
+    // Get retailer user details from retailerUsers collection or new retailer profile system
     let retailerUser: any = null;
     let retryCount = 0;
-    const maxRetries = 2; // Reduced from 3 to 2
+    const maxRetries = 2;
     
-    // Fetch line worker ID from payment document if not provided
+    // For retailer verification, try new profile system first
+    if (purpose === 'RETAILER_VERIFICATION') {
+      try {
+        const { RetailerProfileService } = await import('@/services/retailer-profile-service');
+        const retailerProfile = await RetailerProfileService.getRetailerProfileByPhone(retailerId);
+        
+        if (retailerProfile) {
+          retailerUser = {
+            phone: retailerProfile.profile.phone,
+            name: retailerProfile.profile.realName || 'Retailer',
+            retailerId: retailerProfile.id
+          };
+          console.log('✅ Found retailer in new profile system for verification');
+        }
+      } catch (error) {
+        console.warn('⚠️ Error checking new retailer profile system:', error);
+      }
+    }
+    
+    // Fetch line worker ID from payment document if not provided (only for payments)
     let actualLineWorkerId = lineWorkerId;
-    if (!actualLineWorkerId && paymentId) {
+    if (!actualLineWorkerId && paymentId && purpose === 'PAYMENT') {
       try {
         const paymentDoc = await getDoc(doc(db, 'payments', paymentId));
         if (paymentDoc.exists()) {
@@ -109,9 +140,10 @@ export async function POST(request: NextRequest) {
       }
     }
     
+    // Fallback to legacy system if not found in new system
     while (retryCount < maxRetries && !retailerUser) {
       try {
-        secureLogger.otp('Attempting to find retailer user', { 
+        secureLogger.otp('Attempting to find retailer user in legacy system', { 
           attempt: retryCount + 1, 
           maxRetries,
           retailerId 
@@ -119,7 +151,7 @@ export async function POST(request: NextRequest) {
         retailerUser = await RetailerAuthService.getRetailerUserByRetailerId(retailerId);
         
         if (retailerUser) {
-          secureLogger.otp('Retailer user found successfully', { retailerId });
+          secureLogger.otp('Retailer user found successfully in legacy system', { retailerId });
           break;
         }
       } catch (error) {
@@ -131,7 +163,6 @@ export async function POST(request: NextRequest) {
       
       retryCount++;
       if (retryCount < maxRetries) {
-        // Reduced wait time from 1 second to 500ms
         await new Promise(resolve => setTimeout(resolve, 500));
       }
     }
@@ -294,20 +325,22 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Update payment state to OTP_SENT (run asynchronously to not block response)
-    (async () => {
-      try {
-        const paymentRef = doc(db, 'payments', paymentId);
-        await updateDoc(paymentRef, {
-          state: 'OTP_SENT',
-          'timeline.otpSentAt': new Date(),
-          updatedAt: new Date()
-        });
-        secureLogger.otp('Payment state updated to OTP_SENT');
-      } catch (paymentUpdateError) {
-        secureLogger.error('Error updating payment state to OTP_SENT', { error: paymentUpdateError instanceof Error ? paymentUpdateError.message : 'Unknown error' });
-      }
-    })();
+    // Update payment state to OTP_SENT (only for payment OTPs)
+    if (purpose === 'PAYMENT') {
+      (async () => {
+        try {
+          const paymentRef = doc(db, 'payments', paymentId);
+          await updateDoc(paymentRef, {
+            state: 'OTP_SENT',
+            'timeline.otpSentAt': new Date(),
+            updatedAt: new Date()
+          });
+          secureLogger.otp('Payment state updated to OTP_SENT');
+        } catch (paymentUpdateError) {
+          secureLogger.error('Error updating payment state to OTP_SENT', { error: paymentUpdateError instanceof Error ? paymentUpdateError.message : 'Unknown error' });
+        }
+      })();
+    }
 
     // Clean up expired OTPs (run asynchronously to not block response)
     (async () => {
@@ -320,12 +353,15 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: 'OTP sent successfully',
+      message: purpose === 'RETAILER_VERIFICATION' 
+        ? 'Verification OTP sent successfully' 
+        : 'OTP sent successfully',
       otpSent: true,
       expiresAt: otpData.expiresAt,
       retailerName: retailerUser.name,
       retailerPhone: retailerUser.phone,
       notificationMethod, // 'fcm' or 'sms'
+      purpose, // Include purpose in response
       usedCloudFunction: notificationMethod === 'fcm' // true if FCM was used
     });
 

@@ -292,6 +292,7 @@ async function sendSMSNotificationsOptimized(data: {
 interface OTPVerifyRequest {
   paymentId: string;
   otp: string;
+  purpose?: 'PAYMENT' | 'RETAILER_VERIFICATION'; // Add purpose field
 }
 
 export async function POST(request: NextRequest) {
@@ -300,11 +301,12 @@ export async function POST(request: NextRequest) {
   
   try {
     const body: OTPVerifyRequest = await request.json();
-    const { paymentId, otp } = body;
+    const { paymentId, otp, purpose = 'PAYMENT' } = body;
 
     console.log('🔍 OTP VERIFICATION REQUEST:');
     console.log('Payment ID:', paymentId);
     console.log('OTP Code:', otp);
+    console.log('Purpose:', purpose);
 
     if (!paymentId || !otp) {
       console.log('❌ Missing required fields');
@@ -332,6 +334,20 @@ export async function POST(request: NextRequest) {
     }
     
     console.log('✅ OTP verified successfully!');
+    
+    // For retailer verification, just return success without payment processing
+    if (purpose === 'RETAILER_VERIFICATION') {
+      console.log('🔐 Retailer verification completed');
+      return NextResponse.json({
+        success: true,
+        message: 'Phone number verified successfully',
+        purpose: 'RETAILER_VERIFICATION',
+        verifiedAt: new Date().toISOString()
+      });
+    }
+    
+    // For payment, continue with existing payment processing logic
+    console.log('💳 Processing payment verification');
     
     // Record successful verification
     const verificationTime = new Date();
