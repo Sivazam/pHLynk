@@ -109,6 +109,56 @@ export class RetailerProfileService {
   }
   
   /**
+   * Get retailer profile by ID
+   */
+  static async getRetailerProfile(retailerId: string): Promise<RetailerProfile | null> {
+    try {
+      const retailerRef = doc(db, 'retailers', retailerId);
+      const retailerDoc = await getDoc(retailerRef);
+      
+      if (retailerDoc.exists()) {
+        const data = retailerDoc.data();
+        
+        // Check if this is a legacy retailer document (from wholesaler creation)
+        if (data.name || data.phone || data.address) {
+          // Convert legacy format to new profile format
+          const profile: RetailerProfile = {
+            id: retailerId,
+            profile: {
+              realName: data.name || '',
+              phone: data.phone || '',
+              email: data.email || '',
+              address: data.address || '',
+              businessType: data.businessType || '',
+              licenseNumber: data.licenseNumber || ''
+            },
+            tenantIds: data.tenantIds || [],
+            verification: {
+              isPhoneVerified: false, // Will be verified during OTP
+              verificationMethod: 'OTP'
+            },
+            createdAt: data.createdAt || Timestamp.now(),
+            updatedAt: data.updatedAt || Timestamp.now()
+          };
+          
+          // Migrate the document to new format
+          await setDoc(retailerRef, profile);
+          
+          console.log('🔄 Migrated legacy retailer to new profile format:', retailerId);
+          return profile;
+        }
+        
+        return data as RetailerProfile;
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('❌ Error getting retailer profile:', error);
+      return null;
+    }
+  }
+
+  /**
    * Get retailer profile by phone
    */
   static async getRetailerProfileByPhone(phone: string): Promise<RetailerProfile | null> {
@@ -140,15 +190,40 @@ export class RetailerProfileService {
   }): Promise<void> {
     try {
       const retailerRef = doc(db, 'retailers', retailerId);
+      const retailerDoc = await getDoc(retailerRef);
       
-      await updateDoc(retailerRef, {
-        'profile.realName': updates.realName,
-        'profile.email': updates.email,
-        'profile.address': updates.address,
-        'profile.businessType': updates.businessType,
-        'profile.licenseNumber': updates.licenseNumber,
-        updatedAt: Timestamp.now()
-      });
+      if (!retailerDoc.exists()) {
+        throw new Error('Retailer profile not found');
+      }
+      
+      const data = retailerDoc.data();
+      
+      // Check if this is a legacy format document
+      if (data.name || data.phone || data.address) {
+        // Update legacy format
+        const updateData: any = {
+          name: updates.realName || data.name,
+          email: updates.email || data.email,
+          address: updates.address || data.address,
+          businessType: updates.businessType || data.businessType,
+          licenseNumber: updates.licenseNumber || data.licenseNumber,
+          updatedAt: Timestamp.now()
+        };
+        
+        await updateDoc(retailerRef, updateData);
+      } else {
+        // Update new profile format
+        const updateData: any = {
+          'profile.realName': updates.realName,
+          'profile.email': updates.email,
+          'profile.address': updates.address,
+          'profile.businessType': updates.businessType,
+          'profile.licenseNumber': updates.licenseNumber,
+          updatedAt: Timestamp.now()
+        };
+        
+        await updateDoc(retailerRef, updateData);
+      }
       
       console.log('✅ Retailer profile updated:', retailerId);
     } catch (error) {
@@ -163,12 +238,30 @@ export class RetailerProfileService {
   static async verifyPhone(retailerId: string): Promise<void> {
     try {
       const retailerRef = doc(db, 'retailers', retailerId);
+      const retailerDoc = await getDoc(retailerRef);
       
-      await updateDoc(retailerRef, {
-        'verification.isPhoneVerified': true,
-        'verification.verifiedAt': Timestamp.now(),
-        updatedAt: Timestamp.now()
-      });
+      if (!retailerDoc.exists()) {
+        throw new Error('Retailer profile not found');
+      }
+      
+      const data = retailerDoc.data();
+      
+      // Check if this is a legacy format document
+      if (data.name || data.phone || data.address) {
+        // Update legacy format with verification info
+        await updateDoc(retailerRef, {
+          phoneVerified: true,
+          phoneVerifiedAt: Timestamp.now(),
+          updatedAt: Timestamp.now()
+        });
+      } else {
+        // Update new profile format
+        await updateDoc(retailerRef, {
+          'verification.isPhoneVerified': true,
+          'verification.verifiedAt': Timestamp.now(),
+          updatedAt: Timestamp.now()
+        });
+      }
       
       console.log('✅ Phone verified for retailer:', retailerId);
     } catch (error) {

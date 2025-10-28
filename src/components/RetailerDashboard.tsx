@@ -55,17 +55,22 @@ import {
   Download,
   Share,
   Heart,
-  Settings
+  Settings,
+  User,
+  FileText
 } from 'lucide-react';
 import { StatusBarColor } from './ui/StatusBarColor';
 import { Confetti } from './ui/Confetti';
 import { WholesalerSlider } from './ui/wholesaler-slider';
 import ReportDialog from './ui/ReportDialog';
+import { RetailerProfileEdit } from './RetailerProfileEdit';
+import { RetailerProfileService } from '@/services/retailer-profile-service';
 
 export function RetailerDashboard() {
   const { user, logout } = useAuth();
   const [retailer, setRetailer] = useState<Retailer | null>(null);
   const [retailerUser, setRetailerUser] = useState<any>(null);
+  const [retailerProfile, setRetailerProfile] = useState<any>(null);
   const [tenantId, setTenantId] = useState<string | null>('all'); // Default to 'all' for consolidated view
   const [availableTenants, setAvailableTenants] = useState<string[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
@@ -332,7 +337,22 @@ export function RetailerDashboard() {
     setDateRange(newDateRange);
   };
 
-  // Handle tenant switching
+  // Handle profile updates
+  const handleProfileUpdate = async (updatedProfile: any) => {
+    console.log('📝 Profile updated:', updatedProfile);
+    
+    // Update local state
+    setRetailerProfile(prev => prev ? { ...prev, profile: updatedProfile } : null);
+    
+    // Update retailer name if it changed
+    if (updatedProfile.realName && retailer) {
+      setRetailer(prev => prev ? { ...prev, name: updatedProfile.realName } : null);
+    }
+    
+    // Show success message
+    setError(null);
+    // You could add a success toast here if you have one
+  };
   const handleTenantSwitch = async (newTenantId: string) => {
     if (!retailer || newTenantId === tenantId) return;
     
@@ -1375,6 +1395,17 @@ const PaymentStatusCell: React.FC<{ state: string }> = ({ state }) => {
       setRetailer(retailerData);
       setRetailerUser(retailerUserData);
       
+      // Fetch retailer profile
+      try {
+        const profileData = await RetailerProfileService.getRetailerProfile(retailerId);
+        console.log('📋 Retailer profile fetched:', profileData);
+        setRetailerProfile(profileData);
+      } catch (profileError) {
+        console.error('❌ Error fetching retailer profile:', profileError);
+        // Continue without profile data
+        setRetailerProfile(null);
+      }
+      
       // Handle multi-tenant support
       const retailerTenants = retailerData.tenantIds || [retailerUserData.tenantId];
       console.log('🏪 Retailer Multi-Tenant Data:', {
@@ -1909,8 +1940,26 @@ const PaymentStatusCell: React.FC<{ state: string }> = ({ state }) => {
                     {/* Retailer Information */}
                     <Card>
                       <CardHeader>
-                        <CardTitle>Store Information</CardTitle>
-                        <CardDescription>Your retailer profile details</CardDescription>
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <CardTitle>Store Information</CardTitle>
+                            <CardDescription>Your retailer profile details</CardDescription>
+                          </div>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              const retailerId = localStorage.getItem('retailerId');
+                              if (retailerId) {
+                                window.location.href = `/retailer/profile?mode=edit&retailerId=${retailerId}`;
+                              }
+                            }}
+                            className="flex items-center space-x-1"
+                          >
+                            <Settings className="h-4 w-4" />
+                            <span>Edit Profile</span>
+                          </Button>
+                        </div>
                       </CardHeader>
                       <CardContent>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -2123,8 +2172,98 @@ const PaymentStatusCell: React.FC<{ state: string }> = ({ state }) => {
                 {/* Settings View */}
                 {activeNav === 'settings' && (
                   <div className="space-y-6">
-                    <h2 className="text-xl font-semibold">Settings & Debug</h2>
+                    <h2 className="text-xl font-semibold">Settings</h2>
                     
+                    {/* Profile Management */}
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                          <User className="h-5 w-5" />
+                          Business Profile
+                        </CardTitle>
+                        <CardDescription>
+                          Manage your business information and profile details
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        {retailerProfile && retailerProfile.profile ? (
+                          <div className="space-y-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div>
+                                <Label className="text-sm font-medium text-gray-700">Business Name</Label>
+                                <p className="text-gray-900">{retailerProfile.profile.realName || 'Not set'}</p>
+                              </div>
+                              <div>
+                                <Label className="text-sm font-medium text-gray-700">Phone Number</Label>
+                                <p className="text-gray-900">+91 {retailerProfile.profile.phone || retailer?.phone}</p>
+                              </div>
+                              <div>
+                                <Label className="text-sm font-medium text-gray-700">Email</Label>
+                                <p className="text-gray-900">{retailerProfile.profile.email || 'Not set'}</p>
+                              </div>
+                              <div>
+                                <Label className="text-sm font-medium text-gray-700">Business Type</Label>
+                                <p className="text-gray-900">{retailerProfile.profile.businessType || 'Not set'}</p>
+                              </div>
+                            </div>
+                            <div>
+                              <Label className="text-sm font-medium text-gray-700">Address</Label>
+                              <p className="text-gray-900">{retailerProfile.profile.address || 'Not set'}</p>
+                            </div>
+                            <div className="flex items-center gap-2 pt-2">
+                              {retailerProfile.verification?.isPhoneVerified && (
+                                <Badge variant="secondary" className="flex items-center gap-1">
+                                  <CheckCircle className="h-3 w-3" />
+                                  Phone Verified
+                                </Badge>
+                              )}
+                              {retailerProfile.profile.licenseNumber && (
+                                <Badge variant="outline" className="flex items-center gap-1">
+                                  <FileText className="h-3 w-3" />
+                                  License Registered
+                                </Badge>
+                              )}
+                            </div>
+                            <div className="pt-2">
+                              <RetailerProfileEdit
+                                retailerId={retailer!.id}
+                                profile={{
+                                  realName: retailerProfile.profile.realName || '',
+                                  email: retailerProfile.profile.email || '',
+                                  address: retailerProfile.profile.address || '',
+                                  businessType: retailerProfile.profile.businessType || '',
+                                  licenseNumber: retailerProfile.profile.licenseNumber || '',
+                                  phone: retailerProfile.profile.phone || retailer?.phone || '',
+                                  isPhoneVerified: retailerProfile.verification?.isPhoneVerified || false,
+                                  verifiedAt: retailerProfile.verification?.verifiedAt
+                                }}
+                                onProfileUpdate={handleProfileUpdate}
+                              />
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="text-center py-8">
+                            <div className="bg-gray-50 rounded-lg p-6">
+                              <Store className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                              <h3 className="text-lg font-medium text-gray-900 mb-2">Profile Not Complete</h3>
+                              <p className="text-gray-600 mb-4">
+                                Your business profile is incomplete. Complete your profile to get the best experience.
+                              </p>
+                              <Button
+                                onClick={() => {
+                                  // Navigate to profile completion
+                                  window.location.href = `/retailer-login?completeProfile=true&phone=${retailer?.phone}`;
+                                }}
+                                className="bg-blue-600 hover:bg-blue-700"
+                              >
+                                Complete Profile
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+
                     {/* Notification Managers */}
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                       {/* PWA Notification Manager */}

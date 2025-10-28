@@ -831,13 +831,40 @@ export function WholesalerAdminDashboard() {
     }
     
     try {
-      await retailerService.assignLineWorker(currentTenantId, retailerId, lineWorkerId);
+      // Use the enhanced reassign API for better consistency and validation
+      if (lineWorkerId) {
+        // Reassign to a new line worker
+        const response = await fetch('/api/wholesaler/reassign-retailer', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            retailerId,
+            tenantId: currentTenantId,
+            newLineWorkerId: lineWorkerId
+          })
+        });
+        
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Failed to reassign retailer');
+        }
+        
+        const result = await response.json();
+        console.log('✅ Retailer reassigned successfully:', result);
+      } else {
+        // Unassign retailer
+        await retailerService.assignLineWorker(currentTenantId, retailerId, null);
+      }
+      
       await fetchDashboardData();
       setShowRetailerAssignment(false);
       setAssigningRetailer(null);
       setSelectedLineWorkerForAssignment('');
       setError(null);
     } catch (err: any) {
+      console.error('❌ Error assigning retailer:', err);
       setError(err.message || 'Failed to assign retailer');
     }
   };
