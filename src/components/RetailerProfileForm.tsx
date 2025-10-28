@@ -345,7 +345,7 @@ export function RetailerProfileForm({
                 
                 <LoadingButton
                   type="submit"
-                  loading={loading}
+                  isLoading={loading}
                   disabled={!isFormValid || !isDirty}
                   className="flex items-center space-x-2"
                 >

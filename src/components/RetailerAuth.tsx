@@ -149,11 +149,12 @@ export function RetailerAuth({ onAuthSuccess, onBackToRoleSelection }: RetailerA
                 licenseNumber = retailerProfile.profile.licenseNumber;
               } else {
                 // Legacy format
-                realName = retailerProfile.name;
-                address = retailerProfile.address;
-                email = retailerProfile.email;
-                businessType = retailerProfile.businessType;
-                licenseNumber = retailerProfile.licenseNumber;
+                const legacyProfile = retailerProfile as any;
+                realName = legacyProfile.name;
+                address = legacyProfile.address;
+                email = legacyProfile.email;
+                businessType = legacyProfile.businessType;
+                licenseNumber = legacyProfile.licenseNumber;
               }
               
               // Check if essential fields are missing

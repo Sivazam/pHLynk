@@ -9,11 +9,11 @@ import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 
 interface RetailerProfilePageProps {
-  searchParams: {
+  searchParams: Promise<{
     mode?: 'complete' | 'edit';
     retailerId?: string;
     phone?: string;
-  };
+  }>;
 }
 
 export default function RetailerProfilePage({ searchParams }: RetailerProfilePageProps) {
@@ -21,12 +21,27 @@ export default function RetailerProfilePage({ searchParams }: RetailerProfilePag
   const [loading, setLoading] = useState(true);
   const [retailerData, setRetailerData] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
+  const [params, setParams] = useState<{
+    mode?: 'complete' | 'edit';
+    retailerId?: string;
+    phone?: string;
+  }>({});
   
-  const { mode = 'complete', retailerId, phone } = searchParams;
+  useEffect(() => {
+    const getParams = async () => {
+      const resolvedParams = await searchParams;
+      setParams(resolvedParams);
+    };
+    getParams();
+  }, [searchParams]);
+  
+  const { mode = 'complete', retailerId, phone } = params;
   const isCompletion = mode === 'complete';
 
   useEffect(() => {
-    loadRetailerData();
+    if (retailerId) {
+      loadRetailerData();
+    }
   }, [retailerId]);
 
   const loadRetailerData = async () => {
@@ -39,7 +54,8 @@ export default function RetailerProfilePage({ searchParams }: RetailerProfilePag
 
       // If retailerId is not provided, try to get from localStorage
       if (!actualRetailerId) {
-        actualRetailerId = localStorage.getItem('retailerId');
+        const storedRetailerId = localStorage.getItem('retailerId');
+        actualRetailerId = storedRetailerId || undefined;
       }
 
       if (!actualRetailerId) {
@@ -53,11 +69,34 @@ export default function RetailerProfilePage({ searchParams }: RetailerProfilePag
         throw new Error('Retailer profile not found. Please contact support.');
       }
 
+      // Handle both legacy and new profile formats
+      let profileData, phoneData;
+      if (retailerProfile.profile) {
+        // New profile format
+        profileData = retailerProfile.profile;
+        phoneData = retailerProfile.profile.phone;
+      } else {
+        // Legacy format - cast to any to access legacy properties
+        const legacyProfile = retailerProfile as any;
+        profileData = {
+          realName: legacyProfile.name || '',
+          phone: legacyProfile.phone || '',
+          email: legacyProfile.email || '',
+          address: legacyProfile.address || '',
+          businessType: legacyProfile.businessType || '',
+          licenseNumber: legacyProfile.licenseNumber || ''
+        };
+        phoneData = legacyProfile.phone || '';
+      }
+
       setRetailerData({
         id: actualRetailerId,
-        phone: actualPhone || retailerProfile.profile.phone,
-        profile: retailerProfile.profile,
-        verification: retailerProfile.verification
+        phone: actualPhone || phoneData,
+        profile: profileData,
+        verification: retailerProfile.verification || {
+          isPhoneVerified: (retailerProfile as any).phoneVerified || false,
+          verificationMethod: 'OTP' as const
+        }
       });
 
     } catch (err: any) {

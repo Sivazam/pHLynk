@@ -103,12 +103,13 @@ export function RetailerProfileCompletion({
             });
           } else {
             // Legacy format - the data is directly on the document
+            const legacyProfile = existingProfile as any;
             setProfile({
-              realName: existingProfile.name || '',
-              email: existingProfile.email || '',
-              address: existingProfile.address || '',
-              businessType: existingProfile.businessType || '',
-              licenseNumber: existingProfile.licenseNumber || ''
+              realName: legacyProfile.name || '',
+              email: legacyProfile.email || '',
+              address: legacyProfile.address || '',
+              businessType: legacyProfile.businessType || '',
+              licenseNumber: legacyProfile.licenseNumber || ''
             });
           }
         }
