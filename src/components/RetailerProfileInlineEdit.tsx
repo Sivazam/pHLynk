@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -55,6 +55,7 @@ export function RetailerProfileInlineEdit({
   const [success, setSuccess] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [initialProfile, setInitialProfile] = useState<RetailerProfile>(profile);
+  const isEditingRef = useRef(false);
   
   const businessTypes = [
     'Pharmacy',
@@ -66,21 +67,26 @@ export function RetailerProfileInlineEdit({
   ];
 
   useEffect(() => {
-    // Update initial profile when it changes from parent
-    console.log('📝 Profile updated from parent:', profile);
-    setInitialProfile(profile);
-    if (!isEditing) {
-      setEditedProfile(profile);
+    // Update initial profile when it changes from parent (but not during editing)
+    console.log('📝 Profile updated from parent:', profile, { isEditing: isEditingRef.current });
+    if (!isEditingRef.current) {
+      setInitialProfile(profile);
+      if (!isEditing) {
+        setEditedProfile(profile);
+      }
     }
-  }, [profile]);
+  }, [profile, isEditing]);
 
   useEffect(() => {
     // Initialize edit mode
     if (isEditing) {
-      console.log('📝 Entering edit mode with profile:', profile);
+      isEditingRef.current = true;
+      console.log('📝 Entering edit mode with profile:', initialProfile);
       setEditedProfile(initialProfile);
       setError(null);
       setSuccess(null);
+    } else {
+      isEditingRef.current = false;
     }
   }, [isEditing, initialProfile]);
 
@@ -141,6 +147,7 @@ export function RetailerProfileInlineEdit({
       setTimeout(() => {
         setIsEditing(false);
         setSuccess(null);
+        isEditingRef.current = false;
       }, 1500);
       
     } catch (error: any) {
@@ -157,6 +164,7 @@ export function RetailerProfileInlineEdit({
     setError(null);
     setSuccess(null);
     setIsEditing(false);
+    isEditingRef.current = false;
   };
 
   const hasChanges = JSON.stringify(editedProfile) !== JSON.stringify(initialProfile);
