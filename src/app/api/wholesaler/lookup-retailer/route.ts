@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
     
     console.log('📞 Looking up retailer with phone:', cleanPhone);
     
-    // First, try to find retailer in new retailer profile system
+    // First, try to find retailer in new retailer profile system (primary source)
     let retailerProfile = await RetailerProfileService.getRetailerProfileByPhone(cleanPhone);
     
     if (retailerProfile) {
@@ -45,6 +45,9 @@ export async function POST(request: NextRequest) {
         name: retailerProfile.profile.realName || 'Not Verified',
         phone: retailerProfile.profile.phone,
         address: retailerProfile.profile.address,
+        email: retailerProfile.profile.email,
+        businessType: retailerProfile.profile.businessType,
+        licenseNumber: retailerProfile.profile.licenseNumber,
         isVerified: retailerProfile.verification.isPhoneVerified,
         hasAssignments: assignments.length > 0,
         assignmentCount: assignments.length,
@@ -68,7 +71,7 @@ export async function POST(request: NextRequest) {
     // Fallback to old system for backward compatibility
     let retailer = await retailerService.getRetailerByPhone(cleanPhone);
     
-    // If not found, try retailerUsers collection as fallback
+    // If not found in retailers collection, try retailerUsers collection as last resort
     if (!retailer) {
       console.log('📞 Retailer not found in retailers collection, checking retailerUsers...');
       const retailerUser = await RetailerAuthService.getRetailerUserByPhone(cleanPhone);

@@ -43,6 +43,7 @@ import { formatTimestamp, formatTimestampWithTime, formatCurrency, toDate } from
 import { CompactDatePicker } from '@/components/ui/compact-date-picker';
 import { CreateAreaForm } from '@/components/ui/create-area-form';
 import { CreateRetailerForm } from '@/components/ui/create-retailer-form';
+import { RetailerServiceAreaForm } from '@/components/ui/retailer-service-area-form';
 import { WholesalerAnalytics } from '@/components/WholesalerAnalytics';
 import { SuccessFeedback } from '@/components/SuccessFeedback';
 import { Confetti } from '@/components/ui/Confetti';
@@ -1727,7 +1728,7 @@ export function WholesalerAdminDashboard() {
                             onClick={() => setEditingRetailer(retailer)}
                           >
                             <Edit className="h-4 w-4 mr-1" />
-                            Edit
+                            Service Area
                           </Button>
                           <Button
                             variant="outline"
@@ -1753,34 +1754,37 @@ export function WholesalerAdminDashboard() {
         <Dialog open={!!editingRetailer} onOpenChange={(open) => !open && setEditingRetailer(null)}>
           <DialogContent className="max-w-md">
             <DialogHeader>
-              <DialogTitle>Edit Retailer</DialogTitle>
+              <DialogTitle>Edit Retailer Service Area</DialogTitle>
               <DialogDescription>
-                Update retailer information
+                Update service area assignment for this retailer
               </DialogDescription>
             </DialogHeader>
             {editingRetailer && (
-              <CreateRetailerForm 
+              <RetailerServiceAreaForm 
                 onSubmit={async (data) => {
                   const currentTenantId = getCurrentTenantId();
                   if (!currentTenantId) return;
                   
                   try {
                     await retailerService.update(editingRetailer.id, {
-                      name: data.name,
-                      phone: data.phone,
-                      address: data.address,
                       areaId: data.areaId,
                       zipcodes: data.zipcodes
                     }, currentTenantId);
                     await fetchDashboardData();
                     setEditingRetailer(null);
                   } catch (err: any) {
-                    setError(err.message || 'Failed to update retailer');
+                    setError(err.message || 'Failed to update retailer service area');
                   }
                 }}
                 areas={areas}
                 onCancel={() => setEditingRetailer(null)}
-                initialData={editingRetailer}
+                initialData={{
+                  areaId: editingRetailer.areaId,
+                  zipcodes: editingRetailer.zipcodes
+                }}
+                retailerName={editingRetailer.name}
+                retailerPhone={editingRetailer.phone}
+                retailerAddress={editingRetailer.address}
               />
             )}
           </DialogContent>
