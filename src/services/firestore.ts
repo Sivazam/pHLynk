@@ -1530,7 +1530,7 @@ export class RetailerService extends FirestoreService<Retailer> {
       
       const documents: Retailer[] = [];
       
-      querySnapshot.forEach((doc: QueryDocumentSnapshot) => {
+      for (const doc of querySnapshot.docs) {
         const data = doc.data() as any;
         const retailerId = doc.id;
         
@@ -1566,10 +1566,27 @@ export class RetailerService extends FirestoreService<Retailer> {
             tenantIds: retailer.tenantIds || []
           };
           
+          // If retailer name is missing or empty, try to get it from the profile system
+          if (!mergedRetailer.name || mergedRetailer.name === 'Unknown Retailer' || mergedRetailer.name === '') {
+            try {
+              const { RetailerProfileService } = await import('./retailer-profile-service');
+              const retailerProfile = await RetailerProfileService.getRetailerProfileByPhone(mergedRetailer.phone);
+              if (retailerProfile && retailerProfile.profile?.realName) {
+                mergedRetailer.name = retailerProfile.profile.realName;
+                mergedRetailer.address = retailerProfile.profile?.address || mergedRetailer.address;
+                mergedRetailer.email = retailerProfile.profile?.email || mergedRetailer.email;
+                mergedRetailer.businessType = retailerProfile.profile?.businessType || mergedRetailer.businessType;
+                mergedRetailer.licenseNumber = retailerProfile.profile?.licenseNumber || mergedRetailer.licenseNumber;
+              }
+            } catch (error) {
+              console.warn(`⚠️ Could not fetch profile for retailer ${mergedRetailer.id}:`, error);
+            }
+          }
+          
           console.log(`🏪 Retailer "${mergedRetailer.name}" - areaId: ${mergedRetailer.areaId}, assignedLineWorkerId: ${mergedRetailer.assignedLineWorkerId}`);
           documents.push(mergedRetailer);
         }
-      });
+      }
       
       return documents;
     } catch (error) {
