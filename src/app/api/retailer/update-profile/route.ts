@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from 'next/server';
 import { RetailerProfileService } from '@/services/retailer-profile-service';
+import { RetailerAuthService } from '@/services/retailer-auth';
 import { auth } from '@/lib/firebase';
 
 interface UpdateProfileRequest {
@@ -64,7 +65,7 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    // Update the profile
+    // Update the profile in retailers collection
     const updatedProfile = {
       ...existingProfile.profile,
       realName: profile.realName.trim(),
@@ -76,12 +77,33 @@ export async function POST(request: NextRequest) {
     
     await RetailerProfileService.updateRetailerProfile(retailerId, updatedProfile);
     
+    // Also update the retailerUsers collection
+    try {
+      const retailerUserData = await RetailerAuthService.getRetailerUserByRetailerId(retailerId);
+      if (retailerUserData) {
+        console.log('👤 Updating retailer user data in retailerUsers collection');
+        await RetailerAuthService.updateRetailerUser(retailerUserData.uid, {
+          name: profile.realName.trim(),
+          email: profile.email?.trim() || '',
+          address: profile.address?.trim() || '',
+          businessType: profile.businessType || '',
+          licenseNumber: profile.licenseNumber?.trim() || ''
+        });
+        console.log('✅ Retailer user data updated successfully');
+      } else {
+        console.log('⚠️ No retailer user found in retailerUsers collection');
+      }
+    } catch (error) {
+      console.error('❌ Error updating retailer user data:', error);
+      // Don't fail the request if retailerUsers update fails
+    }
+    
     // Get updated profile data
     const finalProfile = await RetailerProfileService.getRetailerProfile(retailerId);
     
     console.log('✅ Retailer profile updated successfully:', {
       retailerId,
-      realName: finalProfile?.profile.realName
+      realName: finalProfile?.profile?.realName || finalProfile?.name
     });
     
     return NextResponse.json({

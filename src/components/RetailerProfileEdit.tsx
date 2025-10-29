@@ -59,6 +59,7 @@ export function RetailerProfileEdit({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [hasInitialized, setHasInitialized] = useState(false);
   
   const businessTypes = [
     'Pharmacy',
@@ -70,12 +71,17 @@ export function RetailerProfileEdit({
   ];
 
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && !hasInitialized) {
+      console.log('📝 Initializing edit form with profile:', profile);
       setEditedProfile(profile);
+      setHasInitialized(true);
       setError(null);
       setSuccess(null);
+    } else if (!isOpen) {
+      // Reset initialization flag when dialog closes
+      setHasInitialized(false);
     }
-  }, [isOpen, profile]);
+  }, [isOpen, profile, hasInitialized]);
 
   const handleInputChange = (field: keyof RetailerProfile, value: string) => {
     setEditedProfile(prev => ({
