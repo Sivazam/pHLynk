@@ -111,7 +111,7 @@ export default function RetailerProfilePage({ searchParams }: RetailerProfilePag
         if (retailerProfile.profile) {
           // New profile format
           profileData = retailerProfile.profile;
-          phoneData = retailerProfile.profile.phone;
+          phoneData = retailerProfile.profile?.phone || retailerProfile.phone;
           verificationData = retailerProfile.verification || {
             isPhoneVerified: false,
             verificationMethod: 'OTP' as const

@@ -74,9 +74,9 @@ export async function POST(request: NextRequest) {
       if (retailerProfile) {
         retailerData = {
           id: retailerProfile.id,
-          name: retailerProfile.profile.realName,
-          phone: retailerProfile.profile.phone,
-          address: retailerProfile.profile.address
+          name: retailerProfile.profile?.realName || retailerProfile.name,
+          phone: retailerProfile.profile?.phone || retailerProfile.phone,
+          address: retailerProfile.profile?.address || retailerProfile.address
         };
         actualRetailerId = retailerProfile.id;
       } else {
@@ -173,12 +173,12 @@ export async function POST(request: NextRequest) {
         
         return NextResponse.json({
           success: true,
-          message: `Existing retailer "${existingProfile.profile.realName}" has been added to your business`,
+          message: `Existing retailer "${existingProfile.profile?.realName || existingProfile.name}" has been added to your business`,
           retailer: {
             id: existingProfile.id,
-            name: existingProfile.profile.realName,
-            phone: existingProfile.profile.phone,
-            isVerified: existingProfile.verification.isPhoneVerified
+            name: existingProfile.profile?.realName || existingProfile.name,
+            phone: existingProfile.profile?.phone || existingProfile.phone,
+            isVerified: existingProfile.verification?.isPhoneVerified || existingProfile.phoneVerified || false
           }
         });
       } else {

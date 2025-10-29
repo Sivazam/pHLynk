@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    console.log('✅ Retailer found:', retailerProfile.profile.realName);
+    console.log('✅ Retailer found:', retailerProfile.profile?.realName || retailerProfile.name);
     
     // Check if assignment already exists
     const existingAssignment = await RetailerAssignmentService.getRetailerAssignment(tenantId, retailerProfile.id);
@@ -80,13 +80,13 @@ export async function POST(request: NextRequest) {
     
     return NextResponse.json({
       success: true,
-      message: `Retailer "${retailerProfile.profile.realName}" has been assigned to your business as "${assignment.aliasName}".`,
+      message: `Retailer "${retailerProfile.profile?.realName || retailerProfile.name}" has been assigned to your business as "${assignment.aliasName}".`,
       assignmentId,
       retailer: {
         id: retailerProfile.id,
-        realName: retailerProfile.profile.realName,
-        phone: retailerProfile.profile.phone,
-        isVerified: retailerProfile.verification.isPhoneVerified
+        realName: retailerProfile.profile?.realName || retailerProfile.name,
+        phone: retailerProfile.profile?.phone || retailerProfile.phone,
+        isVerified: retailerProfile.verification?.isPhoneVerified || retailerProfile.phoneVerified || false
       },
       assignment: {
         aliasName: assignment.aliasName,
@@ -136,9 +136,9 @@ export async function GET(request: NextRequest) {
           ...assignment,
           retailer: retailerProfile ? {
             id: retailerProfile.id,
-            realName: retailerProfile.profile.realName,
-            phone: retailerProfile.profile.phone,
-            isVerified: retailerProfile.verification.isPhoneVerified
+            realName: retailerProfile.profile?.realName || retailerProfile.name,
+            phone: retailerProfile.profile?.phone || retailerProfile.phone,
+            isVerified: retailerProfile.verification?.isPhoneVerified || retailerProfile.phoneVerified || false
           } : null
         };
       })

@@ -1464,12 +1464,12 @@ export class RetailerService extends FirestoreService<Retailer> {
           // Create retailer object compatible with dashboard expectations
           const retailer: Retailer = {
             id: doc.id,
-            name: retailerProfile.profile.realName || 'Unknown Retailer',
-            phone: retailerProfile.profile.phone,
-            address: retailerProfile.profile.address || '',
-            email: retailerProfile.profile.email,
-            businessType: retailerProfile.profile.businessType,
-            licenseNumber: retailerProfile.profile.licenseNumber,
+            name: retailerProfile.profile?.realName || retailerProfile.name || 'Unknown Retailer',
+            phone: retailerProfile.profile?.phone || retailerProfile.phone,
+            address: retailerProfile.profile?.address || retailerProfile.address || '',
+            email: retailerProfile.profile?.email || retailerProfile.email,
+            businessType: retailerProfile.profile?.businessType || retailerProfile.businessType,
+            licenseNumber: retailerProfile.profile?.licenseNumber || retailerProfile.licenseNumber,
             tenantIds: retailerProfile.tenantIds || [],
             zipcodes: [], // Will be populated from wholesaler assignments
             areaId: '', // Will be populated from wholesaler assignments

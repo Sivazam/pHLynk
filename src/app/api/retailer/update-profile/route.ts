@@ -103,7 +103,7 @@ export async function POST(request: NextRequest) {
     
     console.log('✅ Retailer profile updated successfully:', {
       retailerId,
-      realName: finalProfile?.profile.realName
+      realName: finalProfile?.profile?.realName || finalProfile?.name
     });
     
     return NextResponse.json({
