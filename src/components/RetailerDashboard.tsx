@@ -63,7 +63,7 @@ import { StatusBarColor } from './ui/StatusBarColor';
 import { Confetti } from './ui/Confetti';
 import { WholesalerSlider } from './ui/wholesaler-slider';
 import ReportDialog from './ui/ReportDialog';
-import { RetailerProfileEdit } from './RetailerProfileEdit';
+import { RetailerProfileInlineEdit } from './RetailerProfileInlineEdit';
 import { RetailerProfileService } from '@/services/retailer-profile-service';
 
 export function RetailerDashboard() {
@@ -349,9 +349,22 @@ export function RetailerDashboard() {
       setRetailer(prev => prev ? { ...prev, name: updatedProfile.realName } : null);
     }
     
+    // Update retailerUser name if it exists
+    if (updatedProfile.realName && retailerUser) {
+      setRetailerUser(prev => prev ? { ...prev, name: updatedProfile.realName } : null);
+    }
+    
     // Show success message
     setError(null);
-    // You could add a success toast here if you have one
+    
+    // Refresh retailer data to ensure consistency
+    if (retailer?.id) {
+      setTimeout(() => {
+        fetchRetailerData(retailer.id);
+      }, 1000);
+    }
+    
+    console.log('✅ Profile updated and data refreshed');
   };
   const handleTenantSwitch = async (newTenantId: string) => {
     if (!retailer || newTenantId === tenantId) return;
@@ -455,13 +468,21 @@ export function RetailerDashboard() {
   const [lineWorkerNames, setLineWorkerNames] = useState<Record<string, string>>({});
 
   // Direct wholesaler name fetch component for inline use
-const WholesalerNameCell: React.FC<{ tenantId: string }> = ({ tenantId }) => {
+const WholesalerNameCell: React.FC<{ payment: any }> = ({ payment }) => {
   const [wholesalerName, setWholesalerName] = useState<string>('Loading...');
   
   useEffect(() => {
     const fetchWholesalerName = async () => {
+      // Get the tenant ID from payment (handle both single and array)
+      let tenantId = null;
+      if (payment.tenantIds && Array.isArray(payment.tenantIds) && payment.tenantIds.length > 0) {
+        tenantId = payment.tenantIds[0]; // Use first tenant ID
+      } else if (payment.tenantId) {
+        tenantId = payment.tenantId;
+      }
+      
       if (!tenantId || tenantId === 'all') {
-        setWholesalerName('All Wholesalers');
+        setWholesalerName('Unknown Wholesaler');
         return;
       }
       
@@ -481,7 +502,22 @@ const WholesalerNameCell: React.FC<{ tenantId: string }> = ({ tenantId }) => {
           setWholesalerName(name);
         } else {
           console.log('🏢 WholesalerNameCell: Tenant document not found for tenantId:', tenantId);
-          setWholesalerName('Unknown Wholesaler');
+          // Try fallback to users collection
+          try {
+            const userDoc = await getDoc(doc(db, 'users', tenantId));
+            if (userDoc.exists()) {
+              const userData = userDoc.data();
+              const name = userData.displayName || userData.name || 'Unknown Wholesaler';
+              console.log('🏢 WholesalerNameCell: Found wholesaler in users:', { tenantId, name });
+              setWholesalerNames(prev => ({ ...prev, [tenantId]: name }));
+              setWholesalerName(name);
+            } else {
+              setWholesalerName('Unknown Wholesaler');
+            }
+          } catch (fallbackError) {
+            console.error('🏢 WholesalerNameCell: Error in fallback fetch:', fallbackError);
+            setWholesalerName('Unknown Wholesaler');
+          }
         }
       } catch (error) {
         console.error('🏢 WholesalerNameCell: Error fetching wholesaler name:', error);
@@ -490,7 +526,7 @@ const WholesalerNameCell: React.FC<{ tenantId: string }> = ({ tenantId }) => {
     };
     
     fetchWholesalerName();
-  }, [tenantId, wholesalerNames]); // Add wholesalerNames to dependency array
+  }, [payment, wholesalerNames]); // Add wholesalerNames to dependency array
   
   return (
     <Badge variant="outline" className="bg-blue-50 text-blue-800 border-blue-200">
@@ -2088,7 +2124,7 @@ const PaymentStatusCell: React.FC<{ state: string }> = ({ state }) => {
                                   <TableCell>{formatCurrency(payment.totalPaid)}</TableCell>
                                   <TableCell>{payment.method}</TableCell>
                                   <TableCell>
-                                    <WholesalerNameCell tenantId={payment.tenantId || ''} />
+                                    <WholesalerNameCell payment={payment} />
                                   </TableCell>
                                   <TableCell>{lineWorkerNames[payment.lineWorkerId] || 'Loading...'}</TableCell>
                                   <TableCell>
@@ -2152,7 +2188,7 @@ const PaymentStatusCell: React.FC<{ state: string }> = ({ state }) => {
                                 <TableCell>{formatCurrency(payment.totalPaid)}</TableCell>
                                 <TableCell>{payment.method}</TableCell>
                                 <TableCell>
-                                  <WholesalerNameCell tenantId={payment.tenantId || ''} />
+                                  <WholesalerNameCell payment={payment} />
                                 </TableCell>
                                 <TableCell>
                                   <PaymentStatusCell state={payment.state} />
@@ -2204,62 +2240,22 @@ const PaymentStatusCell: React.FC<{ state: string }> = ({ state }) => {
                           Manage your business information and profile details
                         </CardDescription>
                       </CardHeader>
-                      <CardContent className="space-y-4">
+                      <CardContent>
                         {retailerProfile && retailerProfile.profile ? (
-                          <div className="space-y-4">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                              <div>
-                                <Label className="text-sm font-medium text-gray-700">Business Name</Label>
-                                <p className="text-gray-900">{retailerProfile.profile.realName || 'Not set'}</p>
-                              </div>
-                              <div>
-                                <Label className="text-sm font-medium text-gray-700">Phone Number</Label>
-                                <p className="text-gray-900">+91 {retailerProfile.profile.phone || retailer?.phone}</p>
-                              </div>
-                              <div>
-                                <Label className="text-sm font-medium text-gray-700">Email</Label>
-                                <p className="text-gray-900">{retailerProfile.profile.email || 'Not set'}</p>
-                              </div>
-                              <div>
-                                <Label className="text-sm font-medium text-gray-700">Business Type</Label>
-                                <p className="text-gray-900">{retailerProfile.profile.businessType || 'Not set'}</p>
-                              </div>
-                            </div>
-                            <div>
-                              <Label className="text-sm font-medium text-gray-700">Address</Label>
-                              <p className="text-gray-900">{retailerProfile.profile.address || 'Not set'}</p>
-                            </div>
-                            <div className="flex items-center gap-2 pt-2">
-                              {retailerProfile.verification?.isPhoneVerified && (
-                                <Badge variant="secondary" className="flex items-center gap-1">
-                                  <CheckCircle className="h-3 w-3" />
-                                  Phone Verified
-                                </Badge>
-                              )}
-                              {retailerProfile.profile.licenseNumber && (
-                                <Badge variant="outline" className="flex items-center gap-1">
-                                  <FileText className="h-3 w-3" />
-                                  License Registered
-                                </Badge>
-                              )}
-                            </div>
-                            <div className="pt-2">
-                              <RetailerProfileEdit
-                                retailerId={retailer!.id}
-                                profile={{
-                                  realName: retailerProfile?.profile?.realName || retailerUser?.name || '',
-                                  email: retailerProfile?.profile?.email || retailerUser?.email || '',
-                                  address: retailerProfile?.profile?.address || retailerUser?.address || '',
-                                  businessType: retailerProfile?.profile?.businessType || '',
-                                  licenseNumber: retailerProfile?.profile?.licenseNumber || '',
-                                  phone: retailerProfile?.profile?.phone || retailerUser?.phone || retailer?.phone || '',
-                                  isPhoneVerified: retailerProfile?.verification?.isPhoneVerified || retailerUser?.isVerified || false,
-                                  verifiedAt: retailerProfile?.verification?.verifiedAt
-                                }}
-                                onProfileUpdate={handleProfileUpdate}
-                              />
-                            </div>
-                          </div>
+                          <RetailerProfileInlineEdit
+                            retailerId={retailer!.id}
+                            profile={{
+                              realName: retailerProfile?.profile?.realName || retailerUser?.name || '',
+                              email: retailerProfile?.profile?.email || retailerUser?.email || '',
+                              address: retailerProfile?.profile?.address || retailerUser?.address || '',
+                              businessType: retailerProfile?.profile?.businessType || '',
+                              licenseNumber: retailerProfile?.profile?.licenseNumber || '',
+                              phone: retailerProfile?.profile?.phone || retailerUser?.phone || retailer?.phone || '',
+                              isPhoneVerified: retailerProfile?.verification?.isPhoneVerified || retailerUser?.isVerified || false,
+                              verifiedAt: retailerProfile?.verification?.verifiedAt
+                            }}
+                            onProfileUpdate={handleProfileUpdate}
+                          />
                         ) : (
                           <div className="text-center py-8">
                             <div className="bg-gray-50 rounded-lg p-6">
@@ -2357,7 +2353,7 @@ const PaymentStatusCell: React.FC<{ state: string }> = ({ state }) => {
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="font-medium text-gray-700">Wholesaler:</span>
-                  <WholesalerNameCell tenantId={newPayment.tenantId || ''} />
+                  <WholesalerNameCell payment={newPayment} />
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="font-medium text-gray-700">Payment ID:</span>

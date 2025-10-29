@@ -11,10 +11,12 @@ export async function POST(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams
     const userPhone = searchParams.get('phone') || request.headers.get('x-user-phone')
     
+    console.log('📝 Request URL:', request.url)
+    console.log('📝 Search params:', Object.fromEntries(searchParams.entries()))
     console.log('📝 Using phone:', userPhone)
     
     if (!userPhone) {
-      console.log('❌ No phone number provided')
+      console.log('❌ No phone number provided in query params or headers')
       return NextResponse.json({ error: 'Phone number required' }, { status: 400 });
     }
 
