@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { RetailerProfileForm } from '@/components/RetailerProfileForm';
+import { RetailerAuthService } from '@/services/retailer-auth';
 import { RetailerProfileService } from '@/services/retailer-profile-service';
 import { Loader2, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -62,45 +63,91 @@ export default function RetailerProfilePage({ searchParams }: RetailerProfilePag
         throw new Error('Retailer ID not found. Please login again.');
       }
 
-      // Get retailer profile data
-      const retailerProfile = await RetailerProfileService.getRetailerProfile(actualRetailerId);
-      
-      if (!retailerProfile) {
+      console.log('📋 Loading retailer data for profile:', actualRetailerId);
+
+      // First, try to get retailer user data (this has the actual profile data)
+      let retailerUserData: any = null;
+      try {
+        retailerUserData = await RetailerAuthService.getRetailerUserByRetailerId(actualRetailerId);
+        console.log('👤 Retailer user data found:', retailerUserData);
+      } catch (error) {
+        console.error('❌ Error fetching retailer user data:', error);
+      }
+
+      // Also get retailer profile data (from retailers collection)
+      let retailerProfile: any = null;
+      try {
+        retailerProfile = await RetailerProfileService.getRetailerProfile(actualRetailerId);
+        console.log('📄 Retailer profile data found:', retailerProfile);
+      } catch (error) {
+        console.error('❌ Error fetching retailer profile:', error);
+      }
+
+      // If neither exists, throw error
+      if (!retailerUserData && !retailerProfile) {
         throw new Error('Retailer profile not found. Please contact support.');
       }
 
-      // Handle both legacy and new profile formats
-      let profileData, phoneData;
-      if (retailerProfile.profile) {
-        // New profile format
-        profileData = retailerProfile.profile;
-        phoneData = retailerProfile.profile.phone;
-      } else {
-        // Legacy format - cast to any to access legacy properties
-        const legacyProfile = retailerProfile as any;
+      // Merge data from both sources, prioritizing retailerUserData
+      let profileData, phoneData, verificationData;
+      
+      if (retailerUserData) {
+        // Use retailerUserData as primary source
         profileData = {
-          realName: legacyProfile.name || '',
-          phone: legacyProfile.phone || '',
-          email: legacyProfile.email || '',
-          address: legacyProfile.address || '',
-          businessType: legacyProfile.businessType || '',
-          licenseNumber: legacyProfile.licenseNumber || ''
+          realName: retailerUserData.name || '',
+          phone: retailerUserData.phone || '',
+          email: retailerUserData.email || '',
+          address: retailerUserData.address || '',
+          businessType: retailerUserData.businessType || '',
+          licenseNumber: retailerUserData.licenseNumber || ''
         };
-        phoneData = legacyProfile.phone || '';
+        phoneData = retailerUserData.phone || '';
+        verificationData = {
+          isPhoneVerified: retailerUserData.isVerified || false,
+          verificationMethod: 'OTP' as const
+        };
+      } else if (retailerProfile) {
+        // Fallback to retailerProfile
+        if (retailerProfile.profile) {
+          // New profile format
+          profileData = retailerProfile.profile;
+          phoneData = retailerProfile.profile.phone;
+          verificationData = retailerProfile.verification || {
+            isPhoneVerified: false,
+            verificationMethod: 'OTP' as const
+          };
+        } else {
+          // Legacy format
+          const legacyProfile = retailerProfile as any;
+          profileData = {
+            realName: legacyProfile.name || '',
+            phone: legacyProfile.phone || '',
+            email: legacyProfile.email || '',
+            address: legacyProfile.address || '',
+            businessType: legacyProfile.businessType || '',
+            licenseNumber: legacyProfile.licenseNumber || ''
+          };
+          phoneData = legacyProfile.phone || '';
+          verificationData = {
+            isPhoneVerified: (retailerProfile as any).phoneVerified || false,
+            verificationMethod: 'OTP' as const
+          };
+        }
+      } else {
+        throw new Error('No profile data available');
       }
 
       setRetailerData({
         id: actualRetailerId,
         phone: actualPhone || phoneData,
         profile: profileData,
-        verification: retailerProfile.verification || {
-          isPhoneVerified: (retailerProfile as any).phoneVerified || false,
-          verificationMethod: 'OTP' as const
-        }
+        verification: verificationData
       });
 
+      console.log('✅ Retailer data loaded successfully');
+
     } catch (err: any) {
-      console.error('Error loading retailer data:', err);
+      console.error('❌ Error loading retailer data:', err);
       setError(err.message || 'Failed to load retailer data');
     } finally {
       setLoading(false);

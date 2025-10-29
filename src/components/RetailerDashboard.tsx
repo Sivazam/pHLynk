@@ -26,7 +26,7 @@ import { getActiveOTPsForRetailer, getCompletedPaymentsForRetailer, removeComple
 import { secureOTPStorage } from '@/lib/secure-otp-storage';
 import { otpBridge } from '@/lib/otp-bridge';
 import { db } from '@/lib/firebase';
-import { doc, getDoc, getDocs, onSnapshot, collection, query, where } from 'firebase/firestore';
+import { doc, getDoc, getDocs, onSnapshot, collection, query, where, setDoc, updateDoc } from 'firebase/firestore';
 import { logger } from '@/lib/logger';
 import { DateRangeFilter, DateRangeOption } from '@/components/ui/DateRangeFilter';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -475,14 +475,16 @@ const WholesalerNameCell: React.FC<{ tenantId: string }> = ({ tenantId }) => {
         const tenantDoc = await getDoc(doc(db, 'tenants', tenantId));
         if (tenantDoc.exists()) {
           const tenantData = tenantDoc.data();
-          const name = tenantData.name || 'Unknown Wholesaler';
+          const name = tenantData.name || tenantData.businessName || 'Unknown Wholesaler';
+          console.log('🏢 WholesalerNameCell: Found wholesaler:', { tenantId, name, data: tenantData });
           setWholesalerNames(prev => ({ ...prev, [tenantId]: name }));
           setWholesalerName(name);
         } else {
+          console.log('🏢 WholesalerNameCell: Tenant document not found for tenantId:', tenantId);
           setWholesalerName('Unknown Wholesaler');
         }
       } catch (error) {
-        console.error('Error fetching wholesaler name:', error);
+        console.error('🏢 WholesalerNameCell: Error fetching wholesaler name:', error);
         setWholesalerName('Unknown Wholesaler');
       }
     };
@@ -553,14 +555,19 @@ const PaymentStatusCell: React.FC<{ state: string }> = ({ state }) => {
     }
     
     try {
+      console.log('🏢 Fetching wholesaler name for tenantId:', tenantId);
       const tenantDoc = await getDoc(doc(db, 'tenants', tenantId));
       if (tenantDoc.exists()) {
         const tenantData = tenantDoc.data();
-        const name = tenantData.name || 'Unknown Wholesaler';
+        const name = tenantData.name || tenantData.businessName || 'Unknown Wholesaler';
+        console.log('🏢 Found wholesaler:', { tenantId, name, data: tenantData });
         setWholesalerNames(prev => ({ ...prev, [tenantId]: name }));
         return name;
+      } else {
+        console.log('🏢 Tenant document not found for tenantId:', tenantId);
       }
     } catch (error) {
+      console.error('❌ Error fetching wholesaler name for tenantId:', tenantId, error);
       logger.error('Error fetching wholesaler name', error, { context: 'RetailerDashboard' });
     }
     
@@ -1356,32 +1363,58 @@ const PaymentStatusCell: React.FC<{ state: string }> = ({ state }) => {
             retailerData.address = retailerUserData.address;
             logger.debug('Using address from retailer user data', retailerData.address, { context: 'RetailerDashboard' });
           }
+          
+          // If retailer document doesn't have name, sync from user data
+          if (!retailerData.name && retailerUserData.name) {
+            retailerData.name = retailerUserData.name;
+            logger.debug('Using name from retailer user data', retailerData.name, { context: 'RetailerDashboard' });
+          }
         } else {
-          logger.warn('Retailer document not found in retailers collection, using user data', { context: 'RetailerDashboard' });
-          // Fallback to user data
+          logger.warn('Retailer document not found in retailers collection, creating from user data', { context: 'RetailerDashboard' });
+          
+          // Create retailer document from user data
           retailerData = {
             id: retailerUserData.retailerId,
             name: retailerUserData.name,
             phone: retailerUserData.phone,
             email: retailerUserData.email || '',
-            tenantId: retailerUserData.tenantId,
             address: retailerUserData.address || 'Address not specified',
-            areaId: '',
-            zipcodes: []
+            tenantIds: [retailerUserData.tenantId],
+            createdAt: retailerUserData.createdAt,
+            updatedAt: new Date(),
+            verification: {
+              isPhoneVerified: retailerUserData.isVerified,
+              verificationMethod: 'OTP',
+              verifiedAt: retailerUserData.lastLoginAt
+            }
           };
+          
+          // Save to retailers collection
+          try {
+            const retailerRef = doc(db, 'retailers', retailerId);
+            await setDoc(retailerRef, retailerData);
+            logger.success('Created retailer document from user data', retailerData, { context: 'RetailerDashboard' });
+          } catch (createError) {
+            logger.error('Error creating retailer document', createError, { context: 'RetailerDashboard' });
+          }
         }
       } catch (error) {
         logger.error('Error accessing retailers collection, using user data', error, { context: 'RetailerDashboard' });
-        // Fallback to user data
+        // Fallback to user data with proper structure
         retailerData = {
           id: retailerUserData.retailerId,
           name: retailerUserData.name,
           phone: retailerUserData.phone,
           email: retailerUserData.email || '',
-          tenantId: retailerUserData.tenantId,
           address: retailerUserData.address || 'Address not specified',
-          areaId: '',
-          zipcodes: []
+          tenantIds: [retailerUserData.tenantId],
+          createdAt: retailerUserData.createdAt,
+          updatedAt: new Date(),
+          verification: {
+            isPhoneVerified: retailerUserData.isVerified,
+            verificationMethod: 'OTP',
+            verifiedAt: retailerUserData.lastLoginAt
+          }
         };
       }
       
@@ -1417,8 +1450,12 @@ const PaymentStatusCell: React.FC<{ state: string }> = ({ state }) => {
       });
       setAvailableTenants(retailerTenants);
       
-      // Set current tenantId to 'all' for consolidated view by default
-      setTenantId('all');
+      // Set current tenantId to the specific tenant if only one, or 'all' for multiple
+      if (retailerTenants.length === 1) {
+        setTenantId(retailerTenants[0]);
+      } else {
+        setTenantId('all');
+      }
       
       setPayments(paymentsData);
       
@@ -1965,19 +2002,19 @@ const PaymentStatusCell: React.FC<{ state: string }> = ({ state }) => {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div>
                             <Label className="text-sm font-medium text-gray-700">Store Name</Label>
-                            <p className="text-gray-900">{retailer.name}</p>
+                            <p className="text-gray-900">{retailerUser?.name || retailer?.name || 'Not provided'}</p>
                           </div>
                           <div>
                             <Label className="text-sm font-medium text-gray-700">Phone</Label>
-                            <p className="text-gray-900">{retailer.phone || 'Not provided'}</p>
+                            <p className="text-gray-900">{retailerUser?.phone || retailer?.phone || 'Not provided'}</p>
                           </div>
                           <div>
                             <Label className="text-sm font-medium text-gray-700">Email</Label>
-                            <p className="text-gray-900">{retailer.email || 'Not provided'}</p>
+                            <p className="text-gray-900">{retailerUser?.email || retailer?.email || 'Not provided'}</p>
                           </div>
                           <div>
                             <Label className="text-sm font-medium text-gray-700">Address</Label>
-                            <p className="text-gray-900">{retailer.address || 'Not provided'}</p>
+                            <p className="text-gray-900">{retailerUser?.address || retailer?.address || 'Not provided'}</p>
                           </div>
                         </div>
                       </CardContent>
@@ -2131,9 +2168,7 @@ const PaymentStatusCell: React.FC<{ state: string }> = ({ state }) => {
                                 <TableCell>{formatCurrency(payment.totalPaid)}</TableCell>
                                 <TableCell>{payment.method}</TableCell>
                                 <TableCell>
-                                  <Badge variant="outline" className="text-xs">
-                                    {wholesalerNames[payment.tenantId || ''] || 'Unknown Wholesaler'}
-                                  </Badge>
+                                  <WholesalerNameCell tenantId={payment.tenantId || ''} />
                                 </TableCell>
                                 <TableCell>
                                   <PaymentStatusCell state={payment.state} />
@@ -2228,14 +2263,14 @@ const PaymentStatusCell: React.FC<{ state: string }> = ({ state }) => {
                               <RetailerProfileEdit
                                 retailerId={retailer!.id}
                                 profile={{
-                                  realName: retailerProfile.profile.realName || '',
-                                  email: retailerProfile.profile.email || '',
-                                  address: retailerProfile.profile.address || '',
-                                  businessType: retailerProfile.profile.businessType || '',
-                                  licenseNumber: retailerProfile.profile.licenseNumber || '',
-                                  phone: retailerProfile.profile.phone || retailer?.phone || '',
-                                  isPhoneVerified: retailerProfile.verification?.isPhoneVerified || false,
-                                  verifiedAt: retailerProfile.verification?.verifiedAt
+                                  realName: retailerProfile?.profile?.realName || retailerUser?.name || '',
+                                  email: retailerProfile?.profile?.email || retailerUser?.email || '',
+                                  address: retailerProfile?.profile?.address || retailerUser?.address || '',
+                                  businessType: retailerProfile?.profile?.businessType || '',
+                                  licenseNumber: retailerProfile?.profile?.licenseNumber || '',
+                                  phone: retailerProfile?.profile?.phone || retailerUser?.phone || retailer?.phone || '',
+                                  isPhoneVerified: retailerProfile?.verification?.isPhoneVerified || retailerUser?.isVerified || false,
+                                  verifiedAt: retailerProfile?.verification?.verifiedAt
                                 }}
                                 onProfileUpdate={handleProfileUpdate}
                               />
@@ -2335,6 +2370,10 @@ const PaymentStatusCell: React.FC<{ state: string }> = ({ state }) => {
                 <div className="flex justify-between items-center">
                   <span className="font-medium text-gray-700">Line Worker:</span>
                   <span className="font-medium">{newPayment.retailerName}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="font-medium text-gray-700">Wholesaler:</span>
+                  <WholesalerNameCell tenantId={newPayment.tenantId || ''} />
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="font-medium text-gray-700">Payment ID:</span>
@@ -2443,7 +2482,7 @@ const PaymentStatusCell: React.FC<{ state: string }> = ({ state }) => {
       )}
 
       {/* Floating Report Button */}
-      {retailer && <ReportDialog retailerId={retailer.id} />}
+      {retailer && <ReportDialog retailerId={retailer.id} retailerPhone={retailer.phone} />}
     </div>
   );
 }
