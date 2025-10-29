@@ -48,7 +48,9 @@ export async function POST(request: NextRequest) {
         isVerified: retailerProfile.verification.isPhoneVerified,
         hasAssignments: assignments.length > 0,
         assignmentCount: assignments.length,
-        isNew: assignments.length === 0
+        isNew: assignments.length === 0,
+        // Check if already associated with tenant (for existing tenant checks)
+        tenantIds: retailerProfile.tenantIds || []
       };
       
       return NextResponse.json({

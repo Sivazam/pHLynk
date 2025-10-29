@@ -1440,6 +1440,7 @@ export class RetailerService extends FirestoreService<Retailer> {
 
   /**
    * Update the getAll method to use new wholesalerData structure (OVERRIDE)
+   * Enhanced to support both legacy retailer system and new retailer profile system
    */
   async getAll(tenantId: string, constraints: QueryConstraint[] = []): Promise<Retailer[]> {
     try {
@@ -1453,10 +1454,41 @@ export class RetailerService extends FirestoreService<Retailer> {
       
       const documents: Retailer[] = [];
       querySnapshot.forEach((doc: QueryDocumentSnapshot) => {
-        const data = doc.data() as Retailer;
+        const data = doc.data() as any;
         
+        // Check if this is a new retailer profile (has 'profile' field)
+        if (data && data.profile) {
+          // NEW RETAILER PROFILE SYSTEM
+          const retailerProfile = data as any;
+          
+          // Create retailer object compatible with dashboard expectations
+          const retailer: Retailer = {
+            id: doc.id,
+            name: retailerProfile.profile.realName || 'Unknown Retailer',
+            phone: retailerProfile.profile.phone,
+            address: retailerProfile.profile.address || '',
+            email: retailerProfile.profile.email,
+            businessType: retailerProfile.profile.businessType,
+            licenseNumber: retailerProfile.profile.licenseNumber,
+            tenantIds: retailerProfile.tenantIds || [],
+            zipcodes: [], // Will be populated from wholesaler assignments
+            areaId: '', // Will be populated from wholesaler assignments
+            createdAt: retailerProfile.createdAt,
+            updatedAt: retailerProfile.updatedAt,
+            // Add wholesaler-specific data if available
+            ...(retailerProfile.wholesalerData?.[tenantId] || {
+              areaId: '',
+              zipcodes: [],
+              notes: '',
+              creditLimit: 0,
+              currentBalance: 0
+            })
+          };
+          
+          documents.push(retailer);
+        }
         // For Retailer documents, merge wholesaler-specific data
-        if (data && data.wholesalerData && data.wholesalerData[tenantId]) {
+        else if (data && data.wholesalerData && data.wholesalerData[tenantId]) {
           const retailer = data as any;
           const wholesalerSpecificData = retailer.wholesalerData[tenantId];
           
