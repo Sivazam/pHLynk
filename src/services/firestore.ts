@@ -1453,8 +1453,31 @@ export class RetailerService extends FirestoreService<Retailer> {
       const querySnapshot = await getDocs(q);
       
       const documents: Retailer[] = [];
+      const retailerIds = querySnapshot.docs.map(doc => doc.id);
+      
+      // Fetch all assignments for this tenant in bulk
+      let assignmentsMap: { [key: string]: any } = {};
+      if (retailerIds.length > 0) {
+        try {
+          const { RetailerAssignmentService } = await import('./retailer-profile-service');
+          const assignments = await RetailerAssignmentService.getWholesalerAssignments(tenantId);
+          
+          // Create a map of retailerId -> assignment for quick lookup
+          assignmentsMap = assignments.reduce((acc, assignment) => {
+            acc[assignment.retailerId] = assignment;
+            return acc;
+          }, {});
+          
+          console.log(`📋 Fetched ${assignments.length} assignments for tenant ${tenantId}`);
+        } catch (error) {
+          console.warn('⚠️ Could not fetch assignments:', error);
+        }
+      }
+      
       querySnapshot.forEach((doc: QueryDocumentSnapshot) => {
         const data = doc.data() as any;
+        const retailerId = doc.id;
+        const assignment = assignmentsMap[retailerId];
         
         // Check if this is a new retailer profile (has 'profile' field)
         if (data && data.profile) {
@@ -1471,20 +1494,19 @@ export class RetailerService extends FirestoreService<Retailer> {
             businessType: retailerProfile.profile?.businessType || retailerProfile.businessType,
             licenseNumber: retailerProfile.profile?.licenseNumber || retailerProfile.licenseNumber,
             tenantIds: retailerProfile.tenantIds || [],
-            zipcodes: [], // Will be populated from wholesaler assignments
-            areaId: '', // Will be populated from wholesaler assignments
+            // Use assignment data if available, otherwise defaults
+            areaId: assignment?.areaId || '',
+            zipcodes: assignment?.zipcodes || [],
+            assignedLineWorkerId: assignment?.assignedLineWorkerId,
+            // Additional fields from assignment
+            creditLimit: assignment?.creditLimit || 0,
+            currentBalance: assignment?.currentBalance || 0,
+            notes: assignment?.notes,
             createdAt: retailerProfile.createdAt,
-            updatedAt: retailerProfile.updatedAt,
-            // Add wholesaler-specific data if available
-            ...(retailerProfile.wholesalerData?.[tenantId] || {
-              areaId: '',
-              zipcodes: [],
-              notes: '',
-              creditLimit: 0,
-              currentBalance: 0
-            })
+            updatedAt: retailerProfile.updatedAt
           };
           
+          console.log(`🏪 Retailer "${retailer.name}" - areaId: ${retailer.areaId}, assignedLineWorkerId: ${retailer.assignedLineWorkerId}`);
           documents.push(retailer);
         }
         // For Retailer documents, merge wholesaler-specific data
@@ -1507,17 +1529,40 @@ export class RetailerService extends FirestoreService<Retailer> {
         // BACKWARD COMPATIBILITY: Fall back to wholesalerAssignments
         else if (data && data.wholesalerAssignments && data.wholesalerAssignments[tenantId]) {
           const retailer = data as any;
-          const assignment = retailer.wholesalerAssignments[tenantId];
+          const legacyAssignment = retailer.wholesalerAssignments[tenantId];
           
           // Create merged retailer with wholesaler-specific overrides
           const mergedRetailer = {
             ...retailer,
-            areaId: assignment.areaId || retailer.areaId,
-            zipcodes: assignment.zipcodes.length > 0 ? assignment.zipcodes : retailer.zipcodes
+            areaId: legacyAssignment.areaId || retailer.areaId,
+            zipcodes: legacyAssignment.zipcodes.length > 0 ? legacyAssignment.zipcodes : retailer.zipcodes,
+            assignedLineWorkerId: legacyAssignment.assignedLineWorkerId
           };
           
+          console.log(`🏪 Legacy Retailer "${retailer.name}" - areaId: ${mergedRetailer.areaId}, assignedLineWorkerId: ${mergedRetailer.assignedLineWorkerId}`);
           documents.push({ ...mergedRetailer, id: doc.id } as Retailer);
-        } else {
+        } 
+        // Handle legacy format retailers with new assignment system
+        else if (assignment) {
+          const retailer = data as any;
+          
+          // Create merged retailer with new assignment data
+          const mergedRetailer = {
+            ...retailer,
+            areaId: assignment.areaId || retailer.areaId,
+            zipcodes: assignment.zipcodes || retailer.zipcodes,
+            assignedLineWorkerId: assignment.assignedLineWorkerId,
+            creditLimit: assignment.creditLimit || 0,
+            currentBalance: assignment.currentBalance || 0,
+            notes: assignment.notes
+          };
+          
+          console.log(`🏪 Legacy Retailer with New Assignment "${retailer.name}" - areaId: ${mergedRetailer.areaId}, assignedLineWorkerId: ${mergedRetailer.assignedLineWorkerId}`);
+          documents.push({ ...mergedRetailer, id: doc.id } as Retailer);
+        }
+        else {
+          // No assignment data found, include basic retailer info
+          console.log(`⚠️ Retailer "${data.name || 'Unknown'}" - No assignment data found`);
           documents.push({ ...data, id: doc.id } as Retailer);
         }
       });
