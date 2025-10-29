@@ -10,6 +10,7 @@ import { db } from '@/lib/firebase';
 
 interface LookupRequest {
   phone: string;
+  tenantId?: string; // Optional: to check if already assigned to this tenant
 }
 
 export async function POST(request: NextRequest) {
@@ -17,7 +18,7 @@ export async function POST(request: NextRequest) {
     console.log('🔍 Retailer lookup API called');
     
     const body: LookupRequest = await request.json();
-    const { phone } = body;
+    const { phone, tenantId } = body;
     
     if (!phone) {
       return NextResponse.json(
@@ -29,7 +30,7 @@ export async function POST(request: NextRequest) {
     // Clean phone number (remove non-digits)
     const cleanPhone = phone.replace(/\D/g, '');
     
-    console.log('📞 Looking up retailer with phone:', cleanPhone);
+    console.log('📞 Looking up retailer with phone:', cleanPhone, 'tenantId:', tenantId);
     
     // First, try to find retailer in new retailer profile system (primary source)
     let retailerProfile = await RetailerProfileService.getRetailerProfileByPhone(cleanPhone);
@@ -39,6 +40,18 @@ export async function POST(request: NextRequest) {
       
       // Check if retailer has assignments with current tenant (if provided)
       const assignments = await RetailerAssignmentService.getRetailerAssignments(retailerProfile.id);
+      
+      // Check if already assigned to this specific tenant (if tenantId provided)
+      let isAssignedToCurrentTenant = false;
+      if (tenantId) {
+        const retailerService = new (await import('@/services/firestore')).RetailerService();
+        const wholesalerData = await retailerService.getWholesalerData(retailerProfile.id, tenantId);
+        isAssignedToCurrentTenant = !!wholesalerData;
+        
+        // Also check in the assignment system
+        const assignmentForTenant = assignments.find(a => a.tenantId === tenantId);
+        isAssignedToCurrentTenant = isAssignedToCurrentTenant || !!assignmentForTenant;
+      }
       
       // Handle both new profile format and legacy format
       const isLegacyFormat = retailerProfile.name || retailerProfile.phone || retailerProfile.address;
@@ -57,6 +70,7 @@ export async function POST(request: NextRequest) {
         hasAssignments: assignments.length > 0,
         assignmentCount: assignments.length,
         isNew: assignments.length === 0,
+        isAssignedToCurrentTenant,
         // Check if already associated with tenant (for existing tenant checks)
         tenantIds: retailerProfile.tenantIds || [],
         // Additional fields from sample document (might not exist in all documents)
@@ -71,11 +85,16 @@ export async function POST(request: NextRequest) {
         success: true,
         retailer: retailerInfo,
         message: retailerInfo.isVerified 
-          ? (retailerInfo.hasAssignments 
-              ? 'Existing verified retailer found' 
-              : 'Verified retailer available for assignment')
-          : 'Retailer needs verification - you can add them but they must complete registration',
-        verificationStatus: retailerInfo.isVerified ? 'VERIFIED' : 'NEEDS_VERIFICATION'
+          ? (retailerInfo.isAssignedToCurrentTenant
+              ? 'This retailer is already assigned to your business'
+              : (retailerInfo.hasAssignments 
+                  ? 'Existing verified retailer found' 
+                  : 'Verified retailer available for assignment'))
+          : (retailerInfo.isAssignedToCurrentTenant
+              ? 'This retailer is already assigned to your business but needs verification'
+              : 'Retailer needs verification - you can add them but they must complete registration'),
+        verificationStatus: retailerInfo.isVerified ? 'VERIFIED' : 'NEEDS_VERIFICATION',
+        assignmentStatus: retailerInfo.isAssignedToCurrentTenant ? 'ALREADY_ASSIGNED' : 'AVAILABLE'
       });
     }
     

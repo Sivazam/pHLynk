@@ -732,8 +732,14 @@ export class RetailerService extends FirestoreService<Retailer> {
       // Add new tenant to array
       const updatedTenantIds = [...currentTenantIds, tenantId];
       
+      // Preserve existing wholesalerData and wholesalerAssignments to prevent data loss
+      const existingWholesalerData = retailerData.wholesalerData || {};
+      const existingWholesalerAssignments = retailerData.wholesalerAssignments || {};
+      
       await updateDoc(retailerRef, {
         tenantIds: updatedTenantIds,
+        wholesalerData: existingWholesalerData, // Preserve wholesalerData
+        wholesalerAssignments: existingWholesalerAssignments, // Preserve wholesalerAssignments
         updatedAt: Timestamp.now()
       });
       
@@ -762,8 +768,18 @@ export class RetailerService extends FirestoreService<Retailer> {
       // Remove tenant from array
       const updatedTenantIds = currentTenantIds.filter((id: string) => id !== tenantId);
       
+      // Preserve existing wholesalerData and wholesalerAssignments to prevent data loss
+      const existingWholesalerData = retailerData.wholesalerData || {};
+      const existingWholesalerAssignments = retailerData.wholesalerAssignments || {};
+      
+      // Remove the tenant's data from wholesalerData and wholesalerAssignments
+      delete existingWholesalerData[tenantId];
+      delete existingWholesalerAssignments[tenantId];
+      
       await updateDoc(retailerRef, {
         tenantIds: updatedTenantIds,
+        wholesalerData: existingWholesalerData, // Preserve remaining wholesalerData
+        wholesalerAssignments: existingWholesalerAssignments, // Preserve remaining wholesalerAssignments
         updatedAt: Timestamp.now()
       });
       
@@ -879,8 +895,12 @@ export class RetailerService extends FirestoreService<Retailer> {
         }
       };
       
+      // Preserve existing wholesalerData to prevent data loss
+      const existingWholesalerData = retailerData.wholesalerData || {};
+      
       await updateDoc(retailerRef, {
         wholesalerAssignments: updatedAssignments,
+        wholesalerData: existingWholesalerData, // Preserve wholesalerData
         updatedAt: Timestamp.now()
       });
       
