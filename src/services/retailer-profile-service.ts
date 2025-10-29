@@ -426,7 +426,7 @@ export class RetailerAssignmentService {
         zipcodes: assignmentData.zipcodes,
         creditLimit: assignmentData.creditLimit || 0,
         currentBalance: 0,
-        notes: assignmentData.notes,
+        notes: assignmentData.notes || '',
         assignmentHistory: [{
           areaId: assignmentData.areaId,
           assignedAt: now,

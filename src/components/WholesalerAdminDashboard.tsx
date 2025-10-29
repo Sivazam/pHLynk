@@ -1766,38 +1766,16 @@ export function WholesalerAdminDashboard() {
                   if (!currentTenantId) return;
                   
                   try {
-                    // Use the new assignment system instead of direct retailer update
-                    const { RetailerAssignmentService } = await import('@/services/retailer-profile-service');
+                    // Use the existing wholesalerData system instead of separate assignment system
+                    const retailerService = new (await import('@/services/firestore')).RetailerService();
                     
-                    // Check if assignment exists
-                    const existingAssignment = await RetailerAssignmentService.getRetailerAssignment(currentTenantId, editingRetailer.id);
+                    // Update retailer's wholesalerData for this tenant
+                    await retailerService.upsertWholesalerData(editingRetailer.id, currentTenantId, {
+                      areaId: data.areaId,
+                      zipcodes: data.zipcodes
+                    });
                     
-                    if (existingAssignment) {
-                      // Update existing assignment
-                      await RetailerAssignmentService.updateRetailerAssignment(
-                        currentTenantId,
-                        editingRetailer.id,
-                        {
-                          areaId: data.areaId,
-                          zipcodes: data.zipcodes
-                        }
-                      );
-                      console.log(`✅ Updated service area for retailer ${editingRetailer.name}`);
-                    } else {
-                      // Create new assignment if it doesn't exist
-                      await RetailerAssignmentService.createRetailerAssignment(
-                        currentTenantId,
-                        editingRetailer.id,
-                        {
-                          aliasName: editingRetailer.name,
-                          areaId: data.areaId,
-                          zipcodes: data.zipcodes,
-                          creditLimit: editingRetailer.creditLimit || 0,
-                          notes: editingRetailer.notes
-                        }
-                      );
-                      console.log(`✅ Created new service area assignment for retailer ${editingRetailer.name}`);
-                    }
+                    console.log(`✅ Updated service area for retailer ${editingRetailer.name} using wholesalerData system`);
                     
                     await fetchDashboardData();
                     setEditingRetailer(null);
