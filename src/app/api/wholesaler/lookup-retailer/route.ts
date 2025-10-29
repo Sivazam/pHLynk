@@ -40,20 +40,31 @@ export async function POST(request: NextRequest) {
       // Check if retailer has assignments with current tenant (if provided)
       const assignments = await RetailerAssignmentService.getRetailerAssignments(retailerProfile.id);
       
+      // Handle both new profile format and legacy format
+      const isLegacyFormat = retailerProfile.name || retailerProfile.phone || retailerProfile.address;
+      
       const retailerInfo = {
         id: retailerProfile.id,
-        name: retailerProfile.profile.realName || 'Not Verified',
-        phone: retailerProfile.profile.phone,
-        address: retailerProfile.profile.address,
-        email: retailerProfile.profile.email,
-        businessType: retailerProfile.profile.businessType,
-        licenseNumber: retailerProfile.profile.licenseNumber,
-        isVerified: retailerProfile.verification.isPhoneVerified,
+        name: isLegacyFormat ? (retailerProfile.name || 'Not Verified') : (retailerProfile.profile?.realName || 'Not Verified'),
+        phone: isLegacyFormat ? retailerProfile.phone : retailerProfile.profile?.phone,
+        address: isLegacyFormat ? retailerProfile.address : retailerProfile.profile?.address,
+        email: isLegacyFormat ? retailerProfile.email : retailerProfile.profile?.email,
+        businessType: isLegacyFormat ? retailerProfile.businessType : retailerProfile.profile?.businessType,
+        licenseNumber: isLegacyFormat ? retailerProfile.licenseNumber : retailerProfile.profile?.licenseNumber,
+        isVerified: isLegacyFormat ? 
+          (retailerProfile.phoneVerified || retailerProfile.verification?.isPhoneVerified || false) :
+          (retailerProfile.verification?.isPhoneVerified || false),
         hasAssignments: assignments.length > 0,
         assignmentCount: assignments.length,
         isNew: assignments.length === 0,
         // Check if already associated with tenant (for existing tenant checks)
-        tenantIds: retailerProfile.tenantIds || []
+        tenantIds: retailerProfile.tenantIds || [],
+        // Additional fields from sample document (might not exist in all documents)
+        assignedLineWorkerId: retailerProfile.assignedLineWorkerId,
+        totalPaidAmount: retailerProfile.totalPaidAmount || 0,
+        totalPaymentsCount: retailerProfile.totalPaymentsCount || 0,
+        lastPaymentDate: retailerProfile.lastPaymentDate,
+        recentPayments: retailerProfile.recentPayments || []
       };
       
       return NextResponse.json({

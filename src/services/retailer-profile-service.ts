@@ -5,7 +5,7 @@ import { db } from '@/lib/firebase';
 // Retailer Profile Interface (Retailer Controlled)
 export interface RetailerProfile {
   id: string;
-  profile: {
+  profile?: {
     realName: string;
     phone: string;
     email?: string;
@@ -13,12 +13,37 @@ export interface RetailerProfile {
     businessType?: string;
     licenseNumber?: string;
   };
+  // Legacy format support
+  name?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  businessType?: string;
+  licenseNumber?: string;
+  
   tenantIds: string[];
-  verification: {
+  verification?: {
     isPhoneVerified: boolean;
     verifiedAt?: Timestamp;
     verificationMethod: 'OTP' | 'MANUAL';
   };
+  // Legacy verification support
+  phoneVerified?: boolean;
+  phoneVerifiedAt?: Timestamp;
+  
+  // Assignment and payment data
+  assignedLineWorkerId?: string;
+  totalPaidAmount?: number;
+  totalPaymentsCount?: number;
+  lastPaymentDate?: Timestamp;
+  recentPayments?: Array<{
+    id: string;
+    amount: number;
+    date: Timestamp;
+    method: string;
+    state: string;
+  }>;
+  
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
@@ -163,14 +188,39 @@ export class RetailerProfileService {
    */
   static async getRetailerProfileByPhone(phone: string): Promise<RetailerProfile | null> {
     try {
+      // First try to find by document ID format (retailer_phone)
       const retailerId = `retailer_${phone.replace(/\D/g, '')}`;
       const retailerRef = doc(db, 'retailers', retailerId);
       const retailerDoc = await getDoc(retailerRef);
       
       if (retailerDoc.exists()) {
+        console.log('✅ Found retailer by ID:', retailerId);
         return retailerDoc.data() as RetailerProfile;
       }
       
+      // If not found by ID, search by phone number in profile field
+      console.log('🔍 Searching retailer by phone in profile field:', phone);
+      const retailersRef = collection(db, 'retailers');
+      const q = query(retailersRef, where('profile.phone', '==', phone));
+      const querySnapshot = await getDocs(q);
+      
+      if (!querySnapshot.empty) {
+        const retailerDoc = querySnapshot.docs[0];
+        console.log('✅ Found retailer by phone search:', retailerDoc.id);
+        return retailerDoc.data() as RetailerProfile;
+      }
+      
+      // Also check legacy format documents
+      const legacyQ = query(retailersRef, where('phone', '==', phone));
+      const legacySnapshot = await getDocs(legacyQ);
+      
+      if (!legacySnapshot.empty) {
+        const retailerDoc = legacySnapshot.docs[0];
+        console.log('✅ Found legacy retailer by phone:', retailerDoc.id);
+        return retailerDoc.data() as RetailerProfile;
+      }
+      
+      console.log('❌ No retailer found for phone:', phone);
       return null;
     } catch (error) {
       console.error('❌ Error getting retailer profile by phone:', error);
