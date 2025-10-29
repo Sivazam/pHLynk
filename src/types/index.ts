@@ -55,15 +55,10 @@ export interface Retailer extends BaseDocument {
   phone: string;
   email?: string;
   address?: string;
-  businessType?: string;
-  licenseNumber?: string;
   
   // Legacy fields (kept for backward compatibility)
   areaId?: string;
   zipcodes: string[];
-  creditLimit?: number;
-  currentBalance?: number;
-  notes?: string;
   
   // Legacy wholesaler assignments (will be migrated to wholesalerData)
   wholesalerAssignments?: {

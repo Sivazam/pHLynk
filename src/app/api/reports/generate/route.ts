@@ -7,16 +7,17 @@ export async function POST(request: NextRequest) {
   try {
     console.log('🔄 Generate Report API called')
     
-    // Get user info from query parameter or header
+    // Get user info from query parameter or header (for testing/development)
     const searchParams = request.nextUrl.searchParams
     const userPhone = searchParams.get('phone') || request.headers.get('x-user-phone')
     
-    console.log('📝 Request URL:', request.url)
-    console.log('📝 Search params:', Object.fromEntries(searchParams.entries()))
-    console.log('📝 Using phone:', userPhone)
+    // For development, if no phone provided, use the test retailer phone
+    const phone = userPhone || '9014882779'
     
-    if (!userPhone) {
-      console.log('❌ No phone number provided in query params or headers')
+    console.log('📝 Using phone:', phone)
+    
+    if (!phone) {
+      console.log('❌ No phone number provided')
       return NextResponse.json({ error: 'Phone number required' }, { status: 400 });
     }
 
@@ -107,29 +108,16 @@ export async function POST(request: NextRequest) {
     // Fetch retailer details
     let retailerDetails: any = null;
     try {
-      // First try to get from retailerUsers collection (primary source)
-      const retailerUsersRef = collection(db, 'retailerUsers');
-      const retailerUserQuery = query(retailerUsersRef, where('phone', '==', userPhone));
-      const retailerUserSnapshot = await getDocs(retailerUserQuery);
+      const retailersRef = collection(db, 'retailers');
+      const retailerQuery = query(retailersRef, where('phone', '==', phone));
+      const retailerSnapshot = await getDocs(retailerQuery);
       
-      if (!retailerUserSnapshot.empty) {
-        const retailerUserDoc = retailerUserSnapshot.docs[0];
-        retailerDetails = { id: retailerUserDoc.id, ...retailerUserDoc.data() };
-        console.log('🏪 Found retailer details from retailerUsers:', retailerDetails.name)
+      if (!retailerSnapshot.empty) {
+        const retailerDoc = retailerSnapshot.docs[0];
+        retailerDetails = { id: retailerDoc.id, ...retailerDoc.data() };
+        console.log('🏪 Found retailer details:', retailerDetails.name)
       } else {
-        // Fallback to retailers collection
-        console.log('⚠️ No retailer found in retailerUsers, checking retailers collection')
-        const retailersRef = collection(db, 'retailers');
-        const retailerQuery = query(retailersRef, where('phone', '==', userPhone));
-        const retailerSnapshot = await getDocs(retailerQuery);
-        
-        if (!retailerSnapshot.empty) {
-          const retailerDoc = retailerSnapshot.docs[0];
-          retailerDetails = { id: retailerDoc.id, ...retailerDoc.data() };
-          console.log('🏪 Found retailer details from retailers:', retailerDetails.name)
-        } else {
-          console.log('⚠️ No retailer found for phone:', userPhone)
-        }
+        console.log('⚠️ No retailer found for phone:', phone)
       }
     } catch (error) {
       console.error('❌ Error fetching retailer details:', error);

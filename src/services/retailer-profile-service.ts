@@ -5,7 +5,7 @@ import { db } from '@/lib/firebase';
 // Retailer Profile Interface (Retailer Controlled)
 export interface RetailerProfile {
   id: string;
-  profile?: {
+  profile: {
     realName: string;
     phone: string;
     email?: string;
@@ -13,37 +13,12 @@ export interface RetailerProfile {
     businessType?: string;
     licenseNumber?: string;
   };
-  // Legacy format support
-  name?: string;
-  phone?: string;
-  email?: string;
-  address?: string;
-  businessType?: string;
-  licenseNumber?: string;
-  
   tenantIds: string[];
-  verification?: {
+  verification: {
     isPhoneVerified: boolean;
     verifiedAt?: Timestamp;
     verificationMethod: 'OTP' | 'MANUAL';
   };
-  // Legacy verification support
-  phoneVerified?: boolean;
-  phoneVerifiedAt?: Timestamp;
-  
-  // Assignment and payment data
-  assignedLineWorkerId?: string;
-  totalPaidAmount?: number;
-  totalPaymentsCount?: number;
-  lastPaymentDate?: Timestamp;
-  recentPayments?: Array<{
-    id: string;
-    amount: number;
-    date: Timestamp;
-    method: string;
-    state: string;
-  }>;
-  
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
@@ -188,39 +163,14 @@ export class RetailerProfileService {
    */
   static async getRetailerProfileByPhone(phone: string): Promise<RetailerProfile | null> {
     try {
-      // First try to find by document ID format (retailer_phone)
       const retailerId = `retailer_${phone.replace(/\D/g, '')}`;
       const retailerRef = doc(db, 'retailers', retailerId);
       const retailerDoc = await getDoc(retailerRef);
       
       if (retailerDoc.exists()) {
-        console.log('✅ Found retailer by ID:', retailerId);
         return retailerDoc.data() as RetailerProfile;
       }
       
-      // If not found by ID, search by phone number in profile field
-      console.log('🔍 Searching retailer by phone in profile field:', phone);
-      const retailersRef = collection(db, 'retailers');
-      const q = query(retailersRef, where('profile.phone', '==', phone));
-      const querySnapshot = await getDocs(q);
-      
-      if (!querySnapshot.empty) {
-        const retailerDoc = querySnapshot.docs[0];
-        console.log('✅ Found retailer by phone search:', retailerDoc.id);
-        return retailerDoc.data() as RetailerProfile;
-      }
-      
-      // Also check legacy format documents
-      const legacyQ = query(retailersRef, where('phone', '==', phone));
-      const legacySnapshot = await getDocs(legacyQ);
-      
-      if (!legacySnapshot.empty) {
-        const retailerDoc = legacySnapshot.docs[0];
-        console.log('✅ Found legacy retailer by phone:', retailerDoc.id);
-        return retailerDoc.data() as RetailerProfile;
-      }
-      
-      console.log('❌ No retailer found for phone:', phone);
       return null;
     } catch (error) {
       console.error('❌ Error getting retailer profile by phone:', error);
@@ -239,77 +189,43 @@ export class RetailerProfileService {
     licenseNumber?: string;
   }): Promise<void> {
     try {
-      // Update both retailers and retailerUsers collections
       const retailerRef = doc(db, 'retailers', retailerId);
-      const retailerUserRef = doc(db, 'retailerUsers', retailerId);
+      const retailerDoc = await getDoc(retailerRef);
       
-      const [retailerDoc, retailerUserDoc] = await Promise.all([
-        getDoc(retailerRef),
-        getDoc(retailerUserRef)
-      ]);
-      
-      if (!retailerDoc.exists() && !retailerUserDoc.exists()) {
+      if (!retailerDoc.exists()) {
         throw new Error('Retailer profile not found');
       }
       
-      // Update retailers collection
-      if (retailerDoc.exists()) {
-        const data = retailerDoc.data();
-        
-        // Check if this is a legacy format document
-        if (data.name || data.phone || data.address) {
-          // Update legacy format
-          const updateData: any = {
-            name: updates.realName || data.name,
-            email: updates.email || data.email,
-            address: updates.address || data.address,
-            businessType: updates.businessType || data.businessType,
-            licenseNumber: updates.licenseNumber || data.licenseNumber,
-            updatedAt: Timestamp.now()
-          };
-          
-          await updateDoc(retailerRef, updateData);
-        } else {
-          // Update new profile format
-          const updateData: any = {
-            'profile.realName': updates.realName,
-            'profile.email': updates.email,
-            'profile.address': updates.address,
-            'profile.businessType': updates.businessType,
-            'profile.licenseNumber': updates.licenseNumber,
-            updatedAt: Timestamp.now()
-          };
-          
-          await updateDoc(retailerRef, updateData);
-        }
-      }
+      const data = retailerDoc.data();
       
-      // Update retailerUsers collection
-      if (retailerUserDoc.exists()) {
-        const userData = retailerUserDoc.data();
-        
+      // Check if this is a legacy format document
+      if (data.name || data.phone || data.address) {
+        // Update legacy format
         const updateData: any = {
-          name: updates.realName || userData.name,
-          email: updates.email || userData.email,
-          address: updates.address || userData.address,
-          businessType: updates.businessType || userData.businessType,
-          licenseNumber: updates.licenseNumber || userData.licenseNumber,
+          name: updates.realName || data.name,
+          email: updates.email || data.email,
+          address: updates.address || data.address,
+          businessType: updates.businessType || data.businessType,
+          licenseNumber: updates.licenseNumber || data.licenseNumber,
           updatedAt: Timestamp.now()
         };
         
-        // If user has profile object, update it as well
-        if (userData.profile) {
-          updateData['profile.realName'] = updates.realName || userData.profile.realName;
-          updateData['profile.email'] = updates.email || userData.profile.email;
-          updateData['profile.address'] = updates.address || userData.profile.address;
-          updateData['profile.businessType'] = updates.businessType || userData.profile.businessType;
-          updateData['profile.licenseNumber'] = updates.licenseNumber || userData.profile.licenseNumber;
-        }
+        await updateDoc(retailerRef, updateData);
+      } else {
+        // Update new profile format
+        const updateData: any = {
+          'profile.realName': updates.realName,
+          'profile.email': updates.email,
+          'profile.address': updates.address,
+          'profile.businessType': updates.businessType,
+          'profile.licenseNumber': updates.licenseNumber,
+          updatedAt: Timestamp.now()
+        };
         
-        await updateDoc(retailerUserRef, updateData);
+        await updateDoc(retailerRef, updateData);
       }
       
-      console.log('✅ Retailer profile updated in both collections:', retailerId);
+      console.log('✅ Retailer profile updated:', retailerId);
     } catch (error) {
       console.error('❌ Error updating retailer profile:', error);
       throw error;
@@ -426,7 +342,7 @@ export class RetailerAssignmentService {
         zipcodes: assignmentData.zipcodes,
         creditLimit: assignmentData.creditLimit || 0,
         currentBalance: 0,
-        notes: assignmentData.notes || '',
+        notes: assignmentData.notes,
         assignmentHistory: [{
           areaId: assignmentData.areaId,
           assignedAt: now,

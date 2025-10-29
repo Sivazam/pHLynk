@@ -49,7 +49,7 @@ export function RetailerPhoneLookup({
     try {
       console.log('🔍 Searching for retailer with phone:', cleanPhone);
       
-      const response = await fetch('/api/wholesaler/lookup-retailer', {
+      const response = await fetch('/api/retailer/lookup', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -63,12 +63,12 @@ export function RetailerPhoneLookup({
         throw new Error(data.error || 'Failed to search retailer');
       }
 
-      if (data.success && data.retailer) {
+      if (data.retailer) {
         console.log('✅ Retailer found:', data.retailer);
         setFoundRetailer(data.retailer);
       } else {
         console.log('ℹ️ No retailer found with this phone number');
-        setError(data.message || 'No retailer found with this phone number');
+        setError('No retailer found with this phone number');
       }
     } catch (error) {
       console.error('❌ Error searching retailer:', error);
@@ -213,7 +213,7 @@ export function RetailerPhoneLookup({
           )}
 
           {/* No Retailer Found - Add New Option */}
-          {error && (error.includes('No retailer found') || error.includes('No existing retailer found') || error.includes('you can create a new retailer')) && (
+          {error && error.includes('No retailer found') && (
             <div className="space-y-4">
               <Alert className="border-amber-200 bg-amber-50">
                 <AlertDescription className="text-amber-700">

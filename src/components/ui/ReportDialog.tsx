@@ -55,8 +55,7 @@ export default function ReportDialog({ retailerId, retailerPhone }: ReportDialog
       })
 
       // Add phone parameter to the API call
-      const phoneParam = retailerPhone ? `?phone=${encodeURIComponent(retailerPhone)}` : ''
-      console.log('📞 Making API call to:', `/api/reports/generate${phoneParam}`)
+      const phoneParam = retailerPhone ? `?phone=${retailerPhone}` : ''
       const response = await fetch(`/api/reports/generate${phoneParam}`, {
         method: 'POST',
         headers: {

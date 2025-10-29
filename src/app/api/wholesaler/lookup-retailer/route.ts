@@ -10,7 +10,6 @@ import { db } from '@/lib/firebase';
 
 interface LookupRequest {
   phone: string;
-  tenantId?: string; // Optional: to check if already assigned to this tenant
 }
 
 export async function POST(request: NextRequest) {
@@ -18,7 +17,7 @@ export async function POST(request: NextRequest) {
     console.log('🔍 Retailer lookup API called');
     
     const body: LookupRequest = await request.json();
-    const { phone, tenantId } = body;
+    const { phone } = body;
     
     if (!phone) {
       return NextResponse.json(
@@ -30,9 +29,9 @@ export async function POST(request: NextRequest) {
     // Clean phone number (remove non-digits)
     const cleanPhone = phone.replace(/\D/g, '');
     
-    console.log('📞 Looking up retailer with phone:', cleanPhone, 'tenantId:', tenantId);
+    console.log('📞 Looking up retailer with phone:', cleanPhone);
     
-    // First, try to find retailer in new retailer profile system (primary source)
+    // First, try to find retailer in new retailer profile system
     let retailerProfile = await RetailerProfileService.getRetailerProfileByPhone(cleanPhone);
     
     if (retailerProfile) {
@@ -41,67 +40,33 @@ export async function POST(request: NextRequest) {
       // Check if retailer has assignments with current tenant (if provided)
       const assignments = await RetailerAssignmentService.getRetailerAssignments(retailerProfile.id);
       
-      // Check if already assigned to this specific tenant (if tenantId provided)
-      let isAssignedToCurrentTenant = false;
-      if (tenantId) {
-        const retailerService = new (await import('@/services/firestore')).RetailerService();
-        const wholesalerData = await retailerService.getWholesalerData(retailerProfile.id, tenantId);
-        isAssignedToCurrentTenant = !!wholesalerData;
-        
-        // Also check in the assignment system
-        const assignmentForTenant = assignments.find(a => a.tenantId === tenantId);
-        isAssignedToCurrentTenant = isAssignedToCurrentTenant || !!assignmentForTenant;
-      }
-      
-      // Handle both new profile format and legacy format
-      const isLegacyFormat = retailerProfile.name || retailerProfile.phone || retailerProfile.address;
-      
       const retailerInfo = {
         id: retailerProfile.id,
-        name: isLegacyFormat ? (retailerProfile.name || 'Not Verified') : (retailerProfile.profile?.realName || 'Not Verified'),
-        phone: isLegacyFormat ? retailerProfile.phone : retailerProfile.profile?.phone,
-        address: isLegacyFormat ? retailerProfile.address : retailerProfile.profile?.address,
-        email: isLegacyFormat ? retailerProfile.email : retailerProfile.profile?.email,
-        businessType: isLegacyFormat ? retailerProfile.businessType : retailerProfile.profile?.businessType,
-        licenseNumber: isLegacyFormat ? retailerProfile.licenseNumber : retailerProfile.profile?.licenseNumber,
-        isVerified: isLegacyFormat ? 
-          (retailerProfile.phoneVerified || retailerProfile.verification?.isPhoneVerified || false) :
-          (retailerProfile.verification?.isPhoneVerified || false),
+        name: retailerProfile.profile.realName || 'Not Verified',
+        phone: retailerProfile.profile.phone,
+        address: retailerProfile.profile.address,
+        isVerified: retailerProfile.verification.isPhoneVerified,
         hasAssignments: assignments.length > 0,
         assignmentCount: assignments.length,
-        isNew: assignments.length === 0,
-        isAssignedToCurrentTenant,
-        // Check if already associated with tenant (for existing tenant checks)
-        tenantIds: retailerProfile.tenantIds || [],
-        // Additional fields from sample document (might not exist in all documents)
-        assignedLineWorkerId: retailerProfile.assignedLineWorkerId,
-        totalPaidAmount: retailerProfile.totalPaidAmount || 0,
-        totalPaymentsCount: retailerProfile.totalPaymentsCount || 0,
-        lastPaymentDate: retailerProfile.lastPaymentDate,
-        recentPayments: retailerProfile.recentPayments || []
+        isNew: assignments.length === 0
       };
       
       return NextResponse.json({
         success: true,
         retailer: retailerInfo,
         message: retailerInfo.isVerified 
-          ? (retailerInfo.isAssignedToCurrentTenant
-              ? 'This retailer is already assigned to your business'
-              : (retailerInfo.hasAssignments 
-                  ? 'Existing verified retailer found' 
-                  : 'Verified retailer available for assignment'))
-          : (retailerInfo.isAssignedToCurrentTenant
-              ? 'This retailer is already assigned to your business but needs verification'
-              : 'Retailer needs verification - you can add them but they must complete registration'),
-        verificationStatus: retailerInfo.isVerified ? 'VERIFIED' : 'NEEDS_VERIFICATION',
-        assignmentStatus: retailerInfo.isAssignedToCurrentTenant ? 'ALREADY_ASSIGNED' : 'AVAILABLE'
+          ? (retailerInfo.hasAssignments 
+              ? 'Existing verified retailer found' 
+              : 'Verified retailer available for assignment')
+          : 'Retailer needs verification - you can add them but they must complete registration',
+        verificationStatus: retailerInfo.isVerified ? 'VERIFIED' : 'NEEDS_VERIFICATION'
       });
     }
     
     // Fallback to old system for backward compatibility
     let retailer = await retailerService.getRetailerByPhone(cleanPhone);
     
-    // If not found in retailers collection, try retailerUsers collection as last resort
+    // If not found, try retailerUsers collection as fallback
     if (!retailer) {
       console.log('📞 Retailer not found in retailers collection, checking retailerUsers...');
       const retailerUser = await RetailerAuthService.getRetailerUserByPhone(cleanPhone);

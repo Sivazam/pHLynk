@@ -114,8 +114,8 @@ export async function POST(request: NextRequest) {
         
         if (retailerProfile) {
           retailerUser = {
-            phone: retailerProfile.profile?.phone || retailerProfile.phone,
-            name: retailerProfile.profile?.realName || retailerProfile.name || 'Retailer',
+            phone: retailerProfile.profile.phone,
+            name: retailerProfile.profile.realName || 'Retailer',
             retailerId: retailerProfile.id
           };
           console.log('✅ Found retailer in new profile system for verification');
