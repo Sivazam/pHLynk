@@ -189,43 +189,77 @@ export class RetailerProfileService {
     licenseNumber?: string;
   }): Promise<void> {
     try {
+      // Update both retailers and retailerUsers collections
       const retailerRef = doc(db, 'retailers', retailerId);
-      const retailerDoc = await getDoc(retailerRef);
+      const retailerUserRef = doc(db, 'retailerUsers', retailerId);
       
-      if (!retailerDoc.exists()) {
+      const [retailerDoc, retailerUserDoc] = await Promise.all([
+        getDoc(retailerRef),
+        getDoc(retailerUserRef)
+      ]);
+      
+      if (!retailerDoc.exists() && !retailerUserDoc.exists()) {
         throw new Error('Retailer profile not found');
       }
       
-      const data = retailerDoc.data();
-      
-      // Check if this is a legacy format document
-      if (data.name || data.phone || data.address) {
-        // Update legacy format
-        const updateData: any = {
-          name: updates.realName || data.name,
-          email: updates.email || data.email,
-          address: updates.address || data.address,
-          businessType: updates.businessType || data.businessType,
-          licenseNumber: updates.licenseNumber || data.licenseNumber,
-          updatedAt: Timestamp.now()
-        };
+      // Update retailers collection
+      if (retailerDoc.exists()) {
+        const data = retailerDoc.data();
         
-        await updateDoc(retailerRef, updateData);
-      } else {
-        // Update new profile format
-        const updateData: any = {
-          'profile.realName': updates.realName,
-          'profile.email': updates.email,
-          'profile.address': updates.address,
-          'profile.businessType': updates.businessType,
-          'profile.licenseNumber': updates.licenseNumber,
-          updatedAt: Timestamp.now()
-        };
-        
-        await updateDoc(retailerRef, updateData);
+        // Check if this is a legacy format document
+        if (data.name || data.phone || data.address) {
+          // Update legacy format
+          const updateData: any = {
+            name: updates.realName || data.name,
+            email: updates.email || data.email,
+            address: updates.address || data.address,
+            businessType: updates.businessType || data.businessType,
+            licenseNumber: updates.licenseNumber || data.licenseNumber,
+            updatedAt: Timestamp.now()
+          };
+          
+          await updateDoc(retailerRef, updateData);
+        } else {
+          // Update new profile format
+          const updateData: any = {
+            'profile.realName': updates.realName,
+            'profile.email': updates.email,
+            'profile.address': updates.address,
+            'profile.businessType': updates.businessType,
+            'profile.licenseNumber': updates.licenseNumber,
+            updatedAt: Timestamp.now()
+          };
+          
+          await updateDoc(retailerRef, updateData);
+        }
       }
       
-      console.log('✅ Retailer profile updated:', retailerId);
+      // Update retailerUsers collection
+      if (retailerUserDoc.exists()) {
+        const userData = retailerUserDoc.data();
+        
+        const updateData: any = {
+          name: updates.realName || userData.name,
+          email: updates.email || userData.email,
+          address: updates.address || userData.address,
+          businessType: updates.businessType || userData.businessType,
+          licenseNumber: updates.licenseNumber || userData.licenseNumber,
+          updatedAt: Timestamp.now()
+        };
+        
+        // If user has profile object, update it as well
+        if (userData.profile) {
+          updateData['profile.realName'] = updates.realName || userData.profile.realName;
+          updateData['profile.email'] = updates.email || userData.profile.email;
+          updateData['profile.address'] = updates.address || userData.profile.address;
+          updateData['profile.businessType'] = updates.businessType || userData.profile.businessType;
+          updateData['profile.licenseNumber'] = updates.licenseNumber || userData.profile.licenseNumber;
+        }
+        
+        await updateDoc(retailerUserRef, updateData);
+      }
+      
+      console.log('✅ Retailer profile updated in both collections:', retailerId);
     } catch (error) {
       console.error('❌ Error updating retailer profile:', error);
       throw error;

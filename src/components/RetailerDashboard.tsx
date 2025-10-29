@@ -1977,25 +1977,9 @@ const PaymentStatusCell: React.FC<{ state: string }> = ({ state }) => {
                     {/* Retailer Information */}
                     <Card>
                       <CardHeader>
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <CardTitle>Store Information</CardTitle>
-                            <CardDescription>Your retailer profile details</CardDescription>
-                          </div>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              const retailerId = localStorage.getItem('retailerId');
-                              if (retailerId) {
-                                window.location.href = `/retailer/profile?mode=edit&retailerId=${retailerId}`;
-                              }
-                            }}
-                            className="flex items-center space-x-1"
-                          >
-                            <Settings className="h-4 w-4" />
-                            <span>Edit Profile</span>
-                          </Button>
+                        <div>
+                          <CardTitle>Store Information</CardTitle>
+                          <CardDescription>Your retailer profile details</CardDescription>
                         </div>
                       </CardHeader>
                       <CardContent>
