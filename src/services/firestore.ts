@@ -692,80 +692,15 @@ export class RetailerService extends FirestoreService<Retailer> {
    */
   async getRetailerByPhone(phone: string): Promise<Retailer | null> {
     try {
-      console.log('🔍 Searching for retailer with phone:', phone, 'across all systems');
-      
-      // Clean phone number for consistent searching
-      const cleanPhone = phone.replace(/\D/g, '');
-      
-      // First, check the new profile system (primary source)
-      try {
-        const { RetailerProfileService } = await import('./retailer-profile-service');
-        const retailerProfile = await RetailerProfileService.getRetailerProfileByPhone(cleanPhone);
-        
-        if (retailerProfile) {
-          console.log('✅ Found retailer in new profile system:', retailerProfile.id);
-          // Convert to Retailer format for compatibility
-          const retailer: Retailer = {
-            id: retailerProfile.id,
-            name: retailerProfile.profile?.realName || retailerProfile.name || 'Unknown Retailer',
-            phone: retailerProfile.profile?.phone || retailerProfile.phone || '',
-            address: retailerProfile.profile?.address || retailerProfile.address || '',
-            email: retailerProfile.profile?.email || retailerProfile.email,
-            businessType: retailerProfile.profile?.businessType || retailerProfile.businessType,
-            licenseNumber: retailerProfile.profile?.licenseNumber || retailerProfile.licenseNumber,
-            tenantIds: retailerProfile.tenantIds || [],
-            areaId: '', // Not available in RetailerProfile, will be set by wholesaler
-            zipcodes: [], // Not available in RetailerProfile, will be set by wholesaler
-            assignedLineWorkerId: retailerProfile.assignedLineWorkerId,
-            wholesalerData: {}, // Not available in RetailerProfile, will be set by wholesaler
-            wholesalerAssignments: {}, // Not available in RetailerProfile, will be set by wholesaler
-            createdAt: retailerProfile.createdAt,
-            updatedAt: retailerProfile.updatedAt
-          };
-          return retailer;
-        }
-      } catch (error) {
-        console.warn('⚠️ Error checking new profile system:', error);
-      }
-      
-      // Second, check the legacy retailers collection
       const retailersRef = collection(db, COLLECTIONS.RETAILERS);
       const q = query(retailersRef, where('phone', '==', phone));
       const querySnapshot = await getDocs(q);
       
       if (!querySnapshot.empty) {
         const doc = querySnapshot.docs[0];
-        console.log('✅ Found retailer in legacy retailers collection:', doc.id);
         return { id: doc.id, ...doc.data() } as Retailer;
       }
       
-      // Third, check retailerUsers collection as last resort
-      try {
-        const { RetailerAuthService } = await import('./retailer-auth');
-        const retailerUser = await RetailerAuthService.getRetailerUserByPhone(cleanPhone);
-        
-        if (retailerUser) {
-          console.log('✅ Found retailer in retailerUsers collection:', retailerUser.retailerId || retailerUser.uid);
-          // Create basic retailer profile from user data
-          const retailer: Retailer = {
-            id: retailerUser.retailerId || retailerUser.uid,
-            name: retailerUser.name || 'Unknown Retailer',
-            phone: retailerUser.phone,
-            address: retailerUser.address || '',
-            tenantIds: [], // No tenants yet
-            zipcodes: [],
-            wholesalerData: {},
-            wholesalerAssignments: {},
-            createdAt: retailerUser.createdAt,
-            updatedAt: retailerUser.lastLoginAt || retailerUser.createdAt
-          };
-          return retailer;
-        }
-      } catch (error) {
-        console.warn('⚠️ Error checking retailerUsers collection:', error);
-      }
-      
-      console.log('❌ Retailer not found in any system for phone:', phone);
       return null;
     } catch (error) {
       logger.error('Error finding retailer by phone', error, { context: 'RetailerService' });
@@ -797,14 +732,8 @@ export class RetailerService extends FirestoreService<Retailer> {
       // Add new tenant to array
       const updatedTenantIds = [...currentTenantIds, tenantId];
       
-      // Preserve existing wholesalerData and wholesalerAssignments to prevent data loss
-      const existingWholesalerData = retailerData.wholesalerData || {};
-      const existingWholesalerAssignments = retailerData.wholesalerAssignments || {};
-      
       await updateDoc(retailerRef, {
         tenantIds: updatedTenantIds,
-        wholesalerData: existingWholesalerData, // Preserve wholesalerData
-        wholesalerAssignments: existingWholesalerAssignments, // Preserve wholesalerAssignments
         updatedAt: Timestamp.now()
       });
       
@@ -833,18 +762,8 @@ export class RetailerService extends FirestoreService<Retailer> {
       // Remove tenant from array
       const updatedTenantIds = currentTenantIds.filter((id: string) => id !== tenantId);
       
-      // Preserve existing wholesalerData and wholesalerAssignments to prevent data loss
-      const existingWholesalerData = retailerData.wholesalerData || {};
-      const existingWholesalerAssignments = retailerData.wholesalerAssignments || {};
-      
-      // Remove the tenant's data from wholesalerData and wholesalerAssignments
-      delete existingWholesalerData[tenantId];
-      delete existingWholesalerAssignments[tenantId];
-      
       await updateDoc(retailerRef, {
         tenantIds: updatedTenantIds,
-        wholesalerData: existingWholesalerData, // Preserve remaining wholesalerData
-        wholesalerAssignments: existingWholesalerAssignments, // Preserve remaining wholesalerAssignments
         updatedAt: Timestamp.now()
       });
       
@@ -960,12 +879,8 @@ export class RetailerService extends FirestoreService<Retailer> {
         }
       };
       
-      // Preserve existing wholesalerData to prevent data loss
-      const existingWholesalerData = retailerData.wholesalerData || {};
-      
       await updateDoc(retailerRef, {
         wholesalerAssignments: updatedAssignments,
-        wholesalerData: existingWholesalerData, // Preserve wholesalerData
         updatedAt: Timestamp.now()
       });
       
@@ -1055,24 +970,33 @@ export class RetailerService extends FirestoreService<Retailer> {
 
   // Update retailer computed fields when payment is completed
   async updateForPayment(retailerId: string, tenantId: string, payment: any): Promise<void> {
-    try {
-      // Instead of updating the retailer document directly (which can corrupt assignments),
-      // we'll store payment data in the payment document only
-      // The assignment data is handled separately in the new system
+    const retailer = await this.getById(retailerId, tenantId);
+    if (retailer) {
+      // Since we don't have invoices anymore, outstanding is always 0
+      const newTotalPaidAmount = (retailer.totalPaidAmount || 0) + payment.totalPaid;
+      const newTotalPaymentsCount = (retailer.totalPaymentsCount || 0) + 1;
       
-      console.log(`📊 Updating payment data for retailer ${retailerId}`, {
-        paymentId: payment.id,
+      // Update recent payments (keep last 5)
+      const recentPayments = retailer.recentPayments || [];
+      const newPaymentSummary = {
+        id: payment.id,
         amount: payment.totalPaid,
-        tenantId
-      });
+        method: payment.method,
+        date: payment.createdAt,
+        state: payment.state
+      };
       
-      // The retailer dashboard stats will be computed dynamically from payments
-      // We don't need to store computed fields in the retailer document anymore
+      const updatedRecentPayments = [newPaymentSummary, ...recentPayments].slice(0, 5);
       
-      logger.success(`Payment data updated for retailer ${retailerId}: +₹${payment.totalPaid}`, { context: 'RetailerService' });
-    } catch (error) {
-      logger.error('Error updating retailer payment data', error, { context: 'RetailerService' });
-      throw error;
+      await this.update(retailerId, {
+        totalPaidAmount: newTotalPaidAmount,
+        totalPaymentsCount: newTotalPaymentsCount,
+        lastPaymentDate: payment.createdAt,
+        recentPayments: updatedRecentPayments,
+        computedAt: Timestamp.now()
+      }, tenantId);
+      
+      logger.success(`Updated retailer ${retailerId} for payment: +₹${payment.totalPaid}`, { context: 'RetailerService' });
     }
   }
 
@@ -1515,8 +1439,7 @@ export class RetailerService extends FirestoreService<Retailer> {
   }
 
   /**
-   * Update the getAll method to use retailer document data only (OVERRIDE)
-   * Simplified to use single source of truth: retailer documents
+   * Update the getAll method to use new wholesalerData structure (OVERRIDE)
    */
   async getAll(tenantId: string, constraints: QueryConstraint[] = []): Promise<Retailer[]> {
     try {
@@ -1529,64 +1452,43 @@ export class RetailerService extends FirestoreService<Retailer> {
       const querySnapshot = await getDocs(q);
       
       const documents: Retailer[] = [];
-      
-      for (const doc of querySnapshot.docs) {
-        const data = doc.data() as any;
-        const retailerId = doc.id;
+      querySnapshot.forEach((doc: QueryDocumentSnapshot) => {
+        const data = doc.data() as Retailer;
         
-        // Use retailer document data as single source of truth
-        if (data) {
+        // For Retailer documents, merge wholesaler-specific data
+        if (data && data.wholesalerData && data.wholesalerData[tenantId]) {
           const retailer = data as any;
+          const wholesalerSpecificData = retailer.wholesalerData[tenantId];
           
-          // Get wholesaler-specific data for this tenant
-          const wholesalerSpecificData = retailer.wholesalerData && retailer.wholesalerData[tenantId] 
-            ? retailer.wholesalerData[tenantId] 
-            : {};
-          
-          // Get assignment data for this tenant  
-          const assignmentData = retailer.wholesalerAssignments && retailer.wholesalerAssignments[tenantId]
-            ? retailer.wholesalerAssignments[tenantId]
-            : {};
-          
-          // Create merged retailer with tenant-specific data
-          const mergedRetailer: Retailer = {
+          // Create merged retailer with wholesaler-specific overrides
+          const mergedRetailer = {
             ...retailer,
-            id: doc.id,
-            // Use tenant-specific area data if available, otherwise default
-            areaId: wholesalerSpecificData.currentAreaId || assignmentData.areaId || retailer.areaId || '',
-            zipcodes: (wholesalerSpecificData.currentZipcodes && wholesalerSpecificData.currentZipcodes.length > 0) 
-              ? wholesalerSpecificData.currentZipcodes 
-              : (assignmentData.zipcodes || retailer.zipcodes || []),
-            assignedLineWorkerId: assignmentData.assignedLineWorkerId || retailer.assignedLineWorkerId,
-            // Use tenant-specific financial data if available
-            creditLimit: wholesalerSpecificData.creditLimit || retailer.creditLimit || 0,
-            currentBalance: wholesalerSpecificData.currentBalance || retailer.currentBalance || 0,
-            notes: wholesalerSpecificData.notes || assignmentData.notes || retailer.notes || '',
-            // Ensure tenantIds is always an array
-            tenantIds: retailer.tenantIds || []
+            areaId: wholesalerSpecificData.currentAreaId || retailer.areaId,
+            zipcodes: wholesalerSpecificData.currentZipcodes.length > 0 ? wholesalerSpecificData.currentZipcodes : retailer.zipcodes,
+            notes: wholesalerSpecificData.notes,
+            creditLimit: wholesalerSpecificData.creditLimit,
+            currentBalance: wholesalerSpecificData.currentBalance
           };
           
-          // If retailer name is missing or empty, try to get it from the profile system
-          if (!mergedRetailer.name || mergedRetailer.name === 'Unknown Retailer' || mergedRetailer.name === '') {
-            try {
-              const { RetailerProfileService } = await import('./retailer-profile-service');
-              const retailerProfile = await RetailerProfileService.getRetailerProfileByPhone(mergedRetailer.phone);
-              if (retailerProfile && retailerProfile.profile?.realName) {
-                mergedRetailer.name = retailerProfile.profile.realName;
-                mergedRetailer.address = retailerProfile.profile?.address || mergedRetailer.address;
-                mergedRetailer.email = retailerProfile.profile?.email || mergedRetailer.email;
-                mergedRetailer.businessType = retailerProfile.profile?.businessType || mergedRetailer.businessType;
-                mergedRetailer.licenseNumber = retailerProfile.profile?.licenseNumber || mergedRetailer.licenseNumber;
-              }
-            } catch (error) {
-              console.warn(`⚠️ Could not fetch profile for retailer ${mergedRetailer.id}:`, error);
-            }
-          }
+          documents.push({ id: doc.id, ...mergedRetailer } as Retailer);
+        } 
+        // BACKWARD COMPATIBILITY: Fall back to wholesalerAssignments
+        else if (data && data.wholesalerAssignments && data.wholesalerAssignments[tenantId]) {
+          const retailer = data as any;
+          const assignment = retailer.wholesalerAssignments[tenantId];
           
-          console.log(`🏪 Retailer "${mergedRetailer.name}" - areaId: ${mergedRetailer.areaId}, assignedLineWorkerId: ${mergedRetailer.assignedLineWorkerId}`);
-          documents.push(mergedRetailer);
+          // Create merged retailer with wholesaler-specific overrides
+          const mergedRetailer = {
+            ...retailer,
+            areaId: assignment.areaId || retailer.areaId,
+            zipcodes: assignment.zipcodes.length > 0 ? assignment.zipcodes : retailer.zipcodes
+          };
+          
+          documents.push({ ...mergedRetailer, id: doc.id } as Retailer);
+        } else {
+          documents.push({ ...data, id: doc.id } as Retailer);
         }
-      }
+      });
       
       return documents;
     } catch (error) {
@@ -1645,45 +1547,10 @@ export class RetailerService extends FirestoreService<Retailer> {
       
       const previousLineWorkerId = retailer.assignedLineWorkerId;
       
-      // Update retailer document directly
-      const retailerRef = doc(db, COLLECTIONS.RETAILERS, retailerId);
-      const retailerDoc = await getDoc(retailerRef);
-      
-      if (!retailerDoc.exists()) {
-        throw new Error('Retailer document not found');
-      }
-      
-      const retailerData = retailerDoc.data();
-      
-      // Update wholesalerAssignments for this tenant
-      const existingWholesalerAssignments = retailerData.wholesalerAssignments || {};
-      const existingWholesalerData = retailerData.wholesalerData || {};
-      
-      // Update assignment for this tenant
-      existingWholesalerAssignments[tenantId] = {
-        ...existingWholesalerAssignments[tenantId],
-        assignedLineWorkerId: newLineWorkerId,
-        updatedAt: Timestamp.now()
-      };
-      
-      // Update wholesaler data if it exists
-      if (existingWholesalerData[tenantId]) {
-        existingWholesalerData[tenantId] = {
-          ...existingWholesalerData[tenantId],
-          currentAssignedLineWorkerId: newLineWorkerId,
-          updatedAt: Timestamp.now()
-        };
-      }
-      
-      // Update the retailer document
-      await updateDoc(retailerRef, {
-        assignedLineWorkerId: newLineWorkerId,
-        wholesalerAssignments: existingWholesalerAssignments,
-        wholesalerData: existingWholesalerData,
-        updatedAt: Timestamp.now()
-      });
-      
-      console.log(`✅ Updated retailer ${retailer.name} assignment from line worker ${previousLineWorkerId} to ${newLineWorkerId}`);
+      // Update retailer assignment
+      await this.update(retailerId, {
+        assignedLineWorkerId: newLineWorkerId
+      }, tenantId);
       
       logger.info(`Manually reassigned retailer ${retailer.name} from line worker ${previousLineWorkerId} to ${newLineWorkerId}`, { 
         retailerId, 

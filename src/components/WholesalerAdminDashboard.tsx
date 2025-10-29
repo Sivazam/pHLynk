@@ -43,7 +43,6 @@ import { formatTimestamp, formatTimestampWithTime, formatCurrency, toDate } from
 import { CompactDatePicker } from '@/components/ui/compact-date-picker';
 import { CreateAreaForm } from '@/components/ui/create-area-form';
 import { CreateRetailerForm } from '@/components/ui/create-retailer-form';
-import { RetailerServiceAreaForm } from '@/components/ui/retailer-service-area-form';
 import { WholesalerAnalytics } from '@/components/WholesalerAnalytics';
 import { SuccessFeedback } from '@/components/SuccessFeedback';
 import { Confetti } from '@/components/ui/Confetti';
@@ -1728,7 +1727,7 @@ export function WholesalerAdminDashboard() {
                             onClick={() => setEditingRetailer(retailer)}
                           >
                             <Edit className="h-4 w-4 mr-1" />
-                            Service Area
+                            Edit
                           </Button>
                           <Button
                             variant="outline"
@@ -1754,45 +1753,34 @@ export function WholesalerAdminDashboard() {
         <Dialog open={!!editingRetailer} onOpenChange={(open) => !open && setEditingRetailer(null)}>
           <DialogContent className="max-w-md">
             <DialogHeader>
-              <DialogTitle>Edit Retailer Service Area</DialogTitle>
+              <DialogTitle>Edit Retailer</DialogTitle>
               <DialogDescription>
-                Update service area assignment for this retailer
+                Update retailer information
               </DialogDescription>
             </DialogHeader>
             {editingRetailer && (
-              <RetailerServiceAreaForm 
+              <CreateRetailerForm 
                 onSubmit={async (data) => {
                   const currentTenantId = getCurrentTenantId();
                   if (!currentTenantId) return;
                   
                   try {
-                    // Use the existing wholesalerData system instead of separate assignment system
-                    const retailerService = new (await import('@/services/firestore')).RetailerService();
-                    
-                    // Update retailer's wholesalerData for this tenant
-                    await retailerService.upsertWholesalerData(editingRetailer.id, currentTenantId, {
+                    await retailerService.update(editingRetailer.id, {
+                      name: data.name,
+                      phone: data.phone,
+                      address: data.address,
                       areaId: data.areaId,
                       zipcodes: data.zipcodes
-                    });
-                    
-                    console.log(`✅ Updated service area for retailer ${editingRetailer.name} using wholesalerData system`);
-                    
+                    }, currentTenantId);
                     await fetchDashboardData();
                     setEditingRetailer(null);
-                    showSuccess(`Service area updated for "${editingRetailer.name}"`);
                   } catch (err: any) {
-                    setError(err.message || 'Failed to update retailer service area');
+                    setError(err.message || 'Failed to update retailer');
                   }
                 }}
                 areas={areas}
                 onCancel={() => setEditingRetailer(null)}
-                initialData={{
-                  areaId: editingRetailer.areaId,
-                  zipcodes: editingRetailer.zipcodes
-                }}
-                retailerName={editingRetailer.name}
-                retailerPhone={editingRetailer.phone}
-                retailerAddress={editingRetailer.address}
+                initialData={editingRetailer}
               />
             )}
           </DialogContent>

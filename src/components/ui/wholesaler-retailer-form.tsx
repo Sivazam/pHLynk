@@ -62,23 +62,13 @@ export function WholesalerRetailerForm({ onSubmit, areas, onCancel, tenantId }: 
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ 
-          phone: phone.trim(),
-          tenantId: tenantId 
-        }),
+        body: JSON.stringify({ phone: phone.trim() }),
       });
 
       const result = await response.json();
       
       if (result.success) {
         console.log('✅ Retailer found:', result.retailer);
-        
-        // Check if retailer is already assigned to current tenant
-        if (result.retailer.isAssignedToCurrentTenant) {
-          setLookupError(result.message || 'This retailer is already assigned to your business.');
-          return;
-        }
-        
         setLookupResult(result.retailer);
         setStep('profile');
         

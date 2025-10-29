@@ -17,17 +17,6 @@ export function WholesalerSlider({
 }: WholesalerSliderProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
 
-  // Debug logging
-  useEffect(() => {
-    console.log('🏢 WholesalerSlider Debug:', {
-      availableTenants,
-      availableTenantsLength: availableTenants.length,
-      currentTenantId,
-      wholesalerNames,
-      wholesalerNamesKeys: Object.keys(wholesalerNames)
-    });
-  }, [availableTenants, currentTenantId, wholesalerNames]);
-
   useEffect(() => {
     if (availableTenants.length <= 1) return;
 
@@ -38,18 +27,8 @@ export function WholesalerSlider({
     return () => clearInterval(interval);
   }, [availableTenants.length]);
 
-  // If no tenants, show nothing
-  if (availableTenants.length === 0) {
-    console.log('🏢 WholesalerSlider: No tenants available, not rendering');
-    return null;
-  }
-
-  // If only one tenant, show static content
-  if (availableTenants.length === 1) {
-    console.log('🏢 WholesalerSlider: One tenant found, showing static content');
-    const singleTenantId = availableTenants[0];
-    const singleTenantName = wholesalerNames[singleTenantId] || 'Loading...';
-    
+  // If no tenants or only one tenant, show static content
+  if (availableTenants.length <= 1) {
     return (
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -61,12 +40,12 @@ export function WholesalerSlider({
         <CardContent>
           <div>
             <div className="text-2xl font-bold text-gray-900">
-              {currentTenantId === 'all' ? 'All Wholesalers' : singleTenantName}
+              {currentTenantId === 'all' ? 'All Wholesalers' : (wholesalerNames[currentTenantId || ''] || 'Loading...')}
             </div>
             <p className="text-xs text-gray-500">
               {currentTenantId === 'all' 
                 ? `Consolidated view (${availableTenants.length} wholesalers)` 
-                : `Your wholesaler`
+                : `Your wholesaler ${availableTenants.length > 0 ? `(${availableTenants.length} total)` : ''}`
               }
             </p>
           </div>

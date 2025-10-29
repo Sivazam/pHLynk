@@ -65,9 +65,6 @@ export async function POST(request: NextRequest) {
     let actualRetailerId = retailerId;
     let retailerData: any = null;
     
-    // Import retailerService for use in both cases
-    const retailerService = new (await import('@/services/firestore')).RetailerService();
-    
     // Case 1: Adding existing retailer by ID
     if (retailerId) {
       console.log('📋 Adding existing retailer by ID');
@@ -77,9 +74,9 @@ export async function POST(request: NextRequest) {
       if (retailerProfile) {
         retailerData = {
           id: retailerProfile.id,
-          name: retailerProfile.profile?.realName || retailerProfile.name,
-          phone: retailerProfile.profile?.phone || retailerProfile.phone,
-          address: retailerProfile.profile?.address || retailerProfile.address
+          name: retailerProfile.profile.realName,
+          phone: retailerProfile.profile.phone,
+          address: retailerProfile.profile.address
         };
         actualRetailerId = retailerProfile.id;
       } else {
@@ -103,30 +100,27 @@ export async function POST(request: NextRequest) {
         );
       }
       
-      // Check if already assigned using both systems
+      // Check if already assigned
       const existingAssignment = await RetailerAssignmentService.getRetailerAssignment(tenantId, actualRetailerId!);
-      
-      // Also check in the wholesalerData system (primary system)
-      const existingWholesalerData = await retailerService.getWholesalerData(actualRetailerId!, tenantId);
-      
-      if (existingAssignment || existingWholesalerData) {
+      if (existingAssignment) {
         return NextResponse.json(
           { error: 'This retailer is already assigned to your business.' },
           { status: 409 }
         );
       }
       
-      // Create wholesalerData entry for existing retailer
-      await retailerService.upsertWholesalerData(actualRetailerId!, tenantId, {
-        areaId,
-        zipcodes: zipcodes || [],
-        notes: notes || '',
-        creditLimit: creditLimit || 0,
-        currentBalance: 0
-      });
-      
-      // Also add tenant to retailer's tenantIds array
-      await retailerService.addTenantToRetailer(actualRetailerId!, tenantId);
+      // Create assignment for existing retailer
+      await RetailerAssignmentService.createRetailerAssignment(
+        tenantId,
+        actualRetailerId!,
+        {
+          aliasName: aliasName || retailerData.name,
+          areaId,
+          zipcodes: zipcodes || [],
+          creditLimit: creditLimit || 0,
+          notes
+        }
+      );
       
       return NextResponse.json({
         success: true,
@@ -156,39 +150,35 @@ export async function POST(request: NextRequest) {
       const existingProfile = await RetailerProfileService.getRetailerProfileByPhone(cleanPhone);
       
       if (existingProfile) {
-        // Retailer exists, check if already assigned
+        // Retailer exists, just create assignment
         const existingAssignment = await RetailerAssignmentService.getRetailerAssignment(tenantId, existingProfile.id);
-        
-        // Also check in the wholesalerData system (primary system)
-        const existingWholesalerData = await retailerService.getWholesalerData(existingProfile.id, tenantId);
-        
-        if (existingAssignment || existingWholesalerData) {
+        if (existingAssignment) {
           return NextResponse.json(
             { error: 'This retailer is already assigned to your business.' },
             { status: 409 }
           );
         }
         
-        // Add to wholesalerData system
-        await retailerService.upsertWholesalerData(existingProfile.id, tenantId, {
-          areaId,
-          zipcodes: zipcodes || [],
-          notes: notes || '',
-          creditLimit: creditLimit || 0,
-          currentBalance: 0
-        });
-        
-        // Also add tenant to retailer's tenantIds array
-        await retailerService.addTenantToRetailer(existingProfile.id, tenantId);
+        await RetailerAssignmentService.createRetailerAssignment(
+          tenantId,
+          existingProfile.id,
+          {
+            aliasName,
+            areaId,
+            zipcodes: zipcodes || [],
+            creditLimit: creditLimit || 0,
+            notes
+          }
+        );
         
         return NextResponse.json({
           success: true,
-          message: `Existing retailer "${existingProfile.profile?.realName || existingProfile.name}" has been added to your business`,
+          message: `Existing retailer "${existingProfile.profile.realName}" has been added to your business`,
           retailer: {
             id: existingProfile.id,
-            name: existingProfile.profile?.realName || existingProfile.name,
-            phone: existingProfile.profile?.phone || existingProfile.phone,
-            isVerified: existingProfile.verification?.isPhoneVerified || existingProfile.phoneVerified || false
+            name: existingProfile.profile.realName,
+            phone: existingProfile.profile.phone,
+            isVerified: existingProfile.verification.isPhoneVerified
           }
         });
       } else {
@@ -198,17 +188,17 @@ export async function POST(request: NextRequest) {
           address: ''
         });
         
-        // Add to wholesalerData system
-        await retailerService.upsertWholesalerData(newRetailerId, tenantId, {
-          areaId,
-          zipcodes: zipcodes || [],
-          notes: notes || '',
-          creditLimit: creditLimit || 0,
-          currentBalance: 0
-        });
-        
-        // Also add tenant to retailer's tenantIds array
-        await retailerService.addTenantToRetailer(newRetailerId, tenantId);
+        await RetailerAssignmentService.createRetailerAssignment(
+          tenantId,
+          newRetailerId,
+          {
+            aliasName,
+            areaId,
+            zipcodes: zipcodes || [],
+            creditLimit: creditLimit || 0,
+            notes
+          }
+        );
         
         return NextResponse.json({
           success: true,

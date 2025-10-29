@@ -1,5 +1,5 @@
 import { auth, db } from '@/lib/firebase';
-import { doc, getDoc, setDoc, updateDoc, serverTimestamp, collection, query, where, getDocs, Timestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, serverTimestamp, collection, query, where, getDocs } from 'firebase/firestore';
 import { Retailer } from '@/types';
 
 export interface RetailerUser {
@@ -307,41 +307,6 @@ export class RetailerAuthService {
     } catch (error) {
       console.error('❌ Error getting pending retailer by phone:', error);
       return null;
-    }
-  }
-
-  // Update retailer user data
-  static async updateRetailerUser(uid: string, updates: {
-    name?: string;
-    email?: string;
-    address?: string;
-    businessType?: string;
-    licenseNumber?: string;
-  }): Promise<void> {
-    try {
-      const userRef = doc(db, 'retailerUsers', uid);
-      const userDoc = await getDoc(userRef);
-      
-      if (!userDoc.exists()) {
-        throw new Error('Retailer user not found');
-      }
-      
-      const updateData: any = {
-        updatedAt: Timestamp.now()
-      };
-      
-      if (updates.name !== undefined) updateData.name = updates.name;
-      if (updates.email !== undefined) updateData.email = updates.email;
-      if (updates.address !== undefined) updateData.address = updates.address;
-      if (updates.businessType !== undefined) updateData.businessType = updates.businessType;
-      if (updates.licenseNumber !== undefined) updateData.licenseNumber = updates.licenseNumber;
-      
-      await updateDoc(userRef, updateData);
-      
-      console.log('✅ Retailer user updated successfully:', uid);
-    } catch (error) {
-      console.error('❌ Error updating retailer user:', error);
-      throw error;
     }
   }
 }
