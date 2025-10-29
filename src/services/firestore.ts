@@ -970,33 +970,24 @@ export class RetailerService extends FirestoreService<Retailer> {
 
   // Update retailer computed fields when payment is completed
   async updateForPayment(retailerId: string, tenantId: string, payment: any): Promise<void> {
-    const retailer = await this.getById(retailerId, tenantId);
-    if (retailer) {
-      // Since we don't have invoices anymore, outstanding is always 0
-      const newTotalPaidAmount = (retailer.totalPaidAmount || 0) + payment.totalPaid;
-      const newTotalPaymentsCount = (retailer.totalPaymentsCount || 0) + 1;
+    try {
+      // Instead of updating the retailer document directly (which can corrupt assignments),
+      // we'll store payment data in the payment document only
+      // The assignment data is handled separately in the new system
       
-      // Update recent payments (keep last 5)
-      const recentPayments = retailer.recentPayments || [];
-      const newPaymentSummary = {
-        id: payment.id,
+      console.log(`📊 Updating payment data for retailer ${retailerId}`, {
+        paymentId: payment.id,
         amount: payment.totalPaid,
-        method: payment.method,
-        date: payment.createdAt,
-        state: payment.state
-      };
+        tenantId
+      });
       
-      const updatedRecentPayments = [newPaymentSummary, ...recentPayments].slice(0, 5);
+      // The retailer dashboard stats will be computed dynamically from payments
+      // We don't need to store computed fields in the retailer document anymore
       
-      await this.update(retailerId, {
-        totalPaidAmount: newTotalPaidAmount,
-        totalPaymentsCount: newTotalPaymentsCount,
-        lastPaymentDate: payment.createdAt,
-        recentPayments: updatedRecentPayments,
-        computedAt: Timestamp.now()
-      }, tenantId);
-      
-      logger.success(`Updated retailer ${retailerId} for payment: +₹${payment.totalPaid}`, { context: 'RetailerService' });
+      logger.success(`Payment data updated for retailer ${retailerId}: +₹${payment.totalPaid}`, { context: 'RetailerService' });
+    } catch (error) {
+      logger.error('Error updating retailer payment data', error, { context: 'RetailerService' });
+      throw error;
     }
   }
 
@@ -1624,10 +1615,38 @@ export class RetailerService extends FirestoreService<Retailer> {
       
       const previousLineWorkerId = retailer.assignedLineWorkerId;
       
-      // Update retailer assignment
-      await this.update(retailerId, {
-        assignedLineWorkerId: newLineWorkerId
-      }, tenantId);
+      // Update retailer assignment using the new assignment system
+      // Import dynamically to avoid circular dependencies
+      const { RetailerAssignmentService } = await import('./retailer-profile-service');
+      
+      // Check if assignment exists
+      const existingAssignment = await RetailerAssignmentService.getRetailerAssignment(tenantId, retailerId);
+      
+      if (existingAssignment) {
+        // Update existing assignment
+        await RetailerAssignmentService.updateRetailerAssignment(
+          tenantId,
+          retailerId,
+          {
+            assignedLineWorkerId: newLineWorkerId
+          }
+        );
+        console.log(`✅ Updated existing assignment for retailer ${retailer.name} to line worker ${newLineWorkerId}`);
+      } else {
+        // Create new assignment if it doesn't exist
+        await RetailerAssignmentService.createRetailerAssignment(
+          tenantId,
+          retailerId,
+          {
+            aliasName: retailer.name,
+            areaId: retailer.areaId,
+            zipcodes: retailer.zipcodes || [],
+            creditLimit: retailer.creditLimit || 0,
+            notes: retailer.notes
+          }
+        );
+        console.log(`✅ Created new assignment for retailer ${retailer.name} to line worker ${newLineWorkerId}`);
+      }
       
       logger.info(`Manually reassigned retailer ${retailer.name} from line worker ${previousLineWorkerId} to ${newLineWorkerId}`, { 
         retailerId, 

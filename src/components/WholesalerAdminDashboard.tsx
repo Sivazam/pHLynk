@@ -1766,12 +1766,42 @@ export function WholesalerAdminDashboard() {
                   if (!currentTenantId) return;
                   
                   try {
-                    await retailerService.update(editingRetailer.id, {
-                      areaId: data.areaId,
-                      zipcodes: data.zipcodes
-                    }, currentTenantId);
+                    // Use the new assignment system instead of direct retailer update
+                    const { RetailerAssignmentService } = await import('@/services/retailer-profile-service');
+                    
+                    // Check if assignment exists
+                    const existingAssignment = await RetailerAssignmentService.getRetailerAssignment(currentTenantId, editingRetailer.id);
+                    
+                    if (existingAssignment) {
+                      // Update existing assignment
+                      await RetailerAssignmentService.updateRetailerAssignment(
+                        currentTenantId,
+                        editingRetailer.id,
+                        {
+                          areaId: data.areaId,
+                          zipcodes: data.zipcodes
+                        }
+                      );
+                      console.log(`✅ Updated service area for retailer ${editingRetailer.name}`);
+                    } else {
+                      // Create new assignment if it doesn't exist
+                      await RetailerAssignmentService.createRetailerAssignment(
+                        currentTenantId,
+                        editingRetailer.id,
+                        {
+                          aliasName: editingRetailer.name,
+                          areaId: data.areaId,
+                          zipcodes: data.zipcodes,
+                          creditLimit: editingRetailer.creditLimit || 0,
+                          notes: editingRetailer.notes
+                        }
+                      );
+                      console.log(`✅ Created new service area assignment for retailer ${editingRetailer.name}`);
+                    }
+                    
                     await fetchDashboardData();
                     setEditingRetailer(null);
+                    showSuccess(`Service area updated for "${editingRetailer.name}"`);
                   } catch (err: any) {
                     setError(err.message || 'Failed to update retailer service area');
                   }
