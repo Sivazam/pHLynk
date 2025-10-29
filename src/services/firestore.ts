@@ -142,7 +142,7 @@ export class FirestoreService<T extends BaseDocument> {
           const mergedRetailer = {
             ...retailer,
             areaId: assignment.areaId || retailer.areaId,
-            zipcodes: assignment.zipcodes.length > 0 ? assignment.zipcodes : retailer.zipcodes
+            zipcodes: (assignment.zipcodes && Array.isArray(assignment.zipcodes) && assignment.zipcodes.length > 0) ? assignment.zipcodes : (retailer.zipcodes || [])
           };
           
           documents.push({ ...mergedRetailer, id: doc.id } as T);
@@ -1415,7 +1415,7 @@ export class RetailerService extends FirestoreService<Retailer> {
           ...retailer,
           // Override with wholesaler-specific data
           areaId: wholesalerSpecificData.currentAreaId || retailer.areaId,
-          zipcodes: wholesalerSpecificData.currentZipcodes.length > 0 ? wholesalerSpecificData.currentZipcodes : retailer.zipcodes
+          zipcodes: (wholesalerSpecificData.currentZipcodes && Array.isArray(wholesalerSpecificData.currentZipcodes) && wholesalerSpecificData.currentZipcodes.length > 0) ? wholesalerSpecificData.currentZipcodes : (retailer.zipcodes || [])
           // Note: notes, creditLimit, currentBalance are stored in wholesalerData but not part of base Retailer interface
         };
       }
@@ -1427,7 +1427,7 @@ export class RetailerService extends FirestoreService<Retailer> {
           ...retailer,
           // Override with wholesaler-specific data
           areaId: assignment.areaId || retailer.areaId,
-          zipcodes: assignment.zipcodes.length > 0 ? assignment.zipcodes : retailer.zipcodes
+          zipcodes: (assignment.zipcodes && Array.isArray(assignment.zipcodes) && assignment.zipcodes.length > 0) ? assignment.zipcodes : (retailer.zipcodes || [])
         };
       }
       
@@ -1464,7 +1464,7 @@ export class RetailerService extends FirestoreService<Retailer> {
           const mergedRetailer = {
             ...retailer,
             areaId: wholesalerSpecificData.currentAreaId || retailer.areaId,
-            zipcodes: wholesalerSpecificData.currentZipcodes.length > 0 ? wholesalerSpecificData.currentZipcodes : retailer.zipcodes,
+            zipcodes: (wholesalerSpecificData.currentZipcodes && Array.isArray(wholesalerSpecificData.currentZipcodes) && wholesalerSpecificData.currentZipcodes.length > 0) ? wholesalerSpecificData.currentZipcodes : (retailer.zipcodes || []),
             notes: wholesalerSpecificData.notes,
             creditLimit: wholesalerSpecificData.creditLimit,
             currentBalance: wholesalerSpecificData.currentBalance
@@ -1481,7 +1481,7 @@ export class RetailerService extends FirestoreService<Retailer> {
           const mergedRetailer = {
             ...retailer,
             areaId: assignment.areaId || retailer.areaId,
-            zipcodes: assignment.zipcodes.length > 0 ? assignment.zipcodes : retailer.zipcodes
+            zipcodes: (assignment.zipcodes && Array.isArray(assignment.zipcodes) && assignment.zipcodes.length > 0) ? assignment.zipcodes : (retailer.zipcodes || [])
           };
           
           documents.push({ ...mergedRetailer, id: doc.id } as Retailer);
