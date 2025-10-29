@@ -1388,10 +1388,52 @@ const PaymentStatusCell: React.FC<{ state: string }> = ({ state }) => {
         const retailerDoc = await getDoc(retailerRef);
         
         if (retailerDoc.exists()) {
-          retailerData = {
-            id: retailerId,
-            ...retailerDoc.data()
-          };
+          const rawData = retailerDoc.data();
+          
+          // Check if it's the new profile format or legacy format
+          if (rawData.profile) {
+            // New profile format - extract data from profile object
+            retailerData = {
+              id: retailerId,
+              name: rawData.profile.realName,
+              phone: rawData.profile.phone,
+              email: rawData.profile.email,
+              address: rawData.profile.address,
+              businessType: rawData.profile.businessType,
+              licenseNumber: rawData.profile.licenseNumber,
+              tenantIds: rawData.tenantIds || [],
+              verification: rawData.verification || {
+                isPhoneVerified: false,
+                verificationMethod: 'OTP'
+              },
+              createdAt: rawData.createdAt,
+              updatedAt: rawData.updatedAt,
+              // Keep the raw data for reference
+              _rawData: rawData
+            };
+            console.log('📋 Using new profile format for retailer:', retailerData);
+          } else {
+            // Legacy format - use data directly
+            retailerData = {
+              id: retailerId,
+              name: rawData.name,
+              phone: rawData.phone,
+              email: rawData.email,
+              address: rawData.address,
+              businessType: rawData.businessType,
+              licenseNumber: rawData.licenseNumber,
+              tenantIds: rawData.tenantIds || [],
+              verification: rawData.verification || {
+                isPhoneVerified: false,
+                verificationMethod: 'OTP'
+              },
+              createdAt: rawData.createdAt,
+              updatedAt: rawData.updatedAt,
+              _rawData: rawData
+            };
+            console.log('📋 Using legacy format for retailer:', retailerData);
+          }
+          
           logger.debug('Retailer data found in retailers collection', retailerData, { context: 'RetailerDashboard' });
           
           // If retailer document doesn't have address, try to get from user data
@@ -2022,19 +2064,19 @@ const PaymentStatusCell: React.FC<{ state: string }> = ({ state }) => {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div>
                             <Label className="text-sm font-medium text-gray-700">Store Name</Label>
-                            <p className="text-gray-900">{retailerUser?.name || retailer?.name || 'Not provided'}</p>
+                            <p className="text-gray-900">{retailer?.name || retailerUser?.name || 'Not provided'}</p>
                           </div>
                           <div>
                             <Label className="text-sm font-medium text-gray-700">Phone</Label>
-                            <p className="text-gray-900">{retailerUser?.phone || retailer?.phone || 'Not provided'}</p>
+                            <p className="text-gray-900">{retailer?.phone || retailerUser?.phone || 'Not provided'}</p>
                           </div>
                           <div>
                             <Label className="text-sm font-medium text-gray-700">Email</Label>
-                            <p className="text-gray-900">{retailerUser?.email || retailer?.email || 'Not provided'}</p>
+                            <p className="text-gray-900">{retailer?.email || retailerUser?.email || 'Not provided'}</p>
                           </div>
                           <div>
                             <Label className="text-sm font-medium text-gray-700">Address</Label>
-                            <p className="text-gray-900">{retailerUser?.address || retailer?.address || 'Not provided'}</p>
+                            <p className="text-gray-900">{retailer?.address || retailerUser?.address || 'Not provided'}</p>
                           </div>
                         </div>
                       </CardContent>

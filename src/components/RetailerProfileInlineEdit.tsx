@@ -54,6 +54,7 @@ export function RetailerProfileInlineEdit({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [initialProfile, setInitialProfile] = useState<RetailerProfile>(profile);
   
   const businessTypes = [
     'Pharmacy',
@@ -65,13 +66,23 @@ export function RetailerProfileInlineEdit({
   ];
 
   useEffect(() => {
-    if (isEditing) {
-      console.log('📝 Initializing inline edit with profile:', profile);
+    // Update initial profile when it changes from parent
+    console.log('📝 Profile updated from parent:', profile);
+    setInitialProfile(profile);
+    if (!isEditing) {
       setEditedProfile(profile);
+    }
+  }, [profile]);
+
+  useEffect(() => {
+    // Initialize edit mode
+    if (isEditing) {
+      console.log('📝 Entering edit mode with profile:', profile);
+      setEditedProfile(initialProfile);
       setError(null);
       setSuccess(null);
     }
-  }, [isEditing, profile]);
+  }, [isEditing, initialProfile]);
 
   const handleInputChange = (field: keyof RetailerProfile, value: string) => {
     setEditedProfile(prev => ({
@@ -123,6 +134,9 @@ export function RetailerProfileInlineEdit({
       // Notify parent component
       onProfileUpdate(editedProfile);
       
+      // Update initial profile to reflect saved changes
+      setInitialProfile(editedProfile);
+      
       // Exit edit mode after a short delay
       setTimeout(() => {
         setIsEditing(false);
@@ -139,13 +153,13 @@ export function RetailerProfileInlineEdit({
   };
 
   const handleCancel = () => {
-    setEditedProfile(profile);
+    setEditedProfile(initialProfile);
     setError(null);
     setSuccess(null);
     setIsEditing(false);
   };
 
-  const hasChanges = JSON.stringify(editedProfile) !== JSON.stringify(profile);
+  const hasChanges = JSON.stringify(editedProfile) !== JSON.stringify(initialProfile);
 
   // Display mode
   if (!isEditing) {
