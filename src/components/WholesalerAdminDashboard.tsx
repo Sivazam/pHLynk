@@ -588,26 +588,6 @@ export function WholesalerAdminDashboard() {
       setPayments(paymentsQuery);
       setDashboardStats(stats);
       
-      // Recompute retailer data for accuracy
-      setDataFetchProgress(80);
-      try {
-        console.log('🔄 Recomputing retailer data for accuracy...');
-        for (const retailer of retailersData) {
-          await retailerService.recomputeRetailerData(retailer.id, currentTenantId);
-        }
-        // Refresh retailers after recomputation
-        const updatedRetailers = await retailerService.getAll(currentTenantId);
-        setRetailers(updatedRetailers);
-        console.log('✅ Retailer data recomputed and updated');
-        
-        // Regenerate activity logs with updated retailer data to fix "Unknown" retailer names
-        const refreshedLogs = generateActivityLogs(activityLogsData, updatedRetailers, lineWorkersData);
-        setActivityLogs(refreshedLogs);
-        console.log('✅ Activity logs regenerated with updated retailer names');
-      } catch (error) {
-        console.warn('Warning: Could not recompute retailer data:', error);
-      }
-      
       // Generate activity logs - use filtered data only for Overview tab
       let activityLogsData = paymentsQuery;
       
@@ -626,6 +606,26 @@ export function WholesalerAdminDashboard() {
           }
           return true;
         });
+      }
+      
+      // Recompute retailer data for accuracy
+      setDataFetchProgress(80);
+      try {
+        console.log('🔄 Recomputing retailer data for accuracy...');
+        for (const retailer of retailersData) {
+          await retailerService.recomputeRetailerData(retailer.id, currentTenantId);
+        }
+        // Refresh retailers after recomputation
+        const updatedRetailers = await retailerService.getAll(currentTenantId);
+        setRetailers(updatedRetailers);
+        console.log('✅ Retailer data recomputed and updated');
+        
+        // Regenerate activity logs with updated retailer data to fix "Unknown" retailer names
+        const refreshedLogs = generateActivityLogs(activityLogsData, updatedRetailers, lineWorkersData);
+        setActivityLogs(refreshedLogs);
+        console.log('✅ Activity logs regenerated with updated retailer names');
+      } catch (error) {
+        console.warn('Warning: Could not recompute retailer data:', error);
       }
       
       // Generate initial activity logs (will be refreshed after retailer data update)
