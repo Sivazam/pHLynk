@@ -125,8 +125,10 @@ export async function POST(request: NextRequest) {
         safeRetailer.phone = retailer.phone;
         safeRetailer.email = retailer.email;
         safeRetailer.address = retailer.address;
-        safeRetailer.businessType = retailer.businessType;
-        safeRetailer.licenseNumber = retailer.licenseNumber;
+        // Legacy format doesn't have businessType and licenseNumber fields
+        // These are only available in the new profile format
+        safeRetailer.businessType = undefined;
+        safeRetailer.licenseNumber = undefined;
       }
       
       // Include zipcodes if available
