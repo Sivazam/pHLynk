@@ -448,6 +448,66 @@ export function WholesalerAdminDashboard() {
     }
   }, [activeNav]);
 
+  // Effect to regenerate activity logs when retailers data changes (fixes "Unknown" retailer names delay)
+  useEffect(() => {
+    if (retailers.length > 0 && payments.length > 0) {
+      console.log('🔄 Regenerating activity logs due to retailer data change');
+      
+      // Debug: Analyze retailer data structure
+      const retailerAnalysis = retailers.map(r => ({
+        id: r.id,
+        name: r.name,
+        profileRealName: r.profile?.realName,
+        hasProfile: !!r.profile,
+        profileType: typeof r.profile,
+        profileKeys: r.profile ? Object.keys(r.profile) : [],
+        nameSource: r.profile?.realName ? 'profile.realName' : (r.name ? 'name' : 'Unknown')
+      }));
+      
+      console.log('📊 Retailer data analysis:', retailerAnalysis);
+      
+      // Check for payments with missing retailer names
+      const paymentsWithMissingRetailers = payments.filter(p => {
+        const retailer = retailers.find(r => r.id === p.retailerId);
+        return !retailer || (!retailer.profile?.realName && !retailer.name);
+      });
+      
+      if (paymentsWithMissingRetailers.length > 0) {
+        console.warn('⚠️ Payments with missing retailer data:', paymentsWithMissingRetailers.map(p => ({
+          paymentId: p.id,
+          retailerId: p.retailerId,
+          amount: p.totalPaid,
+          state: p.state
+        })));
+      }
+      
+      const currentTenantId = getCurrentTenantId();
+      if (currentTenantId) {
+        // Use the current filter settings to determine activity logs data
+        let activityLogsData = payments;
+        
+        const refreshedLogs = generateActivityLogs(activityLogsData, retailers, lineWorkers);
+        setActivityLogs(prevLogs => {
+          // Check if there are actual differences in retailer names
+          const hasChanges = refreshedLogs.some((log, index) => {
+            const prevLog = prevLogs[index];
+            return prevLog && log.targetName !== prevLog.targetName;
+          });
+          
+          if (hasChanges) {
+            console.log('✅ Activity logs updated with corrected retailer names');
+            console.log('🔄 Sample changes:', refreshedLogs.slice(0, 3).map(log => ({
+              description: log.description,
+              targetName: log.targetName
+            })));
+            return refreshedLogs;
+          }
+          return prevLogs; // Keep existing logs if no changes
+        });
+      }
+    }
+  }, [retailers]); // Only trigger when retailers change
+
   // Effect to sync notifications with notification service - DISABLED to prevent focus issues
   // The real-time notification service already handles notification updates
   // useEffect(() => {
@@ -539,6 +599,11 @@ export function WholesalerAdminDashboard() {
         const updatedRetailers = await retailerService.getAll(currentTenantId);
         setRetailers(updatedRetailers);
         console.log('✅ Retailer data recomputed and updated');
+        
+        // Regenerate activity logs with updated retailer data to fix "Unknown" retailer names
+        const refreshedLogs = generateActivityLogs(activityLogsData, updatedRetailers, lineWorkersData);
+        setActivityLogs(refreshedLogs);
+        console.log('✅ Activity logs regenerated with updated retailer names');
       } catch (error) {
         console.warn('Warning: Could not recompute retailer data:', error);
       }
@@ -563,6 +628,7 @@ export function WholesalerAdminDashboard() {
         });
       }
       
+      // Generate initial activity logs (will be refreshed after retailer data update)
       const logs = generateActivityLogs(activityLogsData, retailersData, lineWorkersData);
       setActivityLogs(logs);
       
@@ -615,6 +681,15 @@ export function WholesalerAdminDashboard() {
     const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
     const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
+    // Helper function to get retailer name from the provided retailers array
+    const getRetailerNameFromData = (retailerId: string, retailersArray: Retailer[]) => {
+      const retailer = retailersArray.find(r => r.id === retailerId);
+      if (retailer?.profile?.realName) {
+        return retailer.profile.realName;
+      }
+      return retailer?.name || 'Unknown';
+    };
+
     console.log('Generating notifications with:', {
       payments: payments.length,
       retailers: retailers.length,
@@ -660,14 +735,14 @@ export function WholesalerAdminDashboard() {
 
     pendingPayments.slice(0, 5).forEach(payment => {
       const worker = workers.find(w => w.id === payment.lineWorkerId);
-      const retailer = retailers.find(r => r.id === payment.retailerId);
+      const retailerName = getRetailerNameFromData(payment.retailerId, retailers);
       const timeDiff = Math.floor((now.getTime() - toDate(payment.createdAt).getTime()) / (60 * 60 * 1000));
       
       notifications.push({
         id: `payment_pending_${payment.id}`,
         type: 'warning',
         title: 'Payment pending',
-        message: `${worker?.displayName || 'Line worker'} has pending payment of ₹${payment.totalPaid.toLocaleString()} from ${retailer?.name || 'retailer'} (${timeDiff}h ago)`,
+        message: `${worker?.displayName || 'Line worker'} has pending payment of ₹${payment.totalPaid.toLocaleString()} from ${retailerName} (${timeDiff}h ago)`,
         timestamp: toDate(payment.createdAt),
         read: false,
         amount: payment.totalPaid,
@@ -682,13 +757,13 @@ export function WholesalerAdminDashboard() {
 
     failedPayments.slice(0, 3).forEach(payment => {
       const worker = workers.find(w => w.id === payment.lineWorkerId);
-      const retailer = retailers.find(r => r.id === payment.retailerId);
+      const retailerName = getRetailerNameFromData(payment.retailerId, retailers);
       
       notifications.push({
         id: `payment_failed_${payment.id}`,
         type: 'warning',
         title: 'Payment failed',
-        message: `Payment of ₹${payment.totalPaid.toLocaleString()} from ${retailer?.name || 'retailer'} failed for ${worker?.displayName || 'line worker'}`,
+        message: `Payment of ₹${payment.totalPaid.toLocaleString()} from ${retailerName} failed for ${worker?.displayName || 'line worker'}`,
         timestamp: toDate(payment.createdAt),
         read: false,
         amount: payment.totalPaid,
@@ -765,6 +840,16 @@ export function WholesalerAdminDashboard() {
   const generateActivityLogs = (payments: Payment[], retailers: Retailer[], workers: User[]): ActivityLog[] => {
     const logs: ActivityLog[] = [];
 
+    // Helper function to get retailer name from the provided retailers array
+    const getRetailerNameFromData = (retailerId: string, retailersArray: Retailer[]) => {
+      const retailer = retailersArray.find(r => r.id === retailerId);
+      
+      if (retailer?.profile?.realName) {
+        return retailer.profile.realName;
+      }
+      return retailer?.name || 'Unknown';
+    };
+
     // Payment activities - filter by date range only for Overview tab
     const recentPayments = payments.filter(p => {
       if (activeNav === 'overview') {
@@ -776,17 +861,17 @@ export function WholesalerAdminDashboard() {
     
     recentPayments.forEach(payment => {
       const worker = workers.find(w => w.id === payment.lineWorkerId);
-      const retailer = retailers.find(r => r.id === payment.retailerId);
+      const retailerName = getRetailerNameFromData(payment.retailerId, retailers);
       
       logs.push({
         id: `payment_${payment.id}`,
         type: 'PAYMENT',
         action: payment.state.toLowerCase(),
-        description: `${payment.state} payment of ₹${payment.totalPaid.toLocaleString()} from ${retailer?.name || 'retailer'}`,
+        description: `${payment.state} payment of ₹${payment.totalPaid.toLocaleString()} from ${retailerName}`,
         amount: payment.totalPaid,
         actorName: worker?.displayName || 'Unknown',
         actorType: 'LINE_WORKER',
-        targetName: retailer?.name || 'retailer',
+        targetName: retailerName,
         targetType: 'RETAILER',
         timestamp: payment.createdAt
       });
@@ -1308,7 +1393,11 @@ export function WholesalerAdminDashboard() {
 
   // Utility functions
   const getRetailerName = (retailerId: string) => {
-    return retailers.find(r => r.id === retailerId)?.name || 'Unknown';
+    const retailer = retailers.find(r => r.id === retailerId);
+    if (retailer?.profile?.realName) {
+      return retailer.profile.realName;
+    }
+    return retailer?.name || 'Unknown';
   };
 
   const getLineWorkerName = (workerId: string) => {

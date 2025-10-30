@@ -53,7 +53,6 @@ import {
   TrendingUp,
   Bell,
   RefreshCw,
-  Eye,
   Share,
   Download,
   Search,
@@ -1019,7 +1018,7 @@ Thank you for your payment!
     }
 
     return (
-      <div className="space-y-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         {sortedFilteredRetailers.map((retailer) => {
           const isExpanded = expandedRetailerId === retailer.id;
           const recentPayments = getRecentPayments(retailer.id);
@@ -1030,172 +1029,135 @@ Thank you for your payment!
           return (
             <div key={retailer.id} id={`retailer-card-${retailer.id}`} className="border border-gray-200 rounded-lg overflow-hidden">
               {/* Retailer Card - Always Visible */}
-              <Card className="border-0 rounded-none shadow-none">
-                <CardContent className="p-4">
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                    {/* Retailer Info */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-3 mb-2">
-                        <h3 className="text-lg font-semibold text-gray-900 truncate">{getRetailerName(retailer)}</h3>
-                        <Badge variant="secondary" className="bg-green-100 text-green-800">
-                          Active
-                        </Badge>
+              <Card className="border-0 rounded-none shadow-none h-full">
+                <CardContent className="p-4 h-full flex flex-col">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 flex-1">
+                    {/* Left Column - Retailer Info */}
+                    <div className="space-y-3">
+                      <div className="flex flex-col gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h3 className="text-base font-semibold text-gray-900 truncate">{getRetailerName(retailer)}</h3>
+                          <Badge variant="secondary" className="bg-green-100 text-green-800 text-xs">
+                            Active
+                          </Badge>
+                        </div>
                         {hasCompletedToday && lastPaymentDate && (
-                          <div className="flex items-center gap-1">
-                            <Badge variant="secondary" className="bg-blue-100 text-blue-800 border-blue-200">
+                          <div className="flex flex-col gap-1">
+                            <Badge variant="secondary" className="bg-blue-100 text-blue-800 border-blue-200 text-xs w-fit">
                               <CheckCircle className="h-3 w-3 mr-1" />
                               Collected {formatCurrency(lastPaymentAmount)}
                             </Badge>
-                            <div className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                            <div className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded w-fit">
                               {lastPaymentDate}
                             </div>
                           </div>
                         )}
                       </div>
                       
-                      <div className="space-y-1 text-sm text-gray-600">
-                        {retailer.address && (
+                      <div className="space-y-2 text-sm text-gray-600">
+                        {getRetailerAddress(retailer) && getRetailerAddress(retailer) !== 'N/A' && (
                           <div className="flex items-center gap-2">
                             <MapPin className="h-4 w-4 text-gray-400 flex-shrink-0" />
-                            <span className="truncate">{retailer.address}</span>
+                            <span className="truncate text-xs">{getRetailerAddress(retailer)}</span>
                           </div>
                         )}
-                        {retailer.phone && (
+                        {getRetailerPhone(retailer) && getRetailerPhone(retailer) !== 'N/A' && (
                           <div className="flex items-center gap-2">
                             <Phone className="h-4 w-4 text-gray-400 flex-shrink-0" />
-                            <span>{retailer.phone}</span>
+                            <span className="text-xs">{getRetailerPhone(retailer)}</span>
                           </div>
                         )}
                         <div className="flex items-center gap-2">
                           <Store className="h-4 w-4 text-gray-400 flex-shrink-0" />
-                          <span>{getAreaName(retailer.areaId || '')}</span>
+                          <span className="text-xs">{getAreaName(retailer.areaId || '')}</span>
                         </div>
                       </div>
                     </div>
-
-                    {/* Action Buttons */}
-                    <div className="flex flex-col sm:flex-row gap-2 flex-shrink-0">
+                    
+                    {/* Right Column - Actions & Recent Payments */}
+                    <div className="space-y-3">
+                      {/* Collect Payment Button */}
                       <Button
                         size="sm"
                         onClick={() => handleOpenPaymentDialog(retailer)}
-                        className="h-9 px-4 bg-blue-600 hover:bg-blue-700 text-white font-medium shadow-sm whitespace-nowrap"
+                        className="w-full h-9 px-4 bg-blue-600 hover:bg-blue-700 text-white font-medium shadow-sm whitespace-nowrap text-xs"
                       >
                         <Plus className="h-4 w-4 mr-1" />
-                        Collect
+                        Collect Payment
                       </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleToggleExpand(retailer.id)}
-                        className="h-9 px-4 border-gray-300 text-gray-700 hover:bg-gray-50 font-medium whitespace-nowrap"
-                      >
-                        {isExpanded ? (
-                          <>
-                            <ChevronUp className="h-4 w-4 mr-1" />
-                            Hide
-                          </>
-                        ) : (
-                          <>
-                            <Eye className="h-4 w-4 mr-1" />
-                            Details
-                          </>
+                      
+                      {/* Recent Payments Collapsible Section */}
+                      <div className="space-y-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            if (expandedRetailerId === retailer.id) {
+                              setExpandedRetailerId(null);
+                              setShowAllPaymentsRetailerId(null);
+                            } else {
+                              setExpandedRetailerId(retailer.id);
+                              setShowAllPaymentsRetailerId(null);
+                              handleViewRetailerDetails(retailers.find(r => r.id === retailer.id)!);
+                            }
+                          }}
+                          className="w-full justify-between h-9 px-4 border-gray-300 text-gray-700 hover:bg-gray-50 font-medium text-xs"
+                        >
+                          <span className="flex items-center gap-2">
+                            <CreditCard className="h-4 w-4" />
+                            Recent Payments
+                          </span>
+                          {expandedRetailerId === retailer.id ? (
+                            <ChevronUp className="h-4 w-4" />
+                          ) : (
+                            <ChevronDown className="h-4 w-4" />
+                          )}
+                        </Button>
+                        
+                        {expandedRetailerId === retailer.id && (
+                          <div className="mt-2 p-3 bg-gray-50 rounded border max-h-48 overflow-y-auto">
+                            {recentPayments.length > 0 ? (
+                              <div className="space-y-2">
+                                {(showAllPaymentsRetailerId === retailer.id ? retailerPaymentHistory : recentPayments).map((payment) => (
+                                  <div key={payment.id} className="bg-white p-2 rounded border border-gray-200">
+                                    <div className="flex justify-between items-center">
+                                      <div>
+                                        <p className="font-medium text-sm text-gray-900">{formatCurrency(payment.totalPaid)}</p>
+                                        <p className="text-xs text-gray-500">{formatTimestampWithTime(payment.createdAt)}</p>
+                                      </div>
+                                      <Badge className="bg-green-100 text-green-800 text-xs">
+                                        {payment.method}
+                                      </Badge>
+                                    </div>
+                                  </div>
+                                ))}
+                                {/* Always show the toggle button if there are more than 3 payments total */}
+                                {retailerPaymentHistory.length > 3 && (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => {
+                                      setShowAllPaymentsRetailerId(showAllPaymentsRetailerId === retailer.id ? null : retailer.id);
+                                    }}
+                                    className="w-full text-xs"
+                                  >
+                                    {showAllPaymentsRetailerId === retailer.id ? 'Show Recent' : 'View All'}
+                                  </Button>
+                                )}
+                              </div>
+                            ) : (
+                              <div className="text-center py-3 text-muted-foreground">
+                                <CreditCard className="h-6 w-6 mx-auto mb-1 text-gray-400" />
+                                <p className="text-xs">No payments yet</p>
+                              </div>
+                            )}
+                          </div>
                         )}
-                      </Button>
+                      </div>
                     </div>
                   </div>
                 </CardContent>
               </Card>
-
-              {/* Expanded Details - Only Visible When Expanded */}
-              {isExpanded && (
-                <Card className="border-0 rounded-none shadow-none border-t border-gray-200">
-                  <CardContent className="p-4 bg-gray-50">
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                      {/* Retailer Details */}
-                      <div className="space-y-4">
-                        <h4 className="font-semibold text-gray-900 flex items-center gap-2">
-                          <Store className="h-5 w-5" />
-                          Retailer Details
-                        </h4>
-                        
-                        <div className="space-y-3">
-                          <div>
-                            <Label className="text-sm font-medium text-gray-700">Full Address</Label>
-                            <p className="text-sm text-gray-600 mt-1">{retailer.address || 'Not provided'}</p>
-                          </div>
-                          
-                          <div>
-                            <Label className="text-sm font-medium text-gray-700">Contact Number</Label>
-                            <p className="text-sm text-gray-600 mt-1">{retailer.phone || 'Not provided'}</p>
-                          </div>
-                          
-                          <div>
-                            <Label className="text-sm font-medium text-gray-700">Service Area</Label>
-                            <p className="text-sm text-gray-600 mt-1">{getAreaName(retailer.areaId || '')}</p>
-                          </div>
-                          
-                          {retailer.zipcodes && retailer.zipcodes.length > 0 && (
-                            <div>
-                              <Label className="text-sm font-medium text-gray-700">Service Pin Codes</Label>
-                              <div className="flex flex-wrap gap-1 mt-1">
-                                {retailer.zipcodes.map((zip, index) => (
-                                  <Badge key={index} variant="outline" className="text-xs">
-                                    {zip}
-                                  </Badge>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Recent Payments */}
-                      <div className="space-y-4">
-                        <h4 className="font-semibold text-gray-900 flex items-center gap-2">
-                          <CreditCard className="h-5 w-5" />
-                          Recent Payments
-                        </h4>
-                        
-                        {recentPayments.length > 0 ? (
-                          <div className="space-y-2">
-                            {(showAllPaymentsRetailerId === retailer.id ? retailerPaymentHistory : recentPayments).map((payment) => (
-                              <div key={payment.id} className="bg-white p-3 rounded border border-gray-200">
-                                <div className="flex justify-between items-start">
-                                  <div>
-                                    <p className="font-medium text-gray-900">{formatCurrency(payment.totalPaid)}</p>
-                                    <p className="text-xs text-gray-500">{formatTimestampWithTime(payment.createdAt)}</p>
-                                  </div>
-                                  <Badge className="bg-green-100 text-green-800 text-xs">
-                                    {payment.method}
-                                  </Badge>
-                                </div>
-                              </div>
-                            ))}
-                            {/* Always show the toggle button if there are more than 3 payments total */}
-                            {retailerPaymentHistory.length > 3 && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => {
-                                  setShowAllPaymentsRetailerId(showAllPaymentsRetailerId === retailer.id ? null : retailer.id);
-                                }}
-                                className="w-full"
-                              >
-                                {showAllPaymentsRetailerId === retailer.id ? 'Show Recent Payments' : 'View All Payments'}
-                              </Button>
-                            )}
-                          </div>
-                        ) : (
-                          <div className="text-center py-4 text-gray-500">
-                            <CreditCard className="h-8 w-8 mx-auto mb-2 text-gray-400" />
-                            <p className="text-sm">No payments yet</p>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
             </div>
           );
         })}

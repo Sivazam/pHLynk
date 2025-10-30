@@ -12,8 +12,7 @@ import { formatCurrency } from '@/lib/timestamp-utils';
 import { 
   CreditCard,
   CheckCircle,
-  AlertCircle,
-  DollarSign
+  AlertCircle
 } from 'lucide-react';
 
 interface PaymentForm {
@@ -154,7 +153,7 @@ const CollectPaymentFormComponent = ({
         ) : (
           <>
             {/* Header Section */}
-            <div className="space-y-4 pb-4 border-b">
+            <div className="space-y-2 pb-3 border-b">
               <h2 className="text-lg font-semibold text-gray-900">Collect Payment</h2>
               <p className="text-sm text-gray-600">Enter payment details to initiate collection from retailer</p>
             </div>
@@ -167,89 +166,97 @@ const CollectPaymentFormComponent = ({
               </Alert>
             )}
 
-            {/* Payment Information */}
+            {/* Payment Information - Mobile First Grid */}
             <div className="space-y-4">
               <h3 className="text-sm font-medium text-gray-900 border-b pb-1">Payment Information</h3>
               
-              {/* Retailer Selection */}
-              <div className="space-y-1">
-                <Label className="text-sm font-medium text-gray-700">Retailer *</Label>
-                <Select 
-                  value={formData.retailerId} 
-                  onValueChange={(value) => updateField('retailerId', value)}
-                >
-                  <SelectTrigger className="h-9">
-                    <SelectValue placeholder="Select retailer" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {retailerOptions}
-                  </SelectContent>
-                </Select>
-                {selectedRetailer && (
-                  <p className="text-xs text-gray-500">
-                    {selectedRetailer.address && `Address: ${selectedRetailer.address}`}
-                    {selectedRetailer.phone && ` • Phone: ${selectedRetailer.phone}`}
-                  </p>
-                )}
-              </div>
-
-              {/* Amount */}
-              <div className="space-y-1">
-                <Label className="text-sm font-medium text-gray-700">Amount *</Label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <DollarSign className="h-4 w-4 text-gray-400" />
-                  </div>
-                  <Input
-                    type="text"
-                    placeholder="0.00"
-                    value={formData.amount ? formData.amount.toString() : ''}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      // Allow only numbers and decimal point
-                      if (/^\d*\.?\d*$/.test(value) || value === '') {
-                        const numValue = parseFloat(value) || 0;
-                        updateField('amount', numValue);
-                      }
-                    }}
-                    className="h-9 pl-9"
-                  />
+              {/* Grid Layout for Mobile First */}
+              <div className="grid grid-cols-1 gap-4 sm:gap-6">
+                
+                {/* Row 1: Retailer Selection - Full width on mobile */}
+                <div className="space-y-1">
+                  <Label className="text-sm font-medium text-gray-700">Retailer *</Label>
+                  <Select 
+                    value={formData.retailerId} 
+                    onValueChange={(value) => updateField('retailerId', value)}
+                  >
+                    <SelectTrigger className="h-10">
+                      <SelectValue placeholder="Select retailer" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {retailerOptions}
+                    </SelectContent>
+                  </Select>
+                  {selectedRetailer && (
+                    <p className="text-xs text-gray-500">
+                      {selectedRetailer.profile?.address && `Address: ${selectedRetailer.profile.address}`}
+                      {selectedRetailer.profile?.phone && ` • Phone: ${selectedRetailer.profile.phone}`}
+                    </p>
+                  )}
                 </div>
-                <p className="text-xs text-gray-500">Enter the amount to collect from retailer</p>
-              </div>
 
-              {/* Payment Method */}
-              <div className="space-y-1">
-                <Label className="text-sm font-medium text-gray-700">Payment Method *</Label>
-                <Select 
-                  value={formData.paymentMethod} 
-                  onValueChange={(value) => updateField('paymentMethod', value)}
-                >
-                  <SelectTrigger className="h-9">
-                    <SelectValue placeholder="Select payment method" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="CASH">Cash</SelectItem>
-                    <SelectItem value="UPI">UPI</SelectItem>
-                    <SelectItem value="BANK_TRANSFER">Bank Transfer</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+                {/* Row 2: Amount and Payment Method - Side by side on larger screens */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Amount */}
+                  <div className="space-y-1">
+                    <Label className="text-sm font-medium text-gray-700">Amount *</Label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <span className="text-sm font-medium text-gray-400">₹</span>
+                      </div>
+                      <Input
+                        type="text"
+                        placeholder="0.00"
+                        value={formData.amount ? formData.amount.toString() : ''}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          // Allow only numbers and decimal point
+                          if (/^\d*\.?\d*$/.test(value) || value === '') {
+                            const numValue = parseFloat(value) || 0;
+                            updateField('amount', numValue);
+                          }
+                        }}
+                        className="h-10 pl-9"
+                      />
+                    </div>
+                    <p className="text-xs text-gray-500">Enter amount</p>
+                  </div>
 
-              {/* Notes */}
-              <div className="space-y-1">
-                <Label className="text-sm font-medium text-gray-700">Notes (Optional)</Label>
-                <Input
-                  placeholder="Add any notes about this payment..."
-                  value={formData.notes || ''}
-                  onChange={(e) => updateField('notes', e.target.value)}
-                  className="h-9"
-                />
-                <p className="text-xs text-gray-500">Optional notes for reference</p>
+                  {/* Payment Method */}
+                  <div className="space-y-1">
+                    <Label className="text-sm font-medium text-gray-700">Payment Method *</Label>
+                    <Select 
+                      value={formData.paymentMethod} 
+                      onValueChange={(value) => updateField('paymentMethod', value)}
+                    >
+                      <SelectTrigger className="h-10">
+                        <SelectValue placeholder="Select method" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="CASH">Cash</SelectItem>
+                        <SelectItem value="UPI">UPI</SelectItem>
+                        <SelectItem value="BANK_TRANSFER">Bank Transfer</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-gray-500">Select method</p>
+                  </div>
+                </div>
+
+                {/* Row 3: Notes - Full width */}
+                <div className="space-y-1">
+                  <Label className="text-sm font-medium text-gray-700">Notes (Optional)</Label>
+                  <Input
+                    placeholder="Add any notes about this payment..."
+                    value={formData.notes || ''}
+                    onChange={(e) => updateField('notes', e.target.value)}
+                    className="h-10"
+                  />
+                  <p className="text-xs text-gray-500">Optional notes for reference</p>
+                </div>
               </div>
             </div>
 
-            {/* Payment Summary */}
+            {/* Payment Summary - Responsive Card */}
             {formData.amount > 0 && (
               <div className="space-y-3 p-4 bg-blue-50 rounded-lg border border-blue-200">
                 <div className="flex items-center space-x-2 mb-2">
@@ -257,33 +264,33 @@ const CollectPaymentFormComponent = ({
                   <h3 className="text-sm font-medium text-blue-900">Payment Summary</h3>
                 </div>
                 
-                <div className="space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-blue-600">Retailer:</span>
-                    <span className="font-medium text-blue-900">
-                      {selectedRetailer?.name || 'Not selected'}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4">
+                  <div className="flex justify-between sm:flex-col sm:space-y-1">
+                    <span className="text-xs sm:text-sm text-blue-600">Retailer:</span>
+                    <span className="text-sm sm:font-medium text-blue-900 truncate">
+                      {selectedRetailer?.profile?.realName || selectedRetailer?.name || 'Not selected'}
                     </span>
                   </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-blue-600">Amount:</span>
-                    <span className="font-medium text-blue-900">{formatCurrency(formData.amount)}</span>
+                  <div className="flex justify-between sm:flex-col sm:space-y-1">
+                    <span className="text-xs sm:text-sm text-blue-600">Amount:</span>
+                    <span className="text-sm sm:font-medium text-blue-900">{formatCurrency(formData.amount)}</span>
                   </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-blue-600">Method:</span>
-                    <span className="font-medium text-blue-900">{formData.paymentMethod}</span>
+                  <div className="flex justify-between sm:flex-col sm:space-y-1">
+                    <span className="text-xs sm:text-sm text-blue-600">Method:</span>
+                    <span className="text-sm sm:font-medium text-blue-900">{formData.paymentMethod}</span>
                   </div>
                 </div>
               </div>
             )}
 
-            {/* Action Buttons */}
-            <div className="flex justify-end space-x-2 pt-4 border-t">
+            {/* Action Buttons - Responsive */}
+            <div className="flex flex-col sm:flex-row justify-end gap-2 pt-4 border-t">
               <Button 
                 type="button" 
                 variant="outline" 
                 onClick={onCancel}
                 disabled={collectingPayment}
-                className="h-9 px-4 text-sm"
+                className="h-10 px-4 text-sm w-full sm:w-auto order-2 sm:order-1"
               >
                 Cancel
               </Button>
@@ -291,7 +298,7 @@ const CollectPaymentFormComponent = ({
                 type="button" 
                 onClick={handleSubmit}
                 disabled={collectingPayment || !formData.retailerId || !formData.amount || formData.amount <= 0}
-                className="h-9 px-4 text-sm min-w-[120px]"
+                className="h-10 px-4 text-sm min-w-[120px] w-full sm:w-auto order-1 sm:order-2"
               >
                 {collectingPayment ? (
                   <div className="flex items-center justify-center">
