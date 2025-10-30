@@ -113,6 +113,21 @@ export function LineWorkerDashboard() {
     setDateRange(newDateRange);
   };
 
+  // Helper function to get retailer name (handles both legacy and new profile formats)
+  const getRetailerName = (retailer: any) => {
+    return retailer.profile ? retailer.profile.realName : retailer.name || 'Unknown Retailer';
+  };
+
+  // Helper function to get retailer phone (handles both legacy and new profile formats)
+  const getRetailerPhone = (retailer: any) => {
+    return retailer.profile ? retailer.profile.phone : retailer.phone || 'N/A';
+  };
+
+  // Helper function to get retailer address (handles both legacy and new profile formats)
+  const getRetailerAddress = (retailer: any) => {
+    return retailer.profile ? retailer.profile.address : retailer.address || 'N/A';
+  };
+
   // Search functionality
   useEffect(() => {
     if (!searchTerm.trim()) {
@@ -125,7 +140,7 @@ export function LineWorkerDashboard() {
       
       switch (searchType) {
         case 'name':
-          return retailer.name.toLowerCase().includes(searchLower);
+          return getRetailerName(retailer).toLowerCase().includes(searchLower);
         case 'area':
           // Search by area name
           const area = areas.find(a => a.id === retailer.areaId);
@@ -277,8 +292,7 @@ export function LineWorkerDashboard() {
     );
     
     recentHighValuePayments.forEach(async (payment) => {
-      const retailerName = payment.retailerName || 
-        (retailers.find(r => r.id === payment.retailerId)?.name || 'Unknown Retailer');
+      const retailerName = payment.retailerName || getRetailerName(retailers.find(r => r.id === payment.retailerId));
       
       // Use enhanced service for high-value payments (includes FCM)
       await enhancedNotificationService.sendPaymentCompletedNotification(
@@ -330,7 +344,7 @@ export function LineWorkerDashboard() {
       
       // Log each retailer's assignment details for debugging
       allRetailers.forEach(retailer => {
-        console.log(`Retailer "${retailer.name}" - assignedLineWorkerId: ${retailer.assignedLineWorkerId}, areaId: ${retailer.areaId}`);
+        console.log(`Retailer "${getRetailerName(retailer)}" - assignedLineWorkerId: ${retailer.assignedLineWorkerId}, areaId: ${retailer.areaId}`);
       });
 
       // Filter retailers by assigned areas OR direct assignments
@@ -338,25 +352,25 @@ export function LineWorkerDashboard() {
       const assignedRetailers = allRetailers.filter(retailer => {
         // First check if retailer is directly assigned to this line worker
         if (retailer.assignedLineWorkerId === user?.uid) {
-          console.log(`✅ Retailer "${retailer.name}" matched by direct assignment to line worker ${user!.uid}`);
+          console.log(`✅ Retailer "${getRetailerName(retailer)}" matched by direct assignment to line worker ${user!.uid}`);
           return true;
         }
         
         // If retailer is directly assigned to someone else, exclude it from area-based assignments
         if (retailer.assignedLineWorkerId && retailer.assignedLineWorkerId !== user?.uid) {
-          console.log(`❌ Retailer "${retailer.name}" excluded - directly assigned to another line worker: ${retailer.assignedLineWorkerId}`);
+          console.log(`❌ Retailer "${getRetailerName(retailer)}" excluded - directly assigned to another line worker: ${retailer.assignedLineWorkerId}`);
           return false;
         }
         
         // If no areas assigned, can't see any area-based retailers
         if (!user?.assignedAreas || user.assignedAreas.length === 0) {
-          console.log(`❌ Retailer "${retailer.name}" excluded - no assigned areas for user and no direct assignment`);
+          console.log(`❌ Retailer "${getRetailerName(retailer)}" excluded - no assigned areas for user and no direct assignment`);
           return false;
         }
         
         // Check if retailer is in assigned areas (by areaId)
         if (retailer.areaId && user!.assignedAreas.includes(retailer.areaId)) {
-          console.log(`✅ Retailer "${retailer.name}" matched by areaId: ${retailer.areaId}`);
+          console.log(`✅ Retailer "${getRetailerName(retailer)}" matched by areaId: ${retailer.areaId}`);
           return true;
         }
         
@@ -364,12 +378,12 @@ export function LineWorkerDashboard() {
         if (retailer.zipcodes && retailer.zipcodes.length > 0 && user!.assignedZips && user!.assignedZips.length > 0) {
           const matchingZips = retailer.zipcodes.filter(zip => user!.assignedZips!.includes(zip));
           if (matchingZips.length > 0) {
-            console.log(`✅ Retailer "${retailer.name}" matched by zips: ${matchingZips.join(', ')}`);
+            console.log(`✅ Retailer "${getRetailerName(retailer)}" matched by zips: ${matchingZips.join(', ')}`);
             return true;
           }
         }
         
-        console.log(`❌ Retailer "${retailer.name}" not matched - areaId: ${retailer.areaId}, zips: ${retailer.zipcodes?.join(', ') || 'none'}, directAssignment: ${retailer.assignedLineWorkerId}`);
+        console.log(`❌ Retailer "${getRetailerName(retailer)}" not matched - areaId: ${retailer.areaId}, zips: ${retailer.zipcodes?.join(', ') || 'none'}, directAssignment: ${retailer.assignedLineWorkerId}`);
         return false;
       });
 
@@ -476,7 +490,7 @@ export function LineWorkerDashboard() {
       // Create payment first (this is fast)
       const payment = {
         retailerId: paymentData.retailerId,
-        retailerName: retailers.find(r => r.id === paymentData.retailerId)?.name || 'Unknown',
+        retailerName: getRetailerName(retailers.find(r => r.id === paymentData.retailerId)),
         lineWorkerId: user.uid,
         totalPaid: paymentData.amount,
         method: paymentData.paymentMethod,
@@ -734,9 +748,9 @@ Payment Details:
 - Transaction ID: ${payment.id}
 
 Retailer Information:
-- Name: ${retailer?.name || 'Unknown'}
-- Phone: ${retailer?.phone || 'N/A'}
-- Address: ${retailer?.address || 'N/A'}
+- Name: ${getRetailerName(retailer)}
+- Phone: ${getRetailerPhone(retailer)}
+- Address: ${getRetailerAddress(retailer)}
 
 Collected By:
 - Line Worker: ${lineWorkerName}
@@ -842,10 +856,10 @@ Thank you for your payment!
       ],
       rows: retailers.map(retailer => [
         retailer.id,
-        retailer.name,
-        retailer.phone,
+        getRetailerName(retailer),
+        getRetailerPhone(retailer),
         retailer.email || '',
-        retailer.address || '',
+        getRetailerAddress(retailer),
         'Active'  // All retailers are considered active
       ]),
       filename: `retailers-${new Date().toISOString().split('T')[0]}`
@@ -856,10 +870,10 @@ Thank you for your payment!
     } else {
       const jsonData = retailers.map(retailer => ({
         id: retailer.id,
-        name: retailer.name,
-        phone: retailer.phone,
+        name: getRetailerName(retailer),
+        phone: getRetailerPhone(retailer),
         email: retailer.email,
-        address: retailer.address,
+        address: getRetailerAddress(retailer),
         active: true,  // All retailers are considered active
         createdAt: retailer.createdAt.toDate()
       }));
@@ -1022,7 +1036,7 @@ Thank you for your payment!
                     {/* Retailer Info */}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-3 mb-2">
-                        <h3 className="text-lg font-semibold text-gray-900 truncate">{retailer.name}</h3>
+                        <h3 className="text-lg font-semibold text-gray-900 truncate">{getRetailerName(retailer)}</h3>
                         <Badge variant="secondary" className="bg-green-100 text-green-800">
                           Active
                         </Badge>

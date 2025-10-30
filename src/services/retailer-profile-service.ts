@@ -97,7 +97,46 @@ export class RetailerProfileService {
         updatedAt: now
       };
       
-      await setDoc(doc(db, 'retailers', retailerId), retailerProfile);
+      // Check if retailer document already exists and preserve its data
+      const existingRetailerDoc = await getDoc(doc(db, 'retailers', retailerId));
+      if (existingRetailerDoc.exists()) {
+        const existingData = existingRetailerDoc.data();
+        
+        console.log('🔄 Retailer document exists, preserving wholesaler data during profile creation:', {
+          retailerId,
+          existingWholesalerAssignments: Object.keys(existingData.wholesalerAssignments || {}).length,
+          existingWholesalerData: Object.keys(existingData.wholesalerData || {}).length
+        });
+        
+        // Merge existing data with new profile, preserving all existing fields
+        const mergedProfile = {
+          ...existingData, // Preserve ALL existing fields
+          ...retailerProfile, // Override with profile fields
+          id: retailerId, // Ensure ID is correct
+          // Ensure critical fields are preserved explicitly
+          wholesalerAssignments: existingData.wholesalerAssignments || {},
+          wholesalerData: existingData.wholesalerData || {},
+          tenantIds: existingData.tenantIds || [],
+          activeOTPs: existingData.activeOTPs || [],
+          recentPayments: existingData.recentPayments || [],
+          totalPaidAmount: existingData.totalPaidAmount || 0,
+          totalPaymentsCount: existingData.totalPaymentsCount || 0,
+          lastPaymentDate: existingData.lastPaymentDate || null,
+          computedAt: existingData.computedAt || null,
+        };
+        
+        await setDoc(doc(db, 'retailers', retailerId), mergedProfile);
+        
+        console.log('✅ Profile created with preserved wholesaler data:', {
+          retailerId,
+          preservedWholesalerAssignments: Object.keys(mergedProfile.wholesalerAssignments || {}).length,
+          preservedWholesalerData: Object.keys(mergedProfile.wholesalerData || {}).length
+        });
+      } else {
+        // Create new document
+        await setDoc(doc(db, 'retailers', retailerId), retailerProfile);
+        console.log('✅ Created new retailer profile document:', retailerId);
+      }
       
       console.log('✅ Retailer profile created:', retailerId);
       return retailerId;
@@ -121,6 +160,28 @@ export class RetailerProfileService {
         
         // Check if this is a legacy retailer document (from wholesaler creation)
         if (data.name || data.phone || data.address) {
+          console.log('🔄 Detected legacy retailer document, checking if migration is needed:', retailerId);
+          
+          // Check if already migrated by looking for profile structure
+          if (data.profile && data.profile.realName && data.profile.phone) {
+            console.log('✅ Retailer already migrated, skipping migration:', retailerId);
+            // Return the existing migrated profile
+            const profile: RetailerProfile = {
+              id: retailerId,
+              profile: data.profile,
+              tenantIds: data.tenantIds || [],
+              verification: data.verification || {
+                isPhoneVerified: false,
+                verificationMethod: 'OTP'
+              },
+              createdAt: data.createdAt || Timestamp.now(),
+              updatedAt: data.updatedAt || Timestamp.now()
+            };
+            return profile;
+          }
+          
+          console.log('🔄 Starting migration for legacy retailer:', retailerId);
+          
           // Convert legacy format to new profile format
           const profile: RetailerProfile = {
             id: retailerId,
@@ -141,10 +202,36 @@ export class RetailerProfileService {
             updatedAt: data.updatedAt || Timestamp.now()
           };
           
-          // Migrate the document to new format
-          await setDoc(retailerRef, profile);
+          // Migrate the document to new format while preserving existing fields
+          console.log('🔄 Preserving existing fields during migration:', {
+            wholesalerAssignments: Object.keys(data.wholesalerAssignments || {}).length,
+            wholesalerData: Object.keys(data.wholesalerData || {}).length,
+            tenantIds: (data.tenantIds || []).length,
+            activeOTPs: (data.activeOTPs || []).length,
+            recentPayments: (data.recentPayments || []).length
+          });
           
-          console.log('🔄 Migrated legacy retailer to new profile format:', retailerId);
+          const migratedProfile = {
+            ...data, // Preserve ALL existing fields like wholesalerAssignments, wholesalerData, recentPayments, etc.
+            ...profile, // Override with new profile structure
+            // Ensure critical fields are preserved explicitly
+            wholesalerAssignments: data.wholesalerAssignments || {},
+            wholesalerData: data.wholesalerData || {},
+            tenantIds: data.tenantIds || [],
+            activeOTPs: data.activeOTPs || [],
+            recentPayments: data.recentPayments || [],
+            totalPaidAmount: data.totalPaidAmount || 0,
+            totalPaymentsCount: data.totalPaymentsCount || 0,
+            lastPaymentDate: data.lastPaymentDate || null,
+            computedAt: data.computedAt || null,
+          };
+          
+          await setDoc(retailerRef, migratedProfile);
+          
+          console.log('✅ Successfully migrated legacy retailer to new profile format:', retailerId);
+          console.log('✅ Preserved wholesaler assignments:', Object.keys(migratedProfile.wholesalerAssignments || {}).length);
+          console.log('✅ Preserved wholesaler data:', Object.keys(migratedProfile.wholesalerData || {}).length);
+          
           return profile;
         }
         
@@ -333,25 +420,35 @@ export class RetailerAssignmentService {
       const assignmentId = `${tenantId}_${retailerId}`;
       const now = Timestamp.now();
       
+      const assignmentHistoryEntry: any = {
+        assignedAt: now,
+        assignedBy: tenantId,
+        isActive: true
+      };
+      
+      // Only include areaId in assignmentHistory if it's defined
+      if (assignmentData.areaId) {
+        assignmentHistoryEntry.areaId = assignmentData.areaId;
+      }
+      
       const assignment: RetailerAssignment = {
         id: assignmentId,
         tenantId,
         retailerId,
         aliasName: assignmentData.aliasName,
-        areaId: assignmentData.areaId,
         zipcodes: assignmentData.zipcodes,
         creditLimit: assignmentData.creditLimit || 0,
         currentBalance: 0,
         notes: assignmentData.notes,
-        assignmentHistory: [{
-          areaId: assignmentData.areaId,
-          assignedAt: now,
-          assignedBy: tenantId,
-          isActive: true
-        }],
+        assignmentHistory: [assignmentHistoryEntry],
         createdAt: now,
         updatedAt: now
       };
+      
+      // Only include areaId if it's defined
+      if (assignmentData.areaId) {
+        assignment.areaId = assignmentData.areaId;
+      }
       
       await setDoc(doc(db, 'retailerAssignments', assignmentId), assignment);
       
@@ -401,6 +498,12 @@ export class RetailerAssignmentService {
     try {
       const assignmentId = `${tenantId}_${retailerId}`;
       const assignmentRef = doc(db, 'retailerAssignments', assignmentId);
+      
+      // Check if assignment exists first
+      const assignmentDoc = await getDoc(assignmentRef);
+      if (!assignmentDoc.exists()) {
+        throw new Error(`No document to update: Assignment ${assignmentId} does not exist`);
+      }
       
       const updateData: any = {
         updatedAt: Timestamp.now()

@@ -145,13 +145,58 @@ export async function POST(request: NextRequest) {
       await retailerService.reassignRetailerToLineWorker(retailerId!, tenantId, newLineWorkerId);
       
       // Also update in new assignment system
-      await RetailerAssignmentService.updateRetailerAssignment(
-        tenantId,
-        retailerId!,
-        {
-          assignedLineWorkerId: newLineWorkerId
+      try {
+        await RetailerAssignmentService.updateRetailerAssignment(
+          tenantId,
+          retailerId!,
+          {
+            assignedLineWorkerId: newLineWorkerId
+          }
+        );
+      } catch (assignmentError: any) {
+        console.log('⚠️  Assignment update failed, trying to create assignment:', assignmentError.message);
+        
+        // If assignment doesn't exist, try to create it
+        if (assignmentError.message.includes('No document to update') || 
+            assignmentError.message.includes('Missing or insufficient permissions')) {
+          
+          // Get retailer data to create assignment
+          const retailer = await retailerService.getById(retailerId!, tenantId);
+          if (retailer) {
+            // Prepare assignment data, filtering out undefined values
+            const assignmentData: any = {
+              aliasName: retailer.profile ? retailer.profile.realName : retailer.name || 'Unknown',
+              zipcodes: retailer.zipcodes || [],
+              creditLimit: 0,
+              notes: 'Auto-created during reassignment'
+            };
+            
+            // Only include areaId if it exists
+            if (retailer.areaId) {
+              assignmentData.areaId = retailer.areaId;
+            }
+            
+            await RetailerAssignmentService.createRetailerAssignment(
+              tenantId,
+              retailerId!,
+              assignmentData
+            );
+            
+            // Now update the assignment with line worker
+            await RetailerAssignmentService.updateRetailerAssignment(
+              tenantId,
+              retailerId!,
+              {
+                assignedLineWorkerId: newLineWorkerId
+              }
+            );
+            
+            console.log('✅ Created and updated retailer assignment');
+          }
+        } else {
+          throw assignmentError;
         }
-      );
+      }
       
       updatedRetailers.push({
         retailerId,

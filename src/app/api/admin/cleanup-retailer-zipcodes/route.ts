@@ -13,8 +13,13 @@ export async function POST(request: NextRequest) {
     
     let fixedCount = 0;
     let alreadyOkCount = 0;
-    const errors = [];
-    const fixedRetailers = [];
+    const errors: string[] = [];
+    const fixedRetailers: Array<{
+      id: string;
+      name: any;
+      phone: any;
+      fixes: string[];
+    }> = [];
     
     for (const retailerDoc of querySnapshot.docs) {
       try {
@@ -108,7 +113,7 @@ export async function POST(request: NextRequest) {
         
       } catch (error) {
         console.error(`  ❌ Error fixing retailer ${retailerDoc.id}:`, error);
-        errors.push(`Retailer ${retailerDoc.id}: ${error.message}`);
+        errors.push(`Retailer ${retailerDoc.id}: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
     }
     
@@ -137,7 +142,7 @@ export async function POST(request: NextRequest) {
     console.error('Zipcode cleanup failed:', error);
     return NextResponse.json({
       success: false,
-      error: error.message
+      error: error instanceof Error ? error.message : 'Unknown error'
     }, { status: 500 });
   }
 }

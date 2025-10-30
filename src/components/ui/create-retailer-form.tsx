@@ -59,13 +59,22 @@ export function CreateRetailerForm({
     if (name.trim() && phone.trim() && (formMode === 'update' || foundRetailer || zipcodes.length > 0 || areaId === 'no-specific-area')) {
       setIsSubmitting(true);
       try {
-        await onSubmit({
-          name: name.trim(),
-          phone: phone.trim(),
-          address: address.trim() || undefined,
-          areaId: areaId === 'no-specific-area' ? undefined : (areaId || undefined),
-          zipcodes: zipcodes.filter(z => z.trim())
-        });
+        // If we found an existing retailer, add it to the network instead of creating a new one
+        if (foundRetailer && onAddExistingRetailer) {
+          console.log('🔍 Adding existing retailer to network:', foundRetailer.profile ? foundRetailer.profile.realName : foundRetailer.name);
+          // Get area zipcodes if area is selected, otherwise use empty array
+          const areaZipcodes = areaId ? areas.find(a => a.id === areaId)?.zipcodes || [] : [];
+          await onAddExistingRetailer(foundRetailer, areaId || undefined, areaZipcodes);
+        } else {
+          console.log('🔍 Creating new retailer:', name.trim());
+          await onSubmit({
+            name: name.trim(),
+            phone: phone.trim(),
+            address: address.trim() || undefined,
+            areaId: areaId === 'no-specific-area' ? undefined : (areaId || undefined),
+            zipcodes: zipcodes.filter(z => z.trim())
+          });
+        }
         // Show success state and trigger confetti
         setShowSuccess(true);
         setTriggerConfetti(true);
@@ -93,9 +102,14 @@ export function CreateRetailerForm({
     setFoundRetailer(retailer);
     setFormMode('create');
     // Pre-fill form with found retailer data but NOT service areas
-    setName(retailer.name);
-    setPhone(retailer.phone);
-    setAddress(retailer.address || '');
+    // Handle both legacy and new profile formats
+    const retailerName = retailer.profile ? retailer.profile.realName : retailer.name;
+    const retailerPhone = retailer.profile ? retailer.profile.phone : retailer.phone;
+    const retailerAddress = retailer.profile ? retailer.profile.address : retailer.address;
+    
+    setName(retailerName || '');
+    setPhone(retailerPhone || '');
+    setAddress(retailerAddress || '');
     // Clear area and zipcodes to let wholesaler assign their own
     setAreaId('');
     setZipcodes([]);
@@ -229,9 +243,11 @@ export function CreateRetailerForm({
                       </div>
                     </div>
                     <div className="text-sm text-blue-800 mb-3">
-                      <p><strong>Name:</strong> {foundRetailer.name}</p>
-                      <p><strong>Phone:</strong> {foundRetailer.phone}</p>
-                      {foundRetailer.address && <p><strong>Address:</strong> {foundRetailer.address}</p>}
+                      <p><strong>Name:</strong> {foundRetailer.profile ? foundRetailer.profile.realName : foundRetailer.name}</p>
+                      <p><strong>Phone:</strong> {foundRetailer.profile ? foundRetailer.profile.phone : foundRetailer.phone}</p>
+                      {(foundRetailer.profile ? foundRetailer.profile.address : foundRetailer.address) && (
+                        <p><strong>Address:</strong> {foundRetailer.profile ? foundRetailer.profile.address : foundRetailer.address}</p>
+                      )}
                     </div>
                     <div className="text-xs text-blue-600 bg-blue-100 p-2 rounded">
                       <p>💡 <strong>Note:</strong> This retailer already exists. You can now assign service areas specific to your wholesaler network.</p>
@@ -352,7 +368,7 @@ export function CreateRetailerForm({
                 )}
                 <Button 
                   type="submit" 
-                  disabled={isSubmitting || !name.trim() || !phone.trim() || (formMode !== 'update' && !foundRetailer && zipcodes.length === 0 && areaId !== 'no-specific-area')}
+                  disabled={isSubmitting || !name || !name.trim() || !phone || !phone.trim() || (formMode !== 'update' && !foundRetailer && zipcodes.length === 0 && areaId !== 'no-specific-area')}
                   onClick={() => {
                     console.log('🔍 Submit button clicked');
                   }}

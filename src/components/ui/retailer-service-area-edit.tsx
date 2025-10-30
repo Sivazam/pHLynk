@@ -21,7 +21,7 @@ export function RetailerServiceAreaEdit({
   onCancel, 
   areas 
 }: RetailerServiceAreaEditProps) {
-  const [areaId, setAreaId] = useState(retailer.areaId || '');
+  const [areaId, setAreaId] = useState(retailer.areaId || 'none');
   const [zipcodes, setZipcodes] = useState<string[]>(retailer.zipcodes || []);
   const [newZipcode, setNewZipcode] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -32,7 +32,7 @@ export function RetailerServiceAreaEdit({
     setIsSubmitting(true);
     try {
       await onSubmit({
-        areaId: areaId || undefined,
+        areaId: areaId && areaId !== 'none' ? areaId : undefined,
         zipcodes: zipcodes.filter(z => z.trim())
       });
       
@@ -41,7 +41,7 @@ export function RetailerServiceAreaEdit({
         if (onCancel) onCancel();
       }, 1500);
     } catch (error) {
-      console.error('Error updating retailer service area:', error);
+      console.error('❌ Error updating retailer service area:', error);
     } finally {
       setIsSubmitting(false);
     }
@@ -69,7 +69,7 @@ export function RetailerServiceAreaEdit({
   const handleAreaChange = (selectedAreaId: string) => {
     if (!isSubmitting) {
       setAreaId(selectedAreaId);
-      if (selectedAreaId) {
+      if (selectedAreaId && selectedAreaId !== 'none') {
         const selectedArea = areas.find(a => a.id === selectedAreaId);
         if (selectedArea) {
           setZipcodes(selectedArea.zipcodes);
@@ -134,7 +134,7 @@ export function RetailerServiceAreaEdit({
               <SelectValue placeholder="Select service area" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">No specific area</SelectItem>
+              <SelectItem value="none">No specific area</SelectItem>
               {areas.map((area) => (
                 <SelectItem key={area.id} value={area.id}>
                   {area.name}

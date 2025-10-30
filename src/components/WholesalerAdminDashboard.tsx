@@ -923,8 +923,8 @@ export function WholesalerAdminDashboard() {
             // Need to get the newly created retailer ID first
             const updatedRetailers = await retailerService.getAll(currentTenantId);
             const newRetailer = updatedRetailers.find(r => 
-              r.name === data.name && 
-              r.phone === data.phone && 
+              (r.profile ? r.profile.realName : r.name) === data.name && 
+              (r.profile ? r.profile.phone : r.phone) === data.phone && 
               r.areaId === data.areaId
             );
             
@@ -981,9 +981,9 @@ export function WholesalerAdminDashboard() {
       
       // Check if retailer was already associated
       if (data.alreadyAssociated) {
-        showSuccess(`Retailer "${retailer.name}" is already in your account!`);
+        showSuccess(`Retailer "${retailer.profile ? retailer.profile.realName : retailer.name}" is already in your account!`);
       } else {
-        showSuccess(`Retailer "${retailer.name}" added to your account successfully!`);
+        showSuccess(`Retailer "${retailer.profile ? retailer.profile.realName : retailer.name}" added to your account successfully!`);
       }
       
       await fetchDashboardData();
@@ -1052,7 +1052,7 @@ export function WholesalerAdminDashboard() {
           // Assign each retailer to this new Line Worker
           for (const retailer of unassignedRetailersInAreas) {
             await retailerService.assignLineWorker(currentTenantId, retailer.id, createdLineWorkerId);
-            console.log(`✅ Auto-assigned retailer "${retailer.name}" to Line Worker`);
+            console.log(`✅ Auto-assigned retailer "${retailer.profile ? retailer.profile.realName : retailer.name}" to Line Worker`);
           }
           
           if (unassignedRetailersInAreas.length > 0) {
@@ -1268,7 +1268,7 @@ export function WholesalerAdminDashboard() {
           
           for (const retailer of unassignedRetailersInAddedAreas) {
             await retailerService.assignLineWorker(currentTenantId, retailer.id, editingLineWorker.id);
-            console.log(`✅ Auto-assigned retailer "${retailer.name}" to Line Worker for new area`);
+            console.log(`✅ Auto-assigned retailer "${retailer.profile ? retailer.profile.realName : retailer.name}" to Line Worker for new area`);
           }
         }
         
@@ -1283,7 +1283,7 @@ export function WholesalerAdminDashboard() {
           
           for (const retailer of assignedRetailersInRemovedAreas) {
             await retailerService.assignLineWorker(currentTenantId, retailer.id, null);
-            console.log(`✅ Auto-unassigned retailer "${retailer.name}" from Line Worker for removed area`);
+            console.log(`✅ Auto-unassigned retailer "${retailer.profile ? retailer.profile.realName : retailer.name}" from Line Worker for removed area`);
           }
         }
         
@@ -1713,13 +1713,19 @@ export function WholesalerAdminDashboard() {
                   {retailers.map((retailer) => (
                     <TableRow key={retailer.id}>
                       <TableCell>
-                        <div className="font-medium">{retailer.name}</div>
-                        <div className="text-sm text-gray-500">{retailer.address}</div>
+                        <div className="font-medium">
+                          {retailer.profile ? retailer.profile.realName : retailer.name}
+                        </div>
+                        <div className="text-sm text-gray-500">
+                          {retailer.profile ? retailer.profile.address : retailer.address}
+                        </div>
                       </TableCell>
                       <TableCell>
                         {areas.find(a => a.id === retailer.areaId)?.name || 'Unassigned'}
                       </TableCell>
-                      <TableCell>{retailer.phone}</TableCell>
+                      <TableCell>
+                        {retailer.profile ? retailer.profile.phone : retailer.phone}
+                      </TableCell>
                       <TableCell>
                         <div className="flex items-center space-x-2">
                           <Button
@@ -1767,13 +1773,46 @@ export function WholesalerAdminDashboard() {
                   if (!currentTenantId) return;
                   
                   try {
-                    await retailerService.update(editingRetailer.id, {
-                      areaId: data.areaId,
-                      zipcodes: data.zipcodes
-                    }, currentTenantId);
-                    await fetchDashboardData();
-                    setEditingRetailer(null);
+                    console.log('🔧 Starting retailer service area update...');
+                    
+                    await retailerService.updateWholesalerAssignment(
+                      editingRetailer.id, 
+                      currentTenantId, 
+                      data.areaId, 
+                      data.zipcodes
+                    );
+                    console.log('✅ Wholesaler assignment updated successfully');
+                    
+                    // Add a small delay to ensure Firestore cache is updated
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    
+                    // Fetch the updated retailer with proper data merging
+                    const updatedRetailer = await retailerService.getRetailerForTenant(editingRetailer.id, currentTenantId);
+                    
+                    if (updatedRetailer) {
+                      // Update only the specific retailer in the existing retailers array
+                      setRetailers(prevRetailers => 
+                        prevRetailers.map(r => 
+                          r.id === editingRetailer.id ? updatedRetailer : r
+                        )
+                      );
+                      console.log('🔄 Updated retailer in state with new area/zipcodes');
+                      
+                      // Show success feedback with confetti
+                      const areaName = areas.find(a => a.id === data.areaId)?.name || 'Updated area';
+                      showSuccess(`Service area for "${editingRetailer.name}" updated to "${areaName}" successfully!`);
+                      setTriggerLineWorkerConfetti(true);
+                      
+                      // Close dialog after showing success
+                      setTimeout(() => {
+                        setEditingRetailer(null);
+                        setTriggerLineWorkerConfetti(false);
+                      }, 1500);
+                    } else {
+                      console.error('❌ Could not fetch updated retailer data');
+                    }
                   } catch (err: any) {
+                    console.error('❌ Error updating retailer service area:', err);
                     setError(err.message || 'Failed to update retailer service area');
                   }
                 }}
@@ -2139,7 +2178,7 @@ export function WholesalerAdminDashboard() {
                 <SelectContent>
                   <SelectItem value="all">All Retailers</SelectItem>
                   {retailers.map(retailer => (
-                    <SelectItem key={retailer.id} value={retailer.id}>{retailer.name}</SelectItem>
+                    <SelectItem key={retailer.id} value={retailer.id}>{retailer.profile ? retailer.profile.realName : retailer.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -2576,16 +2615,16 @@ export function WholesalerAdminDashboard() {
             <DialogTitle>
               {currentAssignedWorker ? 'Reassign Retailer' : 'Assign Retailer'}
             </DialogTitle>
-            <DialogDescription>
+            <DialogDescription className="space-y-2">
               {assigningRetailer ? (
-                <div>
-                  <p>{assigningRetailer.name}</p>
+                <>
+                  <div>{assigningRetailer.profile ? assigningRetailer.profile.realName : assigningRetailer.name}</div>
                   {currentAssignedWorker && (
-                    <p className="text-sm text-gray-600 mt-1">
+                    <div className="text-sm text-gray-600">
                       Currently assigned to: <strong>{currentAssignedWorker.displayName || currentAssignedWorker.email}</strong>
-                    </p>
+                    </div>
                   )}
-                </div>
+                </>
               ) : 'Select a retailer to assign'}
             </DialogDescription>
           </DialogHeader>
@@ -2759,7 +2798,7 @@ export function WholesalerAdminDashboard() {
                   <SelectContent>
                     <SelectItem value="all">All Retailers</SelectItem>
                     {retailers.map(retailer => (
-                      <SelectItem key={retailer.id} value={retailer.id}>{retailer.name}</SelectItem>
+                      <SelectItem key={retailer.id} value={retailer.id}>{retailer.profile ? retailer.profile.realName : retailer.name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -2839,7 +2878,7 @@ export function WholesalerAdminDashboard() {
                   <div className="flex justify-between items-start">
                     <div>
                       <CardTitle className="text-lg flex items-center gap-2">
-                        {retailer.name}
+                        {retailer.profile ? retailer.profile.realName : retailer.name}
                         {retailer.assignedLineWorkerId && (
                           <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
                             <UserIcon className="h-3 w-3 mr-1" />
@@ -2850,7 +2889,7 @@ export function WholesalerAdminDashboard() {
                       <CardDescription className="mt-1">
                         <div className="flex flex-wrap gap-4 text-sm">
                           <span>
-                            <a href={`tel:${retailer.phone}`} className="text-blue-600 hover:underline">📞 {retailer.phone}</a>
+                            <a href={`tel:${retailer.profile ? retailer.profile.phone : retailer.phone}`} className="text-blue-600 hover:underline">📞 {retailer.profile ? retailer.profile.phone : retailer.phone}</a>
                           </span>
                           <span>📍 {areas.find(a => a.id === retailer.areaId)?.name || 'Unassigned'}</span>
                           <span>🏷️ {retailer.zipcodes.join(', ')}</span>

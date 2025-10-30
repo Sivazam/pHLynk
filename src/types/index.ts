@@ -55,6 +55,11 @@ export interface Retailer extends BaseDocument {
   phone: string;
   email?: string;
   address?: string;
+  active?: boolean; // Added active field
+  
+  // Profile and verification
+  profile?: any;
+  verification?: any;
   
   // Legacy fields (kept for backward compatibility)
   areaId?: string;

@@ -5,7 +5,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { retailerService } from '@/services/firestore';
 import { RetailerAuthService } from '@/services/retailer-auth';
 import { RetailerProfileService, RetailerAssignmentService } from '@/services/retailer-profile-service';
-import { getDocs, collection, query, where } from 'firebase/firestore';
+import { getDocs, collection, query, where, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
 interface LookupRequest {
@@ -83,6 +83,49 @@ export async function POST(request: NextRequest) {
           createdAt: retailerUser.createdAt,
           updatedAt: retailerUser.lastLoginAt || retailerUser.createdAt
         };
+      }
+    }
+    
+    // CRITICAL FIX: Always ensure consistency with retailerUsers collection
+    if (retailer) {
+      const retailerUser = await RetailerAuthService.getRetailerUserByPhone(cleanPhone);
+      
+      if (retailerUser) {
+        console.log(`📋 retailerUsers references retailer ID: ${retailerUser.retailerId}`);
+        
+        if (retailerUser.retailerId !== retailer.id) {
+          console.log('⚠️  INCONSISTENCY DETECTED in wholesaler lookup - correcting:');
+          console.log(`   - Search found: ${retailer.id}`);
+          console.log(`   - retailerUsers expects: ${retailerUser.retailerId}`);
+          
+          // Always try to get the retailer document that retailerUsers references
+          const correctRetailer = await retailerService.getById(retailerUser.retailerId, retailerUser.tenantId);
+          
+          if (correctRetailer && correctRetailer.phone === cleanPhone) {
+            console.log('✅ CORRECTED: Using retailer document from retailerUsers reference');
+            retailer = correctRetailer;
+          } else {
+            console.log('⚠️  retailerUsers reference is invalid, using search result');
+            // Try to update retailerUsers with the correct retailer ID
+            try {
+              console.log('🔧 Updating retailerUsers with correct retailer ID...');
+              const { doc, updateDoc } = await import('firebase/firestore');
+              const { db } = await import('@/lib/firebase');
+              const userRef = doc(db, 'retailerUsers', retailerUser.uid);
+              await updateDoc(userRef, {
+                retailerId: retailer.id,
+                lastLoginAt: serverTimestamp()
+              });
+              console.log('✅ Fixed retailerUsers reference');
+            } catch (fixError) {
+              console.error('❌ Failed to fix retailerUsers reference:', fixError);
+            }
+          }
+        } else {
+          console.log('✅ Consistent: retailerUsers matches search result');
+        }
+      } else {
+        console.log('⚠️  No retailerUsers found for this phone number');
       }
     }
     

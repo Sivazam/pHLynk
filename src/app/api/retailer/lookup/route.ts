@@ -4,6 +4,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from 'next/server';
 import { retailerService } from '@/services/firestore';
 import { RetailerAuthService } from '@/services/retailer-auth';
+import { serverTimestamp } from 'firebase/firestore';
 
 interface RetailerLookupRequest {
   phone: string;
@@ -11,6 +12,8 @@ interface RetailerLookupRequest {
 
 export async function POST(request: NextRequest) {
   try {
+    console.log('🚀 RETAILER LOOKUP API v2.0 - Fixed Version');
+    
     const body: RetailerLookupRequest = await request.json();
     const { phone } = body;
 
@@ -33,8 +36,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // First try to find retailer in retailers collection
-    let retailer = await retailerService.getRetailerByPhone(cleanPhone);
+    // First try to find retailer in retailers collection (check both phone and profile.phone fields)
+    let retailer = await retailerService.getRetailerByPhoneEnhanced(cleanPhone);
     
     // If not found, try retailerUsers collection as fallback
     if (!retailer) {
@@ -57,22 +60,85 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // CRITICAL FIX: Always ensure consistency with retailerUsers collection
     if (retailer) {
-      console.log('✅ Retailer found:', retailer.id);
+      console.log('✅ Initial retailer found:', retailer.id);
+      
+      // Always check retailerUsers for the correct reference
+      const retailerUser = await RetailerAuthService.getRetailerUserByPhone(cleanPhone);
+      
+      if (retailerUser) {
+        console.log(`📋 retailerUsers references retailer ID: ${retailerUser.retailerId}`);
+        
+        if (retailerUser.retailerId !== retailer.id) {
+          console.log('⚠️  INCONSISTENCY DETECTED - correcting:');
+          console.log(`   - Search found: ${retailer.id}`);
+          console.log(`   - retailerUsers expects: ${retailerUser.retailerId}`);
+          
+          // Always try to get the retailer document that retailerUsers references
+          const correctRetailer = await retailerService.getById(retailerUser.retailerId, retailerUser.tenantId);
+          
+          if (correctRetailer && correctRetailer.phone === cleanPhone) {
+            console.log('✅ CORRECTED: Using retailer document from retailerUsers reference');
+            retailer = correctRetailer;
+          } else {
+            console.log('⚠️  retailerUsers reference is invalid, using search result');
+            // Try to update retailerUsers with the correct retailer ID
+            try {
+              console.log('🔧 Updating retailerUsers with correct retailer ID...');
+              const { doc, updateDoc } = await import('firebase/firestore');
+              const { db } = await import('@/lib/firebase');
+              const userRef = doc(db, 'retailerUsers', retailerUser.uid);
+              await updateDoc(userRef, {
+                retailerId: retailer.id,
+                lastLoginAt: serverTimestamp()
+              });
+              console.log('✅ Fixed retailerUsers reference');
+            } catch (fixError) {
+              console.error('❌ Failed to fix retailerUsers reference:', fixError);
+            }
+          }
+        } else {
+          console.log('✅ Consistent: retailerUsers matches search result');
+        }
+      } else {
+        console.log('⚠️  No retailerUsers found for this phone number');
+      }
       
       // Don't expose tenant information for privacy
-      const safeRetailer = {
+      const safeRetailer: any = {
         id: retailer.id,
-        name: retailer.name,
-        phone: retailer.phone,
-        address: retailer.address,
-        zipcodes: retailer.zipcodes,
-        // Note: We intentionally don't return tenantIds for privacy
       };
+      
+      // Handle both legacy and new profile formats
+      if (retailer.profile) {
+        // New profile format
+        safeRetailer.name = retailer.profile.realName;
+        safeRetailer.phone = retailer.profile.phone;
+        safeRetailer.email = retailer.profile.email;
+        safeRetailer.address = retailer.profile.address;
+        safeRetailer.businessType = retailer.profile.businessType;
+        safeRetailer.licenseNumber = retailer.profile.licenseNumber;
+      } else {
+        // Legacy format
+        safeRetailer.name = retailer.name;
+        safeRetailer.phone = retailer.phone;
+        safeRetailer.email = retailer.email;
+        safeRetailer.address = retailer.address;
+        safeRetailer.businessType = retailer.businessType;
+        safeRetailer.licenseNumber = retailer.licenseNumber;
+      }
+      
+      // Include zipcodes if available
+      if (retailer.zipcodes) {
+        safeRetailer.zipcodes = retailer.zipcodes;
+      }
 
       return NextResponse.json({
         retailer: safeRetailer,
-        message: 'Retailer found successfully'
+        message: 'Retailer found successfully',
+        apiVersion: '2.0-fixed',
+        consistencyChecked: true
       });
     }
 

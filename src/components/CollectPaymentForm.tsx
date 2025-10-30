@@ -136,7 +136,7 @@ const CollectPaymentFormComponent = ({
   const retailerOptions = useMemo(() => {
     return retailers.map((retailer) => (
       <SelectItem key={retailer.id} value={retailer.id}>
-        {retailer.name}
+        {retailer.profile ? retailer.profile.realName : retailer.name}
       </SelectItem>
     ));
   }, [retailers]);
