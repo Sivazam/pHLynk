@@ -101,16 +101,24 @@ export function DaySheet({
     return worker?.assignedAreas || [];
   };
 
-  // Get retailer name by ID
+  // Get retailer name by ID (handles both legacy and new profile formats)
   const getRetailerName = (retailerId: string): string => {
     const retailer = retailers.find(r => r.id === retailerId);
+    if (retailer?.profile?.realName) {
+      return retailer.profile.realName;
+    }
     return retailer?.name || 'Unknown Retailer';
   };
 
-  // Get retailer details by ID
+  // Get retailer details by ID (handles both legacy and new profile formats)
   const getRetailerDetails = (retailerId: string) => {
     const retailer = retailers.find(r => r.id === retailerId);
-    return retailer || { name: 'Unknown Retailer', address: 'Not provided', areaId: '' };
+    if (retailer) {
+      const name = retailer.profile?.realName || retailer.name || 'Unknown Retailer';
+      const address = retailer.profile?.address || retailer.address || 'Not provided';
+      return { name, address, areaId: retailer.areaId || '' };
+    }
+    return { name: 'Unknown Retailer', address: 'Not provided', areaId: '' };
   };
 
   // Filter and process data

@@ -29,6 +29,11 @@ interface Retailer {
   phone?: string;
   address?: string;
   areaId?: string;
+  profile?: {
+    realName?: string;
+    phone?: string;
+    address?: string;
+  };
 }
 
 interface WholesalerNames {
@@ -60,6 +65,28 @@ export function EnhancedReceipt({
 }: EnhancedReceiptProps) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [tenantInfo, setTenantInfo] = useState<{ name: string; address?: string } | null>(null);
+
+  // Helper functions to get retailer information
+  const getRetailerName = (retailer: Retailer | null) => {
+    if (retailer?.profile?.realName) {
+      return retailer.profile.realName;
+    }
+    return retailer?.name || 'Unknown Retailer';
+  };
+
+  const getRetailerPhone = (retailer: Retailer | null) => {
+    if (retailer?.profile?.phone) {
+      return retailer.profile.phone;
+    }
+    return retailer?.phone;
+  };
+
+  const getRetailerAddress = (retailer: Retailer | null) => {
+    if (retailer?.profile?.address) {
+      return retailer.profile.address;
+    }
+    return retailer?.address;
+  };
 
   useEffect(() => {
     const fetchTenantInfo = async () => {
@@ -186,18 +213,18 @@ export function EnhancedReceipt({
           <div style="font-size: 14px;">
             <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #eee;">
               <span style="color: #666;">Name:</span>
-              <span style="color: #000;">${retailer?.name || 'Unknown'}</span>
+              <span style="color: #000;">${getRetailerName(retailer)}</span>
             </div>
-            ${retailer?.phone ? `
+            ${getRetailerPhone(retailer) ? `
               <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #eee;">
                 <span style="color: #666;">Phone:</span>
-                <span style="color: #000;">${retailer.phone}</span>
+                <span style="color: #000;">${getRetailerPhone(retailer)}</span>
               </div>
             ` : ''}
-            ${retailer?.address ? `
+            ${getRetailerAddress(retailer) ? `
               <div style="padding: 8px 0;">
                 <span style="color: #666;">Address:</span><br>
-                <span style="color: #000;">${retailer.address}</span>
+                <span style="color: #000;">${getRetailerAddress(retailer)}</span>
               </div>
             ` : ''}
           </div>
@@ -342,7 +369,7 @@ export function EnhancedReceipt({
           console.log('Attempting to share via Web Share API...');
           await navigator.share({
             title: 'PharmaLync Payment Receipt',
-            text: `Payment receipt for ${formatCurrency(payment.totalPaid)} from ${retailer?.name || 'Unknown Retailer'}`,
+            text: `Payment receipt for ${formatCurrency(payment.totalPaid)} from ${getRetailerName(retailer)}`,
             files: [pdfFile]
           });
           console.log('Share successful');
@@ -461,18 +488,18 @@ export function EnhancedReceipt({
             <div className="space-y-2">
               <div className="flex justify-between py-2">
                 <span className="text-gray-600">Name:</span>
-                <span className="font-medium">{retailer?.name || 'Unknown'}</span>
+                <span className="font-medium">{getRetailerName(retailer)}</span>
               </div>
-              {retailer?.phone && (
+              {getRetailerPhone(retailer) && (
                 <div className="flex justify-between py-2">
                   <span className="text-gray-600">Phone:</span>
-                  <span className="font-medium">{retailer.phone}</span>
+                  <span className="font-medium">{getRetailerPhone(retailer)}</span>
                 </div>
               )}
-              {retailer?.address && (
+              {getRetailerAddress(retailer) && (
                 <div className="py-2">
                   <span className="text-gray-600">Address:</span>
-                  <p className="font-medium mt-1">{retailer.address}</p>
+                  <p className="font-medium mt-1">{getRetailerAddress(retailer)}</p>
                 </div>
               )}
             </div>

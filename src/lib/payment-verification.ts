@@ -56,6 +56,16 @@ export class OptimizedPaymentVerification {
     }
     return OptimizedPaymentVerification.instance;
   }
+
+  /**
+   * Helper function to get retailer name (handles both legacy and new profile formats)
+   */
+  private getRetailerName(retailer: any): string {
+    if (retailer?.profile?.realName) {
+      return retailer.profile.realName;
+    }
+    return retailer?.name || 'Unknown Retailer';
+  }
   
   /**
    * Get cached data or fetch from Firebase
@@ -142,7 +152,7 @@ export class OptimizedPaymentVerification {
           payment: {
             id: payment.id,
             amount: payment.amount,
-            retailerName: retailer.name,
+            retailerName: this.getRetailerName(retailer),
             lineWorkerName: payment.lineWorkerName,
             status: 'verified',
             createdAt: payment.createdAt,
@@ -169,7 +179,7 @@ export class OptimizedPaymentVerification {
           payment: {
             id: payment.id,
             amount: payment.amount,
-            retailerName: retailer.name,
+            retailerName: this.getRetailerName(retailer),
             lineWorkerName: payment.lineWorkerName,
             status: 'expired',
             createdAt: payment.createdAt
@@ -204,7 +214,7 @@ export class OptimizedPaymentVerification {
             payment: {
               id: payment.id,
               amount: payment.amount,
-              retailerName: retailer.name,
+              retailerName: this.getRetailerName(retailer),
               lineWorkerName: payment.lineWorkerName,
               status: 'failed',
               createdAt: payment.createdAt
@@ -233,7 +243,7 @@ export class OptimizedPaymentVerification {
         payment: {
           id: payment.id,
           amount: payment.amount,
-          retailerName: retailer.name,
+          retailerName: this.getRetailerName(retailer),
           lineWorkerName: payment.lineWorkerName,
           status: 'verified',
           createdAt: payment.createdAt,
@@ -322,6 +332,7 @@ export class OptimizedPaymentVerification {
         return {
           id: docSnap.id,
           name: retailer.name,
+          profile: retailer.profile, // Include profile data
           isActive: retailer.isActive !== false // Default to true
         };
       },
@@ -394,7 +405,8 @@ export class OptimizedPaymentVerification {
           // Get retailer data in parallel
           const retailerDocRef = doc(firestore, this.retailersCollection, retailerId);
           const retailerDocSnap = await getDoc(retailerDocRef);
-          const retailerName = retailerDocSnap.exists() ? retailerDocSnap.data()?.name || 'Unknown Retailer' : 'Unknown Retailer';
+          const retailerData = retailerDocSnap.exists() ? retailerDocSnap.data() : null;
+          const retailerName = retailerData ? this.getRetailerName(retailerData) : 'Unknown Retailer';
           
           return snapshot.docs.map(doc => {
             const payment = doc.data();
