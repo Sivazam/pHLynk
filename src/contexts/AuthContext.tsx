@@ -15,6 +15,7 @@ import { auth, db, COLLECTIONS, ROLES } from '@/lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import { AuthUser, AuthContextType, User } from '@/types';
 import { initializeFCM } from '@/lib/fcm';
+import { hasValidRetailerDocument } from '@/lib/retailer-validator';
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -102,41 +103,53 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               console.log('✅ Cleared logout timestamp on successful login');
               
               // 🔄 Initialize FCM for returning retailer users
-              try {
-                updateProgress(78, 'Setting up notifications...');
-                console.log('🔔 Initializing FCM for returning retailer user:', {
-                  authUid: firebaseUser.uid,
-                  retailerId: retailerData.retailerId,
-                  retailerName: retailerData.name,
-                  phone: retailerData.phone
-                });
-                
-                // Initialize FCM in background without blocking the UI
-                initializeFCM(retailerData.retailerId, 'retailers').then(fcmToken => {
-                  if (fcmToken) {
-                    console.log('✅ FCM initialized successfully for returning retailer user:', {
-                      retailerId: retailerData.retailerId,
-                      tokenLength: fcmToken.length,
-                      tokenPrefix: fcmToken.substring(0, 20) + '...'
-                    });
+                try {
+                  updateProgress(78, 'Setting up notifications...');
+                  console.log('🔔 Initializing FCM for returning retailer user:', {
+                    authUid: firebaseUser.uid,
+                    retailerId: retailerData.retailerId,
+                    retailerName: retailerData.name,
+                    phone: retailerData.phone,
+                    caller: 'AuthContext.retailerAuth'
+                  });
+                  
+                  // Validate retailer document exists before initializing FCM
+                  const hasValidDocument = await hasValidRetailerDocument(retailerData.retailerId);
+                  
+                  if (!hasValidDocument) {
+                    console.warn('⚠️ Retailer document not found or inactive, skipping FCM:', retailerData.retailerId);
+                    // Clear the invalid retailer ID from localStorage
+                    localStorage.removeItem('retailerId');
+                    updateProgress(85, 'Skipping notifications (invalid retailer)');
                   } else {
-                    console.warn('⚠️ FCM initialization failed for returning retailer user:', {
-                      retailerId: retailerData.retailerId
+                    console.log('✅ Retailer document validated, proceeding with FCM initialization');
+                    // Initialize FCM in background without blocking the UI
+                    initializeFCM(retailerData.retailerId, 'retailers').then(fcmToken => {
+                      if (fcmToken) {
+                        console.log('✅ FCM initialized successfully for returning retailer user:', {
+                          retailerId: retailerData.retailerId,
+                          tokenLength: fcmToken.length,
+                          tokenPrefix: fcmToken.substring(0, 20) + '...'
+                        });
+                      } else {
+                        console.warn('⚠️ FCM initialization failed for returning retailer user:', {
+                          retailerId: retailerData.retailerId
+                        });
+                      }
+                    }).catch(error => {
+                      console.error('❌ FCM initialization error for returning retailer user:', {
+                        retailerId: retailerData.retailerId,
+                        error: error instanceof Error ? error.message : 'Unknown error'
+                      });
                     });
+                    console.log('✅ FCM initialization enabled for retailer - storing tokens for cloud functions');
                   }
-                }).catch(error => {
-                  console.error('❌ FCM initialization error for returning retailer user:', {
+                } catch (error) {
+                  console.error('❌ Failed to initialize FCM for returning retailer user:', {
                     retailerId: retailerData.retailerId,
                     error: error instanceof Error ? error.message : 'Unknown error'
                   });
-                });
-                console.log('✅ FCM initialization enabled for retailer - storing tokens for cloud functions');
-              } catch (error) {
-                console.error('❌ Failed to initialize FCM for returning retailer user:', {
-                  retailerId: retailerData.retailerId,
-                  error: error instanceof Error ? error.message : 'Unknown error'
-                });
-              }
+                }
               
               updateProgress(85, 'Setting up retailer dashboard...');
               

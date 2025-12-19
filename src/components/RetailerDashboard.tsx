@@ -2443,7 +2443,7 @@ const PaymentStatusCell: React.FC<{ state: string }> = ({ state }) => {
       )}
 
       {/* Floating Report Button */}
-      {retailer && <ReportDialog retailerId={retailer.id} />}
+      {retailer && <ReportDialog retailerId={retailer.id} retailerPhone={retailer.phone} />}
     </div>
   );
 }

@@ -14,6 +14,7 @@ import { TenantStatusScreen } from '@/components/TenantStatusScreen';
 import { useRouteProtection } from '@/hooks/use-route-protection';
 import { useState, useEffect } from 'react';
 import { hasSeenIntroCarousel, resetIntroCarousel } from '@/lib/intro-carousel';
+import { validateAndCleanRetailerId } from '@/lib/retailer-validator';
 import { useSearchParams } from 'next/navigation';
 
 export function HomeContent() {
@@ -29,10 +30,14 @@ export function HomeContent() {
 
   // Check for retailer ID in localStorage on mount
   useEffect(() => {
-    const storedRetailerId = localStorage.getItem('retailerId');
-    if (storedRetailerId) {
-      setRetailerId(storedRetailerId);
-    }
+    const validateRetailer = async () => {
+      const validRetailerId = await validateAndCleanRetailerId();
+      if (validRetailerId) {
+        setRetailerId(validRetailerId);
+      }
+    };
+    
+    validateRetailer();
   }, []);
 
   // Prevent back navigation to dashboard after logout

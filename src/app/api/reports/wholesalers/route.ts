@@ -29,6 +29,7 @@ export async function GET(request: NextRequest) {
     let tenantIds: string[] = []
     
     try {
+      // First try to get retailer from retailers collection
       const retailersRef = collection(db, 'retailers')
       const retailerQuery = query(retailersRef, where('phone', '==', phone))
       const retailerSnapshot = await getDocs(retailerQuery)
@@ -36,13 +37,58 @@ export async function GET(request: NextRequest) {
       if (!retailerSnapshot.empty) {
         const retailerDoc = retailerSnapshot.docs[0]
         retailer = { id: retailerDoc.id, ...retailerDoc.data() }
-        tenantIds = retailer.tenantIds || []
-        console.log('✅ Retailer found:', {
+        tenantIds = retailer.tenantIds || retailer.tenantId ? [retailer.tenantId] : []
+        console.log('✅ Retailer found in retailers collection:', {
           id: retailer.id,
           name: retailer.name,
-          tenantIds: tenantIds
+          phone: retailer.phone,
+          tenantIds: tenantIds,
+          tenantId: retailer.tenantId
         })
       } else {
+        console.log('❌ No retailer found in retailers collection for phone:', phone)
+        
+        // Try to get from retailerUsers collection as fallback
+        console.log('🔄 Trying retailerUsers collection as fallback')
+        const cleanPhone = phone.replace(/\D/g, '')
+        const retailerUid = `retailer_${cleanPhone}`
+        
+        try {
+          const retailerUserRef = doc(db, 'retailerUsers', retailerUid)
+          const retailerUserDoc = await getDoc(retailerUserRef)
+          
+          if (retailerUserDoc.exists()) {
+            const retailerUserData = retailerUserDoc.data()
+            console.log('✅ Found retailer in retailerUsers:', {
+              retailerId: retailerUserData.retailerId,
+              name: retailerUserData.name,
+              phone: retailerUserData.phone,
+              tenantIds: retailerUserData.tenantIds
+            })
+            
+            // Now get the actual retailer document
+            if (retailerUserData.retailerId) {
+              const actualRetailerRef = doc(db, 'retailers', retailerUserData.retailerId)
+              const actualRetailerDoc = await getDoc(actualRetailerRef)
+              
+              if (actualRetailerDoc.exists()) {
+                retailer = { id: actualRetailerDoc.id, ...actualRetailerDoc.data() }
+                tenantIds = retailer.tenantIds || retailer.tenantId ? [retailer.tenantId] : []
+                console.log('✅ Found actual retailer document:', {
+                  id: retailer.id,
+                  name: retailer.name,
+                  phone: retailer.phone,
+                  tenantIds: tenantIds
+                })
+              }
+            }
+          }
+        } catch (retailerUserError) {
+          console.error('❌ Error fetching from retailerUsers:', retailerUserError)
+        }
+      }
+      
+      if (!retailer) {
         console.log('❌ No retailer found for phone:', phone)
         return NextResponse.json({
           success: true,
@@ -90,7 +136,14 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    console.log('📊 Final wholesalers list:', wholesalers)
+    console.log('📊 Final wholesalers list:', {
+      count: wholesalers.length,
+      wholesalers: wholesalers.map(w => ({
+        id: w.id,
+        name: w.name,
+        email: w.email
+      }))
+    })
 
     return NextResponse.json({
       success: true,

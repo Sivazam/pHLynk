@@ -40,13 +40,21 @@ export function useWholesalers({
       
       // Add phone parameter to the API call
       const phoneParam = retailerPhone ? `?phone=${retailerPhone}` : ''
-      const response = await fetch(`/api/reports/wholesalers${phoneParam}`)
+      const apiUrl = `/api/reports/wholesalers${phoneParam}`
+      console.log('📡 Making API call to:', apiUrl)
+      
+      const response = await fetch(apiUrl)
+      
+      console.log('📡 API Response status:', response.status)
       
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
+        const errorText = await response.text()
+        console.error('❌ API Error Response:', errorText)
+        throw new Error(`HTTP error! status: ${response.status}, response: ${errorText}`)
       }
       
       const data = await response.json()
+      console.log('📡 API Response data:', data)
       
       if (data.success && data.data && data.data.wholesalers) {
         const wholesalersList = data.data.wholesalers || []
@@ -62,6 +70,7 @@ export function useWholesalers({
           console.log('⚠️ No wholesalers found for this retailer')
         }
       } else {
+        console.error('❌ Invalid response format from server:', data)
         throw new Error('Invalid response format from server')
       }
     } catch (error) {

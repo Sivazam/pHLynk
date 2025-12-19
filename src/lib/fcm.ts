@@ -263,6 +263,32 @@ export async function initializeFCM(
       return null;
     }
 
+    // Use provided userId or fall back to auth.currentUser.uid
+    const finalUserId = userId || auth.currentUser.uid;
+    
+    console.log('🔔 Registering FCM device:', {
+      userId: finalUserId,
+      userType,
+      tokenLength: token.length,
+      tokenPrefix: token.substring(0, 20) + '...',
+      userAgent: navigator.userAgent.substring(0, 50) + '...',
+      caller: new Error().stack?.split('\n')[2]?.trim() // Add caller info
+    });
+    
+    // Validate that the user document exists before trying to update it
+    const { doc, getDoc, updateDoc, setDoc, arrayUnion, Timestamp } = await import('firebase/firestore');
+    const { db } = await import('@/lib/firebase');
+    
+    const userRef = doc(db, userType, finalUserId);
+    const userDoc = await getDoc(userRef);
+    
+    if (!userDoc.exists()) {
+      console.warn(`⚠️ User document not found in ${userType} collection, skipping FCM registration for:`, finalUserId);
+      // Store token locally but don't try to update non-existent document
+      storeCurrentDeviceToken(token);
+      return token;
+    }
+
     // Check if token is already registered
     const isAlreadyRegistered = await checkIfTokenRegistered(token, userType);
     
@@ -274,32 +300,34 @@ export async function initializeFCM(
 
     // Register new token with backend
     try {
-      // Use provided userId or fall back to auth.currentUser.uid
-      const finalUserId = userId || auth.currentUser.uid;
+      // Check if device already exists
+      const userData = userDoc.data();
+      const existingDevices: any[] = userData.fcmDevices || [];
+      const deviceId = generateDeviceId(token, navigator.userAgent);
       
-      console.log('🔔 Registering FCM device:', {
-        userId: finalUserId,
-        userType,
-        tokenLength: token.length,
-        tokenPrefix: token.substring(0, 20) + '...',
-        userAgent: navigator.userAgent.substring(0, 50) + '...'
-      });
+      const existingDeviceIndex = existingDevices.findIndex(d => d.deviceId === deviceId);
       
-      // Directly update user document with FCM device array structure
-      // This ensures cloud functions can find the tokens
-      const { doc, getDoc, updateDoc, arrayUnion, Timestamp } = await import('firebase/firestore');
-      const { db } = await import('@/lib/firebase');
-      
-      const userRef = doc(db, userType, finalUserId);
-      const userDoc = await getDoc(userRef);
-      
-      if (!userDoc.exists()) {
-        console.warn(`⚠️ User document not found in ${userType} collection, creating new document`);
-        // Create user document with FCM device
+      if (existingDeviceIndex >= 0) {
+        // Update existing device
+        existingDevices[existingDeviceIndex] = {
+          ...existingDevices[existingDeviceIndex],
+          lastActive: Timestamp.now(),
+          isActive: true,
+          token: token // Update token in case it changed
+        };
+        
+        await updateDoc(userRef, {
+          fcmDevices: existingDevices,
+          updatedAt: Timestamp.now()
+        });
+        
+        console.log('🔄 Updated existing FCM device in user document');
+      } else {
+        // Add new device
         await updateDoc(userRef, {
           fcmDevices: arrayUnion({
             token: token,
-            deviceId: generateDeviceId(token, navigator.userAgent),
+            deviceId: deviceId,
             userAgent: navigator.userAgent,
             lastActive: Timestamp.now(),
             createdAt: Timestamp.now(),
@@ -307,45 +335,8 @@ export async function initializeFCM(
           }),
           updatedAt: Timestamp.now()
         });
-      } else {
-        // Check if device already exists
-        const userData = userDoc.data();
-        const existingDevices: any[] = userData.fcmDevices || [];
-        const deviceId = generateDeviceId(token, navigator.userAgent);
         
-        const existingDeviceIndex = existingDevices.findIndex(d => d.deviceId === deviceId);
-        
-        if (existingDeviceIndex >= 0) {
-          // Update existing device
-          existingDevices[existingDeviceIndex] = {
-            ...existingDevices[existingDeviceIndex],
-            lastActive: Timestamp.now(),
-            isActive: true,
-            token: token // Update token in case it changed
-          };
-          
-          await updateDoc(userRef, {
-            fcmDevices: existingDevices,
-            updatedAt: Timestamp.now()
-          });
-          
-          console.log('🔄 Updated existing FCM device in user document');
-        } else {
-          // Add new device
-          await updateDoc(userRef, {
-            fcmDevices: arrayUnion({
-              token: token,
-              deviceId: deviceId,
-              userAgent: navigator.userAgent,
-              lastActive: Timestamp.now(),
-              createdAt: Timestamp.now(),
-              isActive: true
-            }),
-            updatedAt: Timestamp.now()
-          });
-          
-          console.log('➕ Added new FCM device to user document');
-        }
+        console.log('➕ Added new FCM device to user document');
       }
       
       console.log('✅ FCM device stored directly in user document');

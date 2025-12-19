@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Wholesalers API</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .button {
+            background: #2563eb;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        .button:hover {
+            background: #1d4ed8;
+        }
+        .button:disabled {
+            background: #9ca3af;
+            cursor: not-allowed;
+        }
+        .result {
+            background: #1f2937;
+            color: #10b981;
+            padding: 15px;
+            border-radius: 6px;
+            margin-top: 10px;
+            font-family: monospace;
+            font-size: 14px;
+            white-space: pre-wrap;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .error {
+            background: #dc2626;
+            color: white;
+            padding: 15px;
+            border-radius: 6px;
+            margin-top: 10px;
+        }
+        .warning {
+            background: #f59e0b;
+            color: white;
+            padding: 15px;
+            border-radius: 6px;
+            margin-top: 10px;
+        }
+        .success {
+            background: #16a34a;
+            color: white;
+            padding: 15px;
+            border-radius: 6px;
+            margin-top: 10px;
+        }
+        input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #d1d5db;
+            border-radius: 4px;
+            margin: 5px 0;
+        }
+        .label {
+            display: block;
+            margin-top: 10px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 Test Wholesalers API</h1>
+        
+        <div class="label">Retailer Phone Number:</div>
+        <input type="text" id="retailerPhone" value="9014882779" placeholder="Enter retailer phone number">
+        
+        <button class="button" onclick="testDebugAPI()">🔍 Debug Database</button>
+        <button class="button" onclick="testWholesalersAPI()">🏪 Test Wholesalers API</button>
+        <button class="button" onclick="testRetailerAPI()">👤 Test Retailer API</button>
+        <button class="button" onclick="testCreateTestTenant()">➕ Create Test Tenant</button>
+        <button class="button" onclick="clearResults()">🗑️ Clear Results</button>
+        
+        <div id="results"></div>
+    </div>
+
+    <script>
+        function log(message, type = 'info') {
+            const resultsDiv = document.getElementById('results');
+            const timestamp = new Date().toLocaleTimeString();
+            
+            let className = 'result';
+            if (type === 'error') className = 'error';
+            if (type === 'warning') className = 'warning';
+            if (type === 'success') className = 'success';
+            
+            resultsDiv.innerHTML += `<div class="${className}">[${timestamp}] ${message}</div>`;
+            resultsDiv.scrollTop = resultsDiv.scrollHeight;
+        }
+
+        function clearResults() {
+            document.getElementById('results').innerHTML = '';
+        }
+
+        async function testDebugAPI() {
+            log('🔍 Testing debug API...');
+            
+            try {
+                const response = await fetch('/api/debug/retailer-data');
+                const data = await response.json();
+                
+                log('📊 Debug API Response:', 'success');
+                log(JSON.stringify(data, null, 2));
+                
+                if (data.success) {
+                    log(`✅ Found ${data.data.retailers.length} retailers`);
+                    log(`✅ Found ${data.data.tenants.length} tenants`);
+                    log(`✅ Found ${data.data.retailerUsers.length} retailer users`);
+                    
+                    if (data.data.retailers.length > 0) {
+                        log('📱 Retailers:');
+                        data.data.retailers.forEach(r => {
+                            log(`  - ${r.name} (${r.phone}) - Tenant IDs: ${JSON.stringify(r.tenantIds)}`);
+                        });
+                    }
+                    
+                    if (data.data.tenants.length > 0) {
+                        log('🏢 Tenants:');
+                        data.data.tenants.forEach(t => {
+                            log(`  - ${t.name} (${t.id}) - Status: ${t.status}`);
+                        });
+                    }
+                } else {
+                    log('❌ Debug API failed', 'error');
+                }
+            } catch (error) {
+                log(`❌ Debug API error: ${error.message}`, 'error');
+            }
+        }
+
+        async function testWholesalersAPI() {
+            const retailerPhone = document.getElementById('retailerPhone').value;
+            log(`🏪 Testing wholesalers API with phone: ${retailerPhone}`);
+            
+            try {
+                const response = await fetch(`/api/reports/wholesalers?phone=${retailerPhone}`);
+                const data = await response.json();
+                
+                log('📊 Wholesalers API Response:', 'success');
+                log(JSON.stringify(data, null, 2));
+                
+                if (data.success && data.data.wholesalers) {
+                    log(`✅ Found ${data.data.wholesalers.length} wholesalers`);
+                    data.data.wholesalers.forEach(w => {
+                        log(`  - ${w.name} (${w.id})`);
+                    });
+                } else {
+                    log('❌ No wholesalers found or API failed', 'warning');
+                }
+            } catch (error) {
+                log(`❌ Wholesalers API error: ${error.message}`, 'error');
+            }
+        }
+
+        async function testRetailerAPI() {
+            const retailerPhone = document.getElementById('retailerPhone').value;
+            log(`👤 Testing retailer API with phone: ${retailerPhone}`);
+            
+            try {
+                const response = await fetch(`/api/retailer/current?phone=${retailerPhone}`);
+                const data = await response.json();
+                
+                log('📊 Retailer API Response:', 'success');
+                log(JSON.stringify(data, null, 2));
+                
+                if (data.success) {
+                    log(`✅ Retailer found: ${data.retailerData.name}`);
+                } else {
+                    log('❌ Retailer not found', 'warning');
+                }
+            } catch (error) {
+                log(`❌ Retailer API error: ${error.message}`, 'error');
+            }
+        }
+
+        async function testCreateTestTenant() {
+            log('➕ Creating test tenant...');
+            
+            try {
+                const response = await fetch('/api/init-super-admin', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        name: 'Test Wholesaler',
+                        email: 'test@pharmalynk.com',
+                        phone: '+1234567890'
+                    })
+                });
+                
+                const data = await response.json();
+                
+                log('📊 Create Tenant Response:', 'success');
+                log(JSON.stringify(data, null, 2));
+                
+                if (data.success) {
+                    log(`✅ Test tenant created: ${data.tenantId}`);
+                } else {
+                    log('❌ Failed to create test tenant', 'error');
+                }
+            } catch (error) {
+                log(`❌ Create tenant error: ${error.message}`, 'error');
+            }
+        }
+
+        // Auto-run debug API on load
+        window.addEventListener('load', () => {
+            log('🚀 Page loaded. Ready to test APIs.');
+        });
+    </script>
+</body>
+</html>
