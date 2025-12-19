@@ -5,9 +5,8 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: false,
   },
   reactStrictMode: true,
-  eslint: {
-    ignoreDuringBuilds: false,
-  },
+  // Add empty turbopack config to silence the error
+  turbopack: {},
   images: {
      remotePatterns: [
     {
