@@ -488,7 +488,7 @@ const WholesalerNameCell: React.FC<{ tenantId: string }> = ({ tenantId }) => {
     };
     
     fetchWholesalerName();
-  }, [tenantId, wholesalerNames]); // Add wholesalerNames to dependency array
+  }, [tenantId]); // Remove wholesalerNames from dependency array to prevent infinite loop
   
   return (
     <Badge variant="outline" className="bg-blue-50 text-blue-800 border-blue-200">
@@ -1965,19 +1965,27 @@ const PaymentStatusCell: React.FC<{ state: string }> = ({ state }) => {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div>
                             <Label className="text-sm font-medium text-gray-700">Store Name</Label>
-                            <p className="text-gray-900">{retailer.name}</p>
+                            <p className="text-gray-900">
+                              {retailer?.profile?.realName || retailer?.name || retailerUser?.name || 'Not provided'}
+                            </p>
                           </div>
                           <div>
                             <Label className="text-sm font-medium text-gray-700">Phone</Label>
-                            <p className="text-gray-900">{retailer.phone || 'Not provided'}</p>
+                            <p className="text-gray-900">
+                              +91 {retailer?.profile?.phone || retailer?.phone || retailerUser?.phone || user?.phone || 'Not provided'}
+                            </p>
                           </div>
                           <div>
                             <Label className="text-sm font-medium text-gray-700">Email</Label>
-                            <p className="text-gray-900">{retailer.email || 'Not provided'}</p>
+                            <p className="text-gray-900">
+                              {retailer?.profile?.email || retailer?.email || retailerUser?.email || user?.email || 'Not provided'}
+                            </p>
                           </div>
                           <div>
                             <Label className="text-sm font-medium text-gray-700">Address</Label>
-                            <p className="text-gray-900">{retailer.address || 'Not provided'}</p>
+                            <p className="text-gray-900">
+                              {retailer?.profile?.address || retailer?.address || retailerUser?.address || 'Not provided'}
+                            </p>
                           </div>
                         </div>
                       </CardContent>

@@ -9,7 +9,28 @@ export async function GET(request: NextRequest) {
   try {
     console.log('🔍 Debug API called')
     
-    const results = {
+    const results: {
+      retailers: Array<{
+        id: string;
+        name: any;
+        phone: any;
+        tenantIds: any;
+        tenantId: any;
+      }>;
+      tenants: Array<{
+        id: string;
+        name: any;
+        status: any;
+        email: any;
+      }>;
+      retailerUsers: Array<{
+        id: string;
+        retailerId: any;
+        name: any;
+        phone: any;
+        tenantIds: any;
+      }>;
+    } = {
       retailers: [],
       tenants: [],
       retailerUsers: []

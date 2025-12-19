@@ -15,20 +15,37 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const retailerId = session.user.id
+    // Use retailerId from session instead of querying by phone
+    const retailerId = session.user.retailerId || session.user.id
 
-    // Get retailer details - query directly to find retailer and their tenant associations
+    // Get retailer details directly by ID
     let retailer: any = null
     let tenantIds: string[] = []
     
-    const retailersRef = collection(db, 'retailers')
-    const retailerQuery = query(retailersRef, where('phone', '==', session.user.email || ''))
-    const retailerSnapshot = await getDocs(retailerQuery)
+    const retailerDoc = await getDoc(doc(db, 'retailers', retailerId))
     
-    if (!retailerSnapshot.empty) {
-      const retailerDoc = retailerSnapshot.docs[0]
+    if (retailerDoc.exists()) {
       retailer = { id: retailerDoc.id, ...retailerDoc.data() }
-      tenantIds = retailer.tenantIds || []
+      tenantIds = retailer.tenantIds || retailer.tenantId ? [retailer.tenantId] : []
+    } else {
+      // Fallback: try to get from retailerUsers collection
+      const retailerUsersRef = collection(db, 'retailerUsers')
+      const retailerUserQuery = query(retailerUsersRef, where('retailerId', '==', retailerId))
+      const retailerUserSnapshot = await getDocs(retailerUserQuery)
+      
+      if (!retailerUserSnapshot.empty) {
+        const retailerUserDoc = retailerUserSnapshot.docs[0]
+        const retailerUserData = retailerUserDoc.data()
+        tenantIds = retailerUserData.tenantIds || retailerUserData.tenantId ? [retailerUserData.tenantId] : []
+        
+        // Create a basic retailer object from user data
+        retailer = {
+          id: retailerId,
+          name: retailerUserData.name,
+          phone: retailerUserData.phone,
+          tenantIds: tenantIds
+        }
+      }
     }
 
     if (!retailer) {
@@ -37,6 +54,13 @@ export async function GET(request: NextRequest) {
         message: 'No retailer profile found'
       }, { status: 404 })
     }
+
+    console.log('🔍 Retailer wholesalers API:', {
+      retailerId,
+      retailerName: retailer.name,
+      tenantIds,
+      tenantId: retailer.tenantId
+    })
 
     // Get wholesaler details for each tenantId
     const wholesalers: any[] = []
@@ -62,6 +86,7 @@ export async function GET(request: NextRequest) {
       wholesalers,
       count: wholesalers.length,
       retailerId: retailer.id,
+      retailerName: retailer.name,
       debug: {
         tenantIds,
         wholesalerAssignments: Object.keys(retailer.wholesalerAssignments || {})
