@@ -96,7 +96,11 @@ export function NetflixRoleSelection({ onRoleSelect, onBack }: NetflixRoleSelect
 
     // Navigate immediately without animation delay to prevent DOM cleanup errors
     if (role === 'RETAILER') {
-      window.location.href = '/retailer-login';
+      // Use window.location for immediate navigation, bypassing React's state updates
+      const currentUrl = window.location.href;
+      if (currentUrl !== window.location.origin + '/retailer-login') {
+        window.location.href = '/retailer-login';
+      }
     } else {
       // Call parent's role select handler
       onRoleSelect(role);

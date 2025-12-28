@@ -24,10 +24,24 @@ export function AuthComponent({ onShowRoleSelection, successMessage }: AuthCompo
   const [selectedRole, setSelectedRole] = useState<string | null>(null);
   const [displaySuccessMessage, setDisplaySuccessMessage] = useState<string | null>(null);
 
-  // Always start with Netflix role selection for unauthenticated users
+  // Check if we should show login form directly (when coming from signup success)
   useEffect(() => {
-    setView('roleSelection');
-    setSelectedRole(null);
+    const params = new URLSearchParams(window.location.search);
+    const email = params.get('email');
+    const message = params.get('message');
+
+    // If we have email in URL (likely from signup success), show login form directly
+    if (email || message) {
+      console.log('🔑 Found signup success params, showing login form directly');
+      setView('authForm');
+      setSelectedRole(null);
+      // Set mode to login
+      setMode('login');
+    } else {
+      // Otherwise, show role selection
+      setView('roleSelection');
+      setSelectedRole(null);
+    }
   }, []);
 
   // Handle success message from URL params

@@ -18,20 +18,19 @@ function WholesalerSuccessContent() {
   useEffect(() => {
     console.log('🎉 Wholesaler success page loaded with params:', { message, email, hasPassword: !!password });
 
-    if (!email || !password) {
-      console.warn('⚠️ No email or password in URL params, showing success message only');
-      setIsLoggingIn(false);
-      return;
-    }
-
-    // Redirect to login page after showing success message (2 seconds)
+    // Redirect to login page after showing success message (2.5 seconds)
     const timer = setTimeout(() => {
       console.log('🔑 Redirecting to login page...');
-      window.location.href = '/login?' + new URLSearchParams({
-        message,
-        email,
-      }).toString();
-    }, 2000);
+
+      // Pass both email and password to pre-fill the login form
+      const params = new URLSearchParams();
+      if (message) params.set('message', message);
+      if (email) params.set('email', email);
+      // Note: We don't pass password in URL for security reasons, but we do pass email
+      // so the user doesn't have to re-type it
+
+      window.location.href = '/login?' + params.toString();
+    }, 2500);
 
     return () => {
       clearTimeout(timer);
@@ -41,11 +40,13 @@ function WholesalerSuccessContent() {
   const handleManualLogin = () => {
     console.log('🔑 User requested manual login...');
     setIsLoggingIn(false);
-    window.location.href = '/login?' + new URLSearchParams({
-      message,
-      email,
-      password,
-    }).toString();
+
+    // Pass email and message but not password for security
+    const params = new URLSearchParams();
+    if (message) params.set('message', message);
+    if (email) params.set('email', email);
+
+    window.location.href = '/login?' + params.toString();
   };
 
   return (

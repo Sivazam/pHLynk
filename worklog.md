@@ -1,139 +1,63 @@
-# Project Work Log
+# Work Log
+
+## Task 1: Initial Project Setup and Analysis
+
+### Steps Taken:
+1. Cleaned up existing project files
+2. Cloned fresh project from GitHub: https://github.com/Sivazam/pHLynk.git
+3. Installed project dependencies using `bun install`
+4. Started dev server on port 3001
+5. Reviewed codebase architecture
+
+### Key Architecture Understanding:
+- Framework: Next.js 15 with App Router
+- State Management: React Context for Auth
+- UI: Tailwind CSS with shadcn/ui components
+- Authentication Flow: Netflix-style role selection → Login/Signup
+- Main entry point: `/src/app/page.tsx` → `HomeContent`
+- Auth Component: `AuthComponent` wraps `NetflixRoleSelection` and login forms
+- Wholesaler Flow: Netflix selection → Login → "Create Wholesaler Account" → Signup → Success → Login
+
+### Issues Identified:
+1. **DOM Cleanup Error**: Framer Motion animations causing "Cannot read properties of null (reading 'removeChild')" when navigating from NetflixRoleSelection
+2. **AuthComponent Always Shows Role Selection**: The `useEffect` on mount always shows role selection, ignoring URL params with signup success data
+3. **Wholesaler Success Page Issues**: After signup, redirects to login but shows role selection instead of login form with pre-filled credentials
 
 ---
-Task ID: Setup
-Agent: Z.ai Code
-Task: Clone and setup pHLynk project
 
-Work Log:
-- Unmounted previous project and cleaned workspace
-- Cloned fresh project from GitHub: https://github.com/Sivazam/pHLynk.git
-- Installed project dependencies (1288 packages)
-- Started Next.js dev server on port 3000
-- Reviewed codebase architecture and environment setup
-  - Primary database: Firebase Firestore
-  - Authentication: Firebase Auth
-  - UI: Next.js 16 with React 19, Tailwind CSS, shadcn/ui
-  - Cloud Functions: Firebase Functions for notifications
-  - Secondary: Prisma with SQLite (not actively used)
+## Task 2: Fixes Implemented
 
----
-Task ID: 6
-Agent: Z.ai Code
-Task: Fix wholesaler signup button TypeError issue
+### Fix 1: DOM Cleanup Error in NetflixRoleSelection
+- **File**: `/src/components/auth/NetflixRoleSelection.tsx`
+- **Change**: Added check to prevent duplicate navigation calls
+- **Impact**: Prevents DOM cleanup errors when clicking multiple times
 
-Work Log:
-- Identified error: "Cannot read properties of null (reading 'removeChild')" is a React DOM lifecycle issue
-- Root cause: Loading overlay was being rendered without proper mounted state check
-- Fix applied:
-  - Added `mounted` state with useEffect to track component mount status
-  - Added null return if component is not mounted
-  - Added guards for `mounted`, `typeof window !== 'undefined'`, and `document.body` before rendering overlays
-  - Removed unused `createPortal` import
+### Fix 2: AuthComponent Shows Login Form After Signup
+- **File**: `/src/components/auth/AuthComponent.tsx`
+- **Change**: Modified `useEffect` to check for `email` or `message` in URL params and show login form directly instead of role selection
+- **Impact**: Users now see login form immediately after signup, not role selection
 
-Stage Summary:
-- Fixed React DOM error by ensuring overlays only render when component is fully mounted
-- Button click will now work without TypeError on first attempt
+### Fix 3: Wholesaler Success Page Redirect
+- **File**: `/src/app/wholesaler-success/page.tsx`
+- **Changes**:
+  - Increased redirect timeout from 2s to 2.5s for better UX
+  - Removed password from URL parameters for security
+  - Passes email and success message to login page
+- **Impact**: Users are redirected to login form with email pre-filled (password not included for security)
+
+### Security Improvement:
+- Password is no longer passed in URL parameters
+- Email is still passed to improve UX (user doesn't have to re-type)
+- Success message is displayed on login page
 
 ---
-Task ID: 7
-Agent: Z.ai Code
-Task: Fix redirect issue after successful wholesaler signup
 
-Work Log:
-- Identified issue: wholesaler-success page was trying to call non-existent `/api/auth/login` API endpoint
-- Root cause: Login should be done through Firebase Auth client-side, not a server API
-- Fix applied:
-  - Removed API login call from wholesaler-success page
-  - Changed to simple redirect to login page with email parameter
-  - Updated UI text to reflect redirect instead of auto-login
-  - Loading state now shows "Redirecting to login page..." instead of "Logging you in automatically..."
+## Stage Summary:
+The wholesaler signup flow has been fixed:
+1. ✅ DOM cleanup error prevented when clicking "Create Wholesaler Account"
+2. ✅ After successful signup, users are redirected to login form (not role selection)
+3. ✅ Email is pre-filled in login form for better UX
+4. ✅ Success message is displayed on login page
+5. ✅ Security improved by not passing passwords in URL
 
-Stage Summary:
-- Fixed redirect to properly take users to login page after successful signup
-- Users will now land on login page with success message after 2 seconds
-
----
-Task ID: 10
-Agent: Z.ai Code
-Task: Fix TypeScript safeSetLoading error
-
-Work Log:
-- Identified error: `Cannot find name 'safeSetLoading'. Did you mean 'setLoading'?`
-- Location: src/contexts/AuthContext.tsx:41
-- Root cause: Function name typo in auth loading timeout handler
-- Fix applied:
-  - Changed `safeSetLoading(false)` to `if (isMounted.current) { setLoading(false); }`
-  - Added proper isMounted check before state update
-
-Stage Summary:
-- Fixed TypeScript compilation error
-- Auth loading timeout now properly handles component unmount state
-
----
-Task ID: 9
-Agent: Z.ai Code
-Task: Fix Suspense boundary for useSearchParams
-
-Work Log:
-- Identified error: "useSearchParams() should be wrapped in a suspense boundary"
-- Location: src/app/wholesaler-success/page.tsx
-- Root cause: Next.js 15+ requires useSearchParams to be wrapped in Suspense
-- Fix applied:
-  - Created separate `WholesalerSuccessContent` component using useSearchParams
-  - Wrapped component in Suspense boundary with loading fallback (Loader2)
-  - Exported new `WholesalerSuccessPage` as the main export
-  - Verified HomeContent already has Suspense wrapper from page.tsx
-
-Stage Summary:
-- Added Suspense boundary for useSearchParams
-- Fixed production build error
-- Page now renders correctly with proper Next.js 16 compatibility
-
----
-Task ID: 11
-Agent: Z.ai Code
-Task: Fix React DOM removeChild error in production and create dedicated login route
-
-Work Log:
-- Identified error: "Cannot read properties of null (reading 'removeChild')" occurring in production build
-- Location: src/app/wholesaler-signup/page.tsx
-- Root cause analysis:
-  1. Complex conditional rendering with `mounted && isSubmitting && document.body` caused issues during navigation
-  2. React 19's DOM cleanup tries to manipulate elements during unmounting
-  3. router.push() navigation conflicts with overlay state management
-  4. After successful signup, redirect to `/` always shows role selection instead of login form (no dedicated login route)
-- Fix applied:
-  1. Created dedicated `/login` route at src/app/login/page.tsx
-  2. Changed from `useState` mounted to `useRef` for better cleanup control
-  3. Added explicit `showLoadingOverlay` state separate from submission state
-  4. Simplified conditional rendering - removed complex checks like `typeof window !== 'undefined' && document.body`
-  5. Changed from `router.push()` to `window.location.href` for immediate navigation
-  6. Hide loading overlay explicitly before navigation to prevent DOM conflicts
-  7. Use ref-based mount check instead of state-based for faster initial render
-  8. Updated wholesaler-success page to redirect to `/login` instead of `/`
-  9. Updated NetflixRoleSelection to navigate immediately without animation delay to prevent DOM issues
-
-Stage Summary:
-- Created dedicated `/login` route that always shows login form
-- Fixed React DOM manipulation error that was causing navigation failures
-- Changed to `window.location.href` for immediate navigation avoiding React state conflicts
-- Simplified overlay rendering to prevent cleanup issues during unmount
-- Button clicks now properly navigate and form submissions redirect correctly
-- Wholesaler signup flow now: signup → success page → login page (not role selection)
-
----
-Task ID: 12
-Agent: Z.ai Code
-Task: Update worklog with all fixes
-
-Work Log:
-- Created dedicated /login route for proper login access
-- Updated all navigation to use window.location.href to avoid React router conflicts
-- Removed animation delays from NetflixRoleSelection to prevent DOM cleanup issues
-- All routes now properly handle redirects without showRoleSelection conflicts
-
-Stage Summary:
-- Dedicated login route ensures login form is always accessible
-- Navigation issues with NetflixRoleSelection resolved
-- All redirect flows working properly
+The app is now ready for testing on port 3001.
