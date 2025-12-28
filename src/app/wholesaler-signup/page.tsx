@@ -137,7 +137,6 @@ export default function WholesalerSignupPage() {
         onBackToLogin={handleBackToLogin}
         loading={loading || isSubmitting}
         error={error}
-        isSubmitting={isSubmitting}
       />
     </div>
   );
