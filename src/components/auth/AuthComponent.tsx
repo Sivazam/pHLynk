@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { LoginForm } from './LoginForm';
 import { SignupForm } from './SignupForm';
 import { ResetPasswordForm } from './ResetPasswordForm';
@@ -23,14 +23,22 @@ export function AuthComponent({ onShowRoleSelection, successMessage }: AuthCompo
   const [view, setView] = useState<AuthView>('roleSelection');
   const [selectedRole, setSelectedRole] = useState<string | null>(null);
   const [displaySuccessMessage, setDisplaySuccessMessage] = useState<string | null>(null);
+  const hasInitialized = useRef(false);
 
   // Check if we should show login form directly (when coming from signup success)
   useEffect(() => {
+    // Only run this initialization once
+    if (hasInitialized.current) {
+      return;
+    }
+    
     const params = new URLSearchParams(window.location.search);
     const email = params.get('email');
     const message = params.get('message');
 
-    // If we have email in URL (likely from signup success), show login form directly
+    console.log('🔍 AuthComponent checking URL params:', { email, message, hasEmail: !!email, hasMessage: !!message });
+
+    // If we have email or message in URL (from signup success), show login form directly
     if (email || message) {
       console.log('🔑 Found signup success params, showing login form directly');
       setView('authForm');
@@ -38,10 +46,13 @@ export function AuthComponent({ onShowRoleSelection, successMessage }: AuthCompo
       // Set mode to login
       setMode('login');
     } else {
+      console.log('🎭 No params, showing role selection');
       // Otherwise, show role selection
       setView('roleSelection');
       setSelectedRole(null);
     }
+    
+    hasInitialized.current = true;
   }, []);
 
   // Handle success message from URL params

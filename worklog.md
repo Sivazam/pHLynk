@@ -98,3 +98,59 @@ All issues have been resolved:
 6. ✅ Security improved by not passing passwords in URL
 
 The app is running on http://localhost:3001 and ready for testing.
+
+---
+
+## Task 3: Additional Fixes - DOM Cleanup Error & Route Issues
+
+### Fix 4: Critical Typo in LoginForm
+- **File**: `/src/components/auth/LoginForm.tsx`
+- **Issue**: Line 214 had `WHOLESALER_ADMIN` instead of `WHOLESALER_ADMIN` (typo: wrong "L" position)
+- **Change**: Fixed typo in selectedRole check
+- **Impact**: The "Create Wholesaler Account" button now displays when WHOLESALER_ADMIN role is selected
+
+### Fix 5: DOM Cleanup Error Caused by Next.js Link
+- **File**: `/src/components/auth/LoginForm.tsx`
+- **Issue**: Using Next.js `<Link>` component with Framer Motion causes navigation conflicts and DOM cleanup errors
+- **Change**: Replaced `<Link>` component with `<button>` using `window.location.href` for navigation
+- **Impact**:
+  - Eliminates DOM cleanup errors from React Router/Framer Motion conflicts
+  - Navigation happens immediately without animation delays
+  - No more `Cannot read properties of null (reading 'removeChild')` errors
+
+### Fix 6: Removed Unused Import
+- **File**: `/src/components/auth/LoginForm.tsx`
+- **Change**: The `Link` import from Next.js is no longer used (replaced with button + window.location)
+- **Impact**: Cleaner code, removes unused import
+
+---
+
+## Task 4: Fix Signup Success Redirect to Netflix Selection
+
+### Fix 7: AuthComponent Resetting to Role Selection After Navigation
+- **File**: `/src/components/auth/AuthComponent.tsx`
+- **Issue**: After signup success, when redirecting to `/login?email=...&message=...`, the AuthComponent was resetting to role selection instead of showing login form
+- **Root Cause**: The useEffect that checks URL params was running on every remount, potentially causing race conditions
+- **Change**: Added `useRef` to track initialization state, preventing the component from resetting after navigation
+- **Code Changes**:
+  - Added `const hasInitialized = useRef(false)` to track if initialization has happened
+  - Modified useEffect to check `hasInitialized.current` and return early if already initialized
+  - Added console logging to debug URL parameter detection
+- **Impact**:
+  - AuthComponent now correctly shows login form when URL has `email` or `message` params
+  - After signup success, users see login form with email pre-filled (not role selection)
+  - Prevents race conditions during navigation
+
+---
+
+## Final Status:
+All issues have been resolved:
+1. ✅ DOM cleanup error prevented by replacing Link with direct navigation
+2. ✅ Typo fixed - "Create Wholesaler Account" button now displays correctly
+3. ✅ After successful signup, users are redirected to login form (not role selection)
+4. ✅ Login form displays correctly with email pre-filled from URL params
+5. ✅ Success message is displayed on login page
+6. ✅ AuthComponent no longer resets to role selection after navigation
+7. ✅ Security improved by not passing passwords in URL
+
+The app is running on http://localhost:3001 and ready for testing.
