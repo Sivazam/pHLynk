@@ -1,11 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { CheckCircle, Loader2 } from 'lucide-react';
 
-export default function WholesalerSuccessPage() {
+function WholesalerSuccessContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [isLoggingIn, setIsLoggingIn] = useState(true);
@@ -115,3 +115,17 @@ export default function WholesalerSuccessPage() {
     </div>
   );
 }
+
+function WholesalerSuccessPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-50 via-white to-blue-50">
+        <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
+      </div>
+    }>
+      <WholesalerSuccessContent />
+    </Suspense>
+  );
+}
+
+export default WholesalerSuccessPage;
