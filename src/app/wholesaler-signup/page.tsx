@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { WholesalerSignupForm } from '@/components/auth/WholesalerSignupForm';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -12,6 +12,15 @@ export default function WholesalerSignupPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  // Ensure component is mounted before rendering
+  useEffect(() => {
+    setMounted(true);
+    return () => {
+      setMounted(false);
+    };
+  }, []);
 
   const handleSignup = async (data: any) => {
     // Prevent double submission
@@ -82,6 +91,11 @@ export default function WholesalerSignupPage() {
     router.push('/');
   };
 
+  // Don't render until mounted to avoid React DOM errors
+  if (!mounted) {
+    return null;
+  }
+
   return (
     <div className="min-h-screen relative">
       {/* Debug Panel - Remove in production */}
@@ -96,8 +110,8 @@ export default function WholesalerSignupPage() {
         </div>
       )}
 
-      {/* Loading Overlay */}
-      {isSubmitting && (
+      {/* Loading Overlay - Only render if mounted */}
+      {mounted && isSubmitting && typeof window !== 'undefined' && document.body && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 flex flex-col items-center">
             <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mb-4"></div>
@@ -106,8 +120,8 @@ export default function WholesalerSignupPage() {
         </div>
       )}
 
-      {/* Success Message Overlay */}
-      {success && (
+      {/* Success Message Overlay - Only render if mounted */}
+      {mounted && success && (
         <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 w-full max-w-md px-4">
           <Alert className="border-green-200 bg-green-50 shadow-lg">
             <CheckCircle className="h-4 w-4 text-green-600" />

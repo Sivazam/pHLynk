@@ -24,39 +24,14 @@ export default function WholesalerSuccessPage() {
       return;
     }
 
-    // Auto-submit login after showing success message
-    const timer = setTimeout(async () => {
-      console.log('🔑 Attempting automatic login...');
-
-      try {
-        const response = await fetch('/api/auth/login', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            email,
-            password,
-          }),
-        });
-
-        const result = await response.json();
-        console.log('📥 Auto-login response:', result);
-
-        if (result.success) {
-          console.log('✅ Auto-login successful, redirecting to dashboard...');
-          router.push('/');
-        } else {
-          console.error('❌ Auto-login failed:', result.error);
-          setError(result.error || 'Auto-login failed. Please login manually.');
-          setIsLoggingIn(false);
-        }
-      } catch (err: any) {
-        console.error('❌ Auto-login error:', err);
-        setError(err.message || 'An error occurred during auto-login. Please login manually.');
-        setIsLoggingIn(false);
-      }
-    }, 2000); // 2 second delay to show success message
+    // Redirect to login page after showing success message (2 seconds)
+    const timer = setTimeout(() => {
+      console.log('🔑 Redirecting to login page...');
+      router.push('/?' + new URLSearchParams({
+        message,
+        email,
+      }).toString());
+    }, 2000);
 
     return () => {
       clearTimeout(timer);
@@ -103,32 +78,23 @@ export default function WholesalerSuccessPage() {
             <div className="text-center space-y-4">
               <Loader2 className="w-8 h-8 mx-auto text-blue-600 animate-spin" />
               <p className="text-gray-700 font-medium">
-                Logging you in automatically...
+                Redirecting to login page...
               </p>
               <p className="text-sm text-gray-500">
-                Please wait while we set up your account.
+                Please wait while we take you there.
               </p>
             </div>
           </div>
-        )}
-
-        {/* Error State */}
-        {error && !isLoggingIn && (
-          <Alert variant="destructive" className="mb-6 border-red-200 bg-red-50">
-            <AlertDescription className="text-red-800">
-              {error}
-            </AlertDescription>
-          </Alert>
         )}
 
         {!isLoggingIn && !error && (
           <div className="space-y-4">
             <div className="bg-white rounded-lg p-6 shadow-lg">
               <p className="text-center text-gray-700 mb-4">
-                We couldn't log you in automatically. Please click the button below to go to the login page.
+                Please login with your email and password to access your account.
               </p>
               <button
-                onClick={handleManualLogin}
+                onClick={() => router.push('/?' + new URLSearchParams({ message, email }).toString())}
                 className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-4 rounded-lg transition-colors"
               >
                 Go to Login Page

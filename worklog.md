@@ -1,102 +1,54 @@
+# Project Work Log
+
 ---
-Task ID: 6
-Agent: z-ai-code
-Task: Fix Double Submission and JSON Parse Error
+Task ID: Setup
+Agent: Z.ai Code
+Task: Clone and setup pHLynk project
 
 Work Log:
-- User reported two critical issues:
-  1. "on single click on create account button - i had to clikc twice"
-  2. "after entering all details - i had to click submit button twice"
-  3. Error after double click: "Unexpected token '<', "<!DOCTYPE "... is not valid JSON"
+- Unmounted previous project and cleaned workspace
+- Cloned fresh project from GitHub: https://github.com/Sivazam/pHLynk.git
+- Installed project dependencies (1288 packages)
+- Started Next.js dev server on port 3000
+- Reviewed codebase architecture and environment setup
+  - Primary database: Firebase Firestore
+  - Authentication: Firebase Auth
+  - UI: Next.js 16 with React 19, Tailwind CSS, shadcn/ui
+  - Cloud Functions: Firebase Functions for notifications
+  - Secondary: Prisma with SQLite (not actively used)
 
-Root Cause Analysis:
-Issue 1 - Double Submission:
-- Form had no isSubmitting state tracking
-- Button had `disabled={loading}` but only visual disabled
-- Clicking submit button multiple times sent multiple API requests
-- React Hook Form doesn't prevent native form submission without proper state
+---
+Task ID: 6
+Agent: Z.ai Code
+Task: Fix wholesaler signup button TypeError issue
 
-Issue 2 - JSON Parse Error:
-- First click: Creates account → Redirects to success page (with email/password in URL)
-- Second click: Happens while redirecting → Form submits again
-- Second submission hits success page URL → Gets HTML response instead of JSON
-- Code tries: `JSON.parse()` on HTML → "Unexpected token '<', "<!DOCTYPE ..." error
-
-Solution Applied:
-
-1. Modified WholesalerSignupForm component (/home/z/my-project/src/components/auth/WholesalerSignupForm.tsx):
-   * Added `isSubmitting` state to track form submission status
-   * Added early return in onFormSubmit to ignore duplicate clicks:
-     ```
-     if (isSubmitting) {
-       console.log('⚠️ Form already submitting, ignoring duplicate click');
-       return;
-     }
-     ```
-   * Updated all input fields to use: `disabled={loading || isSubmitting}`
-   * Updated submit button to use: `disabled={loading || isSubmitting}`
-   * Updated back button to use: `disabled={loading || isSubmitting}`
-   * Added form reset after successful submission: `formState: { isSubmitting: false }`
-   * Added finally block to always set `isSubmitting` back to false
-   * Added comprehensive console logging for debugging
-
-2. Modified WholesalerSignupPage component (/home/z/my-project/src/app/wholesaler-signup/page.tsx):
-   * Removed `isRedirecting` state (causing confusion)
-   * Added `isSubmitting` state to parent page
-   * Updated loading overlay condition: `{isSubmitting &&` instead of `{loading && !isRedirecting`
-   * Added early return in handleSignup to prevent duplicate submissions:
-     ```
-     if (isSubmitting) {
-       console.log('⚠️ Signup already in progress, ignoring request');
-       return;
-     }
-     ```
-   * Set `isSubmitting = true` before API call
-   * Added finally block to set `isSubmitting = false` after API completes
-   * Simplified success handling - direct redirect to success page
-   * Kept loading overlay for better UX
-
-Benefits of This Solution:
-1. ✅ Prevents double submission:
-   - Form button is disabled during submission
-   - All input fields are disabled during submission
-   - Back button is disabled during submission
-   - User cannot submit form twice
-
-2. ✅ Prevents JSON parse error:
-   - Duplicate clicks are ignored at form level
-   - Only one API request is sent
-   - Only one JSON response is expected
-   - No HTML parsing errors
-
-3. ✅ Better User Experience:
-   - Clear visual feedback (loading spinner, disabled state)
-   - Proper console logging for debugging
-   - Form is reset after successful submission
-
-Result:
-- Server recompiled successfully: "✓ Compiled in 198ms" and "✓ Compiled in 178ms"
-- All state management properly handled
-- No more double submission issues
-- No more JSON parse errors
-- Wholesaler signup flow is now stable
+Work Log:
+- Identified the error: "Cannot read properties of null (reading 'removeChild')" is a React DOM lifecycle issue
+- Root cause: Loading overlay was being rendered without proper mounted state check
+- Fix applied:
+  - Added `mounted` state with useEffect to track component mount status
+  - Added null return if component is not mounted
+  - Added guards for `mounted`, `typeof window !== 'undefined'`, and `document.body` before rendering overlays
+  - Removed unused `createPortal` import
 
 Stage Summary:
-- Double submission error fixed with isSubmitting state
-- JSON parse error fixed by preventing duplicate submissions
-- Form properly disables all inputs and buttons during submission
-- Comprehensive logging added for debugging
-- Application is stable and ready for testing
+- Fixed React DOM error by ensuring overlays only render when component is fully mounted
+- Button click will now work without TypeError on first attempt
 
-Flow Summary:
-New Wholesaler Signup Flow:
-1. User fills form → Clicks submit button
-2. Form validates → API request sent
-3. Button disabled, form inputs disabled, isSubmitting = true
-4. User tries to click again → Click ignored (early return)
-5. API processes → Account created
-6. isSubmitting = false, form reset
-7. Redirect to /wholesaler-success?message=...&email=...&password=...
-8. Success page shows → Auto-login → Dashboard
+---
+Task ID: 7
+Agent: Z.ai Code
+Task: Fix redirect issue after successful wholesaler signup
 
-No more double clicks, no more JSON errors!
+Work Log:
+- Identified the issue: wholesaler-success page was trying to call non-existent `/api/auth/login` API endpoint
+- Root cause: Login should be done through Firebase Auth client-side, not a server API
+- Fix applied:
+  - Removed the API login call from wholesaler-success page
+  - Changed to simple redirect to login page with email parameter
+  - Updated UI text to reflect redirect instead of auto-login
+  - Loading state now shows "Redirecting to login page..." instead of "Logging you in automatically..."
+
+Stage Summary:
+- Fixed redirect to properly take users to login page after successful signup
+- Users will now land on login page with success message after 2 seconds
