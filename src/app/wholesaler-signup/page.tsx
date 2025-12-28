@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { WholesalerSignupForm } from '@/components/auth/WholesalerSignupForm';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -12,13 +12,12 @@ export default function WholesalerSignupPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [mounted, setMounted] = useState(false);
+  const [showLoadingOverlay, setShowLoadingOverlay] = useState(false);
+  const isMounted = useRef(true);
 
-  // Ensure component is mounted before rendering
   useEffect(() => {
-    setMounted(true);
     return () => {
-      setMounted(false);
+      isMounted.current = false;
     };
   }, []);
 
@@ -34,6 +33,7 @@ export default function WholesalerSignupPage() {
     setLoading(true);
     setError(null);
     setSuccess(null);
+    setShowLoadingOverlay(true);
 
     try {
       console.log('📤 Sending request to API...');
@@ -59,18 +59,20 @@ export default function WholesalerSignupPage() {
           status: result.status
         });
 
-        // Redirect to success page instead of trying to navigate to login
-        // This avoids race conditions with Firebase auth state
+        // Hide loading overlay before navigation
+        setShowLoadingOverlay(false);
+
+        // Use window.location for immediate navigation to avoid React state issues
         const params = new URLSearchParams({
           message: result.message || 'Account created successfully. Please wait for admin approval.',
           email: data.email,
           password: data.password
         });
-
-        router.push('/wholesaler-success?' + params.toString());
+        window.location.href = '/wholesaler-success?' + params.toString();
       } else {
         console.error('❌ Wholesaler signup failed:', result.error);
         setError(result.error || 'Failed to create account');
+        setShowLoadingOverlay(false);
       }
     } catch (err: any) {
       console.error('❌ Wholesaler signup error:', err);
@@ -80,6 +82,7 @@ export default function WholesalerSignupPage() {
         stack: err.stack
       });
       setError(err.message || 'An unexpected error occurred. Please try again.');
+      setShowLoadingOverlay(false);
     } finally {
       setIsSubmitting(false);
       setLoading(false);
@@ -91,8 +94,8 @@ export default function WholesalerSignupPage() {
     router.push('/');
   };
 
-  // Don't render until mounted to avoid React DOM errors
-  if (!mounted) {
+  // Only show content when component is mounted
+  if (!isMounted.current) {
     return null;
   }
 
@@ -110,8 +113,8 @@ export default function WholesalerSignupPage() {
         </div>
       )}
 
-      {/* Loading Overlay - Only render if mounted */}
-      {mounted && isSubmitting && typeof window !== 'undefined' && document.body && (
+      {/* Loading Overlay */}
+      {showLoadingOverlay && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 flex flex-col items-center">
             <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mb-4"></div>
@@ -120,8 +123,8 @@ export default function WholesalerSignupPage() {
         </div>
       )}
 
-      {/* Success Message Overlay - Only render if mounted */}
-      {mounted && success && (
+      {/* Success Message Overlay */}
+      {success && (
         <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 w-full max-w-md px-4">
           <Alert className="border-green-200 bg-green-50 shadow-lg">
             <CheckCircle className="h-4 w-4 text-green-600" />
