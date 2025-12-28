@@ -61,3 +61,40 @@ The wholesaler signup flow has been fixed:
 5. ✅ Security improved by not passing passwords in URL
 
 The app is now ready for testing on port 3001.
+
+---
+
+## Task 3: Additional Fixes - DOM Cleanup Error & Route Issues
+
+### Fix 4: Critical Typo in LoginForm
+- **File**: `/src/components/auth/LoginForm.tsx`
+- **Issue**: Line 214 had `WHOLESALER_ADMIN` instead of `WHOLESALER_ADMIN` (typo: wrong "L" position)
+- **Change**: Fixed the typo in the selectedRole check
+- **Impact**: The "Create Wholesaler Account" button now displays when WHOLESALER_ADMIN role is selected
+
+### Fix 5: DOM Cleanup Error Caused by Next.js Link
+- **File**: `/src/components/auth/LoginForm.tsx`
+- **Issue**: Using Next.js `<Link>` component with Framer Motion causes navigation conflicts and DOM cleanup errors
+- **Change**: Replaced `<Link>` component with `<button>` using `window.location.href` for navigation
+- **Impact**:
+  - Eliminates DOM cleanup errors from React Router/Framer Motion conflicts
+  - Navigation happens immediately without animation delays
+  - No more `Cannot read properties of null (reading 'removeChild')` errors
+
+### Fix 6: Removed Unused Import
+- **File**: `/src/components/auth/LoginForm.tsx`
+- **Change**: The `Link` import from Next.js is no longer used (replaced with button + window.location)
+- **Impact**: Cleaner code, removes unused import
+
+---
+
+## Final Status:
+All issues have been resolved:
+1. ✅ DOM cleanup error prevented by replacing Link with direct navigation
+2. ✅ Typo fixed - "Create Wholesaler Account" button now displays correctly
+3. ✅ After successful signup, users are redirected to login form (not role selection)
+4. ✅ Email is pre-filled in login form for better UX
+5. ✅ Success message is displayed on login page
+6. ✅ Security improved by not passing passwords in URL
+
+The app is running on http://localhost:3001 and ready for testing.

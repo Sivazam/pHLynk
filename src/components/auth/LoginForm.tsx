@@ -213,12 +213,17 @@ export function LoginForm({ onToggleMode, onResetPassword, onShowRoleSelection, 
           {/* Wholesaler Registration */}
           {selectedRole === 'WHOLESALER_ADMIN' && (
             <div className="text-center pt-4">
-              <Link href="/wholesaler-signup" className="inline-flex items-center">
-                <div className="inline-flex items-center rounded-full px-4 py-2 text-sm font-medium transition-all duration-300 cursor-pointer bg-green-600 hover:bg-green-700">
-                  <Building2 className="w-4 h-4 mr-1 text-white" />
-                  <span className="text-white">Create Wholesaler Account</span>
-                </div>
-              </Link>
+              <button
+                type="button"
+                onClick={() => {
+                  console.log('🔗 Navigating to wholesaler signup...');
+                  window.location.href = '/wholesaler-signup';
+                }}
+                className="inline-flex items-center rounded-full px-4 py-2 text-sm font-medium transition-all duration-300 cursor-pointer bg-green-600 hover:bg-green-700"
+              >
+                <Building2 className="w-4 h-4 mr-1 text-white" />
+                <span className="text-white">Create Wholesaler Account</span>
+              </button>
             </div>)
           }
         </CardContent>
