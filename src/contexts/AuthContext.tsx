@@ -38,7 +38,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const timeoutId = setTimeout(() => {
       if (loading) {
         console.warn('Auth loading timeout - forcing loading state to false');
-        safeSetLoading(false);
+        if (isMounted.current) { setLoading(false); };
         updateProgress(100, 'Complete');
       }
     }, 10000); // 10 second timeout
