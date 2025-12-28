@@ -27,9 +27,11 @@ interface LoginFormProps {
   onResetPassword: () => void;
   onShowRoleSelection?: () => void;
   selectedRole?: string | null;
+  initialEmail?: string | null;
+  initialMessage?: string | null;
 }
 
-export function LoginForm({ onToggleMode, onResetPassword, onShowRoleSelection, selectedRole }: LoginFormProps) {
+export function LoginForm({ onToggleMode, onResetPassword, onShowRoleSelection, selectedRole, initialEmail, initialMessage }: LoginFormProps) {
   const { login, loginWithGoogle } = useAuth();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -45,35 +47,21 @@ export function LoginForm({ onToggleMode, onResetPassword, onShowRoleSelection, 
     resolver: zodResolver(loginSchema)
   });
 
-  // Check for success message and credentials in URL parameters
+  // Initialize form with initial values from props
   useEffect(() => {
-    const message = searchParams.get('message');
-    const email = searchParams.get('email');
-    const password = searchParams.get('password');
+    console.log('🔍 LoginForm initializing with props:', { initialEmail, initialMessage, hasEmail: !!initialEmail, hasMessage: !!initialMessage });
 
-    if (message) {
-      setSuccessMessage(decodeURIComponent(message));
+    // Set success message if provided
+    if (initialMessage) {
+      setSuccessMessage(decodeURIComponent(initialMessage));
     }
 
-    // Pre-fill email and password if provided
-    if (email || password) {
-      const formValues: Partial<LoginFormData> = {};
-      if (email) formValues.email = decodeURIComponent(email);
-      if (password) formValues.password = decodeURIComponent(password);
-
-      // Use setValue to pre-fill the form
-      Object.entries(formValues).forEach(([key, value]) => {
-        setValue(key as keyof LoginFormData, value);
-      });
-
-      // Clear URL parameters after using them
-      const url = new URL(window.location.href);
-      url.searchParams.delete('message');
-      url.searchParams.delete('email');
-      url.searchParams.delete('password');
-      window.history.replaceState({}, '', url.toString());
+    // Pre-fill email if provided
+    if (initialEmail) {
+      setValue('email', decodeURIComponent(initialEmail));
+      console.log('✅ LoginForm email pre-filled:', initialEmail);
     }
-  }, [searchParams, setValue]);
+  }, [initialEmail, initialMessage, setValue]);
 
   const onSubmit = async (data: LoginFormData) => {
     setLoading(true);
