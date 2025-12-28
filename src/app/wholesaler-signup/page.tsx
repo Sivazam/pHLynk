@@ -11,14 +11,20 @@ export default function WholesalerSignupPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [isRedirecting, setIsRedirecting] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSignup = async (data: any) => {
+    // Prevent double submission
+    if (isSubmitting) {
+      console.log('⚠️ Signup already in progress, ignoring request');
+      return;
+    }
+
     console.log('🚀 Starting wholesaler signup process:', { businessName: data.businessName, email: data.email });
+    setIsSubmitting(true);
     setLoading(true);
     setError(null);
     setSuccess(null);
-    setIsRedirecting(false);
 
     try {
       console.log('📤 Sending request to API...');
@@ -31,30 +37,28 @@ export default function WholesalerSignupPage() {
       });
 
       console.log('📡 Received response from API, status:', response.status);
-      
+
       const result = await response.json();
       console.log('📥 Wholesaler signup API response:', result);
 
       if (result.success) {
-        console.log('✅ Wholesaler signup successful, preparing to redirect...');
-        console.log('📄 Success details:', { 
-          message: result.message, 
-          tenantId: result.tenantId, 
+        console.log('✅ Wholesaler signup successful, redirecting to success page...');
+        console.log('📄 Success details:', {
+          message: result.message,
+          tenantId: result.tenantId,
           userId: result.userId,
-          status: result.status 
+          status: result.status
         });
-        
-        // Set redirecting state to prevent further interactions
-        setIsRedirecting(true);
-        
-        // Show brief success message, then redirect immediately
-        setSuccess(result.message || 'Account created successfully! Please wait for admin approval.');
-        
-        // Redirect after a brief delay to show success message
-        setTimeout(() => {
-          console.log('🔄 Redirecting to login page with success message...');
-          router.push('/?message=' + encodeURIComponent(result.message || 'Account created successfully. Please wait for admin approval.'));
-        }, 1500);
+
+        // Redirect to success page instead of trying to navigate to login
+        // This avoids race conditions with Firebase auth state
+        const params = new URLSearchParams({
+          message: result.message || 'Account created successfully. Please wait for admin approval.',
+          email: data.email,
+          password: data.password
+        });
+
+        router.push('/wholesaler-success?' + params.toString());
       } else {
         console.error('❌ Wholesaler signup failed:', result.error);
         setError(result.error || 'Failed to create account');
@@ -68,9 +72,8 @@ export default function WholesalerSignupPage() {
       });
       setError(err.message || 'An unexpected error occurred. Please try again.');
     } finally {
-      if (!isRedirecting) {
-        setLoading(false);
-      }
+      setIsSubmitting(false);
+      setLoading(false);
       console.log('🏁 Signup process completed, loading set to false');
     }
   };
@@ -86,14 +89,15 @@ export default function WholesalerSignupPage() {
         <div className="fixed bottom-4 right-4 bg-black bg-opacity-75 text-white p-4 rounded-lg text-xs z-50 max-w-xs">
           <p><strong>Debug Info:</strong></p>
           <p>Loading: {loading ? 'Yes' : 'No'}</p>
-          <p>Redirecting: {isRedirecting ? 'Yes' : 'No'}</p>
+          <p>Submitting: {isSubmitting ? 'Yes' : 'No'}</p>
+          <p>Redirecting: No</p>
           <p>Error: {error || 'None'}</p>
           <p>Success: {success || 'None'}</p>
         </div>
       )}
-      
+
       {/* Loading Overlay */}
-      {loading && !isRedirecting && (
+      {isSubmitting && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 flex flex-col items-center">
             <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mb-4"></div>
@@ -101,7 +105,7 @@ export default function WholesalerSignupPage() {
           </div>
         </div>
       )}
-      
+
       {/* Success Message Overlay */}
       {success && (
         <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 w-full max-w-md px-4">
@@ -109,22 +113,17 @@ export default function WholesalerSignupPage() {
             <CheckCircle className="h-4 w-4 text-green-600" />
             <AlertDescription className="text-green-800">
               {success}
-              {isRedirecting && (
-                <div className="flex items-center mt-2 text-sm">
-                  <div className="w-3 h-3 border-2 border-green-600 border-t-transparent rounded-full animate-spin mr-2"></div>
-                  Redirecting to login...
-                </div>
-              )}
             </AlertDescription>
           </Alert>
         </div>
       )}
-      
+
       <WholesalerSignupForm
         onSubmit={handleSignup}
         onBackToLogin={handleBackToLogin}
-        loading={loading || isRedirecting}
+        loading={loading || isSubmitting}
         error={error}
+        isSubmitting={isSubmitting}
       />
     </div>
   );

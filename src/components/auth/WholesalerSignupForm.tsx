@@ -50,25 +50,39 @@ export function WholesalerSignupForm({ onSubmit, onBackToLogin, loading = false,
   });
 
   const password = watch('password');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const onFormSubmit = async (data: WholesalerSignupFormData) => {
+    // Prevent double submission
+    if (isSubmitting) {
+      console.log('⚠️ Form already submitting, ignoring duplicate click');
+      return;
+    }
+
     console.log('🚀 Wholesaler signup form submitted:', data);
     console.log('📤 Submitting to parent component...');
-    
+
+    setIsSubmitting(true);
+
     try {
       await onSubmit(data);
       console.log('✅ Wholesaler signup completed successfully');
+      // Reset form after successful submission
+      // formState: { isSubmitting: false } // React Hook Form will handle this
     } catch (error) {
       console.error('❌ Wholesaler signup failed:', error);
-      // Re-throw the error so the parent component can handle it
+      // Re-throw error so parent component can handle it
       throw error;
+    } finally {
+      setIsSubmitting(false);
+      console.log('🏁 Form submission completed, isSubmitting set to false');
     }
   };
 
   return (
     <>
       <StatusBarColor theme="white" />
-      
+
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-white to-green-50 py-12 px-4 sm:px-6 lg:px-8">
         <div className="w-full max-w-2xl">
           {/* Brand Header */}
@@ -125,6 +139,7 @@ export function WholesalerSignupForm({ onSubmit, onBackToLogin, loading = false,
                         type="text"
                         placeholder="Enter your business name"
                         className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                        disabled={loading || isSubmitting}
                         {...register('businessName')}
                       />
                       {errors.businessName && (
@@ -141,6 +156,7 @@ export function WholesalerSignupForm({ onSubmit, onBackToLogin, loading = false,
                         type="text"
                         placeholder="Enter owner's full name"
                         className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                        disabled={loading || isSubmitting}
                         {...register('ownerName')}
                       />
                       {errors.ownerName && (
@@ -157,6 +173,7 @@ export function WholesalerSignupForm({ onSubmit, onBackToLogin, loading = false,
                       id="address"
                       placeholder="Enter complete business address"
                       className="border-gray-300 focus:border-blue-500 focus:ring-blue-500 min-h-[80px]"
+                      disabled={loading || isSubmitting}
                       {...register('address')}
                     />
                     {errors.address && (
@@ -173,6 +190,7 @@ export function WholesalerSignupForm({ onSubmit, onBackToLogin, loading = false,
                       type="text"
                       placeholder="Enter GST number if applicable"
                       className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                      disabled={loading || isSubmitting}
                       {...register('gstNumber')}
                     />
                     {errors.gstNumber && (
@@ -200,6 +218,7 @@ export function WholesalerSignupForm({ onSubmit, onBackToLogin, loading = false,
                           type="email"
                           placeholder="Enter email address"
                           className="pl-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                          disabled={loading || isSubmitting}
                           {...register('email')}
                         />
                       </div>
@@ -219,6 +238,7 @@ export function WholesalerSignupForm({ onSubmit, onBackToLogin, loading = false,
                           type="tel"
                           placeholder="Enter mobile number"
                           className="pl-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                          disabled={loading || isSubmitting}
                           {...register('mobileNumber')}
                         />
                       </div>
@@ -248,6 +268,7 @@ export function WholesalerSignupForm({ onSubmit, onBackToLogin, loading = false,
                           type="password"
                           placeholder="Create password"
                           className="pl-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                          disabled={loading || isSubmitting}
                           {...register('password')}
                         />
                       </div>
@@ -267,6 +288,7 @@ export function WholesalerSignupForm({ onSubmit, onBackToLogin, loading = false,
                           type="password"
                           placeholder="Confirm password"
                           className="pl-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                          disabled={loading || isSubmitting}
                           {...register('confirmPassword')}
                         />
                       </div>
@@ -288,12 +310,12 @@ export function WholesalerSignupForm({ onSubmit, onBackToLogin, loading = false,
                 </div>
 
                 {/* Submit Button */}
-                <Button 
-                  type="submit" 
+                <Button
+                  type="submit"
                   className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-medium py-3"
-                  disabled={loading}
+                  disabled={loading || isSubmitting}
                 >
-                  {loading ? (
+                  {loading || isSubmitting ? (
                     <>
                       <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
                       Creating Account...
@@ -309,7 +331,8 @@ export function WholesalerSignupForm({ onSubmit, onBackToLogin, loading = false,
                 <button
                   type="button"
                   onClick={onBackToLogin}
-                  className="text-sm text-blue-600 hover:text-blue-700 font-medium transition-colors"
+                  disabled={loading || isSubmitting}
+                  className="text-sm text-blue-600 hover:text-blue-700 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   ← Back to Wholesaler Login
                 </button>

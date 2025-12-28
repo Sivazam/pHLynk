@@ -36,28 +36,49 @@ export function LoginForm({ onToggleMode, onResetPassword, onShowRoleSelection, 
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const searchParams = useSearchParams();
 
-  // Check for success message in URL parameters
-  useEffect(() => {
-    const message = searchParams.get('message');
-    if (message) {
-      setSuccessMessage(decodeURIComponent(message));
-      // Clear the URL parameter after displaying the message
-      window.history.replaceState({}, '', window.location.pathname);
-    }
-  }, [searchParams]);
-
   const {
     register,
     handleSubmit,
+    setValue,
     formState: { errors }
   } = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema)
   });
 
+  // Check for success message and credentials in URL parameters
+  useEffect(() => {
+    const message = searchParams.get('message');
+    const email = searchParams.get('email');
+    const password = searchParams.get('password');
+
+    if (message) {
+      setSuccessMessage(decodeURIComponent(message));
+    }
+
+    // Pre-fill email and password if provided
+    if (email || password) {
+      const formValues: Partial<LoginFormData> = {};
+      if (email) formValues.email = decodeURIComponent(email);
+      if (password) formValues.password = decodeURIComponent(password);
+
+      // Use setValue to pre-fill the form
+      Object.entries(formValues).forEach(([key, value]) => {
+        setValue(key as keyof LoginFormData, value);
+      });
+
+      // Clear URL parameters after using them
+      const url = new URL(window.location.href);
+      url.searchParams.delete('message');
+      url.searchParams.delete('email');
+      url.searchParams.delete('password');
+      window.history.replaceState({}, '', url.toString());
+    }
+  }, [searchParams, setValue]);
+
   const onSubmit = async (data: LoginFormData) => {
     setLoading(true);
     setError(null);
-    
+
     try {
       await login(data.email, data.password);
     } catch (err: any) {
@@ -70,7 +91,7 @@ export function LoginForm({ onToggleMode, onResetPassword, onShowRoleSelection, 
   const handleGoogleLogin = async () => {
     setLoading(true);
     setError(null);
-    
+
     try {
       await loginWithGoogle();
     } catch (err: any) {
@@ -83,7 +104,7 @@ export function LoginForm({ onToggleMode, onResetPassword, onShowRoleSelection, 
   return (
      <>
       <StatusBarColor theme="white" />
-          
+
       <Card className="w-full max-w-md mx-auto border-0 shadow-xl bg-white/80 backdrop-blur-sm">
         <CardHeader className="space-y-1">
           <CardTitle className="text-2xl font-bold text-center text-gray-900">
@@ -100,13 +121,13 @@ export function LoginForm({ onToggleMode, onResetPassword, onShowRoleSelection, 
               <AlertDescription className="text-green-800">{successMessage}</AlertDescription>
             </Alert>
           )}
-          
+
           {error && (
             <Alert variant="destructive" className="border-red-200 bg-red-50">
               <AlertDescription className="text-red-800">{error}</AlertDescription>
             </Alert>
           )}
-          
+
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="email" className="text-sm font-medium text-gray-700">Email Address</Label>
@@ -142,8 +163,8 @@ export function LoginForm({ onToggleMode, onResetPassword, onShowRoleSelection, 
               )}
             </div>
 
-            <Button 
-              type="submit" 
+            <Button
+              type="submit"
               className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-medium py-2.5"
               disabled={loading}
             >
@@ -176,7 +197,7 @@ export function LoginForm({ onToggleMode, onResetPassword, onShowRoleSelection, 
               Forgot your password?
             </button>
           </div>
-        
+
           {/* Super Admin Registration */}
           {selectedRole === 'SUPER_ADMIN' && (
             <div className="text-center pt-4">

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
 import { 
   User as FirebaseUser,
   onAuthStateChanged,
@@ -24,10 +24,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [loadingStage, setLoadingStage] = useState('Initializing...');
+  const isMounted = useRef(true);
 
   const updateProgress = (progress: number, stage: string) => {
-    setLoadingProgress(Math.min(progress, 100));
-    setLoadingStage(stage);
+    if (isMounted.current) {
+      setLoadingProgress(Math.min(progress, 100));
+      setLoadingStage(stage);
+    }
   };
 
   useEffect(() => {
@@ -35,7 +38,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const timeoutId = setTimeout(() => {
       if (loading) {
         console.warn('Auth loading timeout - forcing loading state to false');
-        setLoading(false);
+        safeSetLoading(false);
         updateProgress(100, 'Complete');
       }
     }, 10000); // 10 second timeout
@@ -78,7 +81,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 console.error('Retailer account is inactive:', firebaseUser.uid);
                 updateProgress(90, 'Account inactive...');
                 await new Promise(resolve => setTimeout(resolve, 150));
-                setUser(null);
+                if (isMounted.current) { setUser(null); };
                 return;
               }
               
@@ -157,7 +160,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               await new Promise(resolve => setTimeout(resolve, 150));
               
               updateProgress(95, 'Almost ready...');
-              setUser(authUser);
+              if (isMounted.current) { setUser(authUser); };
               setLoading(false);
               return;
             }
@@ -182,7 +185,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               console.error('User account is inactive:', firebaseUser.uid);
               updateProgress(90, 'Account inactive...');
               await new Promise(resolve => setTimeout(resolve, 150));
-              setUser(null);
+              if (isMounted.current) { setUser(null); };
               return;
             }
             
@@ -192,7 +195,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 console.error('User missing tenantId:', firebaseUser.uid);
                 updateProgress(90, 'Account configuration error...');
                 await new Promise(resolve => setTimeout(resolve, 150));
-                setUser(null);
+                if (isMounted.current) { setUser(null); };
                 return;
               }
               
@@ -202,7 +205,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 console.error('Tenant not found:', userData.tenantId);
                 updateProgress(90, 'Account configuration error...');
                 await new Promise(resolve => setTimeout(resolve, 150));
-                setUser(null);
+                if (isMounted.current) { setUser(null); };
                 return;
               }
               
@@ -228,7 +231,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 updateProgress(95, 'Almost ready...');
                 await new Promise(resolve => setTimeout(resolve, 150));
                 updateProgress(100, 'Complete');
-                setUser(authUser);
+                if (isMounted.current) { setUser(authUser); };
                 return;
               }
             }
@@ -277,12 +280,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             await new Promise(resolve => setTimeout(resolve, 150));
             
             updateProgress(100, 'Complete');
-            setUser(authUser);
+            if (isMounted.current) { setUser(authUser); };
           } else {
             // User exists in Auth but not in users collection and not a phone retailer
             console.error('User exists in Auth but not in users collection');
             updateProgress(90, 'Setting up guest access...');
-            setUser(null);
+            if (isMounted.current) { setUser(null); };
           }
         } else {
           console.log('👋 No Firebase user - setting user to null');
@@ -295,7 +298,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           await new Promise(resolve => setTimeout(resolve, 150));
           
           updateProgress(90, 'Finalizing setup...');
-          setUser(null);
+          if (isMounted.current) { setUser(null); };
           console.log('✅ User state set to null');
         }
         
@@ -306,7 +309,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.error('Error fetching user data:', error);
         updateProgress(90, 'Recovering from error...');
         await new Promise(resolve => setTimeout(resolve, 200));
-        setUser(null);
+        if (isMounted.current) { setUser(null); };
         updateProgress(100, 'Complete');
       }
       
@@ -321,6 +324,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }, 2000);
 
     return () => {
+      isMounted.current = false;
       clearTimeout(timeoutId);
       clearInterval(fallbackProgress);
       unsubscribe();
@@ -466,7 +470,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.log('✅ Firebase sign out successful');
       
       // The onAuthStateChanged listener will automatically detect the signout
-      // and set the user state to null, so we don't need to manually setUser(null)
+      // and set the user state to null, so we don't need to manually if (isMounted.current) { setUser(null)
       
       // Replace current history entry to prevent back navigation
       if (typeof window !== 'undefined') {

@@ -5,7 +5,7 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: false,
   },
   reactStrictMode: true,
-  // Add empty turbopack config to silence the error
+  // Add empty turbopack config to silence error
   turbopack: {},
   images: {
      remotePatterns: [
@@ -108,11 +108,12 @@ const nextConfig: NextConfig = {
         ],
       },
       {
-        source: '/_next/static/js/:path*',
+        // CSS files in chunks folder - MUST come before general chunks rule
+        source: '/_next/static/chunks/:path*.css',
         headers: [
           {
             key: 'Content-Type',
-            value: 'application/javascript; charset=utf-8',
+            value: 'text/css; charset=utf-8',
           },
           {
             key: 'Cache-Control',
@@ -129,7 +130,8 @@ const nextConfig: NextConfig = {
         ],
       },
       {
-        source: '/_next/static/chunks/:path*',
+        // JS files in chunks folder
+        source: '/_next/static/chunks/:path*.js',
         headers: [
           {
             key: 'Content-Type',
@@ -171,6 +173,27 @@ const nextConfig: NextConfig = {
         ],
       },
       {
+        source: '/_next/static/js/:path*',
+        headers: [
+          {
+            key: 'Content-Type',
+            value: 'application/javascript; charset=utf-8',
+          },
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=31536000, immutable',
+          },
+          {
+            key: 'Access-Control-Allow-Origin',
+            value: '*',
+          },
+          {
+            key: 'Access-Control-Allow-Methods',
+            value: 'GET, HEAD, OPTIONS',
+          },
+        ],
+      },
+      {
         source: '/(.*)',
         headers: [
           {
@@ -195,7 +218,7 @@ const nextConfig: NextConfig = {
   },
   // Webpack configuration to exclude Firebase Functions
   webpack: (config, { dev, isServer, defaultLoaders }) => {
-    // Exclude the functions directory from being processed by Next.js
+    // Exclude functions directory from being processed by Next.js
     if (!isServer) {
       config.resolve.fallback = {
         ...config.resolve.fallback,
@@ -204,7 +227,7 @@ const nextConfig: NextConfig = {
         tls: false,
       };
     }
-    
+
     return config;
   },
   // Experimental features for better PWA support
