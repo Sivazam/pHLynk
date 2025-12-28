@@ -23,7 +23,7 @@ Agent: Z.ai Code
 Task: Fix wholesaler signup button TypeError issue
 
 Work Log:
-- Identified the error: "Cannot read properties of null (reading 'removeChild')" is a React DOM lifecycle issue
+- Identified error: "Cannot read properties of null (reading 'removeChild')" is a React DOM lifecycle issue
 - Root cause: Loading overlay was being rendered without proper mounted state check
 - Fix applied:
   - Added `mounted` state with useEffect to track component mount status
@@ -41,7 +41,7 @@ Agent: Z.ai Code
 Task: Fix redirect issue after successful wholesaler signup
 
 Work Log:
-- Identified the issue: wholesaler-success page was trying to call non-existent `/api/auth/login` API endpoint
+- Identified issue: wholesaler-success page was trying to call non-existent `/api/auth/login` API endpoint
 - Root cause: Login should be done through Firebase Auth client-side, not a server API
 - Fix applied:
   - Removed API login call from wholesaler-success page
@@ -93,7 +93,7 @@ Stage Summary:
 ---
 Task ID: 11
 Agent: Z.ai Code
-Task: Fix React DOM removeChild error in production
+Task: Fix React DOM removeChild error in production and create dedicated login route
 
 Work Log:
 - Identified error: "Cannot read properties of null (reading 'removeChild')" occurring in production build
@@ -102,16 +102,38 @@ Work Log:
   1. Complex conditional rendering with `mounted && isSubmitting && document.body` caused issues during navigation
   2. React 19's DOM cleanup tries to manipulate elements during unmounting
   3. router.push() navigation conflicts with overlay state management
+  4. After successful signup, redirect to `/` always shows role selection instead of login form (no dedicated login route)
 - Fix applied:
-  1. Changed from `useState` mounted to `useRef` for better cleanup control
-  2. Added explicit `showLoadingOverlay` state separate from submission state
-  3. Simplified conditional rendering - removed complex checks like `typeof window !== 'undefined' && document.body`
-  4. Changed from `router.push()` to `window.location.href` for immediate navigation
-  5. Hide loading overlay explicitly before navigation to prevent DOM conflicts
-  6. Use ref-based mount check instead of state-based for faster initial render
+  1. Created dedicated `/login` route at src/app/login/page.tsx
+  2. Changed from `useState` mounted to `useRef` for better cleanup control
+  3. Added explicit `showLoadingOverlay` state separate from submission state
+  4. Simplified conditional rendering - removed complex checks like `typeof window !== 'undefined' && document.body`
+  5. Changed from `router.push()` to `window.location.href` for immediate navigation
+  6. Hide loading overlay explicitly before navigation to prevent DOM conflicts
+  7. Use ref-based mount check instead of state-based for faster initial render
+  8. Updated wholesaler-success page to redirect to `/login` instead of `/`
+  9. Updated NetflixRoleSelection to navigate immediately without animation delay to prevent DOM issues
 
 Stage Summary:
+- Created dedicated `/login` route that always shows login form
 - Fixed React DOM manipulation error that was causing navigation failures
 - Changed to `window.location.href` for immediate navigation avoiding React state conflicts
 - Simplified overlay rendering to prevent cleanup issues during unmount
 - Button clicks now properly navigate and form submissions redirect correctly
+- Wholesaler signup flow now: signup → success page → login page (not role selection)
+
+---
+Task ID: 12
+Agent: Z.ai Code
+Task: Update worklog with all fixes
+
+Work Log:
+- Created dedicated /login route for proper login access
+- Updated all navigation to use window.location.href to avoid React router conflicts
+- Removed animation delays from NetflixRoleSelection to prevent DOM cleanup issues
+- All routes now properly handle redirects without showRoleSelection conflicts
+
+Stage Summary:
+- Dedicated login route ensures login form is always accessible
+- Navigation issues with NetflixRoleSelection resolved
+- All redirect flows working properly

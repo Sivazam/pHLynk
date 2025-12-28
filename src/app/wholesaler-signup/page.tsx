@@ -91,7 +91,7 @@ export default function WholesalerSignupPage() {
   };
 
   const handleBackToLogin = () => {
-    router.push('/');
+    window.location.href = '/login';
   };
 
   // Only show content when component is mounted

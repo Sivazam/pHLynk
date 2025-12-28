@@ -27,10 +27,10 @@ function WholesalerSuccessContent() {
     // Redirect to login page after showing success message (2 seconds)
     const timer = setTimeout(() => {
       console.log('🔑 Redirecting to login page...');
-      router.push('/?' + new URLSearchParams({
+      window.location.href = '/login?' + new URLSearchParams({
         message,
         email,
-      }).toString());
+      }).toString();
     }, 2000);
 
     return () => {
@@ -41,11 +41,11 @@ function WholesalerSuccessContent() {
   const handleManualLogin = () => {
     console.log('🔑 User requested manual login...');
     setIsLoggingIn(false);
-    router.push('/?' + new URLSearchParams({
+    window.location.href = '/login?' + new URLSearchParams({
       message,
       email,
       password,
-    }).toString());
+    }).toString();
   };
 
   return (
@@ -94,7 +94,7 @@ function WholesalerSuccessContent() {
                 Please login with your email and password to access your account.
               </p>
               <button
-                onClick={() => router.push('/?' + new URLSearchParams({ message, email }).toString())}
+                onClick={() => window.location.href = '/login?' + new URLSearchParams({ message, email }).toString()}
                 className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-4 rounded-lg transition-colors"
               >
                 Go to Login Page
@@ -103,10 +103,10 @@ function WholesalerSuccessContent() {
 
             <div className="text-center">
               <button
-                onClick={() => router.push('/')}
+                onClick={() => window.location.href = '/login'}
                 className="text-sm text-blue-600 hover:text-blue-700 font-medium transition-colors"
               >
-                ← Back to Home
+                ← Back to Login
               </button>
             </div>
           </div>

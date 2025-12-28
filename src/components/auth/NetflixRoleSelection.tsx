@@ -93,16 +93,14 @@ export function NetflixRoleSelection({ onRoleSelect, onBack }: NetflixRoleSelect
 
   const handleRoleSelect = (role: string) => {
     setSelectedRole(role);
-    
-    // Add a small delay for the animation
-    setTimeout(() => {
-      if (role === 'RETAILER') {
-        // Redirect to retailer login page
-        window.location.href = '/retailer-login';
-      } else {
-        onRoleSelect(role);
-      }
-    }, 300);
+
+    // Navigate immediately without animation delay to prevent DOM cleanup errors
+    if (role === 'RETAILER') {
+      window.location.href = '/retailer-login';
+    } else {
+      // Call parent's role select handler
+      onRoleSelect(role);
+    }
   };
 
   const containerVariants: Variants = {
