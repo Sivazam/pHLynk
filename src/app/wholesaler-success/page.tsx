@@ -13,40 +13,54 @@ function WholesalerSuccessContent() {
 
   const message = searchParams.get('message') || 'Account created successfully! Please wait for admin approval.';
   const email = searchParams.get('email') || '';
-  const password = searchParams.get('password') || '';
 
   useEffect(() => {
-    console.log('🎉 Wholesaler success page loaded with params:', { message, email, hasPassword: !!password });
+    console.log('🎉 Wholesaler success page loaded with params:', { message, email });
+
+    // Store params in session storage to ensure they survive any URL clearing
+    const signupData = {
+      message,
+      email,
+      timestamp: Date.now()
+    };
+
+    try {
+      sessionStorage.setItem('wholesalerSignupSuccess', JSON.stringify(signupData));
+      console.log('✅ Stored signup data in session storage:', signupData);
+    } catch (error) {
+      console.error('❌ Failed to store signup data:', error);
+    }
 
     // Redirect to login page after showing success message (2.5 seconds)
     const timer = setTimeout(() => {
       console.log('🔑 Redirecting to login page...');
-
-      // Pass both email and password to pre-fill the login form
-      const params = new URLSearchParams();
-      if (message) params.set('message', message);
-      if (email) params.set('email', email);
-      // Note: We don't pass password in URL for security reasons, but we do pass email
-      // so the user doesn't have to re-type it
-
-      window.location.href = '/login?' + params.toString();
+      window.location.href = '/login';
     }, 2500);
 
     return () => {
       clearTimeout(timer);
     };
-  }, [router, message, email, password]);
+  }, [router, message, email]);
 
   const handleManualLogin = () => {
     console.log('🔑 User requested manual login...');
     setIsLoggingIn(false);
 
-    // Pass email and message but not password for security
-    const params = new URLSearchParams();
-    if (message) params.set('message', message);
-    if (email) params.set('email', email);
+    // Store data in session storage before redirecting
+    const signupData = {
+      message,
+      email,
+      timestamp: Date.now()
+    };
 
-    window.location.href = '/login?' + params.toString();
+    try {
+      sessionStorage.setItem('wholesalerSignupSuccess', JSON.stringify(signupData));
+      console.log('✅ Stored signup data in session storage before manual redirect');
+    } catch (error) {
+      console.error('❌ Failed to store signup data:', error);
+    }
+
+    window.location.href = '/login';
   };
 
   return (
@@ -82,7 +96,7 @@ function WholesalerSuccessContent() {
                 Redirecting to login page...
               </p>
               <p className="text-sm text-gray-500">
-                Please wait while we take you there.
+                Preparing your login credentials.
               </p>
             </div>
           </div>
@@ -95,7 +109,7 @@ function WholesalerSuccessContent() {
                 Please login with your email and password to access your account.
               </p>
               <button
-                onClick={() => window.location.href = '/login?' + new URLSearchParams({ message, email }).toString()}
+                onClick={handleManualLogin}
                 className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-4 rounded-lg transition-colors"
               >
                 Go to Login Page
@@ -104,10 +118,10 @@ function WholesalerSuccessContent() {
 
             <div className="text-center">
               <button
-                onClick={() => window.location.href = '/login'}
+                onClick={() => window.location.href = '/'}
                 className="text-sm text-blue-600 hover:text-blue-700 font-medium transition-colors"
               >
-                ← Back to Login
+                ← Back to Home
               </button>
             </div>
           </div>

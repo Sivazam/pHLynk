@@ -30,40 +30,70 @@ export function AuthComponent({ onShowRoleSelection, successMessage }: AuthCompo
     if (hasInitialized.current) {
       return;
     }
-    
-    const params = new URLSearchParams(window.location.search);
-    const email = params.get('email');
-    const message = params.get('message');
 
-    console.log('🔍 AuthComponent checking URL params:', { email, message, hasEmail: !!email, hasMessage: !!message });
+    console.log('🔍 AuthComponent initializing, checking for signup success data...');
 
-    // If we have email or message in URL (from signup success), show login form directly
+    // Check URL params first
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlEmail = urlParams.get('email');
+    const urlMessage = urlParams.get('message');
+
+    // Also check session storage for more reliable data
+    let storedEmail = null;
+    let storedMessage = null;
+
+    try {
+      const storedData = sessionStorage.getItem('wholesalerSignupSuccess');
+      if (storedData) {
+        const parsedData = JSON.parse(storedData);
+        // Only use stored data if it's recent (within 5 minutes)
+        if (Date.now() - parsedData.timestamp < 5 * 60 * 1000) {
+          storedEmail = parsedData.email;
+          storedMessage = parsedData.message;
+          console.log('📦 Found signup data in session storage:', parsedData);
+        } else {
+          console.log('⏰ Stored data is too old, ignoring');
+        }
+        // Clean up old stored data
+        sessionStorage.removeItem('wholesalerSignupSuccess');
+      }
+    } catch (error) {
+      console.error('❌ Failed to read session storage:', error);
+    }
+
+    // Use URL params if available, otherwise use session storage
+    const email = urlEmail || storedEmail;
+    const message = urlMessage || storedMessage;
+
+    console.log('🔍 AuthComponent checking params:', {
+      urlEmail,
+      urlMessage,
+      storedEmail,
+      storedMessage,
+      finalEmail: email,
+      finalMessage: message,
+      hasEmail: !!email,
+      hasMessage: !!message
+    });
+
+    // If we have email or message in URL or session storage (from signup success), show login form directly
     if (email || message) {
       console.log('✅ Found signup success params, showing login form directly');
       setView('authForm');
       setSelectedRole(null);
       // Set mode to login
       setMode('login');
-      
-      // Store initial values to pass to LoginForm
+
+      // Store values to pass to LoginForm
       if (email) setInitialEmail(email);
       if (message) setInitialMessage(message);
-      
-      // Clear URL parameters after reading them to keep URL clean
-      const url = new URL(window.location.href);
-      url.searchParams.delete('email');
-      url.searchParams.delete('message');
-      url.searchParams.delete('password');
-      window.history.replaceState({}, '', url.toString());
-      
-      console.log('🧹 Cleared URL params');
     } else {
       console.log('🎭 No params, showing role selection');
       // Otherwise, show role selection
       setView('roleSelection');
       setSelectedRole(null);
     }
-    
+
     hasInitialized.current = true;
   }, []);
 

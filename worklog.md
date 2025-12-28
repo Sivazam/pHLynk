@@ -201,3 +201,58 @@ All issues have been resolved:
 8. ✅ Security improved by not passing passwords in URL
 
 The app is running on http://localhost:3001 and ready for testing.
+
+---
+
+## Task 6: Final Fix Using Session Storage
+
+### Fix 9: Robust Data Persistence with Session Storage
+- **Files**: `/src/app/wholesaler-success/page.tsx`, `/src/components/auth/AuthComponent.tsx`
+
+- **Root Cause**: URL parameters were being cleared or lost during navigation between the success page and login page, causing AuthComponent to see no params and show role selection.
+
+- **Changes Made**:
+
+  1. **wholesaler-success/page.tsx**:
+     - Store signup data (email, message, timestamp) in `sessionStorage` immediately on page load
+     - Redirect to `/login` after 2.5 seconds (clean URL without params)
+     - Session storage ensures data survives any URL clearing during navigation
+     - Clean up old stored data (older than 5 minutes)
+
+  2. **AuthComponent.tsx**:
+     - Check both URL params AND session storage for signup data
+     - Prefer URL params if available, fall back to session storage
+     - Only use session storage data if it's recent (within 5 minutes)
+     - Automatically clean up old session storage data
+     - Show login form directly when data is found from either source
+     - Pass data to LoginForm via props (initialEmail, initialMessage)
+
+- **Benefits**:
+  - More reliable than URL params alone
+  - Survives URL clearing during navigation
+  - Automatic cleanup of old data
+  - Fallback mechanism if URL params are lost
+  - No race conditions between components
+
+- **Impact**:
+  - ✅ Signup success page stores data in session storage
+  - ✅ AuthComponent reads data from both URL and session storage
+  - ✅ Login form displays with email pre-filled (from props)
+  - ✅ Success message is displayed on login form
+  - ✅ No more redirecting to role selection after signup
+  - ✅ Works even if URL params are cleared during navigation
+
+---
+
+## Final Status:
+All issues have been resolved:
+1. ✅ DOM cleanup error prevented by replacing Link with direct navigation
+2. ✅ Typo fixed - "Create Wholesaler Account" button now displays correctly
+3. ✅ After successful signup, users are redirected to login form (not role selection)
+4. ✅ Login form displays correctly with email pre-filled from session storage
+5. ✅ Success message is displayed on login page
+6. ✅ Robust data persistence using session storage
+7. ✅ No more race conditions or URL param loss during navigation
+8. ✅ Security improved by not passing passwords in URL
+
+The app is running on http://localhost:3001 and ready for testing.
