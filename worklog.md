@@ -256,3 +256,49 @@ All issues have been resolved:
 8. ✅ Security improved by not passing passwords in URL
 
 The app is running on http://localhost:3001 and ready for testing.
+
+---
+
+## Task 7: Add Toast Notification for Pending Tenant Status
+
+### Fix 10: Show User-Facing Toast When Tenant Status is Not Active
+- **File**: `/src/contexts/AuthContext.tsx`
+- **Issue**: When user logs in successfully but tenant status is not ACTIVE (e.g., PENDING), system only logs to console. No user-visible message is shown, causing confusion.
+
+- **Root Cause**:
+  - Login authenticates user successfully (Firebase user is set)
+  - Tenant status is checked and if not ACTIVE, it's logged to console
+  - But no toast/error message is shown to user
+  - User sees "no response" even though login worked
+
+- **Change Made**:
+  - Added explicit toast message using `updateProgress()` when tenant status is not ACTIVE
+  - Messages are user-friendly and explain the situation:
+    - PENDING: "Your account is pending approval by administrator. Please wait for approval."
+    - SUSPENDED: "Your account has been suspended. Please contact support."
+    - REJECTED: "Your account application has been rejected. Please contact support."
+    - Other: "Your account is not active. Please contact support."
+  - Toast displays for 2 seconds before proceeding with login
+
+- **Impact**:
+  - ✅ Users see a clear toast message when login succeeds but account is not active
+  - ✅ No more confusion about "no response"
+  - ✅ User-friendly explanation of each status
+  - ✅ Toast appears on screen (whichever screen is visible)
+  - ✅ After toast, user can proceed to TenantStatusScreen or appropriate dashboard
+
+---
+
+## Final Status:
+All issues have been resolved:
+1. ✅ DOM cleanup error prevented by replacing Link with direct navigation
+2. ✅ Typo fixed - "Create Wholesaler Account" button now displays correctly
+3. ✅ After successful signup, users are redirected to login form (not role selection)
+4. ✅ Login form displays correctly with email pre-filled from session storage
+5. ✅ Success message is displayed on login page
+6. ✅ AuthComponent no longer resets to role selection after navigation
+7. ✅ Race condition fixed - URL params are read before being cleared
+8. ✅ Robust data persistence using session storage
+9. ✅ Toast notification added for pending tenant status - users see clear message on screen
+
+The app is running on http://localhost:3001 and ready for testing.

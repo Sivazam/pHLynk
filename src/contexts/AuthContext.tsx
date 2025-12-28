@@ -212,9 +212,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               const tenantData = tenantDoc.data();
               if (tenantData.status !== 'ACTIVE') {
                 console.error('Tenant account is not active:', userData.tenantId, 'Status:', tenantData.status);
-                updateProgress(90, 'Account pending approval...');
-                await new Promise(resolve => setTimeout(resolve, 150));
-                
+
+                // Show toast message to inform user
+                const message = tenantData.status === 'PENDING'
+                  ? 'Your account is pending approval by administrator. Please wait for approval.'
+                  : tenantData.status === 'SUSPENDED'
+                  ? 'Your account has been suspended. Please contact support.'
+                  : tenantData.status === 'REJECTED'
+                  ? 'Your account application has been rejected. Please contact support.'
+                  : 'Your account is not active. Please contact support.';
+
+                updateProgress(90, message);
+                await new Promise(resolve => setTimeout(resolve, 2000));
+
                 // Create user object with tenant status instead of setting to null
                 const authUser: AuthUser = {
                   uid: firebaseUser.uid,
@@ -227,7 +237,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                   assignedAreas: userData.assignedAreas,
                   assignedZips: userData.assignedZips
                 };
-                
+
                 updateProgress(95, 'Almost ready...');
                 await new Promise(resolve => setTimeout(resolve, 150));
                 updateProgress(100, 'Complete');
