@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 
 interface ConfettiProps {
   trigger: boolean;
@@ -22,26 +22,32 @@ interface Particle {
   shape: 'circle' | 'square' | 'triangle';
 }
 
-export function Confetti({ 
-  trigger, 
-  onComplete, 
+export function Confetti({
+  trigger,
+  onComplete,
   duration = 3000,
   particleCount = 150,
   colors = ['#f87171', '#fbbf24', '#34d399', '#60a5fa', '#a78bfa', '#f472b6']
 }: ConfettiProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [particles, setParticles] = useState<Particle[]>([]);
+  const ctxRef = useRef<CanvasRenderingContext2D | null>(null); // ✅ Store context in ref
   const animationRef = useRef<number>(0);
   const startTimeRef = useRef<number>(0);
+  const particlesRef = useRef<Particle[]>([]); // Use ref instead of state to avoid re-renders
+  const isAnimatingRef = useRef(false);
 
   useEffect(() => {
-    if (!trigger) return;
+    if (!trigger || isAnimatingRef.current) return; // Prevent multiple triggers
 
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas) return; // ✅ Early return if no canvas
 
+    // Get context and store in ref
     const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    if (!ctx) return; // ✅ Early return if no context
+    ctxRef.current = ctx; // ✅ Store context for use in animation
+
+    isAnimatingRef.current = true; // Mark as animating
 
     // Set canvas size
     canvas.width = window.innerWidth;
@@ -55,10 +61,10 @@ export function Confetti({
     for (let i = 0; i < particleCount; i++) {
       const angle = (Math.PI / 2) + (Math.random() - 0.5) * (Math.PI / 4); // 90° ± 22.5° (more vertical)
       const speed = 8 + Math.random() * 12; // Increased speed for better upward movement
-      
+
       newParticles.push({
         x: centerX + (Math.random() - 0.5) * 100, // Spread from center
-        y: startY - 100, // Start 100px above the bottom
+        y: startY - 100, // Start 100px above of bottom
         vx: Math.cos(angle) * speed,
         vy: -Math.sin(angle) * speed - Math.random() * 5, // Upward velocity
         color: colors[Math.floor(Math.random() * colors.length)],
@@ -69,19 +75,23 @@ export function Confetti({
       });
     }
 
-    setParticles(newParticles);
+    particlesRef.current = newParticles;
     startTimeRef.current = Date.now();
 
     // Animation loop
     const animate = () => {
+      const ctx = ctxRef.current; // ✅ Get from ref
+      if (!ctx) return; // ✅ Safe check
+
       const currentTime = Date.now();
       const elapsed = currentTime - (startTimeRef.current || currentTime);
-      
+
       if (elapsed > duration) {
         if (animationRef.current) {
           cancelAnimationFrame(animationRef.current);
         }
-        setParticles([]);
+        particlesRef.current = [];
+        isAnimatingRef.current = false;
         onComplete?.();
         return;
       }
@@ -90,23 +100,24 @@ export function Confetti({
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       // Update and draw particles
-      const updatedParticles = newParticles.map(particle => {
+      const currentParticles = particlesRef.current;
+      const updatedParticles = currentParticles.map(particle => {
         // Apply gravity and air resistance
         const gravity = 0.3;
         const airResistance = 0.99;
-        
+
         let newVx = particle.vx * airResistance;
         let newVy = particle.vy * airResistance + gravity;
-        
+
         let newX = particle.x + newVx;
         let newY = particle.y + newVy;
-        
+
         // Bounce off walls
         if (newX <= 0 || newX >= canvas.width) {
           newVx *= -0.8;
           newX = Math.max(0, Math.min(canvas.width, newX));
         }
-        
+
         // Bounce off floor
         if (newY >= canvas.height) {
           newVy *= -0.6;
@@ -152,7 +163,7 @@ export function Confetti({
         };
       });
 
-      setParticles(updatedParticles);
+      particlesRef.current = updatedParticles;
       animationRef.current = requestAnimationFrame(animate);
     };
 
@@ -160,11 +171,16 @@ export function Confetti({
 
     // Cleanup
     return () => {
-      if (animationRef.current) {
+      const canvas = canvasRef.current;
+      if (canvas) { // ✅ Check if canvas exists before cleanup
         cancelAnimationFrame(animationRef.current);
+        ctxRef.current = null; // ✅ Clear context ref
       }
+      animationRef.current = 0;
+      isAnimatingRef.current = false;
+      particlesRef.current = []; // ✅ Clear particles ref
     };
-  }, [trigger, duration, particleCount, colors, onComplete]);
+  }, [trigger, duration, particleCount, colors, onComplete]); // Empty array - only run on trigger change
 
   // Handle window resize
   useEffect(() => {
@@ -184,7 +200,7 @@ export function Confetti({
     <canvas
       ref={canvasRef}
       className="fixed inset-0 pointer-events-none z-[99999]"
-      style={{ display: particles.length > 0 ? 'block' : 'none' }}
+      style={{ display: particlesRef.current.length > 0 ? 'block' : 'none' }}
     />
   );
 }

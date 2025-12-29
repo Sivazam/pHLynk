@@ -76,6 +76,12 @@ export function HomeContent() {
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
       if (e.ctrlKey && e.shiftKey && e.key === 'I') {
+        // Prevent multiple triggers
+        if (showIntro) {
+          console.log('Intro carousel already showing, skipping reset');
+          return;
+        }
+
         resetIntroCarousel();
         setShowIntro(true);
         console.log('Intro carousel reset for testing', { context: 'Debug' });
@@ -86,10 +92,10 @@ export function HomeContent() {
         console.log('Opening Firebase test page', { context: 'Debug' });
       }
     };
-    
+
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
-  }, []);
+  }, [showIntro]);
 
   const handleIntroComplete = () => {
     setShowIntro(false);

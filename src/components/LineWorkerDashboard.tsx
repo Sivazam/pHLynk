@@ -35,7 +35,7 @@ import { db } from '@/lib/firebase';
 import { doc, getDoc, onSnapshot, collection, query, where } from 'firebase/firestore';
 import { exportToCSV, exportToJSON, preparePaymentDataForExport, formatDateForExport, formatCurrencyForExport } from '@/lib/export-utils';
 import { CollectPaymentForm } from './CollectPaymentForm';
-import { OTPEnterForm } from './OTPEnterForm';
+// NOTE: OTP functionality removed - payments are now created directly in COMPLETED state
 import { 
   Store, 
   DollarSign, 
@@ -81,10 +81,10 @@ export function LineWorkerDashboard() {
   const [notificationCount, setNotificationCount] = useState(0);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [isCollectingPayment, setIsCollectingPayment] = useState(false);
-  const [showOTPEnterDialog, setShowOTPEnterDialog] = useState(false);
-  const [selectedPaymentForOTP, setSelectedPaymentForOTP] = useState<Payment | null>(null);
-  const [selectedRetailerForOTP, setSelectedRetailerForOTP] = useState<Retailer | null>(null);
-  const [verifyingOTP, setVerifyingOTP] = useState(false);
+  const [showConfirmationDialog, setShowConfirmationDialog] = useState(false);
+  const [showPaymentSuccess, setShowPaymentSuccess] = useState(false);
+  const [pendingPaymentData, setPendingPaymentData] = useState<any>(null);
+  const [lastPaymentAmount, setLastPaymentAmount] = useState<number>(0); // ✅ Store amount separately for success dialog
   const [paymentTab, setPaymentTab] = useState('completed');
   const [selectedDateRangeOption, setSelectedDateRangeOption] = useState('today');
   const [dateRange, setDateRange] = useState<{ startDate: Date; endDate: Date }>(() => {
@@ -479,97 +479,97 @@ export function LineWorkerDashboard() {
   };
 
   const handleCollectPayment = async (paymentData: any): Promise<void> => {
+    // Validate data
+    if (!paymentData.retailerId || !paymentData.amount || !paymentData.paymentMethod) {
+      throw new Error('Invalid payment data');
+    }
+
+    // Validate UTR for UPI payments
+    if (paymentData.paymentMethod === 'UPI') {
+      if (!paymentData.utr || paymentData.utr.length !== 4) {
+        throw new Error('UTR must be exactly 4 digits for UPI payments');
+      }
+    }
+
+    // Show confirmation dialog
+    setPendingPaymentData(paymentData);
+    setShowConfirmationDialog(true);
+  };
+
+
+  const handleCancelPayment = () => {
+    setShowConfirmationDialog(false);
+    setPendingPaymentData(null);
+  };
+  const handleConfirmPayment = async () => {
     const currentTenantId = getCurrentTenantId();
-    if (!currentTenantId || !user?.uid) return;
+    if (!currentTenantId || !user?.uid || !pendingPaymentData) return;
 
     setIsCollectingPayment(true);
+
     try {
-      console.log('🚀 Starting payment collection process...');
-      
-      // Create payment first (this is fast)
-      const payment = {
-        retailerId: paymentData.retailerId,
-        retailerName: getRetailerName(retailers.find(r => r.id === paymentData.retailerId)),
-        lineWorkerId: user.uid,
-        totalPaid: paymentData.amount,
-        method: paymentData.paymentMethod,
-        timeline: {
-          initiatedAt: Timestamp.now(),
-          otpSentAt: Timestamp.now(),
-        }
-      };
-
-      console.log('🔄 Creating payment...', payment);
-      const createdPaymentId = await paymentService.initiatePayment(currentTenantId, {
-        retailerId: payment.retailerId,
-        retailerName: payment.retailerName,
-        lineWorkerId: payment.lineWorkerId,
-        totalPaid: payment.totalPaid,
-        method: payment.method
+      console.log('🚀 Starting completed payment creation process...');
+      console.log('💳 Payment data:', {
+        retailerId: pendingPaymentData.retailerId,
+        retailerName: pendingPaymentData.retailerName,
+        amount: pendingPaymentData.amount,
+        method: pendingPaymentData.paymentMethod,
+        utr: pendingPaymentData.utr,
+        notes: pendingPaymentData.notes
       });
-      console.log('✅ Payment created successfully:', createdPaymentId);
-      
-      // Get retailer info early for faster setup
-      const retailer = retailers.find(r => r.id === payment.retailerId);
-      if (!retailer) {
-        throw new Error('Retailer not found');
-      }
-      
-      // Send OTP to retailer (this is the main bottleneck)
-      try {
-        console.log('📤 Sending OTP to retailer...');
-        
-        // Start OTP sending in parallel with getting payment details
-        const [otpResponse, createdPayment] = await Promise.allSettled([
-          fetch('/api/otp/send', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              retailerId: payment.retailerId,
-              paymentId: createdPaymentId,
-              amount: payment.totalPaid,
-              lineWorkerName: user?.displayName || 'Line Worker'
-            }),
-          }),
-          paymentService.getById(createdPaymentId, currentTenantId)
-        ]);
 
-        // Handle OTP response
-        if (otpResponse.status === 'fulfilled') {
-          const response = otpResponse.value;
-          if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || 'Failed to send OTP');
-          }
-          const otpResult = await response.json();
-          console.log('✅ OTP sent successfully:', otpResult);
-        } else {
-          throw new Error('Failed to send OTP');
-        }
+      // Call to new API to create completed payment
+      const response = await fetch('/api/payments/create-completed', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          tenantId: currentTenantId,
+          retailerId: pendingPaymentData.retailerId,
+          retailerName: getRetailerName(retailers.find(r => r.id === pendingPaymentData.retailerId)),
+          lineWorkerId: user.uid,
+          lineWorkerName: user?.displayName || 'Line Worker',
+          totalPaid: pendingPaymentData.amount,
+          method: pendingPaymentData.paymentMethod,
+          utr: pendingPaymentData.utr,
+          notes: pendingPaymentData.notes
+        }),
+      });
 
-        // Handle payment details
-        if (createdPayment.status === 'fulfilled' && createdPayment.value) {
-          setSelectedPaymentForOTP(createdPayment.value);
-          setSelectedRetailerForOTP(retailer);
-          setShowOTPEnterDialog(true);
-        } else {
-          throw new Error('Failed to retrieve payment details');
-        }
-      } catch (otpError) {
-        console.error('❌ Error sending OTP:', otpError);
-        throw new Error('Failed to send OTP to retailer');
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to create payment');
       }
-      
-      return;
+
+      const result = await response.json();
+      console.log('✅ Payment created successfully:', result);
+
+      // ✅ Store amount before clearing pending data (for success dialog)
+      setLastPaymentAmount(pendingPaymentData.amount);
+
+      // Clear pending payment data
+      setPendingPaymentData(null);
+
+      // Close confirmation dialog
+      setShowConfirmationDialog(false);
+
+      // Show success dialog after a short delay
+      setTimeout(() => {
+        setShowPaymentSuccess(true);
+      }, 300);
+
+      // Refresh data to show completed payment
+      await fetchLineWorkerData();
     } catch (error) {
-      console.error('❌ Error in payment collection:', error);
+      console.error('❌ Error creating completed payment:', error);
+      setShowConfirmationDialog(false);
       throw error;
     } finally {
       setIsCollectingPayment(false);
     }
   };
+
 
   // Function to open payment dialog with pre-selected retailer
   const handleOpenPaymentDialog = (retailer?: Retailer) => {
@@ -1685,38 +1685,87 @@ Thank you for your payment!
         </DialogContent>
       </Dialog>
 
-      {/* OTP Entry Dialog */}
-      <Dialog open={showOTPEnterDialog} onOpenChange={(open) => {
-        console.log('🔄 OTP Dialog state changing from', showOTPEnterDialog, 'to', open);
-        setShowOTPEnterDialog(open);
-        if (!open) {
-          setSelectedPaymentForOTP(null);
-          setSelectedRetailerForOTP(null);
-          setError(null); // Clear any error messages when closing
-        }
-      }}>
-        <DialogContent className="sm:max-w-2xl max-w-[95vw] max-h-[90vh] overflow-y-auto">
+      {/* Confirmation Dialog */}
+      <Dialog open={showConfirmationDialog} onOpenChange={(open) => setShowConfirmationDialog(open)}>
+        <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle className="text-xl font-semibold">Enter OTP for Payment Verification</DialogTitle>
+            <DialogTitle className="text-xl font-semibold">Confirm Payment Collection</DialogTitle>
             <DialogDescription className="text-sm text-gray-600">
-              Enter the OTP sent to the retailer to complete the payment
+              Please review the payment details before confirming
             </DialogDescription>
           </DialogHeader>
-          {selectedPaymentForOTP && selectedRetailerForOTP && (
-            <OTPEnterForm
-              payment={selectedPaymentForOTP}
-              retailer={selectedRetailerForOTP}
-              onVerifySuccess={handleOTPSuccess}
-              onBack={() => {
-                setShowOTPEnterDialog(false);
-                setSelectedPaymentForOTP(null);
-                setSelectedRetailerForOTP(null);
-                setError(null); // Clear error when going back
-              }}
-              onResendOTP={handleResendOTP}
-              verifyingOTP={verifyingOTP}
-            />
+          {pendingPaymentData && (
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <div className="flex justify-between">
+                  <span className="text-sm font-medium text-gray-700">Retailer:</span>
+                  <span className="text-sm font-semibold text-gray-900">
+                    {getRetailerName(retailers.find(r => r.id === pendingPaymentData.retailerId))}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm font-medium text-gray-700">Amount:</span>
+                  <span className="text-sm font-semibold text-gray-900">{formatCurrency(pendingPaymentData.amount)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm font-medium text-gray-700">Payment Method:</span>
+                  <span className="text-sm font-semibold text-gray-900">{pendingPaymentData.paymentMethod}</span>
+                </div>
+                {pendingPaymentData.paymentMethod === 'UPI' && pendingPaymentData.utr && (
+                  <div className="flex justify-between">
+                    <span className="text-sm font-medium text-gray-700">UTR:</span>
+                    <span className="text-sm font-semibold text-gray-900">****{pendingPaymentData.utr}</span>
+                  </div>
+                )}
+              </div>
+              <div className="flex gap-3 justify-end pt-4 border-t">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleCancelPayment}
+                  disabled={isCollectingPayment}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  onClick={handleConfirmPayment}
+                  disabled={isCollectingPayment}
+                >
+                  {isCollectingPayment ? (
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      Processing...
+                    </div>
+                  ) : (
+                    'Confirm & Collect'
+                  )}
+                </Button>
+              </div>
+            </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Payment Success Dialog */}
+      <Dialog open={showPaymentSuccess} onOpenChange={(open) => { if (!open) setShowPaymentSuccess(false) }}>
+        <DialogContent className="max-w-md">
+          <DialogTitle className="text-xl font-semibold">Payment Completed Successfully!</DialogTitle>
+          <div className="text-center py-8 space-y-4">
+            <CheckCircle className="w-20 h-20 text-green-500 mx-auto mb-4" />
+            <p className="text-gray-600 mb-4">
+              Payment of {formatCurrency(lastPaymentAmount)} has been collected successfully.
+              SMS and notifications have been sent.
+            </p>
+            <Button
+              onClick={() => {
+                setShowPaymentSuccess(false);
+              }}
+              className="w-full"
+            >
+              Done
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

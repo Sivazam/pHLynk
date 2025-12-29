@@ -1,0 +1,556 @@
+# pHLynk Flow Modification Implementation Plan
+
+**Document Version:** 1.0
+**Date:** December 28, 2024
+**Status:** Ready for Review and Approval
+
+---
+
+## Executive Summary
+
+This document outlines the plan to modify the pHLynk payment collection flow by removing OTP verification and adding issue reporting capabilities. All changes will be frontend-only (no Cloud Function modifications required).
+
+---
+
+## Current Application Flow (AS-IS)
+
+### 1. Payment Collection Flow (Line Worker)
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ LINE WORKER DASHBOARD                                       │
+└─────────────────────────────────────────────────────────────────┘
+
+1. Line worker opens CollectPaymentForm
+   ├─ Selects retailer from dropdown
+   ├─ Enters amount (₹)
+   ├─ Selects payment method (CASH/UPI/BANK_TRANSFER)
+   └─ Adds optional notes
+
+2. Line worker clicks "Collect Payment"
+   ├─ Payment record created in Firestore (state: INITIATED)
+   ├─ OTP generated (6-character alphanumeric)
+   ├─ OTP sent to retailer via FCM/SMS
+   ├─ Payment state updated to OTP_SENT
+   └─ OTP Enter Dialog opens
+
+3. Line worker enters OTP (from retailer)
+   ├─ OTP verified against stored value
+   ├─ Payment state updated to COMPLETED
+   ├─ SMS sent to retailer (sendRetailerPaymentSMS)
+   ├─ SMS sent to wholesaler (sendWholesalerPaymentSMS)
+   └─ FCM notification sent to retailer
+```
+
+### 2. Retailer View Flow
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ RETAILER DASHBOARD                                          │
+└─────────────────────────────────────────────────────────────────┘
+
+1. Receives OTP notification (FCM/SMS)
+   ├─ Sees popup with OTP code
+   └─ Provides OTP to line worker
+
+2. Views payment history
+   ├─ Completed payments tab
+   └─ Payment details with receipt option
+```
+
+### 3. Cloud Functions Used
+
+| Function Name | Purpose | Environment Variables |
+|--------------|---------|---------------------|
+| sendRetailerPaymentSMS | Sends payment confirmation to retailer | FAST2SMS_API_KEY, FAST2SMS_SENDER_ID, FAST2SMS_ENTITY_ID |
+| sendWholesalerPaymentSMS | Sends payment notification to wholesaler | FAST2SMS_API_KEY, FAST2SMS_SENDER_ID, FAST2SMS_ENTITY_ID |
+
+### 4. Current Payment States
+
+| State | Description |
+|-------|-------------|
+| INITIATED | Payment record created |
+| OTP_SENT | OTP sent to retailer |
+| COMPLETED | Payment verified and finalized |
+| FAILED | Payment failed |
+
+---
+
+## Proposed Flow (TO-BE)
+
+### 1. Modified Payment Collection Flow (Line Worker)
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ LINE WORKER DASHBOARD                                       │
+└─────────────────────────────────────────────────────────────────┘
+
+1. Line worker opens CollectPaymentForm
+   ├─ Selects retailer from dropdown
+   ├─ Enters amount (₹)
+   ├─ Selects payment method (CASH/UPI/BANK_TRANSFER)
+   ├─ IF UPI selected → Enter UTR (4 digits - last 4 digits)
+   └─ Adds optional notes
+
+2. Line worker clicks "Collect Payment"
+   ├─ CONFIRMATION DIALOG shows:
+   │  ├─ Retailer Name
+   │  ├─ Amount (₹)
+   │  ├─ Payment Method
+   │  └─ UTR (if UPI selected)
+   │
+   ├─ If confirmed:
+   │  ├─ Payment record created in Firestore (state: COMPLETED)
+   │  ├─ Payment timeline: initiatedAt, completedAt (same time)
+   │  ├─ SMS sent to retailer (sendRetailerPaymentSMS) - NO OTP mention
+   │  ├─ SMS sent to wholesaler (sendWholesalerPaymentSMS) - NO OTP mention
+   │  └─ FCM notification sent to retailer - NO OTP mention
+   │
+   └─ If cancelled: Dialog closes, form remains open
+
+3. Payment appears as COMPLETED in all dashboards
+   ├─ Line worker dashboard
+   ├─ Wholesaler dashboard
+   └─ Retailer dashboard
+```
+
+### 2. New Issue Reporting Flow (Retailer)
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ RETAILER DASHBOARD                                          │
+└─────────────────────────────────────────────────────────────────┘
+
+1. Retailer views completed payments
+   └─ Sees "Report Issue" button next to each payment
+
+2. Retailer clicks "Report Issue"
+   ├─ Opens issue report dialog
+   ├─ Selects issue type:
+   │  ├─ Wrong amount - Underpaid
+   │  ├─ Wrong amount - Overpaid
+   │  ├─ Wrong retailer
+   │  └─ Other
+   ├─ Enters description
+   └─ Submits
+
+3. Issue created in Firestore
+   ├─ Collection: paymentIssues
+   ├─ Fields:
+   │  ├─ id (auto-generated)
+   │  ├─ paymentId (reference)
+   │  ├─ retailerId
+   │  ├─ wholesalerId (tenantId)
+   │  ├─ lineWorkerId
+   │  ├─ issueType (enum)
+   │  ├─ description
+   │  ├─ originalAmount
+   │  ├─ suggestedAmount (optional)
+   │  ├─ status: PENDING
+   │  ├─ createdAt
+   │  ├─ updatedAt
+   │  ├─ retailerName
+   │  ├─ retailerPhone
+   │  └─ resolutionNotes (empty initially)
+   │
+   └─ NO SMS or FCM notifications sent
+
+4. Retailer sees issue status
+   ├─ PENDING - Submitted, awaiting review
+   ├─ INVESTIGATING - Being reviewed by wholesaler
+   └─ RESOLVED - Issue resolved with notes visible
+```
+
+### 3. Wholesaler Issue Management Flow
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ WHOLESALER ADMIN DASHBOARD                                 │
+└─────────────────────────────────────────────────────────────────┘
+
+1. Wholesaler logs in
+   └─ Sees critical items section: "Reported Issues"
+
+2. Wholesaler views reported issues
+   ├─ Lists all PENDING and INVESTIGATING issues
+   ├─ Shows issue details:
+   │  ├─ Payment information (amount, date, retailer)
+   │  ├─ Issue type and description
+   │  ├─ Retailer contact info
+   │  └─ Original payment receipt
+   │
+   └─ Actions:
+   │  ├─ Mark as INVESTIGATING (status update)
+   │  └─ Resolve Issue (update amount + notes)
+
+3. Wholesaler resolves issue
+   ├─ Enters corrected amount
+   ├─ Adds resolution notes
+   └─ Submits
+
+4. System updates:
+   ├─ Issue status: RESOLVED
+   ├─ Issue resolution notes saved
+   ├─ Payment record updated:
+   │  ├─ totalAdjusted: difference
+   │  ├─ issueResolved: true
+   │  └─ issueId (reference)
+   │
+   └─ All dashboards recalculate totals
+      ├─ Line worker dashboard
+      ├─ Wholesaler dashboard
+      └─ Retailer dashboard
+```
+
+---
+
+## Implementation Tasks
+
+### Phase 1: Remove OTP Flow (Priority: HIGH)
+
+#### Task 1.1: Modify CollectPaymentForm Component
+**File:** `src/components/CollectPaymentForm.tsx`
+
+**Changes:**
+- Add UTR field (4 digits) when payment method is UPI
+- UTR field should only appear when `paymentMethod === 'UPI'`
+- Validation: Exactly 4 numerical digits
+- Change "Collect Payment" button text to "Review & Confirm"
+- Remove OTP-related success message
+
+**New Fields:**
+```typescript
+interface PaymentForm {
+  retailerId: string;
+  amount: number;
+  paymentMethod: 'CASH' | 'UPI' | 'BANK_TRANSFER';
+  utr?: string; // New field - 4 digits
+  notes?: string;
+}
+```
+
+#### Task 1.2: Add Confirmation Dialog
+**File:** `src/components/CollectPaymentForm.tsx`
+
+**Create new component:** `PaymentConfirmationDialog`
+
+**Shows:**
+- Retailer Name
+- Amount (formatted with ₹)
+- Payment Method
+- UTR (if UPI)
+- "Confirm" and "Cancel" buttons
+
+**Behavior:**
+- If cancelled: Dialog closes, form remains open
+- If confirmed: Proceeds to payment submission
+
+#### Task 1.3: Modify LineWorkerDashboard Payment Submission
+**File:** `src/components/LineWorkerDashboard.tsx`
+
+**Function:** `handleCollectPayment`
+
+**Changes:**
+- Remove OTP sending logic (no `/api/otp/send` call)
+- Remove OTP Enter Dialog (`setShowOTPEnterDialog`)
+- Create payment with state: `COMPLETED`
+- Set both `initiatedAt` and `completedAt` to same timestamp
+- Call SMS cloud functions directly:
+  - `sendRetailerPaymentSMS`
+  - `sendWholesalerPaymentSMS`
+- Call FCM notification for payment completion
+
+**New Flow:**
+```typescript
+const handleCollectPayment = async (paymentData: any): Promise<void> => {
+  // 1. Show confirmation dialog
+  // 2. If confirmed:
+  //    a. Create payment with state: COMPLETED
+  //    b. Send SMS to retailer and wholesaler
+  //    c. Send FCM to retailer
+  //    d. Refresh data
+  // 3. If cancelled: Do nothing
+};
+```
+
+#### Task 1.4: Remove/Disable OTP Components
+**Files:**
+- `src/components/OTPEnterForm.tsx` - Keep but hide/remove usage
+- `src/app/api/otp/send/route.ts` - No changes (may still be used elsewhere)
+- `src/app/api/otp/verify/route.ts` - No changes (may still be used elsewhere)
+
+**Action:**
+- Remove OTP Enter Dialog from LineWorkerDashboard
+- Comment out OTP-related imports
+
+---
+
+### Phase 2: Add Issue Reporting System (Priority: HIGH)
+
+#### Task 2.1: Create Firestore Collection Structure
+**File:** `prisma/schema.prisma` (Note: Firebase is used, not Prisma)
+
+**New Collection:** `paymentIssues`
+
+**Document Structure:**
+```typescript
+interface PaymentIssue {
+  id: string;
+  paymentId: string;
+  retailerId: string;
+  wholesalerId: string; // tenantId
+  lineWorkerId: string;
+  issueType: 'UNDERPAID' | 'OVERPAID' | 'WRONG_RETAILER' | 'OTHER';
+  description: string;
+  originalAmount: number;
+  suggestedAmount?: number;
+  status: 'PENDING' | 'INVESTIGATING' | 'RESOLVED';
+  createdAt: firebase.firestore.Timestamp;
+  updatedAt: firebase.firestore.Timestamp;
+  retailerName: string;
+  retailerPhone: string;
+  resolutionNotes?: string;
+  resolvedBy?: string; // wholesaler userId
+  resolvedAt?: firebase.firestore.Timestamp;
+}
+```
+
+#### Task 2.2: Create Issue Service
+**File:** `src/services/payment-issue-service.ts`
+
+**Functions:**
+```typescript
+class PaymentIssueService {
+  // Create new issue
+  static createIssue(data: PaymentIssue): Promise<string>;
+
+  // Get issues for wholesaler
+  static getIssuesForWholesaler(wholesalerId: string): Promise<PaymentIssue[]>;
+
+  // Get issues for retailer
+  static getIssuesForRetailer(retailerId: string): Promise<PaymentIssue[]>;
+
+  // Update issue status
+  static updateIssueStatus(issueId: string, status: string): Promise<void>;
+
+  // Resolve issue with amount adjustment
+  static resolveIssue(
+    issueId: string,
+    correctedAmount: number,
+    resolutionNotes: string,
+    resolvedBy: string
+  ): Promise<void>;
+
+  // Get pending issues count
+  static getPendingIssuesCount(wholesalerId: string): Promise<number>;
+}
+```
+
+#### Task 2.3: Create Report Issue Dialog Component
+**File:** `src/components/ui/ReportIssueDialog.tsx`
+
+**Features:**
+- Issue type dropdown:
+  - Wrong amount - Underpaid
+  - Wrong amount - Overpaid
+  - Wrong retailer
+  - Other
+- Description textarea
+- Amount suggestion (optional)
+- Submit and Cancel buttons
+
+#### Task 2.4: Modify RetailerDashboard - Add Report Issue
+**File:** `src/components/RetailerDashboard.tsx`
+
+**Changes:**
+- Add "Report Issue" button next to completed payments
+- Open ReportIssueDialog on click
+- Show issue status badge on payment if issue exists:
+  - PENDING - Yellow badge
+  - INVESTIGATING - Blue badge
+  - RESOLVED - Green badge
+
+#### Task 2.5: Modify WholesalerDashboard - Add Issues Section
+**File:** `src/components/WholesalerAdminDashboard.tsx`
+
+**Changes:**
+- Add "Reported Issues" section (critical items)
+- Show pending and investigating issues prominently
+- Display issue details:
+  - Payment info (amount, date, retailer)
+  - Issue type and description
+  - Retailer contact info
+  - Link to payment receipt
+
+#### Task 2.6: Create Issue Resolution Dialog Component
+**File:** `src/components/ui/ResolveIssueDialog.tsx`
+
+**Features:**
+- Display original payment details
+- Display reported issue details
+- Input for corrected amount
+- Textarea for resolution notes
+- Submit and Cancel buttons
+- Preview of how totals will be affected
+
+#### Task 2.7: Update Payment Totals Calculation
+**Files:**
+- `src/components/LineWorkerDashboard.tsx`
+- `src/components/WholesalerAdminDashboard.tsx`
+- `src/components/RetailerDashboard.tsx`
+
+**Changes:**
+- Query resolved issues
+- Calculate total adjustment amount
+- Apply adjustment to total collected amount
+- Show breakdown:
+  - Original total
+  - Adjustments (+/-)
+  - Final total
+
+---
+
+### Phase 3: Update SMS Content (Priority: MEDIUM)
+
+#### Task 3.1: Verify SMS Templates
+**Action:** Review existing SMS templates to ensure no OTP references
+
+**Current Template:**
+```
+Collection Acknowledgement: An amount of {#var#}/- from {#var#}, {#var#} has been updated in PharmaLync as payment towards goods supplied by {#var#}. Collected by Line man {#var#} on {#var#}.
+```
+
+**Verification:** Template is OTP-free, no changes needed.
+
+---
+
+### Phase 4: Testing & Documentation (Priority: MEDIUM)
+
+#### Task 4.1: Test Payment Flow Without OTP
+**Test Cases:**
+- [ ] Cash payment - no UTR field
+- [ ] UPI payment - UTR field shown (4 digits)
+- [ ] Bank transfer - no UTR field
+- [ ] Confirmation dialog shows correct details
+- [ ] Cancel confirmation - form remains open
+- [ ] Confirm - payment shows as COMPLETED
+- [ ] SMS sent to retailer (no OTP)
+- [ ] SMS sent to wholesaler (no OTP)
+- [ ] FCM notification sent (no OTP)
+- [ ] Payment appears in all dashboards
+
+#### Task 4.2: Test Issue Reporting Flow
+**Test Cases:**
+- [ ] Report issue from retailer dashboard
+- [ ] Issue shows in wholesaler dashboard
+- [ ] Mark issue as INVESTIGATING
+- [ ] Resolve issue with amount adjustment
+- [ ] Retailer sees updated status
+- [ ] Totals recalculated in all dashboards
+- [ ] No SMS/FCM sent for issue creation/resolution
+
+#### Task 4.3: Documentation Updates
+**Files to Update:**
+- `README.md` - Remove OTP references
+- Update any user guides
+- Update API documentation
+
+---
+
+## File Changes Summary
+
+### Frontend Files to Modify
+
+| File | Changes | Priority |
+|------|----------|-----------|
+| `src/components/CollectPaymentForm.tsx` | Add UTR field, confirmation dialog | HIGH |
+| `src/components/LineWorkerDashboard.tsx` | Remove OTP flow, add SMS/FCM calls | HIGH |
+| `src/components/RetailerDashboard.tsx` | Add Report Issue button, show issue status | HIGH |
+| `src/components/WholesalerAdminDashboard.tsx` | Add Issues section, resolution logic | HIGH |
+| `src/services/payment-issue-service.ts` | NEW - Issue management service | HIGH |
+| `src/components/ui/ReportIssueDialog.tsx` | NEW - Issue creation dialog | HIGH |
+| `src/components/ui/ResolveIssueDialog.tsx` | NEW - Issue resolution dialog | HIGH |
+
+### Files NOT to Modify
+
+- All Cloud Functions (`functions/src/index.ts`)
+- SMS API routes (no changes needed - templates are OTP-free)
+- OTP API routes (may still be used elsewhere)
+- Prisma schema (not used - Firebase is primary database)
+
+---
+
+## Risk Assessment
+
+### Low Risk
+- Frontend-only changes
+- No database schema migrations
+- No Cloud Function deployments
+- Backward compatible (OTP flow removed but not broken)
+
+### Medium Risk
+- Payment state changes (new flow skips intermediate states)
+- Need to ensure all dashboards recalculate totals correctly
+- Issue resolution logic must be atomic
+
+### Mitigations
+- Thorough testing before production deployment
+- Backup existing data before implementation
+- Rollback plan: Revert to OTP flow if issues arise
+- Monitor payment completion rates after deployment
+
+---
+
+## Deployment Checklist
+
+- [ ] Code review completed
+- [ ] All test cases passed
+- [ ] Documentation updated
+- [ ] Staging environment tested
+- [ ] Production backup created
+- [ ] Deploy to production
+- [ ] Monitor for 24 hours
+- [ ] Verify payment completion rates
+- [ ] Verify SMS delivery rates
+- [ ] Verify FCM notification delivery
+- [ ] Check for error logs
+
+---
+
+## Post-Deployment Monitoring
+
+### Metrics to Track
+1. Payment completion rate (should remain stable or increase)
+2. Average payment processing time (should decrease - no OTP step)
+3. Issue submission rate
+4. Issue resolution time
+5. SMS delivery success rate (should remain stable)
+6. FCM notification success rate (should remain stable)
+
+### Alerts to Set
+- Payment completion rate drops by > 10%
+- SMS delivery rate drops by > 5%
+- Issue submission rate spikes unexpectedly
+- High number of pending issues (> 24 hours old)
+
+---
+
+## Questions for Stakeholders
+
+1. **UTR Format:** Confirmed as exactly 4 digits (last 4 of UTR)?
+2. **Issue Types:** Are the proposed issue types sufficient, or should we add more?
+3. **Issue Notifications:** Confirm no SMS/FCM for issue reporting (for now)?
+4. **Resolution Workflow:** Should wholesaler be able to reject an issue (mark as INVALID)?
+5. **Audit Trail:** Should we track all issue status changes with timestamps and user IDs?
+6. **Future Enhancement:** Should we consider adding OTP flow back as an optional verification step?
+
+---
+
+## Approval
+
+| Role | Name | Approval | Date |
+|-------|------|-----------|-------|
+| Product Owner | | | |
+| Tech Lead | | | |
+| QA Lead | | | |
+| Business Owner | | | |

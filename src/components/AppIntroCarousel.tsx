@@ -16,6 +16,17 @@ export function AppIntroCarousel({ onComplete, onSkip }: AppIntroCarouselProps) 
   const [touchStart, setTouchStart] = useState(0);
   const [touchEnd, setTouchEnd] = useState(0);
   const carouselRef = useRef<HTMLDivElement>(null);
+  const currentSlideRef = useRef(currentSlide);
+  const isAnimatingRef = useRef(isAnimating);
+
+  // Keep refs in sync with state
+  useEffect(() => {
+    currentSlideRef.current = currentSlide;
+  }, [currentSlide]);
+
+  useEffect(() => {
+    isAnimatingRef.current = isAnimating;
+  }, [isAnimating]);
 
   const slides = [
     {
@@ -56,15 +67,19 @@ export function AppIntroCarousel({ onComplete, onSkip }: AppIntroCarouselProps) 
     else if (touchEnd - touchStart > 75) prevSlide();
   };
 
-  // Keyboard arrows
+  // Keyboard arrows - use refs to prevent recreating event listener
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowLeft') prevSlide();
-      else if (e.key === 'ArrowRight') nextSlide();
+      if (isAnimatingRef.current) return; // Prevent any action during animation
+      if (e.key === 'ArrowLeft' && currentSlideRef.current > 0) {
+        setCurrentSlide(currentSlideRef.current - 1);
+      } else if (e.key === 'ArrowRight' && currentSlideRef.current < slides.length - 1) {
+        setCurrentSlide(currentSlideRef.current + 1);
+      }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [currentSlide, isAnimating]);
+  }, []); // Empty deps - only setup once
 
   const nextSlide = () => {
     if (isAnimating) return;
