@@ -1,8 +1,7 @@
 {
   "projects": {
-    "dev": "plkapp-8c052"
+    "staging": "plkapp-8c052"
   },
   "targets": {},
-  "etags": {},
-  "dataconnectEmulatorConfig": {}
+  "etags": {}
 }

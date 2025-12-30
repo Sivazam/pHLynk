@@ -3,6 +3,10 @@ import { db } from '@/lib/firebase';
 import { sendPaymentCompletionNotificationViaCloudFunction } from '@/lib/cloud-functions';
 
 export async function POST(request: NextRequest) {
+  console.log('╔═════════════════════════════════════');
+  console.log('🚀 /api/fcm/send-payment-completion ROUTE CALLED');
+  console.log('╚═══════════════════════════════════');
+  
   try {
     const body = await request.json();
     
@@ -76,15 +80,14 @@ export async function POST(request: NextRequest) {
     // Send to wholesaler if wholesalerId is provided
     if (wholesalerId) {
       try {
-        console.log('📱 Sending wholesaler notification via cloud function...');
+        console.log('📱 Starting wholesaler notification process...');
         console.log('📤 Wholesaler notification data:', {
-          retailerId: wholesalerId, // Use wholesalerId as the recipient
+          wholesalerId, // Use actual wholesaler tenant ID (not retailer's Firestore ID)
           amount,
           paymentId,
           recipientType: 'wholesaler',
           retailerName,
           lineWorkerName,
-          wholesalerId,
           title: '💰 Collection Update',
           body: `Line Man ${lineWorkerName || 'Line Worker'} collected ₹${amount.toLocaleString()} from ${retailerName || 'Retailer'} on ${new Date().toLocaleDateString()} at ${new Date().toLocaleTimeString()}.`,
           clickAction: '/wholesaler/dashboard'

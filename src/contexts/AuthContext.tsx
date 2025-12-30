@@ -277,19 +277,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             // 🔐 SECURITY: Clear any logout timestamp on successful login
             localStorage.removeItem('logged_out_at');
             console.log('✅ Cleared logout timestamp on successful login');
-            
-            // 🔄 Initialize FCM for general users (wholesalers, line workers, etc.)
+
+            // 🔄 Initialize FCM for all authenticated users
             try {
               updateProgress(88, 'Setting up notifications...');
-              console.log('🔔 Initializing FCM for wholesaler/line worker user:', {
+              console.log('🔔 Initializing FCM for user:', {
                 authUid: firebaseUser.uid,
                 tenantId: userData.tenantId,
+                roles: userData.roles,
                 caller: 'AuthContext.generalAuth'
               });
 
-              // Initialize FCM in background without blocking UI
-              // Use 'wholesalers' collection for wholesalers/line workers to store FCM tokens
-              initializeFCM(userData.tenantId || firebaseUser.uid, 'wholesalers').then(fcmToken => {
+              // Determine collection and user ID for FCM token storage
+              let fcmUserType: 'users' | 'retailers' | 'wholesalers' | 'lineWorkers' | 'superAdmins' | 'tenants' = 'users';
+              let fcmUserId = firebaseUser.uid; // Default: user's own Firebase auth UID
+
+              if (userData.roles.includes('WHOLESALER_ADMIN')) {
+                // Wholesaler admins - store in tenants collection at tenantId
+                fcmUserType = 'tenants';
+                if (userData.tenantId) {
+                  fcmUserId = userData.tenantId;
+                  console.log('📋 Wholesaler admin - will store FCM token in TENANTS collection at tenantId:', fcmUserId);
+                } else {
+                  console.warn('⚠️ Wholesaler admin detected but tenantId is undefined - falling back to userId in users collection');
+                }
+              } else if (userData.roles.includes('LINE_WORKER')) {
+                // Line workers - store in users collection at their userId
+                fcmUserType = 'users';
+                fcmUserId = firebaseUser.uid;
+                console.log('📋 Line worker - will store FCM token in USERS collection at userId:', fcmUserId);
+              } else {
+                // Super admins and others - store in users collection at their userId
+                fcmUserType = 'users';
+                fcmUserId = firebaseUser.uid;
+                console.log('📋 Other user - will store FCM token in USERS collection at userId:', fcmUserId);
+              }
+
+              initializeFCM(fcmUserId, fcmUserType).then(fcmToken => {
                 if (fcmToken) {
                   console.log('✅ FCM initialized successfully for wholesaler/line worker user:', {
                     tenantId: userData.tenantId,

@@ -244,8 +244,8 @@ export async function getFCMToken(): Promise<string | null> {
  * Initialize FCM and register device token
  */
 export async function initializeFCM(
-  userId?: string, 
-  userType: 'users' | 'retailers' | 'wholesalers' | 'lineWorkers' | 'superAdmins' = 'retailers'
+  userId?: string,
+  userType: 'users' | 'retailers' | 'wholesalers' | 'lineWorkers' | 'superAdmins' | 'tenants' = 'retailers'
 ): Promise<string | null> {
   try {
     if (!auth.currentUser) {
@@ -402,8 +402,8 @@ function generateDeviceId(token: string, userAgent: string): string {
  * Check if token is already registered for this user
  */
 async function checkIfTokenRegistered(
-  token: string, 
-  userType: 'users' | 'retailers' | 'wholesalers' | 'lineWorkers' | 'superAdmins' = 'retailers'
+  token: string,
+  userType: 'users' | 'retailers' | 'wholesalers' | 'lineWorkers' | 'superAdmins' | 'tenants' = 'retailers'
 ): Promise<boolean> {
   try {
     if (!auth.currentUser) return false;
@@ -432,8 +432,8 @@ async function checkIfTokenRegistered(
  * Update last active timestamp for existing token
  */
 async function updateLastActive(
-  token: string, 
-  userType: 'users' | 'retailers' | 'wholesalers' | 'lineWorkers' | 'superAdmins' = 'retailers'
+  token: string,
+  userType: 'users' | 'retailers' | 'wholesalers' | 'lineWorkers' | 'superAdmins' | 'tenants' = 'retailers'
 ): Promise<void> {
   try {
     if (!auth.currentUser) return;
@@ -493,7 +493,7 @@ export function onMessageListener() {
  * Delete FCM token (for logout)
  */
 export async function deleteFCMToken(
-  userType: 'users' | 'retailers' | 'wholesalers' | 'lineWorkers' | 'superAdmins' = 'retailers'
+  userType: 'users' | 'retailers' | 'wholesalers' | 'lineWorkers' | 'superAdmins' | 'tenants' = 'retailers'
 ): Promise<boolean> {
   try {
     console.log('🗑️ Starting FCM token deletion process...');

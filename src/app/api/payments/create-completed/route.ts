@@ -312,6 +312,15 @@ export async function POST(request: NextRequest) {
     const wholesalerName = wholesalerData?.name || wholesalerData?.displayName || 'Wholesaler';
     const collectionDate = completionTime.toLocaleDateString('en-IN');
 
+    // Get the correct wholesaler tenant ID from line worker data
+    // CRITICAL: Don't use payment.tenantId (which is retailer's tenant), use line worker's tenant!
+    const wholesalerTenantId = lineWorkerData?.tenantId || tenantId;
+    console.log('📋 Wholesaler tenant IDs:', {
+      'payment.tenantId (retailer\'s)': payment.tenantId,
+      'lineWorker.tenantId (correct)': wholesalerTenantId,
+      'wholesaler.name': wholesalerName
+    });
+
     // Send SMS notifications in MAXIMUM PARALLEL
     const smsResults = await sendSMSNotificationsOptimized({
       payment,
@@ -326,12 +335,21 @@ export async function POST(request: NextRequest) {
 
     // Send FCM notification for payment completion
     try {
-      console.log('📱 Sending FCM payment completion notification...');
+      console.log('📱 Starting FCM notification process...');
+      console.log('📞 Sending retailer SMS notification (wholesaler uses FCM)...');
 
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
       const fcmUrl = `${baseUrl}/api/fcm/send-payment-completion`;
 
       console.log('🔗 FCM URL:', fcmUrl);
+      console.log('📦 FCM Request body:', JSON.stringify({
+        retailerId: payment.retailerId,
+        amount: payment.totalPaid,
+        paymentId: paymentId,
+        retailerName: payment.retailerName,
+        lineWorkerName: payment.lineWorkerName,
+        wholesalerId: wholesalerTenantId // Use correct wholesaler tenant ID from line worker data
+      }));
 
       const fcmResponse = await fetch(fcmUrl, {
         method: 'POST',
@@ -348,6 +366,9 @@ export async function POST(request: NextRequest) {
         })
       });
 
+      console.log('📊 FCM Response status:', fcmResponse.status);
+      console.log('📊 FCM Response ok:', fcmResponse.ok);
+
       if (fcmResponse.ok) {
         const fcmResult = await fcmResponse.json();
         console.log('✅ FCM payment completion notification sent successfully:', fcmResult);
@@ -355,11 +376,13 @@ export async function POST(request: NextRequest) {
         const errorText = await fcmResponse.text();
         console.warn('⚠️ FCM payment completion notification failed:', {
           status: fcmResponse.status,
+          statusText: fcmResponse.statusText,
           errorText
         });
       }
     } catch (fcmError) {
-      console.warn('⚠️ Error sending FCM payment completion notification:', fcmError);
+      console.error('❌ Error sending FCM payment completion notification:', fcmError);
+      console.error('Stack trace:', fcmError instanceof Error ? fcmError.stack : 'Unknown');
       // Don't fail the request if FCM fails
     }
 
