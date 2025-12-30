@@ -94,7 +94,13 @@ export function LineWorkerDashboard() {
     return { startDate: startOfDay, endDate: endOfDay };
   });
   const [paymentUnsubscribe, setPaymentUnsubscribe] = useState<(() => void) | null>(null);
-  
+
+  // NOTE: OTP functionality removed - payments are now created directly in COMPLETED state
+  // These state variables are kept for backward compatibility but are no longer used
+  const [showOTPEnterDialog, setShowOTPEnterDialog] = useState(false);
+  const [selectedPaymentForOTP, setSelectedPaymentForOTP] = useState<Payment | null>(null);
+  const [selectedRetailerForOTP, setSelectedRetailerForOTP] = useState<Retailer | null>(null);
+
   // Standardized loading state management
   const mainLoadingState = useLoadingState();
   const [dataFetchProgress, setDataFetchProgress] = useState(0);

@@ -1002,11 +1002,11 @@ export const sendPaymentCompletionNotification = functions.https.onCall(async (r
 
     // Get retailer/wholesaler document and FCM devices
     if (data.recipientType === 'wholesaler') {
-      // For wholesaler, look in tenants collection
+      // For wholesaler, look in wholesalers collection (where frontend saves FCM tokens)
       console.log('🔧 Looking for FCM devices for wholesaler:', data.retailerId);
-      
+
       const wholesalerDoc = await admin.firestore()
-        .collection('tenants')
+        .collection('wholesalers')  // Use wholesalers collection where frontend saves tokens
         .doc(data.retailerId) // retailerId is actually wholesalerId for wholesaler notifications
         .get();
 

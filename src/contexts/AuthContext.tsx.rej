@@ -1,0 +1,33 @@
+--- src/contexts/AuthContext.tsx
++++ src/contexts/AuthContext.tsx
+@@ -264,12 +264,28 @@
+             // 🔐 SECURITY: Clear any logout timestamp on successful login
+             localStorage.removeItem('logged_out_at');
+             console.log('✅ Cleared logout timestamp on successful login');
+             
+             // 🔄 Initialize FCM for general users (wholesalers, line workers, etc.)
+             try {
+               updateProgress(88, 'Setting up notifications...');
+               console.log('🔔 Initializing FCM for returning user:', firebaseUser.uid);
+               
+-              // Initialize FCM in background without blocking UI
+-              initializeFCM().then(fcmToken => {
++              // Determine correct collection based on user's role
++              let userCollection: 'users' | 'retailers' | 'wholesalers' | 'lineWorkers' | 'superAdmins' = 'users';
++              if (userData.roles && userData.roles.includes('WHOLESALER_ADMIN')) {
++                // Wholesalers are stored in 'tenants' collection
++                userCollection = 'wholesalers';
++                console.log('👔 Detected wholesaler user - will use tenants collection');
++              } else if (userData.roles && userData.roles.includes('LINE_WORKER')) {
++                // Line workers are stored in 'users' collection
++                userCollection = 'users';
++                console.log('👷 Detected line worker user - will use users collection');
++              } else if (userData.roles && userData.roles.includes('SUPER_ADMIN')) {
++                // Super admins are stored in 'users' collection
++                userCollection = 'superAdmins';
++                console.log('🛡 Detected super admin user - will use users collection');
++              }
++              
++              // Initialize FCM with correct collection name
++              initializeFCM(firebaseUser.uid, userCollection).then(fcmToken => {
+                 if (fcmToken) {

@@ -870,10 +870,10 @@ exports.sendPaymentCompletionNotification = functions.https.onCall(async (reques
         });
         // Get retailer/wholesaler document and FCM devices
         if (data.recipientType === 'wholesaler') {
-            // For wholesaler, look in tenants collection
+            // For wholesaler, look in wholesalers collection (where frontend saves FCM tokens)
             console.log('🔧 Looking for FCM devices for wholesaler:', data.retailerId);
             const wholesalerDoc = await admin.firestore()
-                .collection('tenants')
+                .collection('wholesalers') // Use wholesalers collection where frontend saves tokens
                 .doc(data.retailerId) // retailerId is actually wholesalerId for wholesaler notifications
                 .get();
             if (!wholesalerDoc.exists) {
@@ -1129,6 +1129,39 @@ exports.sendFCMNotification = functions.https.onCall(async (request) => {
             body: notification.body,
             caller: context.auth ? context.auth.uid : 'NEXTJS_API'
         });
+        // Fetch line worker to get tenantId for wholesaler name (if lineWorkerId is provided)
+        let wholesalerName = '';
+        if (data.lineWorkerId) {
+            try {
+                const lineWorkerDoc = await admin.firestore().collection('users').doc(data.lineWorkerId).get();
+                if (lineWorkerDoc.exists) {
+                    const lineWorkerData = lineWorkerDoc.data();
+                    const tenantId = lineWorkerData === null || lineWorkerData === void 0 ? void 0 : lineWorkerData.tenantId;
+                    if (tenantId) {
+                        // Fetch tenant details to get wholesaler name
+                        const tenantDoc = await admin.firestore().collection('tenants').doc(tenantId).get();
+                        if (tenantDoc.exists) {
+                            const tenantData = tenantDoc.data();
+                            wholesalerName = (tenantData === null || tenantData === void 0 ? void 0 : tenantData.name) || '';
+                            console.log('✅ FCM - Fetched wholesaler name:', wholesalerName);
+                        }
+                        else {
+                            console.warn('⚠️ FCM - Tenant not found for tenantId:', tenantId);
+                        }
+                    }
+                    else {
+                        console.warn('⚠️ FCM - Line worker has no tenantId');
+                    }
+                }
+                else {
+                    console.warn('⚠️ FCM - Line worker not found for lineWorkerId:', data.lineWorkerId);
+                }
+            }
+            catch (error) {
+                console.error('❌ FCM - Error fetching wholesaler name:', error);
+                // Continue without wholesaler name if fetch fails
+            }
+        }
         // Get retailer document
         const retailerDoc = await admin.firestore()
             .collection('retailers')
@@ -1167,8 +1200,15 @@ exports.sendFCMNotification = functions.https.onCall(async (request) => {
             };
         }
         // Prepare notification message with proper FCM format
+        // Update notification body for OTP notifications to include wholesaler name
+        let updatedNotification = Object.assign({}, notification);
+        if (notification.title === 'Payment Verification Required' && notification.body && wholesalerName) {
+            // Check if this is an OTP notification and we have a wholesaler name
+            const wholesalerPart = wholesalerName ? ` from ${wholesalerName}` : '';
+            updatedNotification.body = `${notification.body}${wholesalerPart}\n-- PharmaLync`;
+        }
         const message = {
-            notification: Object.assign({ title: notification.title, body: notification.body }, (notification.image && { image: notification.image })),
+            notification: Object.assign({ title: updatedNotification.title, body: updatedNotification.body }, (updatedNotification.image && { image: updatedNotification.image })),
             data: Object.assign(Object.assign({}, notification.data), { icon: notification.icon || `${process.env.NEXT_PUBLIC_BASE_URL || 'https://localhost:3000'}/notification-large-192x192.png`, badge: `${process.env.NEXT_PUBLIC_BASE_URL || 'https://localhost:3000'}/badge-72x72.png`, tag: notification.tag, clickAction: notification.clickAction }),
             android: {
                 priority: 'high',

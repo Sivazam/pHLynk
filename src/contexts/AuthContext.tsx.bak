@@ -188,10 +188,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               if (isMounted.current) { setUser(null); };
               return;
             }
-
-            // For wholesaler admins, check tenant status (but proceed regardless)
-            let tenantStatus = 'ACTIVE';
-            if (userData.roles.includes('WHOLESALER_ADMIN')) {
+            
+            // For wholesaler admins and line workers, check tenant status
+            if (userData.roles.includes('WHOLESALER_ADMIN') || userData.roles.includes('LINE_WORKER')) {
               if (!userData.tenantId) {
                 console.error('User missing tenantId:', firebaseUser.uid);
                 updateProgress(90, 'Account configuration error...');
@@ -199,65 +198,52 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 if (isMounted.current) { setUser(null); };
                 return;
               }
-
-              // Fetch tenant document to check status (but continue even if not found)
-              try {
-                const tenantDoc = await getDoc(doc(db, COLLECTIONS.TENANTS, userData.tenantId));
-                if (tenantDoc.exists()) {
-                  const tenantData = tenantDoc.data();
-                  tenantStatus = tenantData.status || 'ACTIVE';
-
-                  // Only block if not active
-                  if (tenantData.status !== 'ACTIVE') {
-                    console.error('Tenant account is not active:', userData.tenantId, 'Status:', tenantData.status);
-
-                    // Show toast message to inform user
-                    const message = tenantData.status === 'PENDING'
-                      ? 'Your account is pending approval by administrator. Please wait for approval.'
-                      : tenantData.status === 'SUSPENDED'
-                      ? 'Your account has been suspended. Please contact support.'
-                      : tenantData.status === 'REJECTED'
-                      ? 'Your account application has been rejected. Please contact support.'
-                      : 'Your account is not active. Please contact support.';
-
-                    updateProgress(90, message);
-                    await new Promise(resolve => setTimeout(resolve, 2000));
-
-                    // Create user object with tenant status instead of setting to null
-                    const authUser: AuthUser = {
-                      uid: firebaseUser.uid,
-                      email: firebaseUser.email!,
-                      displayName: firebaseUser.displayName || userData.displayName,
-                      photoURL: firebaseUser.photoURL || undefined,
-                      tenantId: userData.tenantId,
-                      tenantStatus: tenantData.status,
-                      roles: userData.roles,
-                      assignedAreas: userData.assignedAreas,
-                      assignedZips: userData.assignedZips
-                    };
-
-                    updateProgress(95, 'Almost ready...');
-                    await new Promise(resolve => setTimeout(resolve, 150));
-                    updateProgress(100, 'Complete');
-                    if (isMounted.current) { setUser(authUser); };
-                    return;
-                  }
-                }
-              } catch (tenantError) {
-                console.warn('Could not fetch tenant status, continuing:', tenantError);
-              }
-            }
-
-            // For line workers, proceed regardless (they're always active)
-            if (userData.roles.includes('LINE_WORKER')) {
-              if (!userData.tenantId) {
-                console.error('User missing tenantId:', firebaseUser.uid);
+              
+              // Fetch tenant document to check status
+              const tenantDoc = await getDoc(doc(db, COLLECTIONS.TENANTS, userData.tenantId));
+              if (!tenantDoc.exists()) {
+                console.error('Tenant not found:', userData.tenantId);
                 updateProgress(90, 'Account configuration error...');
                 await new Promise(resolve => setTimeout(resolve, 150));
                 if (isMounted.current) { setUser(null); };
                 return;
               }
-              // Continue to FCM initialization below
+              
+              const tenantData = tenantDoc.data();
+              if (tenantData.status !== 'ACTIVE') {
+                console.error('Tenant account is not active:', userData.tenantId, 'Status:', tenantData.status);
+
+                // Show toast message to inform user
+                const message = tenantData.status === 'PENDING'
+                  ? 'Your account is pending approval by administrator. Please wait for approval.'
+                  : tenantData.status === 'SUSPENDED'
+                  ? 'Your account has been suspended. Please contact support.'
+                  : tenantData.status === 'REJECTED'
+                  ? 'Your account application has been rejected. Please contact support.'
+                  : 'Your account is not active. Please contact support.';
+
+                updateProgress(90, message);
+                await new Promise(resolve => setTimeout(resolve, 2000));
+
+                // Create user object with tenant status instead of setting to null
+                const authUser: AuthUser = {
+                  uid: firebaseUser.uid,
+                  email: firebaseUser.email!,
+                  displayName: firebaseUser.displayName || userData.displayName,
+                  photoURL: firebaseUser.photoURL || undefined,
+                  tenantId: userData.tenantId,
+                  tenantStatus: tenantData.status,
+                  roles: userData.roles,
+                  assignedAreas: userData.assignedAreas,
+                  assignedZips: userData.assignedZips
+                };
+
+                updateProgress(95, 'Almost ready...');
+                await new Promise(resolve => setTimeout(resolve, 150));
+                updateProgress(100, 'Complete');
+                if (isMounted.current) { setUser(authUser); };
+                return;
+              }
             }
             
             updateProgress(85, 'Setting up dashboard...');
@@ -281,41 +267,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             // 🔄 Initialize FCM for general users (wholesalers, line workers, etc.)
             try {
               updateProgress(88, 'Setting up notifications...');
-              console.log('🔔 Initializing FCM for wholesaler/line worker user:', {
-                authUid: firebaseUser.uid,
-                tenantId: userData.tenantId,
-                caller: 'AuthContext.generalAuth'
-              });
-
-              // Initialize FCM in background without blocking UI
-              // Use 'wholesalers' collection for wholesalers/line workers to store FCM tokens
-              initializeFCM(userData.tenantId || firebaseUser.uid, 'wholesalers').then(fcmToken => {
+              console.log('🔔 Initializing FCM for returning user:', firebaseUser.uid);
+              
+              // Initialize FCM in background without blocking the UI
+              initializeFCM().then(fcmToken => {
                 if (fcmToken) {
-                  console.log('✅ FCM initialized successfully for wholesaler/line worker user:', {
-                    tenantId: userData.tenantId,
-                    userId: firebaseUser.uid,
-                    tokenLength: fcmToken.length,
-                    tokenPrefix: fcmToken.substring(0, 20) + '...'
-                  });
+                  console.log('✅ FCM initialized successfully for returning user');
                 } else {
-                  console.warn('⚠️ FCM initialization failed for wholesaler/line worker user:', {
-                    tenantId: userData.tenantId,
-                    userId: firebaseUser.uid
-                  });
+                  console.warn('⚠️ FCM initialization failed for returning user');
                 }
               }).catch(error => {
-                console.error('❌ FCM initialization error for wholesaler/line worker user:', {
-                  tenantId: userData.tenantId,
-                  userId: firebaseUser.uid,
-                  error: error instanceof Error ? error.message : 'Unknown error'
-                });
+                console.error('❌ FCM initialization error for returning user:', error);
               });
-              console.log('✅ FCM initialization enabled for wholesalers/line workers - storing tokens in wholesalers collection');
             } catch (error) {
-              console.error('❌ Failed to initialize FCM for wholesaler/line worker user:', {
-                tenantId: userData.tenantId,
-                error: error instanceof Error ? error.message : 'Unknown error'
-              });
+              console.error('❌ Failed to initialize FCM for returning user:', error);
             }
             console.log('✅ FCM initialization enabled for all user types');
             

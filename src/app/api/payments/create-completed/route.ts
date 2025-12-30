@@ -127,6 +127,8 @@ async function sendSMSNotificationsOptimized(data: {
 
   try {
     // Prepare both SMS requests IMMEDIATELY
+
+    // Prepare retailer SMS request only (wholesaler SMS removed - FCM used instead)
     const retailerSMSRequest = {
       data: {
         retailerId: data.payment.retailerId,
@@ -140,50 +142,28 @@ async function sendSMSNotificationsOptimized(data: {
       }
     };
 
-    const wholesalerSMSRequest = {
-      data: {
-        retailerId: data.payment.retailerId,
-        paymentId: data.payment.id,
-        amount: data.payment.totalPaid,
-        lineWorkerName: data.lineWorkerName,
-        lineWorkerId: data.payment.lineWorkerId,
-        retailerName: data.retailerUser.name || 'Retailer',
-        retailerArea: data.retailerArea,
-        wholesalerName: data.wholesalerName,
-        collectionDate: data.collectionDate
-      }
-    };
+    // Get retailer SMS function only (wholesaler SMS removed - FCM used instead)
+    const sendRetailerSMSFunction = await getHttpsCallableOptimized('sendRetailerPaymentSMS');
 
-    // Get both functions in PARALLEL
-    const functionPromises = [
-      getHttpsCallableOptimized('sendRetailerPaymentSMS'),
-      getHttpsCallableOptimized('sendWholesalerPaymentSMS')
-    ];
+    console.log('📞 Sending retailer SMS notification (wholesaler uses FCM)...');
 
-    const [sendRetailerSMSFunction, sendWholesalerSMSFunction] = await Promise.all(functionPromises);
-
-    console.log('📞 Sending both SMS notifications in MAXIMUM PARALLEL...');
-
-    // Send both SMS in PARALLEL - NO WAITING
+    // Send retailer SMS only (wholesaler removed - FCM used instead)
     const smsPromises = [
-      sendRetailerSMSFunction(retailerSMSRequest),
-      sendWholesalerSMSFunction(wholesalerSMSRequest)
+      sendRetailerSMSFunction(retailerSMSRequest)
     ];
 
     const results = await Promise.allSettled(smsPromises);
 
     const retailerResult = results[0].status === 'fulfilled' ? results[0].value : null;
-    const wholesalerResult = results[1].status === 'fulfilled' ? results[1].value : null;
 
-    console.log('📱 PARALLEL SMS Results:');
+    console.log('📱 SMS Results:');
     console.log('  Retailer SMS:', retailerResult?.data?.success ? '✅ Sent' : '❌ Failed');
-    console.log('  Wholesaler SMS:', wholesalerResult?.data?.success ? '✅ Sent' : '❌ Failed');
 
     return {
       retailerSMSSuccess: retailerResult?.data?.success || false,
-      wholesalerSMSSuccess: wholesalerResult?.data?.success || false,
+      wholesalerSMSSuccess: false, // FCM used instead
       retailerResult,
-      wholesalerResult
+      wholesalerResult: null
     };
 
   } catch (error) {
@@ -328,7 +308,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Prepare data for SMS
-    const retailerArea = retailerUser.address || retailerUser.area || 'Unknown Area';
+    const retailerArea = (retailerUser as any)?.address || (retailerUser as any)?.area || 'Unknown Area';
     const wholesalerName = wholesalerData?.name || wholesalerData?.displayName || 'Wholesaler';
     const collectionDate = completionTime.toLocaleDateString('en-IN');
 
