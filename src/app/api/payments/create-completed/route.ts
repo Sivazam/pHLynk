@@ -362,7 +362,7 @@ export async function POST(request: NextRequest) {
           paymentId: paymentId,
           retailerName: payment.retailerName,
           lineWorkerName: payment.lineWorkerName,
-          wholesalerId: payment.tenantId
+          wholesalerId: wholesalerTenantId // Use correct wholesaler tenant ID from line worker data
         })
       });
 

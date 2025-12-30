@@ -1000,165 +1000,116 @@ export const sendPaymentCompletionNotification = functions.https.onCall(async (r
       caller: context.auth ? context.auth.uid : 'NEXTJS_API'
     });
 
-    // Get retailer/wholesaler document and FCM devices
-    if (data.recipientType === 'wholesaler') {
-      // For wholesaler, look in wholesalers collection (where frontend saves FCM tokens)
-      console.log('🔧 Looking for FCM devices for wholesaler:', data.retailerId);
-
-      const wholesalerDoc = await admin.firestore()
-        .collection('tenants')  // Use wholesalers collection where frontend saves tokens
-        .doc(data.retailerId) // retailerId is actually wholesalerId for wholesaler notifications
-        .get();
-
-      if (!wholesalerDoc.exists) {
-        throw new functions.https.HttpsError(
-          'not-found',
-          `Wholesaler not found: ${data.retailerId}`
-        );
-      }
-
-      const wholesalerData = wholesalerDoc.data();
-      const fcmDevices = wholesalerData?.fcmDevices || [];
-      
-      if (fcmDevices.length === 0) {
-        console.log('⚠️ No FCM devices found for wholesaler:', data.retailerId);
-        return {
-          success: false,
-          message: 'No devices registered for this wholesaler',
-          deviceCount: 0
-        };
-      }
-
-      console.log(`📱 Found ${fcmDevices.length} FCM devices for wholesaler`);
-
-      // Filter active devices (isActive: true AND last active within 30 days)
-      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-      let activeDevices = fcmDevices.filter((device: any) => {
-        const lastActive = device.lastActive?.toDate?.() || new Date(device.lastActive);
-        const isRecentlyActive = lastActive > thirtyDaysAgo;
-        const isCurrentlyActive = device.isActive === true; // Must be explicitly true
-        console.log(`🔍 Device ${device.deviceId}: isActive=${device.isActive}, lastActive=${lastActive.toISOString()}, recentlyActive=${isRecentlyActive}, currentlyActive=${isCurrentlyActive}`);
-        return isRecentlyActive && isCurrentlyActive;
+    // 🔒 CRITICAL FIX: Block retailer FCM notifications
+    // Retailers receive SMS only - they MUST NOT receive FCM
+    if (data.recipientType !== 'wholesaler') {
+      console.log('🚫 BLOCKING RETAILER FCM - Retailers receive SMS only, no FCM allowed');
+      console.log('📋 Details:', {
+        recipientType: data.recipientType,
+        retailerId: data.retailerId,
+        paymentId: data.paymentId,
+        reason: 'Retailer notifications are sent via SMS only'
       });
 
-      // Remove duplicate devices with same token (keep the most recently active one)
-      const uniqueDevices = new Map();
-      activeDevices.forEach((device: any) => {
-        const existingDevice = uniqueDevices.get(device.token);
-        if (!existingDevice || 
-            (device.lastActive?.toDate?.() || new Date(device.lastActive)) > 
-            (existingDevice.lastActive?.toDate?.() || new Date(existingDevice.lastActive))) {
-          uniqueDevices.set(device.token, device);
-        }
-      });
-      activeDevices = Array.from(uniqueDevices.values());
-
-      console.log(`📱 ${activeDevices.length} unique active devices after filtering and deduplication`);
-
-      if (activeDevices.length === 0) {
-        return {
-          success: false,
-          message: 'No active devices found for this wholesaler',
-          deviceCount: 0
-        };
-      }
-
-      // Send to wholesaler devices
-      return await sendNotificationToDevices(activeDevices, {
-        title: data.title || '💰 Collection Update',
-        body: data.body || `Payment of ₹${data.amount} collected`,
-        data: {
-          type: 'payment_completed',
-          amount: data.amount.toString(),
-          paymentId: data.paymentId,
-          recipientType: 'wholesaler',
-          retailerName: data.retailerName,
-          lineWorkerName: data.lineWorkerName,
-          wholesalerId: data.wholesalerId
-        },
-        tag: `payment-${data.paymentId}`,
-        clickAction: data.clickAction || '/wholesaler/dashboard'
-      });
-
-    } else {
-      // For retailer, use existing logic (same as sendFCMNotification)
-      console.log('🔧 Looking for FCM devices for retailer:', data.retailerId);
-      
-      const retailerDoc = await admin.firestore()
-        .collection('retailers')
-        .doc(data.retailerId)
-        .get();
-
-      if (!retailerDoc.exists) {
-        throw new functions.https.HttpsError(
-          'not-found',
-          `Retailer not found: ${data.retailerId}`
-        );
-      }
-
-      const retailerData = retailerDoc.data();
-      const fcmDevices = retailerData?.fcmDevices || [];
-
-      if (fcmDevices.length === 0) {
-        console.log('⚠️ No FCM devices found for retailer:', data.retailerId);
-        return {
-          success: false,
-          message: 'No devices registered for this retailer',
-          deviceCount: 0
-        };
-      }
-
-      console.log(`📱 Found ${fcmDevices.length} FCM devices for retailer`);
-
-      // Filter active devices (isActive: true AND last active within 30 days)
-      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-      let activeDevices = fcmDevices.filter((device: any) => {
-        const lastActive = device.lastActive?.toDate?.() || new Date(device.lastActive);
-        const isRecentlyActive = lastActive > thirtyDaysAgo;
-        const isCurrentlyActive = device.isActive === true; // Must be explicitly true
-        console.log(`🔍 Device ${device.deviceId}: isActive=${device.isActive}, lastActive=${lastActive.toISOString()}, recentlyActive=${isRecentlyActive}, currentlyActive=${isCurrentlyActive}`);
-        return isRecentlyActive && isCurrentlyActive;
-      });
-
-      // Remove duplicate devices with same token (keep the most recently active one)
-      const uniqueDevices = new Map();
-      activeDevices.forEach((device: any) => {
-        const existingDevice = uniqueDevices.get(device.token);
-        if (!existingDevice || 
-            (device.lastActive?.toDate?.() || new Date(device.lastActive)) > 
-            (existingDevice.lastActive?.toDate?.() || new Date(existingDevice.lastActive))) {
-          uniqueDevices.set(device.token, device);
-        }
-      });
-      activeDevices = Array.from(uniqueDevices.values());
-
-      console.log(`📱 ${activeDevices.length} unique active devices after filtering and deduplication`);
-
-      if (activeDevices.length === 0) {
-        return {
-          success: false,
-          message: 'No active devices found for this retailer',
-          deviceCount: 0
-        };
-      }
-
-      // Send to retailer devices
-      return await sendNotificationToDevices(activeDevices, {
-        title: data.title || '🎉 Payment Successful',
-        body: data.body || `Payment of ₹${data.amount} completed`,
-        data: {
-          type: 'payment_completed',
-          amount: data.amount.toString(),
-          paymentId: data.paymentId,
-          recipientType: 'retailer',
-          retailerName: data.retailerName,
-          lineWorkerName: data.lineWorkerName,
-          wholesalerId: data.wholesalerId
-        },
-        tag: `payment-${data.paymentId}`,
-        clickAction: data.clickAction || '/retailer/payment-history'
-      });
+      // Return early without sending any FCM
+      return {
+        success: true,
+        message: 'Retailer FCM blocked - SMS notification handled separately',
+        blocked: true,
+        reason: 'Retailers receive SMS only, not FCM',
+        recipientType: data.recipientType
+      };
     }
+
+    // Get wholesaler document and FCM devices
+    console.log('✅ ALLOWING WHOLESALER FCM - Wholesaler will receive FCM notification');
+
+    // For wholesaler, look in tenants collection (where frontend saves FCM tokens)
+    console.log('🔧 Looking for FCM devices for wholesaler:', data.retailerId);
+
+    const wholesalerDoc = await admin.firestore()
+      .collection('tenants')  // Use tenants collection where frontend saves tokens
+      .doc(data.retailerId) // retailerId is actually wholesalerId for wholesaler notifications
+      .get();
+
+    if (!wholesalerDoc.exists) {
+      throw new functions.https.HttpsError(
+        'not-found',
+        `Wholesaler not found: ${data.retailerId}`
+      );
+    }
+
+    const wholesalerData = wholesalerDoc.data();
+    const fcmDevices = wholesalerData?.fcmDevices || [];
+
+    if (fcmDevices.length === 0) {
+      console.log('⚠️ No FCM devices found for wholesaler:', data.retailerId);
+      return {
+        success: false,
+        message: 'No devices registered for this wholesaler',
+        deviceCount: 0
+      };
+    }
+
+    console.log(`📱 Found ${fcmDevices.length} FCM devices for wholesaler`);
+
+    // Filter active devices (isActive: true AND last active within 30 days)
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    let activeDevices = fcmDevices.filter((device: any) => {
+      const lastActive = device.lastActive?.toDate?.() || new Date(device.lastActive);
+      const isRecentlyActive = lastActive > thirtyDaysAgo;
+      const isCurrentlyActive = device.isActive === true; // Must be explicitly true
+      console.log(`🔍 Device ${device.deviceId}: isActive=${device.isActive}, lastActive=${lastActive.toISOString()}, recentlyActive=${isRecentlyActive}, currentlyActive=${isCurrentlyActive}`);
+      return isRecentlyActive && isCurrentlyActive;
+    });
+
+    // Remove duplicate devices with same token (keep the most recently active one)
+    const uniqueDevices = new Map();
+    activeDevices.forEach((device: any) => {
+      const existingDevice = uniqueDevices.get(device.token);
+      if (!existingDevice ||
+          (device.lastActive?.toDate?.() || new Date(device.lastActive)) >
+          (existingDevice.lastActive?.toDate?.() || new Date(existingDevice.lastActive))) {
+        uniqueDevices.set(device.token, device);
+      }
+    });
+    activeDevices = Array.from(uniqueDevices.values());
+
+    console.log(`📱 ${activeDevices.length} unique active devices after filtering and deduplication`);
+
+    if (activeDevices.length === 0) {
+      return {
+        success: false,
+        message: 'No active devices found for this wholesaler',
+        deviceCount: 0
+      };
+    }
+
+    // Prepare FCM message with correct title and body for wholesaler
+    const fcmTitle = data.title || '💰 Payment Collected';
+    const fcmBody = data.body || `₹${data.amount} collected by ${data.lineWorkerName || 'Line Worker'} from ${data.retailerName || 'Retailer'}`;
+
+    console.log('📤 Sending FCM to wholesaler devices:', {
+      title: fcmTitle,
+      body: fcmBody,
+      deviceCount: activeDevices.length
+    });
+
+    // Send to wholesaler devices
+    return await sendNotificationToDevices(activeDevices, {
+      title: fcmTitle,
+      body: fcmBody,
+      data: {
+        type: 'payment_collected',
+        amount: data.amount.toString(),
+        paymentId: data.paymentId,
+        retailerName: data.retailerName,
+        lineWorkerName: data.lineWorkerName,
+        wholesalerId: data.wholesalerId
+      },
+      tag: `payment-${data.paymentId}`,
+      clickAction: data.clickAction || '/wholesaler/dashboard'
+    });
   } catch (error) {
     console.error('❌ FCM CLOUD FUNCTION - Error sending payment completion notification:', error);
     
