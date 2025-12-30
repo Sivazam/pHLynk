@@ -535,3 +535,90 @@ Or redeploy to production with updated code.
 
 ---
 
+## Task 10: Fix Cloud Function Trigger - Production URL Issue
+
+### Problem Identified:
+The `sendPaymentCompletionNotification` Cloud Function was NOT being triggered after deploying to Vercel, even though:
+- ✅ It worked correctly on localhost
+- ✅ The Cloud Function code was valid
+- ✅ The FCM routing logic was correct
+
+### Root Cause:
+**File**: `/home/z/my-project/src/app/api/payments/create-completed/route.ts`
+**Location**: Lines 341-342 (before fix)
+
+**Bug Code:**
+```typescript
+const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+const fcmUrl = `${baseUrl}/api/fcm/send-payment-completion`;
+```
+
+**Why it broke:**
+1. In **localhost** (`http://localhost:3000`): The fallback URL worked, so FCM notifications triggered ✅
+2. In **production (Vercel)**: The code still tried to call `http://localhost:3000/api/fcm/send-payment-completion` which doesn't exist on the deployed server ❌
+3. The error was caught and logged but didn't fail the payment request (lines 383-387), making it hard to detect
+
+**Historical Evidence:**
+- The log showed "Function executed twice" and worked once → This was during localhost testing
+- After deploying to Vercel, the function stopped triggering entirely → The localhost URL became invalid
+
+### Fix Applied:
+
+**File**: `/home/z/my-project/src/app/api/payments/create-completed/route.ts`
+
+**Change:**
+```typescript
+// Before (lines 341-343):
+const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+const fcmUrl = `${baseUrl}/api/fcm/send-payment-completion`;
+
+// After (lines 341-343):
+// Use dynamic origin that works in both dev (localhost) and production (Vercel)
+const baseUrl = request.nextUrl.origin;
+const fcmUrl = `${baseUrl}/api/fcm/send-payment-completion`;
+```
+
+### How This Fix Works:
+- `request.nextUrl.origin` is a Next.js built-in property that returns the current request's origin
+- **In development**: Returns `http://localhost:3000` (or whatever port you're using)
+- **In production (Vercel)**: Returns `https://your-app.vercel.app` (or your custom domain)
+- **No environment variables needed**: Works automatically in both environments
+
+### Expected Behavior After Fix:
+
+**On localhost (development):**
+1. Line Worker collects payment
+2. API creates payment → sends SMS to retailer
+3. API calls `http://localhost:3000/api/fcm/send-payment-completion` ✅
+4. Cloud Function receives retailer request → blocks FCM ✅
+5. Cloud Function receives wholesaler request → sends FCM ✅
+
+**On Vercel (production):**
+1. Line Worker collects payment
+2. API creates payment → sends SMS to retailer
+3. API calls `https://your-app.vercel.app/api/fcm/send-payment-completion` ✅
+4. Cloud Function receives retailer request → blocks FCM ✅
+5. Cloud Function receives wholesaler request → sends FCM ✅
+
+### Verification Checklist (ALL MUST PASS):
+- ✅ Retailer receives SMS on payment completion
+- ❌ Retailer receives NO FCM (blocked by Cloud Function)
+- ❌ Wholesaler receives NO SMS
+- ✅ Wholesaler receives exactly ONE FCM
+- ✅ Function logs appear on every payment
+- ✅ No duplicate notifications
+- ✅ Payment flow unchanged
+- ✅ No new runtime errors
+
+### Deployment Required:
+Redeploy to production (Vercel) with this fix. No environment variables needed - the fix uses dynamic URL detection.
+
+### Impact:
+- **Fixes production Cloud Function triggering** - The API route now uses the correct origin URL in both dev and production
+- **Minimal change** - Only 1 line changed (from static fallback to dynamic origin)
+- **No payment logic changes** - Only the FCM API call URL fix
+- **No environment variables needed** - Works automatically
+- **Production-safe** - Uses Next.js built-in `request.nextUrl.origin`
+
+---
+

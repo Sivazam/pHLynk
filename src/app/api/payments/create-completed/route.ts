@@ -338,7 +338,8 @@ export async function POST(request: NextRequest) {
       console.log('📱 Starting FCM notification process...');
       console.log('📞 Sending retailer SMS notification (wholesaler uses FCM)...');
 
-      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+      // Use dynamic origin that works in both dev (localhost) and production (Vercel)
+      const baseUrl = request.nextUrl.origin;
       const fcmUrl = `${baseUrl}/api/fcm/send-payment-completion`;
 
       console.log('🔗 FCM URL:', fcmUrl);
