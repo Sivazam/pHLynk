@@ -276,6 +276,9 @@ export function NetflixRoleSelection({ onRoleSelect, onBack }: NetflixRoleSelect
                 </span>
               </div>
             </div>
+            <h2 style={{color:'white'}}>
+              Powered by SAANVI SYSTEMS
+            </h2>
 
             {/* Right side navigation */}
             <div className="flex items-center space-x-3 sm:space-x-4">
@@ -452,10 +455,15 @@ export function NetflixRoleSelection({ onRoleSelect, onBack }: NetflixRoleSelect
               {/* Questions? Contact */}
               <div className="text-center mb-8 sm:mb-12">
                 <p className="text-gray-500 text-sm sm:text-base mb-4">
-                  Questions? Contact us 24/7 for support
+                  {/* Questions? Contact us 24/7 for support */}
+                  ABOUT US
                 </p>
                 <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-                  <a 
+                <h2>
+SAANVI SYSTEMS is a technology company specializing in software solutions for the pharmaceutical supply chain. Our flagship product, PharmaLync, is designed to streamline operations for wholesalers, line workers, and retailers, enhancing efficiency and transparency across the supply chain.
+                </h2>
+
+                  {/* <a 
                     href="tel:9014882779" 
                     className="flex items-center text-blue-600 hover:text-blue-500 transition-colors"
                   >
@@ -468,7 +476,7 @@ export function NetflixRoleSelection({ onRoleSelect, onBack }: NetflixRoleSelect
                   >
                     <Mail className="h-4 w-4 mr-2" />
                     <span className="text-sm sm:text-base">support@pharmalynk.com</span>
-                  </a>
+                  </a> */}
                 </div>
               </div>
 
@@ -566,7 +574,8 @@ export function NetflixRoleSelection({ onRoleSelect, onBack }: NetflixRoleSelect
               {/* Copyright */}
               <div className="pt-6 sm:pt-8 border-t border-gray-800">
                 <p className="text-gray-500 text-sm text-center">
-                  © 2025 PharmaLync. All rights reserved.
+                  {/* © 2025 PharmaLync. All rights reserved. */}
+                  Powered by SAANVI SYSTEMS
                 </p>
               </div>
             </div>
