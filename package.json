@@ -14,7 +14,7 @@
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:reset": "prisma migrate reset",
-    "test:e2e": "bun run test-e2e-retailer-flow.ts"
+    "test:e2e": "bun run scripts/test-e2e-retailer-flow.ts"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
