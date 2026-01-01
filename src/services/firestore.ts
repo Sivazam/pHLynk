@@ -1231,7 +1231,6 @@ export class RetailerService extends FirestoreService<Retailer> {
         areaId: retailer.areaId,
         zipcodes: retailer.zipcodes,
         active: retailer.active !== false, // Default to true if not set
-        lastPaymentDate: retailer.lastPaymentDate || null
       };
 
       // Only add profile and verification if they exist (avoid creating empty objects)
