@@ -334,10 +334,33 @@ export async function POST(request: NextRequest) {
     }
     
     console.log('✅ OTP verified successfully!');
-    
-    // For retailer verification, just return success without payment processing
+
+    // For retailer verification, mark retailer account as verified
     if (purpose === 'RETAILER_VERIFICATION') {
       console.log('🔐 Retailer verification completed');
+
+      // Get retailer user and mark as verified
+      const [paymentData, verificationData] = await Promise.all([
+        getPaymentOptimized(paymentId),
+        getVerificationDataOptimized(paymentId, (await getPaymentOptimized(paymentId))?.retailerId || '')
+      ]);
+
+      if (verificationData.retailerUser) {
+        const retailerPhone = verificationData.retailerUser.phone;
+        const verifiedUser = await RetailerAuthService.verifyRetailerAccount(retailerPhone);
+
+        if (verifiedUser) {
+          return NextResponse.json({
+            success: true,
+            message: 'Phone number verified successfully',
+            purpose: 'RETAILER_VERIFICATION',
+            verifiedAt: new Date().toISOString(),
+            isVerified: true
+          });
+        }
+      }
+
+      // Fallback if retailer user not found
       return NextResponse.json({
         success: true,
         message: 'Phone number verified successfully',

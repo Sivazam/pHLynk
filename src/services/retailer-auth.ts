@@ -56,8 +56,10 @@ export class RetailerAuthService {
           createdAt: serverTimestamp(),
           lastLoginAt: serverTimestamp(),
           isActive: true,
-          isVerified: false,
-          verificationStatus: 'pending'
+          // FIX: Set verified immediately since wholesaler is creating account
+          // Firebase phone auth will handle verification during login
+          isVerified: true,
+          verificationStatus: 'verified'
         });
       }
       
@@ -73,8 +75,9 @@ export class RetailerAuthService {
         createdAt: serverTimestamp(),
         lastLoginAt: serverTimestamp(),
         isActive: true,
-        isVerified: false,
-        verificationStatus: 'pending'
+        // FIX: Set verified immediately since wholesaler is creating account
+        isVerified: true,
+        verificationStatus: 'verified'
       };
       
       console.log('✅ Retailer user account created/updated:', retailerUser);

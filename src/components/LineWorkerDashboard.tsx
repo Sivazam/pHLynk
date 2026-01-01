@@ -35,6 +35,7 @@ import { db } from '@/lib/firebase';
 import { doc, getDoc, onSnapshot, collection, query, where } from 'firebase/firestore';
 import { exportToCSV, exportToJSON, preparePaymentDataForExport, formatDateForExport, formatCurrencyForExport } from '@/lib/export-utils';
 import { CollectPaymentForm } from './CollectPaymentForm';
+import { cleanPhoneNumber } from '@/lib/utils';
 // NOTE: OTP functionality removed - payments are now created directly in COMPLETED state
 import { 
   Store, 
@@ -120,17 +121,17 @@ export function LineWorkerDashboard() {
 
   // Helper function to get retailer name (handles both legacy and new profile formats)
   const getRetailerName = (retailer: any) => {
-    return retailer.profile ? retailer.profile.realName : retailer.name || 'Unknown Retailer';
+    return retailer.profile?.realName || retailer.name || 'Unknown Retailer';
   };
 
   // Helper function to get retailer phone (handles both legacy and new profile formats)
   const getRetailerPhone = (retailer: any) => {
-    return retailer.profile ? retailer.profile.phone : retailer.phone || 'N/A';
+    return cleanPhoneNumber(retailer.profile?.phone || retailer.phone) || 'N/A';
   };
 
   // Helper function to get retailer address (handles both legacy and new profile formats)
   const getRetailerAddress = (retailer: any) => {
-    return retailer.profile ? retailer.profile.address : retailer.address || 'N/A';
+    return retailer.profile?.address || retailer.address || 'N/A';
   };
 
   // Search functionality

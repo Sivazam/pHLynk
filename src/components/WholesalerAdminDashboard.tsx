@@ -19,6 +19,7 @@ import { DateRangeFilter, DateRangeOption } from '@/components/ui/DateRangeFilte
 import { Skeleton } from '@/components/ui/skeleton';
 import { LoadingOverlay } from '@/components/ui/LoadingOverlay';
 import { LoadingButton } from '@/components/ui/LoadingButton';
+import { cleanPhoneNumber } from '@/lib/utils';
 import { LoadingText } from '@/components/ui/LoadingText';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { useLoadingState } from '@/hooks/useLoadingState';
@@ -984,11 +985,14 @@ export function WholesalerAdminDashboard() {
       setError('No tenant selected. Please select a tenant to continue.');
       return;
     }
-    
+
     try {
+      // Clean phone number to remove hidden Unicode characters
+      const cleanedPhone = cleanPhoneNumber(data.phone);
+
       await retailerService.createRetailer(currentTenantId, {
         name: data.name,
-        phone: data.phone,
+        phone: cleanedPhone,
         address: data.address || '',
         areaId: data.areaId || '',
         zipcodes: data.zipcodes
@@ -1066,9 +1070,9 @@ export function WholesalerAdminDashboard() {
       
       // Check if retailer was already associated
       if (data.alreadyAssociated) {
-        showSuccess(`Retailer "${retailer.profile ? retailer.profile.realName : retailer.name}" is already in your account!`);
+        showSuccess(`Retailer "${retailer.profile?.realName || retailer.name}" is already in your account!`);
       } else {
-        showSuccess(`Retailer "${retailer.profile ? retailer.profile.realName : retailer.name}" added to your account successfully!`);
+        showSuccess(`Retailer "${retailer.profile?.realName || retailer.name}" added to your account successfully!`);
       }
       
       await fetchDashboardData();
@@ -1137,7 +1141,7 @@ export function WholesalerAdminDashboard() {
           // Assign each retailer to this new Line Worker
           for (const retailer of unassignedRetailersInAreas) {
             await retailerService.assignLineWorker(currentTenantId, retailer.id, createdLineWorkerId);
-            console.log(`✅ Auto-assigned retailer "${retailer.profile ? retailer.profile.realName : retailer.name}" to Line Worker`);
+            console.log(`✅ Auto-assigned retailer "${retailer.profile?.realName || retailer.name}" to Line Worker`);
           }
           
           if (unassignedRetailersInAreas.length > 0) {
@@ -1353,7 +1357,7 @@ export function WholesalerAdminDashboard() {
           
           for (const retailer of unassignedRetailersInAddedAreas) {
             await retailerService.assignLineWorker(currentTenantId, retailer.id, editingLineWorker.id);
-            console.log(`✅ Auto-assigned retailer "${retailer.profile ? retailer.profile.realName : retailer.name}" to Line Worker for new area`);
+            console.log(`✅ Auto-assigned retailer "${retailer.profile?.realName || retailer.name}" to Line Worker for new area`);
           }
         }
         
@@ -1368,7 +1372,7 @@ export function WholesalerAdminDashboard() {
           
           for (const retailer of assignedRetailersInRemovedAreas) {
             await retailerService.assignLineWorker(currentTenantId, retailer.id, null);
-            console.log(`✅ Auto-unassigned retailer "${retailer.profile ? retailer.profile.realName : retailer.name}" from Line Worker for removed area`);
+            console.log(`✅ Auto-unassigned retailer "${retailer.profile?.realName || retailer.name}" from Line Worker for removed area`);
           }
         }
         
@@ -1803,17 +1807,17 @@ export function WholesalerAdminDashboard() {
                     <TableRow key={retailer.id}>
                       <TableCell>
                         <div className="font-medium">
-                          {retailer.profile ? retailer.profile.realName : retailer.name}
+                          {retailer.profile?.realName || retailer.name}
                         </div>
                         <div className="text-sm text-gray-500">
-                          {retailer.profile ? retailer.profile.address : retailer.address}
+                          {retailer.profile?.address || retailer.address}
                         </div>
                       </TableCell>
                       <TableCell>
                         {areas.find(a => a.id === retailer.areaId)?.name || 'Unassigned'}
                       </TableCell>
                       <TableCell>
-                        {retailer.profile ? retailer.profile.phone : retailer.phone}
+                        {retailer.profile?.phone || retailer.phone}
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center space-x-2">
@@ -2267,7 +2271,7 @@ export function WholesalerAdminDashboard() {
                 <SelectContent>
                   <SelectItem value="all">All Retailers</SelectItem>
                   {retailers.map(retailer => (
-                    <SelectItem key={retailer.id} value={retailer.id}>{retailer.profile ? retailer.profile.realName : retailer.name}</SelectItem>
+                    <SelectItem key={retailer.id} value={retailer.id}>{retailer.profile?.realName || retailer.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -2887,7 +2891,7 @@ export function WholesalerAdminDashboard() {
                   <SelectContent>
                     <SelectItem value="all">All Retailers</SelectItem>
                     {retailers.map(retailer => (
-                      <SelectItem key={retailer.id} value={retailer.id}>{retailer.profile ? retailer.profile.realName : retailer.name}</SelectItem>
+                      <SelectItem key={retailer.id} value={retailer.id}>{retailer.profile?.realName || retailer.name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -2967,7 +2971,7 @@ export function WholesalerAdminDashboard() {
                   <div className="flex justify-between items-start">
                     <div>
                       <CardTitle className="text-lg flex items-center gap-2">
-                        {retailer.profile ? retailer.profile.realName : retailer.name}
+                        {retailer.profile?.realName || retailer.name}
                         {retailer.assignedLineWorkerId && (
                           <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
                             <UserIcon className="h-3 w-3 mr-1" />
@@ -2978,7 +2982,7 @@ export function WholesalerAdminDashboard() {
                       <CardDescription className="mt-1">
                         <div className="flex flex-wrap gap-4 text-sm">
                           <span>
-                            <a href={`tel:${retailer.profile ? retailer.profile.phone : retailer.phone}`} className="text-blue-600 hover:underline">📞 {retailer.profile ? retailer.profile.phone : retailer.phone}</a>
+                            <a href={`tel:${retailer.profile?.phone || retailer.phone}`} className="text-blue-600 hover:underline">📞 {retailer.profile?.phone || retailer.phone}</a>
                           </span>
                           <span>📍 {areas.find(a => a.id === retailer.areaId)?.name || 'Unassigned'}</span>
                           <span>🏷️ {retailer.zipcodes.join(', ')}</span>

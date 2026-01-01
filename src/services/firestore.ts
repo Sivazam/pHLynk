@@ -579,6 +579,20 @@ export class RetailerService extends FirestoreService<Retailer> {
         address: data.address,
         areaId: data.areaId,
         zipcodes: data.zipcodes,
+        // FIX: Populate profile immediately so UI can display retailer data correctly
+        profile: {
+          realName: data.name,
+          phone: data.phone,
+          address: data.address || '',
+          email: '',
+          businessType: '',
+          licenseNumber: ''
+        },
+        // FIX: Set verification status to verified since wholesaler is creating account
+        verification: {
+          isPhoneVerified: true,
+          verificationMethod: 'MANUAL'
+        },
         // NEW: Use wholesalerData instead of wholesalerAssignments
         wholesalerData: {
           [tenantId]: {
@@ -616,6 +630,20 @@ export class RetailerService extends FirestoreService<Retailer> {
           address: data.address,
           areaId: data.areaId,
           zipcodes: data.zipcodes,
+          // FIX: Include profile for consistency
+          profile: {
+            realName: data.name,
+            phone: data.phone,
+            address: data.address || '',
+            email: '',
+            businessType: '',
+            licenseNumber: ''
+          },
+          // FIX: Include verification for consistency
+          verification: {
+            isPhoneVerified: true,
+            verificationMethod: 'MANUAL'
+          },
           // NEW: Use wholesalerData
           wholesalerData: {
             [tenantId]: {
@@ -1203,9 +1231,16 @@ export class RetailerService extends FirestoreService<Retailer> {
         areaId: retailer.areaId,
         zipcodes: retailer.zipcodes,
         active: retailer.active !== false, // Default to true if not set
-        profile: retailer.profile || {},
-        verification: retailer.verification || {}
+        lastPaymentDate: retailer.lastPaymentDate || null
       };
+
+      // Only add profile and verification if they exist (avoid creating empty objects)
+      if (retailer.profile) {
+        updateData.profile = retailer.profile;
+      }
+      if (retailer.verification) {
+        updateData.verification = retailer.verification;
+      }
       
       await this.update(retailerId, updateData, tenantId);
       
@@ -1277,10 +1312,16 @@ export class RetailerService extends FirestoreService<Retailer> {
         address: retailer.address,
         areaId: retailer.areaId,
         zipcodes: retailer.zipcodes,
-        active: retailer.active !== false,
-        profile: retailer.profile || {},
-        verification: retailer.verification || {}
+        active: retailer.active !== false
       };
+
+      // Only add profile and verification if they exist (avoid creating empty objects)
+      if (retailer.profile) {
+        updateData.profile = retailer.profile;
+      }
+      if (retailer.verification) {
+        updateData.verification = retailer.verification;
+      }
       
       await this.update(retailerId, updateData, tenantId);
       
@@ -1366,8 +1407,6 @@ export class RetailerService extends FirestoreService<Retailer> {
         areaId: retailer.areaId,
         zipcodes: retailer.zipcodes,
         active: retailer.active !== false,
-        profile: retailer.profile || {},
-        verification: retailer.verification || {},
         // Preserve payment-related fields
         totalPaidAmount: retailer.totalPaidAmount || 0,
         totalPaymentsCount: retailer.totalPaymentsCount || 0,
@@ -1375,6 +1414,14 @@ export class RetailerService extends FirestoreService<Retailer> {
         recentPayments: retailer.recentPayments || [],
         computedAt: retailer.computedAt || Timestamp.now()
       };
+
+      // Only add profile and verification if they exist (avoid creating empty objects)
+      if (retailer.profile) {
+        updateData.profile = retailer.profile;
+      }
+      if (retailer.verification) {
+        updateData.verification = retailer.verification;
+      }
       
       await this.update(retailerId, updateData, tenantId);
 
@@ -1506,8 +1553,6 @@ export class RetailerService extends FirestoreService<Retailer> {
         areaId: retailer.areaId,
         zipcodes: retailer.zipcodes,
         active: retailer.active !== false,
-        profile: retailer.profile || {},
-        verification: retailer.verification || {},
         // Preserve payment-related fields
         totalPaidAmount: retailer.totalPaidAmount || 0,
         totalPaymentsCount: retailer.totalPaymentsCount || 0,
@@ -1515,7 +1560,15 @@ export class RetailerService extends FirestoreService<Retailer> {
         recentPayments: retailer.recentPayments || [],
         computedAt: retailer.computedAt || Timestamp.now()
       };
-      
+
+      // Only add profile and verification if they exist (avoid creating empty objects)
+      if (retailer.profile) {
+        updateData.profile = retailer.profile;
+      }
+      if (retailer.verification) {
+        updateData.verification = retailer.verification;
+      }
+
       await this.update(retailerId, updateData, tenantId);
 
       logger.success(`OTP marked as used for retailer ${retailerId} payment ${paymentId}`, { context: 'OTPService' });
@@ -1550,8 +1603,6 @@ export class RetailerService extends FirestoreService<Retailer> {
         areaId: retailer.areaId,
         zipcodes: retailer.zipcodes,
         active: retailer.active !== false,
-        profile: retailer.profile || {},
-        verification: retailer.verification || {},
         // Preserve payment-related fields
         totalPaidAmount: retailer.totalPaidAmount || 0,
         totalPaymentsCount: retailer.totalPaymentsCount || 0,
@@ -1559,7 +1610,15 @@ export class RetailerService extends FirestoreService<Retailer> {
         recentPayments: retailer.recentPayments || [],
         computedAt: retailer.computedAt || Timestamp.now()
       };
-      
+
+      // Only add profile and verification if they exist (avoid creating empty objects)
+      if (retailer.profile) {
+        updateData.profile = retailer.profile;
+      }
+      if (retailer.verification) {
+        updateData.verification = retailer.verification;
+      }
+
       await this.update(retailerId, updateData, tenantId);
 
       logger.success(`OTP completely removed from retailer ${retailerId} payment ${paymentId}`, { context: 'OTPService' });
