@@ -11,9 +11,8 @@
  * 6. Create Payment Collection
  */
 
-import { initializeApp, getApps, cert, getApp } from 'firebase-admin/app';
+import { initializeApp, getApps, getApp } from 'firebase-admin/app';
 import { getFirestore, collection, doc, setDoc, getDoc, getDocs, query, where, updateDoc, serverTimestamp, Timestamp } from 'firebase-admin/firestore';
-import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { readFileSync } from 'fs';
 
 // Colors for console output
@@ -108,7 +107,8 @@ function initializeFirebaseAdmin() {
     const existingApps = getApps();
     if (existingApps.length > 0) {
       log('✅ Firebase Admin already initialized', 'green');
-      return existingApps[0];
+      const app = existingApps[0];
+      return getFirestore(app);
     }
 
     // Initialize with existing config
@@ -120,7 +120,8 @@ function initializeFirebaseAdmin() {
 
     const app = initializeApp(firebaseConfig, 'test-app');
     logSuccess('Firebase Admin initialized');
-    return app;
+
+    return getFirestore(app);
   } catch (error) {
     logError(`Failed to initialize Firebase Admin: ${error}`);
     throw error;
@@ -649,8 +650,7 @@ async function runE2ETest() {
     logInfo('Test Time: ' + new Date().toISOString());
 
     // Initialize Firebase
-    const app = initializeFirebaseAdmin();
-    const db = getFirestore(app);
+    const db = initializeFirebaseAdmin();
 
     // Step 1: Create Wholesaler
     await createWholesaler(db);
@@ -678,7 +678,6 @@ async function runE2ETest() {
 
     // Exit with appropriate code
     process.exit(allPassed ? 0 : 1);
-
   } catch (error: any) {
     logSection('FATAL ERROR');
     logError(error.message);
