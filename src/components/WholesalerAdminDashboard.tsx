@@ -2395,10 +2395,19 @@ export function WholesalerAdminDashboard() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {completedPayments.map((payment) => (
+                        {completedPayments.map((payment) => {
+                          const retailerExists = retailers.some(r => r.id === payment.retailerId);
+                          return (
                           <TableRow key={payment.id}>
                             <TableCell>{formatTimestampWithTime(payment.createdAt)}</TableCell>
-                            <TableCell>{getRetailerName(payment.retailerId)}</TableCell>
+                            <TableCell>
+                              <div className="flex flex-col">
+                                <span>{payment.retailerName}</span>
+                                {!retailerExists && (
+                                  <Badge variant="destructive" className="mt-1 text-xs">Deleted</Badge>
+                                )}
+                              </div>
+                            </TableCell>
                             <TableCell>{getLineWorkerName(payment.lineWorkerId)}</TableCell>
                             <TableCell>
                               <div className="text-right">
@@ -2463,10 +2472,19 @@ export function WholesalerAdminDashboard() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {pendingCancelledPayments.map((payment) => (
+                        {pendingCancelledPayments.map((payment) => {
+                          const retailerExists = retailers.some(r => r.id === payment.retailerId);
+                          return (
                           <TableRow key={payment.id}>
                             <TableCell>{formatTimestampWithTime(payment.createdAt)}</TableCell>
-                            <TableCell>{getRetailerName(payment.retailerId)}</TableCell>
+                            <TableCell>
+                              <div className="flex flex-col">
+                                <span>{payment.retailerName}</span>
+                                {!retailerExists && (
+                                  <Badge variant="destructive" className="mt-1 text-xs">Deleted</Badge>
+                                )}
+                              </div>
+                            </TableCell>
                             <TableCell>{getLineWorkerName(payment.lineWorkerId)}</TableCell>
                             <TableCell>
                               <div className="text-right">
@@ -3009,13 +3027,11 @@ export function WholesalerAdminDashboard() {
         <div className="space-y-6">
           {getFilteredRetailers.map(retailer => {
             const retailerPayments = getFilteredPayments().filter(pay => pay.retailerId === retailer.id);
-            // Check for direct assignment first, then fall back to area-based assignment
-            const assignedLineWorker = retailer.assignedLineWorkerId 
+            // Check for direct assignment first (single source of truth)
+            // Area-based assignments are only used for line worker visibility, not display
+            const assignedLineWorker = retailer.assignedLineWorkerId
               ? lineWorkers.find(worker => worker.id === retailer.assignedLineWorkerId)
-              : lineWorkers.find(worker => 
-                  worker.assignedAreas?.includes(retailer.areaId || '') ||
-                  (worker.assignedZips && retailer.zipcodes.some(zip => worker.assignedZips?.includes(zip)))
-                );
+              : null; // No direct assignment = Unassigned
 
             return (
               <Card key={retailer.id} className="overflow-hidden">
@@ -3310,9 +3326,43 @@ export function WholesalerAdminDashboard() {
         
         {/* Retailer Assignment Dialog */}
         {RetailerAssignmentDialog()}
-        
+
+        {/* Assignment Confirmation Dialog */}
+        <AlertDialog open={showAssignmentConfirmation} onOpenChange={setShowAssignmentConfirmation}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                {pendingAssignment?.action === 'unassign' ? 'Unassign Retailer' : 'Reassign Retailer'}
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                {pendingAssignment?.action === 'unassign' ? (
+                  <>
+                    Are you sure you want to unassign <strong>{pendingAssignment?.retailerName}</strong> from <strong>{pendingAssignment?.lineWorkerName}</strong>?
+                    <br /><br />
+                    <span className="text-sm text-amber-600">
+                      This retailer will no longer be visible to this line worker unless assigned to an area they manage.
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    Are you sure you want to reassign <strong>{pendingAssignment?.retailerName}</strong> from <strong>{pendingAssignment?.lineWorkerName}</strong> to a different line worker?
+                  </>
+                )}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={cancelPendingAssignment}>
+                Cancel
+              </AlertDialogCancel>
+              <AlertDialogAction onClick={executeConfirmedAssignment}>
+                {pendingAssignment?.action === 'unassign' ? 'Unassign' : 'Reassign'}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
         {/* Success Feedback */}
-        <SuccessFeedback 
+        <SuccessFeedback
           show={feedback.show}
           message={feedback.message}
           onClose={hideSuccess}
