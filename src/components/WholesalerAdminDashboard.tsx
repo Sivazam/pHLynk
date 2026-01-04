@@ -1413,16 +1413,27 @@ export function WholesalerAdminDashboard() {
           }
         }
         
-        // Unassign retailers from removed areas (only if they're assigned to this worker)
+        // Unassign retailers from removed areas
         if (removedAreas.length > 0) {
-          const assignedRetailersInRemovedAreas = retailers.filter(retailer => 
-            removedAreas.includes(retailer.areaId || '') && 
-            retailer.assignedLineWorkerId === editingLineWorker.id
-          );
-          
-          console.log(`🎯 Found ${assignedRetailersInRemovedAreas.length} assigned retailers in removed areas`);
-          
-          for (const retailer of assignedRetailersInRemovedAreas) {
+          // Two cases to handle:
+          // 1. Area-based assignment: retailer in removed area, no direct assignment
+          // 2. Direct assignment: retailer directly assigned to this worker AND retailer in removed area
+          const retailersToUnassign = retailers.filter(retailer => {
+            const retailerInRemovedArea = removedAreas.includes(retailer.areaId || '');
+
+            // Case 1: Area-based assignment (no direct assignment, retailer in removed area)
+            const case1 = !retailer.assignedLineWorkerId && retailerInRemovedArea;
+
+            // Case 2: Direct assignment to this worker, AND retailer in removed area
+            // When a retailer was directly assigned but the area connection is broken, unassign them
+            const case2 = retailer.assignedLineWorkerId === editingLineWorker.id && retailerInRemovedArea;
+
+            return case1 || case2;
+          });
+
+          console.log(`🎯 Found ${retailersToUnassign.length} retailers to unassign from removed areas`);
+
+          for (const retailer of retailersToUnassign) {
             await retailerService.assignLineWorker(currentTenantId, retailer.id, null);
             console.log(`✅ Auto-unassigned retailer "${retailer.profile?.realName || retailer.name}" from Line Worker for removed area`);
           }
@@ -2429,8 +2440,9 @@ export function WholesalerAdminDashboard() {
                               </Button>
                             </TableCell>
                           </TableRow>
-                        ))}
-                      </TableBody>
+                        );
+                      })}
+                    </TableBody>
                     </Table>
                   ) : (
                     <div className="text-center py-8">
@@ -2510,8 +2522,9 @@ export function WholesalerAdminDashboard() {
                               </Button>
                             </TableCell>
                           </TableRow>
-                        ))}
-                      </TableBody>
+                        );
+                      })}
+                    </TableBody>
                     </Table>
                   ) : (
                     <div className="text-center py-8">

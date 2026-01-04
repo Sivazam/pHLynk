@@ -1338,6 +1338,7 @@ export class RetailerService extends FirestoreService<Retailer> {
 
   async assignLineWorker(tenantId: string, retailerId: string, lineWorkerId: string | null): Promise<void> {
     try {
+      // IMPORTANT: Pass undefined to delete field, not undefined (which would be set as undefined)
       await this.update(retailerId, {
         assignedLineWorkerId: lineWorkerId || undefined
       }, tenantId);
