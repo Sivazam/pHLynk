@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -296,6 +297,16 @@ export function WholesalerAdminDashboard() {
   const [showRetailerAssignment, setShowRetailerAssignment] = useState(false);
   const [assigningRetailer, setAssigningRetailer] = useState<Retailer | null>(null);
   const [selectedLineWorkerForAssignment, setSelectedLineWorkerForAssignment] = useState<string>('');
+
+  // Confirmation dialog for reassign/unassign actions
+  const [showAssignmentConfirmation, setShowAssignmentConfirmation] = useState(false);
+  const [pendingAssignment, setPendingAssignment] = useState<{
+    retailerId: string;
+    retailerName: string;
+    lineWorkerId: string | null;
+    lineWorkerName: string;
+    action: 'reassign' | 'unassign';
+  } | null>(null);
 
   // Debug logging for notifications - DISABLED to prevent focus issues
   // useEffect(() => {
@@ -899,6 +910,47 @@ export function WholesalerAdminDashboard() {
   const isRetailerAvailableForAssignment = (retailerId: string): boolean => {
     const retailer = retailers.find(r => r.id === retailerId);
     return !retailer?.assignedLineWorkerId;
+  };
+
+  // Handler to show confirmation dialog before reassign/unassign
+  const handleConfirmAssignmentAction = (retailerId: string, lineWorkerId: string | null) => {
+    const retailer = retailers.find(r => r.id === retailerId);
+    if (!retailer) return;
+
+    const currentAssignedWorker = retailer.assignedLineWorkerId
+      ? lineWorkers.find(worker => worker.id === retailer.assignedLineWorkerId)
+      : null;
+
+    const newWorker = lineWorkerId
+      ? lineWorkers.find(worker => worker.id === lineWorkerId)
+      : null;
+
+    setPendingAssignment({
+      retailerId,
+      retailerName: retailer.profile?.realName || retailer.name,
+      lineWorkerId,
+      lineWorkerName: lineWorkerId
+        ? newWorker?.displayName || newWorker?.email || 'Unassigned'
+        : (currentAssignedWorker?.displayName || currentAssignedWorker?.email || 'Unknown'),
+      action: lineWorkerId ? 'reassign' : 'unassign'
+    });
+
+    setShowAssignmentConfirmation(true);
+  };
+
+  // Handler to execute the confirmed assignment action
+  const executeConfirmedAssignment = async () => {
+    if (!pendingAssignment) return;
+
+    setShowAssignmentConfirmation(false);
+    await handleAssignRetailer(pendingAssignment.retailerId, pendingAssignment.lineWorkerId);
+    setPendingAssignment(null);
+  };
+
+  // Handler to cancel the pending assignment
+  const cancelPendingAssignment = () => {
+    setShowAssignmentConfirmation(false);
+    setPendingAssignment(null);
   };
 
   // Handler for retailer assignment
@@ -2427,7 +2479,7 @@ export function WholesalerAdminDashboard() {
                             <TableCell>
                               <Badge className={
                                 payment.state === 'INITIATED' ? 'bg-yellow-100 text-yellow-800' :
-                                payment.state === 'OTP_SENT' || payment.state === 'OTP_VERIFIED' ? 'bg-blue-100 text-blue-800' :
+                                
                                 'bg-red-100 text-red-800'
                               }>
                                 {payment.state}
@@ -2747,7 +2799,7 @@ export function WholesalerAdminDashboard() {
               </div>
               <div className="flex space-x-2">
                 <Button 
-                  onClick={() => handleAssignRetailer(assigningRetailer.id, selectedLineWorkerForAssignment === "unassign" ? null : selectedLineWorkerForAssignment || null)}
+                  onClick={() => handleConfirmAssignmentAction(assigningRetailer.id, selectedLineWorkerForAssignment === "unassign" ? null : selectedLineWorkerForAssignment || null)}
                   disabled={!selectedLineWorkerForAssignment && !currentAssignedWorker}
                 >
                   {selectedLineWorkerForAssignment === "unassign" ? 'Unassign' : 
@@ -3042,12 +3094,6 @@ export function WholesalerAdminDashboard() {
                         {retailerPayments.filter(p => p.state === 'INITIATED').length}
                       </div>
                       <div className="text-yellow-600">Initiated</div>
-                    </div>
-                    <div className="text-center p-1 bg-blue-50 rounded">
-                      <div className="font-medium text-blue-700">
-                        {retailerPayments.filter(p => p.state === 'OTP_SENT').length}
-                      </div>
-                      <div className="text-blue-600">OTP Sent</div>
                     </div>
                     <div className="text-center p-1 bg-red-50 rounded">
                       <div className="font-medium text-red-700">

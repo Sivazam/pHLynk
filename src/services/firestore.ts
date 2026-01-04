@@ -1728,7 +1728,11 @@ export class RetailerService extends FirestoreService<Retailer> {
         assignedAt: updatedWholesalerData.assignedAt
       };
       
+      // ⚠️ CRITICAL FIX: Also update top-level areaId and zipcodes so Line Workers can see retailers
+      // Line Workers filter by retailer.areaId (top-level field), not by wholesalerData
       await updateDoc(retailerRef, {
+        areaId: updatedWholesalerData.currentAreaId,  // Sync top-level areaId for Line Worker filtering
+        zipcodes: updatedWholesalerData.currentZipcodes,  // Sync top-level zipcodes for Line Worker filtering
         wholesalerData: wholesalerData,
         wholesalerAssignments: wholesalerAssignments,
         updatedAt: now
