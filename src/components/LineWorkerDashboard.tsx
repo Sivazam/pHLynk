@@ -375,13 +375,16 @@ export function LineWorkerDashboard() {
         }
         
         // Check if retailer is in assigned areas (by areaId)
-        if (retailer.areaId && user!.assignedAreas.includes(retailer.areaId)) {
+        // CRITICAL: Only allow area-based visibility if retailer was NOT explicitly unassigned
+        // When assignedLineWorkerId is null, it means they were unassigned and should not be visible
+        if (retailer.areaId && user!.assignedAreas.includes(retailer.areaId) && retailer.assignedLineWorkerId !== null) {
           console.log(`✅ Retailer "${getRetailerName(retailer)}" matched by areaId: ${retailer.areaId}`);
           return true;
         }
         
         // Check if retailer has zipcodes that match assigned zips
-        if (retailer.zipcodes && retailer.zipcodes.length > 0 && user!.assignedZips && user!.assignedZips.length > 0) {
+        // CRITICAL: Only allow zip-based visibility if retailer was NOT explicitly unassigned
+        if (retailer.zipcodes && retailer.zipcodes.length > 0 && user!.assignedZips && user!.assignedZips.length > 0 && retailer.assignedLineWorkerId !== null) {
           const matchingZips = retailer.zipcodes.filter(zip => user!.assignedZips!.includes(zip));
           if (matchingZips.length > 0) {
             console.log(`✅ Retailer "${getRetailerName(retailer)}" matched by zips: ${matchingZips.join(', ')}`);

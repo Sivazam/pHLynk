@@ -521,3 +521,31 @@ Stage Summary:
 - ✅ TypeScript compilation fixed
 - ✅ Documentation complete
 - ✅ Ready for deployment
+
+---
+
+Task ID: 8
+Agent: Z.ai Code
+Task: Fix unassigned retailers visibility in Line Worker Dashboard
+
+Work Log:
+- Issue reported: Unassigned retailers still visible in Line Worker Dashboard
+- User can still see and make payments for unassigned retailers
+- Root cause analysis:
+  1. When retailer is unassigned, assignedLineWorkerId becomes null
+  2. UI correctly shows 'Unassigned' in Wholesaler Dashboard
+  3. BUT Line Worker Dashboard still shows retailer via area-based assignment
+- Found bug in LineWorkerDashboard.tsx lines 378-391
+- Area-based check did not exclude explicitly unassigned retailers
+- Zip-based check had same issue
+- Fixed by adding check: retailer.assignedLineWorkerId !== null
+- This prevents area/zip-based visibility for unassigned retailers
+- Updated line 380-382 (area-based check)
+- Updated line 387-392 (zip-based check)
+- Added CRITICAL comments explaining the fix
+
+Stage Summary:
+- ✅ Fixed Line Worker Dashboard retailer visibility logic
+- ✅ Unassigned retailers no longer visible via area-based assignment
+- ✅ Unassigned retailers cannot make payments
+- ✅ Firestore state now consistent across all dashboards
