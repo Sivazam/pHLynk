@@ -241,23 +241,35 @@ exports.sendRetailerPaymentSMS = functions.https.onCall(async (request) => {
         // Validate and format phone number
         const formattedPhone = validatePhoneNumber(retailerUser.phone);
         // Prepare SMS variables - Order MUST match DLT template exactly
-        // NEW Template: "Rs {#var#} successfully paid to {#var#} for goods supplied. Securely Updated to PharmaLync Cloud. Team SAANVI SYSTEMS"
-        // Variables: 1=Amount (e.g., "5,000"), 2=Wholesaler Name (e.g., "vijay medicals")
+        // Template: "Collection Acknowledgement: An amount of {#var#}/- from {#var#}, {#var#} has been updated in PharmaLync as payment towards goods supplied by {#var#}. Collected by Line man {#var#} on {#var#}."
+        // Variables: 1=Amount, 2=Retailer Name, 3=Retailer Area, 4=Wholesaler Name, 5=Line Worker Name, 6=Date
         // Ensure we have all required variables with proper fallbacks
         const amount = data.amount.toString();
+        const retailerName = retailerUser.name || data.retailerName || 'Retailer';
+        const retailerArea = data.retailerArea || retailerUser.address || 'Unknown Area';
         const wholesalerName = data.wholesalerName || 'Wholesaler';
+        const lineWorkerName = data.lineWorkerName || 'Line Worker';
+        const collectionDate = data.collectionDate || new Date().toLocaleDateString('en-IN');
         const variablesValues = [
             amount, // {#var#} - payment amount
-            wholesalerName // {#var#} - wholesaler name
+            retailerName, // {#var#} - retailer name
+            retailerArea, // {#var#} - retailer area
+            wholesalerName, // {#var#} - wholesaler name (goods supplied by)
+            lineWorkerName, // {#var#} - line worker name
+            collectionDate // {#var#} - collection date
         ];
         console.log('🔧 CLOUD FUNCTION - SMS Variables being used:', {
             amount: variablesValues[0],
-            wholesalerName: variablesValues[1]
+            retailerName: variablesValues[1],
+            retailerArea: variablesValues[2],
+            wholesalerName: variablesValues[3],
+            lineWorkerName: variablesValues[4],
+            collectionDate: variablesValues[5]
         });
         const formattedVariables = variablesValues.join('%7C'); // URL-encoded pipe character
         // Get Fast2SMS configuration with validation
         const { fast2smsApiKey, senderId, entityId } = getFast2SMSConfig();
-        const messageId = '206747'; // NEW DLT Approved Template - Payment Confirmation to Retailer
+        const messageId = '199054'; // RetailerNotify template ID
         // Construct API URL
         const entityIdParam = `&entity_id=${entityId}`;
         const apiUrl = `https://www.fast2sms.com/dev/bulkV2?authorization=${fast2smsApiKey}&route=dlt&sender_id=${senderId}&message=${messageId}&variables_values=${formattedVariables}&flash=0&numbers=${formattedPhone}${entityIdParam}`;
