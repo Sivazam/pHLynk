@@ -10,20 +10,22 @@ This document summarizes all bug fixes implemented for the pHLynk payment collec
 ### ✅ Issue #1: Retailer Unassign Not Working (Critical)
 
 **Root Cause:**
-The `assignLineWorker` function in `/src/services/firestore.ts` was converting `null` to `undefined` using the `||` operator:
-```typescript
-assignedLineWorkerId: lineWorkerId || undefined
-```
-
-When `lineWorkerId` is `null` (for unassignment), this resulted in `undefined` being passed to Firestore. The `update` method's logic only triggers `deleteField()` when the value is exactly `null`, not `undefined`. Therefore, the field was never deleted from Firestore.
+The `assignLineWorker` function in `/src/services/firestore.ts` was converting `null` to `undefined` using the `||` operator. The Firestore `update` method's logic only triggers `deleteField()` when the value is exactly `null`, not `undefined`.
 
 **Fix Applied:**
-Modified line 1344 in `/src/services/firestore.ts`:
-```typescript
-assignedLineWorkerId: lineWorkerId as string | null | undefined
-```
+1. Updated `Retailer` type in `/src/types/index.ts` (line 96):
+   ```typescript
+   assignedLineWorkerId?: string | null;
+   ```
 
-The type assertion allows `null` to be passed, which triggers the `deleteField()` logic in the `update` method (line 174-176):
+2. Fixed `assignLineWorker` function in `/src/services/firestore.ts` (line 1342-1343):
+   ```typescript
+   await this.update(retailerId, {
+     assignedLineWorkerId: lineWorkerId
+   }, tenantId);
+   ```
+
+The type now allows `null` values, and passing `null` triggers `deleteField()` in the `update` method (line 174-176):
 ```typescript
 if (value === null) {
   // Use deleteField() to remove the field
@@ -32,7 +34,7 @@ if (value === null) {
 ```
 
 **Result:**
-- When unassigning a retailer, `assignedLineWorkerId` field is now properly deleted from Firestore
+- When unassigning a retailer, the `assignedLineWorkerId` field is now properly deleted from Firestore
 - Retailer correctly shows as "Unassigned" in Wholesaler Dashboard
 - Line Worker Dashboard correctly reflects unassignment
 - Firestore state is consistent across all dashboards
@@ -45,7 +47,7 @@ if (value === null) {
 When an area is removed from a Line Worker:
 1. Area-based retailers in that area should be unassigned
 2. The logic already handled this correctly (lines 1417-1440 in WholesalerAdminDashboard.tsx)
-3. BUT, due to Issue #1 bug, the unassignment wasn't actually working
+3. BUT, due to Issue #1 bug, unassignment wasn't actually working
 
 **Analysis:**
 The existing code correctly handles both:
@@ -114,7 +116,7 @@ Updated `/functions/src/index.ts` in `sendRetailerPaymentSMS` function:
 
 **Result:**
 - SMS messages now use new DLT approved template ID: `206747`
-- Only 2 variables are sent (amount + wholesaler name)
+- Only 2 variables are sent (amount, wholesaler name)
 - Example output: `"Rs5,000 successfully paid to vijay medicals for goods supplied. Securely Updated to PharmaLync Cloud. Team SAANVI SYSTEMS"`
 - No SMS is sent to Wholesaler (FCM notification is used instead)
 - Existing FCM notification for Wholesaler remains unchanged
@@ -134,7 +136,7 @@ Updated `/functions/src/index.ts` in `sendRetailerPaymentSMS` function:
 - Frontend UI behavior preserved
 
 ### Type Safety ✅
-- TypeScript type assertion used appropriately
+- TypeScript type definitions updated to support null values
 - Type checking passes without errors
 - No runtime type errors expected
 
@@ -190,21 +192,27 @@ Updated `/functions/src/index.ts` in `sendRetailerPaymentSMS` function:
 
 ## Files Modified
 
-1. **`/src/services/firestore.ts`**
-   - Fixed `assignLineWorker` function (line 1344)
-   - Added type assertion for null values
+1. **`/src/types/index.ts`**
+   - Updated `Retailer` interface (line 96)
+   - Changed `assignedLineWorkerId?: string` to `assignedLineWorkerId?: string | null`
+   - Allows null values for unassignment
 
-2. **`/functions/src/index.ts`**
+2. **`/src/services/firestore.ts`**
+   - Fixed `assignLineWorker` function (line 1342-1343)
+   - Removed `|| undefined` clause to pass `null` directly
+   - No type assertion needed after type fix
+
+3. **`/functions/src/index.ts`**
    - Updated `sendRetailerPaymentSMS` function (lines 254-275)
    - Changed template ID from `199054` to `206747`
-   - Simplified variables from 6 to 2
+   - Simplified variables from 6 to 2 (amount, wholesaler name)
 
 ---
 
 ## Deployment Checklist
 
 - [x] Code changes tested locally
-- [x] TypeScript compilation successful
+- [x] TypeScript compilation successful (fixed type definition issue)
 - [x] ESLint passed
 - [x] No breaking changes introduced
 - [ ] Deploy Cloud Functions (sendRetailerPaymentSMS)

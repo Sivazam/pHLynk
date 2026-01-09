@@ -1339,9 +1339,8 @@ export class RetailerService extends FirestoreService<Retailer> {
   async assignLineWorker(tenantId: string, retailerId: string, lineWorkerId: string | null): Promise<void> {
     try {
       // IMPORTANT: Pass null to delete field (update method handles this with deleteField())
-      // Type assertion needed because Retailer type has assignedLineWorkerId?: string
       await this.update(retailerId, {
-        assignedLineWorkerId: lineWorkerId as string | null | undefined
+        assignedLineWorkerId: lineWorkerId
       }, tenantId);
       logger.success(`${lineWorkerId ? 'Assigned' : 'Unassigned'} retailer ${retailerId} ${lineWorkerId ? 'to' : 'from'} line worker ${lineWorkerId || '(unassigned)'}`, { context: 'RetailerService' });
     } catch (error) {
