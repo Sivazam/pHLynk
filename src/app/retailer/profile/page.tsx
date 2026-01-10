@@ -26,7 +26,7 @@ export default function RetailerProfilePage({ searchParams }: RetailerProfilePag
     retailerId?: string;
     phone?: string;
   }>({});
-  
+
   useEffect(() => {
     const getParams = async () => {
       const resolvedParams = await searchParams;
@@ -34,15 +34,22 @@ export default function RetailerProfilePage({ searchParams }: RetailerProfilePag
     };
     getParams();
   }, [searchParams]);
-  
+
   const { mode = 'complete', retailerId, phone } = params;
   const isCompletion = mode === 'complete';
 
   useEffect(() => {
-    if (retailerId) {
-      loadRetailerData();
+    // Wait for params to be resolved, then load data
+    // Check if retailerId exists in URL params or localStorage
+    const actualRetailerId = retailerId || (typeof window !== 'undefined' ? localStorage.getItem('retailerId') : null);
+    if (actualRetailerId) {
+      loadRetailerData(); // Function reads retailerId internally from params or localStorage
+    } else if (Object.keys(params).length > 0) {
+      // Params resolved but no retailerId found
+      setError('Retailer ID not found. Please login again.');
+      setLoading(false);
     }
-  }, [retailerId]);
+  }, [params, retailerId]);
 
   const loadRetailerData = async () => {
     try {
@@ -64,7 +71,7 @@ export default function RetailerProfilePage({ searchParams }: RetailerProfilePag
 
       // Get retailer profile data
       const retailerProfile = await RetailerProfileService.getRetailerProfile(actualRetailerId);
-      
+
       if (!retailerProfile) {
         throw new Error('Retailer profile not found. Please contact support.');
       }

@@ -1881,8 +1881,8 @@ export function RetailerDashboard() {
                                 <div
                                   key={otp.paymentId}
                                   className={`p-4 border rounded-lg cursor-pointer transition-all hover:shadow-md ${isExpired
-                                      ? 'border-gray-300 bg-gray-50'
-                                      : 'border-orange-200 bg-orange-50 hover:border-orange-300'
+                                    ? 'border-gray-300 bg-gray-50'
+                                    : 'border-orange-200 bg-orange-50 hover:border-orange-300'
                                     }`}
                                   onClick={() => {
                                     // Reopen the OTP popup for this specific OTP
@@ -1914,8 +1914,8 @@ export function RetailerDashboard() {
                                         <div className="text-lg font-bold text-green-600">{formatCurrency(otp.amount)}</div>
                                       </div>
                                       <div className={`px-2 py-1 rounded text-xs font-medium ${isExpired
-                                          ? 'bg-gray-200 text-gray-700'
-                                          : 'bg-orange-200 text-orange-800'
+                                        ? 'bg-gray-200 text-gray-700'
+                                        : 'bg-orange-200 text-orange-800'
                                         }`}>
                                         {isExpired ? 'EXPIRED' : 'ACTIVE'}
                                       </div>
@@ -2084,7 +2084,7 @@ export function RetailerDashboard() {
                                 <TableCell>{formatCurrency(payment.totalPaid)}</TableCell>
                                 <TableCell>{payment.method}</TableCell>
                                 <TableCell>
-                                  <WholesalerNameCell tenantId={payment.tenantId || ''} />
+                                  <WholesalerNameCell tenantId={payment.tenantIds?.[0] || ''} />
                                 </TableCell>
                                 <TableCell>{lineWorkerNames[payment.lineWorkerId] || 'Loading...'}</TableCell>
                                 <TableCell>
@@ -2149,7 +2149,7 @@ export function RetailerDashboard() {
                               <TableCell>{payment.method}</TableCell>
                               <TableCell>
                                 <Badge variant="outline" className="text-xs">
-                                  {wholesalerNames[payment.tenantId || ''] || 'Unknown Wholesaler'}
+                                  {wholesalerNames[payment.tenantIds?.[0] || ''] || 'Unknown Wholesaler'}
                                 </Badge>
                               </TableCell>
                               <TableCell>
@@ -2453,7 +2453,7 @@ export function RetailerDashboard() {
           retailer={retailer}
           wholesalerNames={wholesalerNames}
           lineWorkerNames={lineWorkerNames}
-          tenantId={tenantId}
+          tenantId={selectedPaymentForReceipt.tenantIds?.[0] || tenantId}
           isOpen={showReceiptDialog}
           onClose={closeReceiptDialog}
         />

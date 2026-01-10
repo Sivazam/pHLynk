@@ -22,12 +22,18 @@ interface PaymentForm {
   notes?: string;
 }
 
+interface WholesalerUpiInfo {
+  primaryUpiId?: string;
+  primaryQrCodeUrl?: string;
+}
+
 interface CollectPaymentFormProps {
   retailers: Retailer[];
   preSelectedRetailer?: Retailer | null;
   onCollectPayment: (formData: PaymentForm) => Promise<void>;
   onCancel: () => void;
   collectingPayment: boolean;
+  wholesalerUpiInfo?: WholesalerUpiInfo;
 }
 
 const CollectPaymentFormComponent = ({
@@ -35,7 +41,8 @@ const CollectPaymentFormComponent = ({
   preSelectedRetailer,
   onCollectPayment,
   onCancel,
-  collectingPayment
+  collectingPayment,
+  wholesalerUpiInfo
 }: CollectPaymentFormProps) => {
   // ✅ Removed success/confetti state - now it's a pure data collection form
 
@@ -74,8 +81,8 @@ const CollectPaymentFormComponent = ({
       return;
     }
 
-    if (!formData.amount || formData.amount <= 0) {
-      setError('Please enter a valid amount greater than 0');
+    if (!formData.amount || formData.amount < 1) {
+      setError('Please enter a valid amount (minimum ₹1)');
       return;
     }
 
@@ -213,6 +220,50 @@ const CollectPaymentFormComponent = ({
               <p className="text-xs text-gray-500">Select method</p>
             </div>
 
+            {/* UPI Payment Details - Show when UPI is selected */}
+            {formData.paymentMethod === 'UPI' && wholesalerUpiInfo && (wholesalerUpiInfo.primaryUpiId || wholesalerUpiInfo.primaryQrCodeUrl) && (
+              <div className="col-span-2 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                <div className="flex items-center gap-2 mb-3">
+                  <CreditCard className="h-5 w-5 text-blue-600" />
+                  <span className="font-medium text-blue-900">Wholesaler UPI Details</span>
+                </div>
+
+                {wholesalerUpiInfo.primaryUpiId && (
+                  <div className="mb-3">
+                    <Label className="text-sm text-gray-600">UPI ID</Label>
+                    <div className="flex items-center gap-2 mt-1">
+                      <code className="bg-white px-3 py-2 rounded border text-sm font-mono flex-1">
+                        {wholesalerUpiInfo.primaryUpiId}
+                      </code>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          navigator.clipboard.writeText(wholesalerUpiInfo.primaryUpiId || '');
+                        }}
+                      >
+                        Copy
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {wholesalerUpiInfo.primaryQrCodeUrl && (
+                  <div>
+                    <Label className="text-sm text-gray-600">Scan QR Code</Label>
+                    <div className="mt-2 flex justify-center">
+                      <img
+                        src={wholesalerUpiInfo.primaryQrCodeUrl}
+                        alt="Payment QR Code"
+                        className="max-w-[200px] rounded border"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* UTR Field - Only shown for UPI payments */}
             {formData.paymentMethod === 'UPI' && (
               <div className="space-y-1">
@@ -292,7 +343,7 @@ const CollectPaymentFormComponent = ({
           <Button
             type="button"
             onClick={handleSubmit}
-            disabled={collectingPayment || !formData.retailerId || !formData.amount || formData.amount <= 0 || (formData.paymentMethod === 'UPI' && (!formData.utr || formData.utr.length !== 4))}
+            disabled={collectingPayment || !formData.retailerId || !formData.amount || formData.amount < 1 || (formData.paymentMethod === 'UPI' && (!formData.utr || formData.utr.length !== 4))}
             className="h-10 px-4 text-sm min-w-[120px] w-full sm:w-auto order-1 sm:order-2"
           >
             {collectingPayment ? (

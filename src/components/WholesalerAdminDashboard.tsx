@@ -52,6 +52,7 @@ import { Confetti } from '@/components/ui/Confetti';
 import { useSuccessFeedback } from '@/hooks/useSuccessFeedback';
 import { LogoutConfirmation } from '@/components/LogoutConfirmation';
 import { DaySheet } from '@/components/DaySheet';
+import { WholesalerProfileSettings } from '@/components/WholesalerProfileSettings';
 import {
   // Navigation
   LayoutDashboard,
@@ -63,6 +64,7 @@ import {
   Activity,
   LogOut,
   Bell,
+  Settings,
 
   // Actions
   Plus,
@@ -406,6 +408,7 @@ export function WholesalerAdminDashboard() {
     { id: 'workers', label: 'Line Workers', icon: Users },
     { id: 'transactions', label: 'Transactions', icon: CreditCard },
     { id: 'analytics', label: 'Analytics', icon: BarChart3 },
+    { id: 'settings', label: 'Settings', icon: Settings },
   ];
 
   // Memoized notification callback to prevent unnecessary re-renders
@@ -3310,6 +3313,15 @@ export function WholesalerAdminDashboard() {
             {activeNav === 'workers' && <LineWorkers />}
             {activeNav === 'transactions' && <Transactions />}
             {activeNav === 'analytics' && <AnalyticsComponent />}
+            {activeNav === 'settings' && (
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900 mb-6">Settings</h2>
+                <WholesalerProfileSettings
+                  tenantId={getCurrentTenantId() || ''}
+                  onProfileUpdated={() => fetchDashboardData()}
+                />
+              </div>
+            )}
 
             <div >
               <div className="px-4 pb-20 pt-2 text-left">

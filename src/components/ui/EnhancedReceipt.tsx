@@ -17,6 +17,7 @@ interface Payment {
   lineWorkerId: string;
   lineWorkerName?: string;
   tenantId?: string;
+  tenantIds?: string[];
   retailerName?: string;
   retailerAddress?: string;
   retailerPhone?: string;
@@ -90,8 +91,9 @@ export function EnhancedReceipt({
 
   useEffect(() => {
     const fetchTenantInfo = async () => {
-      let actualTenantId = payment.tenantId;
-      
+      // Try tenantId first, then tenantIds[0] as fallback
+      let actualTenantId = payment.tenantId || payment.tenantIds?.[0];
+
       // If no tenantId in payment, try to get it from lineWorkerId
       if (!actualTenantId && payment.lineWorkerId) {
         try {
@@ -106,7 +108,7 @@ export function EnhancedReceipt({
           console.error('Error fetching tenantId from lineWorker:', error);
         }
       }
-      
+
       if (actualTenantId && actualTenantId !== 'all') {
         try {
           const db = getFirestore();
@@ -128,18 +130,18 @@ export function EnhancedReceipt({
     fetchTenantInfo();
   }, [payment.tenantId, payment.lineWorkerId]);
 
-  const wholesalerName = tenantInfo?.name || 
-    (tenantId === 'all' 
+  const wholesalerName = tenantInfo?.name ||
+    (tenantId === 'all'
       ? (wholesalerNames[payment.tenantId || ''] || 'Unknown Wholesaler')
       : (wholesalerNames[tenantId || ''] || 'Unknown Wholesaler')
     );
-  
+
   const lineWorkerName = payment.lineWorkerName || lineWorkerNames[payment.lineWorkerId] || 'Unknown Line Worker';
 
   const generateCanvas = async (element: HTMLElement) => {
     try {
       console.log('Starting canvas generation with simplified approach...');
-      
+
       // Create a clean, simple receipt container for PDF generation
       const pdfContainer = document.createElement('div');
       pdfContainer.style.cssText = `
@@ -153,7 +155,7 @@ export function EnhancedReceipt({
         color: #000000;
         line-height: 1.4;
       `;
-      
+
       // Build a clean HTML structure for PDF
       const paymentDate = formatTimestampWithTime(payment.createdAt);
       const receiptHtml = `
@@ -238,13 +240,13 @@ export function EnhancedReceipt({
           </div>
         </div>
       `;
-      
+
       pdfContainer.innerHTML = receiptHtml;
       document.body.appendChild(pdfContainer);
-      
+
       // Wait for the content to render
       await new Promise(resolve => setTimeout(resolve, 300));
-      
+
       // Generate canvas from our clean container
       const canvas = await html2canvas(pdfContainer, {
         scale: 2,
@@ -256,13 +258,13 @@ export function EnhancedReceipt({
         width: 800,
         height: pdfContainer.scrollHeight
       });
-      
+
       // Clean up
       document.body.removeChild(pdfContainer);
-      
+
       console.log('Canvas generated successfully with simplified approach');
       return canvas;
-      
+
     } catch (error) {
       console.error('Error in simplified canvas generation:', error);
       throw new Error('Failed to generate receipt image. Please try again.');
@@ -273,7 +275,7 @@ export function EnhancedReceipt({
     setIsGenerating(true);
     try {
       console.log('Starting PDF generation...');
-      
+
       // Wait a bit for any pending renders
       await new Promise(resolve => setTimeout(resolve, 100));
 
@@ -287,7 +289,7 @@ export function EnhancedReceipt({
         unit: 'mm',
         format: 'a4'
       });
-      
+
       const imgWidth = 210; // A4 width in mm
       const pageHeight = 297; // A4 height in mm
       const imgHeight = (canvas.height * imgWidth) / canvas.width;
@@ -307,12 +309,12 @@ export function EnhancedReceipt({
       }
 
       console.log('PDF generated successfully, saving...');
-      
+
       // Generate unique filename
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
       const filename = `receipt-${payment.id}-${timestamp}.pdf`;
       pdf.save(filename);
-      
+
     } catch (error) {
       console.error('Error generating PDF:', error);
       alert('Failed to generate PDF. Please try again or contact support if the issue persists.');
@@ -325,7 +327,7 @@ export function EnhancedReceipt({
     setIsGenerating(true);
     try {
       console.log('Starting share PDF generation...');
-      
+
       // Wait a bit for any pending renders
       await new Promise(resolve => setTimeout(resolve, 100));
 
@@ -339,7 +341,7 @@ export function EnhancedReceipt({
         unit: 'mm',
         format: 'a4'
       });
-      
+
       const imgWidth = 210; // A4 width in mm
       const pageHeight = 297; // A4 height in mm
       const imgHeight = (canvas.height * imgWidth) / canvas.width;
@@ -358,7 +360,7 @@ export function EnhancedReceipt({
 
       console.log('Share PDF generated successfully, creating blob...');
       const pdfBlob = pdf.output('blob');
-      
+
       // Generate unique filename
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
       const filename = `receipt-${payment.id}-${timestamp}.pdf`;
@@ -413,9 +415,9 @@ export function EnhancedReceipt({
           {/* Header */}
           <div className="text-center mb-6 pb-4 border-b-2 border-gray-800">
             <div className="flex items-center justify-center mb-2">
-              <img 
-                src="/logoMain.png" 
-                alt="PharmaLync" 
+              <img
+                src="/logoMain.png"
+                alt="PharmaLync"
                 className="h-12 w-12 mr-3"
                 onError={(e) => {
                   // Fallback if image fails to load

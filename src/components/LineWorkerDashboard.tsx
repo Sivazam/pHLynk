@@ -90,6 +90,9 @@ export function LineWorkerDashboard() {
   const [showPaymentSuccess, setShowPaymentSuccess] = useState(false);
   const [pendingPaymentData, setPendingPaymentData] = useState<any>(null);
   const [lastPaymentAmount, setLastPaymentAmount] = useState<number>(0); // ✅ Store amount separately for success dialog
+  const [lastPaymentId, setLastPaymentId] = useState<string | null>(null); // ✅ Store payment ID for receipt
+  const [showReceiptInSuccess, setShowReceiptInSuccess] = useState(false); // ✅ Toggle receipt view in success dialog
+  const [wholesalerUpiInfo, setWholesalerUpiInfo] = useState<{ primaryUpiId?: string; primaryQrCodeUrl?: string }>({});
   const [paymentTab, setPaymentTab] = useState('completed');
   const [selectedDateRangeOption, setSelectedDateRangeOption] = useState('today');
   const [dateRange, setDateRange] = useState<{ startDate: Date; endDate: Date }>(() => {
@@ -353,6 +356,25 @@ export function LineWorkerDashboard() {
       const allAreas = await areaService.getAll(currentTenantId);
       const paymentsData = await paymentService.getPaymentsByLineWorker(currentTenantId, user!.uid);
 
+      // Fetch tenant UPI info for payment collection
+      try {
+        const tenantDoc = await getDoc(doc(db, 'tenants', currentTenantId));
+        if (tenantDoc.exists()) {
+          const tenantData = tenantDoc.data();
+          const upiIds = tenantData.upiIds || [];
+          const qrCodes = tenantData.qrCodes || [];
+          const primaryUpi = upiIds.find((u: any) => u.isPrimary);
+          const primaryQr = qrCodes.find((q: any) => q.isPrimary);
+          setWholesalerUpiInfo({
+            primaryUpiId: primaryUpi?.upiId,
+            primaryQrCodeUrl: primaryQr?.url
+          });
+          console.log('✅ Fetched wholesaler UPI info:', { upiId: primaryUpi?.upiId, hasQr: !!primaryQr?.url });
+        }
+      } catch (upiError) {
+        console.warn('Warning: Could not fetch wholesaler UPI info:', upiError);
+      }
+
       console.log('Total retailers found:', allRetailers.length);
       console.log('Payments found:', paymentsData.length);
 
@@ -565,22 +587,36 @@ export function LineWorkerDashboard() {
       const result = await response.json();
       console.log('✅ Payment created successfully:', result);
 
-      // ✅ Store amount before clearing pending data (for success dialog)
+      // ✅ Store amount and payment ID before clearing pending data (for success dialog)
       setLastPaymentAmount(pendingPaymentData.amount);
+      setLastPaymentId(result.paymentId); // Store payment ID for receipt
 
-      // Clear pending payment data
+      // OPTIMISTIC UPDATE: Add new payment to state immediately
+      const completionTime = new Date();
+      const newPayment: Payment = {
+        id: result.paymentId,
+        retailerId: pendingPaymentData.retailerId,
+        retailerName: getRetailerName(retailers.find(r => r.id === pendingPaymentData.retailerId) || { name: pendingPaymentData.retailerName } as any),
+        lineWorkerId: user.uid,
+        lineWorkerName: user?.displayName || 'Line Worker',
+        totalPaid: pendingPaymentData.amount,
+        method: pendingPaymentData.paymentMethod,
+        state: 'COMPLETED',
+        createdAt: Timestamp.fromDate(completionTime),
+        updatedAt: Timestamp.fromDate(completionTime),
+        notes: pendingPaymentData.notes,
+        utr: pendingPaymentData.utr
+      };
+
+      setPayments(prev => [newPayment, ...prev]);
+      console.log('⚡ Optimistic update complete');
+
       setPendingPaymentData(null);
-
-      // Close confirmation dialog
       setShowConfirmationDialog(false);
 
-      // Show success dialog after a short delay
       setTimeout(() => {
         setShowPaymentSuccess(true);
       }, 300);
-
-      // Refresh data to show completed payment
-      await fetchLineWorkerData();
     } catch (error) {
       console.error('❌ Error creating completed payment:', error);
       setShowConfirmationDialog(false);
@@ -1246,7 +1282,10 @@ Thank you for your payment!
                     variant="outline"
                     size="sm"
                     onClick={() => {
-                      // Handle viewing payment details
+                      setLastPaymentId(payment.id);
+                      setLastPaymentAmount(payment.totalPaid);
+                      setShowReceiptInSuccess(true);
+                      setShowPaymentSuccess(true);
                     }}
                   >
                     View
@@ -1256,7 +1295,12 @@ Thank you for your payment!
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => downloadReceipt(payment)}
+                        onClick={() => {
+                          setLastPaymentId(payment.id);
+                          setLastPaymentAmount(payment.totalPaid);
+                          setShowReceiptInSuccess(true);
+                          setShowPaymentSuccess(true);
+                        }}
                         className="h-7 px-2 text-xs"
                       >
                         <Download className="h-3 w-3 mr-1" />
@@ -1265,7 +1309,12 @@ Thank you for your payment!
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => shareReceipt(payment)}
+                        onClick={() => {
+                          setLastPaymentId(payment.id);
+                          setLastPaymentAmount(payment.totalPaid);
+                          setShowReceiptInSuccess(true);
+                          setShowPaymentSuccess(true);
+                        }}
                         className="h-7 px-2 text-xs"
                       >
                         <Share className="h-3 w-3 mr-1" />
@@ -1693,7 +1742,7 @@ Thank you for your payment!
           setPreSelectedRetailerForPayment(null); // Reset pre-selected retailer when dialog closes
         }
       }}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl" onInteractOutside={(e) => e.preventDefault()}>
           <DialogHeader>
             <DialogTitle>Collect Payment</DialogTitle>
             <DialogDescription>
@@ -1709,13 +1758,14 @@ Thank you for your payment!
               setPreSelectedRetailerForPayment(null);
             }}
             collectingPayment={isCollectingPayment}
+            wholesalerUpiInfo={wholesalerUpiInfo}
           />
         </DialogContent>
       </Dialog>
 
       {/* Confirmation Dialog */}
       <Dialog open={showConfirmationDialog} onOpenChange={(open) => setShowConfirmationDialog(open)}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md" onInteractOutside={(e) => e.preventDefault()}>
           <DialogHeader>
             <DialogTitle className="text-xl font-semibold">Confirm Payment Collection</DialogTitle>
             <DialogDescription className="text-sm text-gray-600">
@@ -1776,23 +1826,164 @@ Thank you for your payment!
       </Dialog>
 
       {/* Payment Success Dialog */}
-      <Dialog open={showPaymentSuccess} onOpenChange={(open) => { if (!open) setShowPaymentSuccess(false) }}>
-        <DialogContent className="max-w-md">
-          <DialogTitle className="text-xl font-semibold">Payment Completed Successfully!</DialogTitle>
-          <div className="text-center py-8 space-y-4">
-            <CheckCircle className="w-20 h-20 text-green-500 mx-auto mb-4" />
-            <p className="text-gray-600 mb-4">
-              Payment of {formatCurrency(lastPaymentAmount)} has been collected successfully.
-              SMS and notifications have been sent.
-            </p>
-            <Button
-              onClick={() => {
-                setShowPaymentSuccess(false);
-              }}
-              className="w-full"
-            >
-              Done
-            </Button>
+      <Dialog open={showPaymentSuccess} onOpenChange={(open) => { if (!open) { setShowPaymentSuccess(false); setShowReceiptInSuccess(false); } }}>
+        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto" onInteractOutside={(e) => e.preventDefault()}>
+          <DialogTitle className="text-xl font-semibold text-center">Payment Completed Successfully!</DialogTitle>
+          <div className="py-4 space-y-4">
+            {!showReceiptInSuccess ? (
+              // Success View
+              <div className="text-center space-y-4">
+                <CheckCircle className="w-16 h-16 text-green-500 mx-auto" />
+                <p className="text-gray-600">
+                  Payment of {formatCurrency(lastPaymentAmount)} has been collected successfully.
+                  SMS and notifications have been sent.
+                </p>
+                <div className="flex flex-col gap-2 pt-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowReceiptInSuccess(true)}
+                    className="w-full"
+                  >
+                    <CreditCard className="h-4 w-4 mr-2" />
+                    View Receipt
+                  </Button>
+                  {lastPaymentId && (
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        const payment = payments.find(p => p.id === lastPaymentId);
+                        if (payment) shareReceipt(payment);
+                      }}
+                      className="w-full"
+                    >
+                      <Share className="h-4 w-4 mr-2" />
+                      Share Receipt
+                    </Button>
+                  )}
+                  <Button
+                    onClick={() => {
+                      setShowPaymentSuccess(false);
+                      setShowReceiptInSuccess(false);
+                    }}
+                    className="w-full"
+                  >
+                    Done
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              // Receipt View
+              <div className="space-y-4">
+                <div className="bg-white border rounded-lg p-4 shadow-sm">
+                  {/* Receipt Header */}
+                  <div className="text-center pb-4 border-b">
+                    <div className="text-2xl font-bold text-blue-600">PharmaLync</div>
+                    <div className="text-sm text-gray-500">Payment Receipt</div>
+                  </div>
+
+                  {/* Receipt Details */}
+                  {(() => {
+                    const payment = payments.find(p => p.id === lastPaymentId);
+                    const retailer = retailers.find(r => r.id === payment?.retailerId);
+                    if (!payment) return <div className="text-center text-gray-500">Loading receipt...</div>;
+                    return (
+                      <div className="space-y-3 py-4">
+                        {/* Amount - Large & Prominent */}
+                        <div className="text-center py-4 bg-green-50 rounded-lg">
+                          <div className="text-sm text-gray-500">Amount Collected</div>
+                          <div className="text-3xl font-bold text-green-600">
+                            {formatCurrency(payment.totalPaid)}
+                          </div>
+                        </div>
+
+                        {/* Receipt Info Grid */}
+                        <div className="space-y-2 text-sm">
+                          <div className="flex justify-between py-1 border-b border-dashed">
+                            <span className="text-gray-500">Receipt ID</span>
+                            <span className="font-mono text-xs">{payment.id.slice(-8).toUpperCase()}</span>
+                          </div>
+                          <div className="flex justify-between py-1 border-b border-dashed">
+                            <span className="text-gray-500">Date</span>
+                            <span>{formatTimestampWithTime(payment.createdAt)}</span>
+                          </div>
+                          <div className="flex justify-between py-1 border-b border-dashed">
+                            <span className="text-gray-500">Payment Method</span>
+                            <span className="font-medium">{payment.method}</span>
+                          </div>
+                          {payment.utr && (
+                            <div className="flex justify-between py-1 border-b border-dashed">
+                              <span className="text-gray-500">UTR (Last 4)</span>
+                              <span className="font-mono">****{payment.utr}</span>
+                            </div>
+                          )}
+                          <div className="flex justify-between py-1 border-b border-dashed">
+                            <span className="text-gray-500">Status</span>
+                            <span className="text-green-600 font-medium">✓ Completed</span>
+                          </div>
+                        </div>
+
+                        {/* Retailer Info */}
+                        <div className="pt-2">
+                          <div className="text-xs text-gray-400 uppercase mb-1">Retailer</div>
+                          <div className="font-medium">{getRetailerName(retailer)}</div>
+                          <div className="text-sm text-gray-500">{getRetailerPhone(retailer)}</div>
+                        </div>
+
+                        {/* Collected By */}
+                        <div className="pt-2">
+                          <div className="text-xs text-gray-400 uppercase mb-1">Collected By</div>
+                          <div className="font-medium">{user?.displayName || user?.email}</div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Footer */}
+                  <div className="text-center pt-4 border-t text-xs text-gray-400">
+                    Thank you for your payment!
+                  </div>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex flex-col gap-2">
+                  {lastPaymentId && (
+                    <>
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          const payment = payments.find(p => p.id === lastPaymentId);
+                          if (payment) downloadReceipt(payment);
+                        }}
+                        className="w-full"
+                      >
+                        <Download className="h-4 w-4 mr-2" />
+                        Download Receipt
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          const payment = payments.find(p => p.id === lastPaymentId);
+                          if (payment) shareReceipt(payment);
+                        }}
+                        className="w-full"
+                      >
+                        <Share className="h-4 w-4 mr-2" />
+                        Share Receipt
+                      </Button>
+                    </>
+                  )}
+                  <Button
+                    onClick={() => {
+                      setShowPaymentSuccess(false);
+                      setShowReceiptInSuccess(false);
+                    }}
+                    className="w-full"
+                  >
+                    Done
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         </DialogContent>
       </Dialog>
