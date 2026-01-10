@@ -36,7 +36,7 @@ export function HomeContent() {
         setRetailerId(validRetailerId);
       }
     };
-    
+
     validateRetailer();
   }, []);
 
@@ -52,10 +52,10 @@ export function HomeContent() {
       };
 
       window.addEventListener('popstate', handlePopState);
-      
+
       // Replace current history state to prevent back navigation to dashboard
       window.history.replaceState({}, '', '/');
-      
+
       return () => {
         window.removeEventListener('popstate', handlePopState);
       };
@@ -112,10 +112,11 @@ export function HomeContent() {
     return <AppLoadingScreen progress={loadingProgress} stage={loadingStage} />;
   }
 
-  // Show intro carousel for new users before anything else
-  if (showIntro) {
-    return <AppIntroCarousel onComplete={handleIntroComplete} onSkip={handleIntroSkip} />;
-  }
+  // TEMPORARILY DISABLED: AppIntroCarousel causing React DOM error
+  // "Cannot read properties of null (reading 'removeChild')"
+  // if (showIntro) {
+  //   return <AppIntroCarousel onComplete={handleIntroComplete} onSkip={handleIntroSkip} />;
+  // }
 
   // Show retailer dashboard if user is a retailer (authenticated)
   if (user && user.isRetailer) {
@@ -143,7 +144,7 @@ export function HomeContent() {
   // Show role selection if requested
   if (showRoleSelection) {
     return (
-      <RoleSelection 
+      <RoleSelection
         onRoleSelect={(role) => {
           if (role === 'RETAILER') {
             // RoleSelection will handle retailer authentication
@@ -166,7 +167,7 @@ export function HomeContent() {
     if (user?.tenantStatus && user.tenantStatus !== 'ACTIVE') {
       return <TenantStatusScreen tenantId={user.tenantId!} initialStatus={user.tenantStatus} />;
     }
-    
+
     return (
       <TenantStatusGuard>
         <WholesalerAdminDashboard />
@@ -179,7 +180,7 @@ export function HomeContent() {
     if (user?.tenantStatus && user.tenantStatus !== 'ACTIVE') {
       return <TenantStatusScreen tenantId={user.tenantId!} initialStatus={user.tenantStatus} />;
     }
-    
+
     return (
       <TenantStatusGuard>
         <LineWorkerDashboard />
@@ -189,7 +190,7 @@ export function HomeContent() {
 
   // Fallback for users without proper roles - show role selection
   return (
-    <RoleSelection 
+    <RoleSelection
       onRoleSelect={(role) => {
         if (role === 'RETAILER') {
           return;

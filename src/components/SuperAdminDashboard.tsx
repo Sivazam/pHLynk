@@ -16,6 +16,7 @@ import { DashboardNavigation, NavItem, NotificationItem } from '@/components/Das
 import { DateRangeFilter } from '@/components/ui/DateRangeFilter';
 import { SuccessFeedback } from '@/components/SuccessFeedback';
 import { useSuccessFeedback } from '@/hooks/useSuccessFeedback';
+import { LogoutConfirmation } from '@/components/LogoutConfirmation';
 
 import { Skeleton } from '@/components/ui/skeleton';
 import { LoadingOverlay } from '@/components/ui/LoadingOverlay';
@@ -24,11 +25,11 @@ import { LoadingText } from '@/components/ui/LoadingText';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { useLoadingState } from '@/hooks/useLoadingState';
 import { useAuth, useSuperAdmin } from '@/contexts/AuthContext';
-import { 
-  tenantService, 
-  userService, 
-  areaService, 
-  retailerService, 
+import {
+  tenantService,
+  userService,
+  areaService,
+  retailerService,
   paymentService,
   Timestamp
 } from '@/services/firestore';
@@ -38,13 +39,13 @@ import { notificationService } from '@/services/notification-service';
 import { enhancedNotificationService } from '@/services/enhanced-notification-service';
 import { Tenant, CreateTenantForm, User, Area, Retailer, Payment } from '@/types';
 import { formatTimestamp, formatTimestampWithTime, formatCurrency } from '@/lib/timestamp-utils';
-import { 
-  Building2, 
-  Users, 
-  FileText, 
-  DollarSign, 
-  Plus, 
-  Settings, 
+import {
+  Building2,
+  Users,
+  FileText,
+  DollarSign,
+  Plus,
+  Settings,
   LogOut,
   TrendingUp,
   AlertCircle,
@@ -132,6 +133,9 @@ export function SuperAdminDashboard() {
   const [recentActivities, setRecentActivities] = useState<any[]>([]);
   const [selectedTenantForAnalytics, setSelectedTenantForAnalytics] = useState<string>('ALL');
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
+
+  // Logout confirmation state
+  const [showLogoutConfirmation, setShowLogoutConfirmation] = useState(false);
   const [selectedDateRangeOption, setSelectedDateRangeOption] = useState('today');
   const [dateRange, setDateRange] = useState<{ startDate: Date; endDate: Date }>(() => {
     const today = new Date();
@@ -173,7 +177,7 @@ export function SuperAdminDashboard() {
 
   const generateNotifications = (tenantsData: any[], tenantAnalytics: any[], activities: any[] = []) => {
     const newNotifications: NotificationItem[] = [];
-    
+
     // Add real activity notifications first
     activities.forEach(activity => {
       newNotifications.push({
@@ -232,16 +236,16 @@ export function SuperAdminDashboard() {
     try {
       const tenantsData = await tenantService.getAllTenants();
       const activities: Array<{
-      id: string;
-      type: string;
-      title: string;
-      message: string;
-      timestamp: Date;
-      tenant: string;
-      count?: number;
-      amount?: number;
-      icon?: React.ComponentType<{ className?: string }>;
-    }> = [];
+        id: string;
+        type: string;
+        title: string;
+        message: string;
+        timestamp: Date;
+        tenant: string;
+        count?: number;
+        amount?: number;
+        icon?: React.ComponentType<{ className?: string }>;
+      }> = [];
 
       for (const tenant of tenantsData) {
         try {
@@ -362,7 +366,7 @@ export function SuperAdminDashboard() {
       total: newNotifications.length,
       unread: newNotifications.filter(n => !n.read).length
     });
-    
+
     setNotifications(newNotifications);
     setNotificationCount(newNotifications.filter(n => !n.read).length);
   }, []);
@@ -371,7 +375,7 @@ export function SuperAdminDashboard() {
   const markNotificationAsRead = useCallback((notificationId: string) => {
     enhancedNotificationService.markAsRead(notificationId);
     // Update local state to reflect the change immediately
-    setNotifications(prev => 
+    setNotifications(prev =>
       prev.map(n => n.id === notificationId ? { ...n, read: true } : n)
     );
     setNotificationCount(prev => Math.max(0, prev - 1));
@@ -390,15 +394,15 @@ export function SuperAdminDashboard() {
       // Reset loading state
       mainLoadingState.setLoading(true);
       setDataFetchProgress(0);
-      
+
       // Initialize enhanced notification service
       enhancedNotificationService.initialize('SUPER_ADMIN', 'system');
-      
+
       // Start fetching data
       fetchTenants();
       fetchAnalytics();
       fetchRecentActivities();
-      
+
       // Start enhanced real-time notifications - only once per session
       const notificationKey = `enhanced_notifications_${user.uid}`;
       if (!sessionStorage.getItem(notificationKey)) {
@@ -440,7 +444,7 @@ export function SuperAdminDashboard() {
   const fetchTenants = async () => {
     setError(null);
     setDataFetchProgress(20);
-    
+
     try {
       const tenantsData = await tenantService.getAllTenants();
       setTenants(tenantsData);
@@ -459,7 +463,7 @@ export function SuperAdminDashboard() {
       let totalUsers = 0;
       let totalRetailers = 0;
       let totalPayments = 0;
-      
+
       const tenantAnalytics: Array<{
         tenantId: string;
         tenantName: string;
@@ -576,7 +580,7 @@ export function SuperAdminDashboard() {
         adminPhone: data.adminPhone,
         adminName: data.adminName
       });
-      
+
       await userService.createUserWithAuth(tenantId, {
         email: data.adminEmail,
         password: data.adminPassword,
@@ -584,7 +588,7 @@ export function SuperAdminDashboard() {
         phone: data.adminPhone,
         roles: ['WHOLESALER_ADMIN']
       });
-      
+
       await fetchTenants();
       await fetchAnalytics();
       setShowCreateTenant(false);
@@ -598,23 +602,23 @@ export function SuperAdminDashboard() {
     try {
       const newStatus: keyof typeof TENANT_STATUSES = currentStatus === 'ACTIVE' ? 'SUSPENDED' : 'ACTIVE';
       await tenantService.update(tenantId, { status: newStatus }, 'system');
-      
+
       if (newStatus === 'SUSPENDED') {
         const users = await userService.getAll(tenantId);
         await Promise.all(
-          users.map(user => 
+          users.map(user =>
             userService.update(user.id, { active: false }, tenantId)
           )
         );
       } else {
         const users = await userService.getAll(tenantId);
         await Promise.all(
-          users.map(user => 
+          users.map(user =>
             userService.update(user.id, { active: true }, tenantId)
           )
         );
       }
-      
+
       await fetchTenants();
       await fetchAnalytics();
       if (selectedTenant?.id === tenantId) {
@@ -788,23 +792,23 @@ export function SuperAdminDashboard() {
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <Button 
-                  onClick={() => setActiveNav('tenants')} 
+                <Button
+                  onClick={() => setActiveNav('tenants')}
                   className="flex items-center space-x-2"
                 >
                   <Building2 className="h-4 w-4" />
                   <span>Manage Tenants</span>
                 </Button>
-                <Button 
-                  onClick={() => setActiveNav('users')} 
+                <Button
+                  onClick={() => setActiveNav('users')}
                   variant="outline"
                   className="flex items-center space-x-2"
                 >
                   <Users className="h-4 w-4" />
                   <span>Manage Users</span>
                 </Button>
-                <Button 
-                  onClick={() => setActiveNav('analytics')} 
+                <Button
+                  onClick={() => setActiveNav('analytics')}
                   variant="outline"
                   className="flex items-center space-x-2"
                 >
@@ -873,7 +877,7 @@ export function SuperAdminDashboard() {
                   const password = (document.getElementById('adminPassword') as HTMLInputElement)?.value;
                   const adminName = (document.getElementById('adminName') as HTMLInputElement)?.value;
                   const phone = (document.getElementById('adminPhone') as HTMLInputElement)?.value;
-                  
+
                   if (name && email && password && adminName) {
                     handleCreateTenant({
                       name,
@@ -1011,7 +1015,7 @@ export function SuperAdminDashboard() {
                 Detailed information and statistics for this tenant
               </DialogDescription>
             </DialogHeader>
-            
+
             {tenantDetailsLoadingState.loadingState.isLoading ? (
               <div className="flex items-center justify-center py-8">
                 <LoadingSpinner size="lg" />
@@ -1241,14 +1245,14 @@ export function SuperAdminDashboard() {
 
   const getFilteredAnalytics = () => {
     if (!analytics) return null;
-    
+
     if (selectedTenantForAnalytics === 'ALL') {
       return analytics;
     }
-    
+
     const selectedTenantData = analytics.tenantAnalytics.find(t => t.tenantId === selectedTenantForAnalytics);
     if (!selectedTenantData) return analytics;
-    
+
     return {
       ...analytics,
       totalRevenue: selectedTenantData.revenue,
@@ -1269,7 +1273,7 @@ export function SuperAdminDashboard() {
   // Analytics Component
   const Analytics = () => {
     const filteredAnalytics = getFilteredAnalytics();
-    
+
     return (
       <div className="space-y-6">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -1277,7 +1281,7 @@ export function SuperAdminDashboard() {
             <h2 className="text-2xl font-bold text-gray-900">Analytics</h2>
             <p className="text-gray-600">Comprehensive analytics across all tenants</p>
           </div>
-          
+
           {/* Tenant Filter */}
           <div className="flex items-center space-x-2">
             <Label htmlFor="tenant-filter" className="text-sm font-medium">Filter by Tenant:</Label>
@@ -1382,8 +1386,8 @@ export function SuperAdminDashboard() {
                               <span className="text-sm text-gray-500">{percentage.toFixed(1)}%</span>
                             </div>
                             <div className="w-full bg-gray-200 rounded-full h-2">
-                              <div 
-                                className="bg-blue-600 h-2 rounded-full" 
+                              <div
+                                className="bg-blue-600 h-2 rounded-full"
                                 style={{ width: `${percentage}%` }}
                               />
                             </div>
@@ -1415,8 +1419,8 @@ export function SuperAdminDashboard() {
                               <span className="text-sm text-gray-500">{tenant.avgCollectionPerUser.toFixed(1)} avg/user</span>
                             </div>
                             <div className="w-full bg-gray-200 rounded-full h-2">
-                              <div 
-                                className="bg-blue-600 h-2 rounded-full" 
+                              <div
+                                className="bg-blue-600 h-2 rounded-full"
                                 style={{ width: `${Math.min(tenant.avgCollectionPerUser * 10, 100)}%` }}
                               />
                             </div>
@@ -1436,7 +1440,7 @@ export function SuperAdminDashboard() {
             <Card>
               <CardHeader>
                 <CardTitle>Tenant Performance Matrix</CardTitle>
-              <CardDescription>Comprehensive performance analysis for {selectedTenantForAnalytics === 'ALL' ? 'all tenants' : 'selected tenant'}</CardDescription>
+                <CardDescription>Comprehensive performance analysis for {selectedTenantForAnalytics === 'ALL' ? 'all tenants' : 'selected tenant'}</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="overflow-x-auto">
@@ -1457,7 +1461,7 @@ export function SuperAdminDashboard() {
                         .sort((a, b) => b.revenue - a.revenue)
                         .map((tenant) => {
                           const revenuePerUser = tenant.users > 0 ? tenant.revenue / tenant.users : 0;
-                          
+
                           return (
                             <TableRow key={tenant.tenantId}>
                               <TableCell className="font-medium">{tenant.tenantName}</TableCell>
@@ -1469,8 +1473,8 @@ export function SuperAdminDashboard() {
                               <TableCell className="text-right">
                                 <Badge className={
                                   tenant.avgCollectionPerUser >= 5 ? 'bg-green-100 text-green-800' :
-                                  tenant.avgCollectionPerUser >= 2 ? 'bg-yellow-100 text-yellow-800' :
-                                  'bg-red-100 text-red-800'
+                                    tenant.avgCollectionPerUser >= 2 ? 'bg-yellow-100 text-yellow-800' :
+                                      'bg-red-100 text-red-800'
                                 }>
                                   {tenant.avgCollectionPerUser.toFixed(1)}
                                 </Badge>
@@ -1498,93 +1502,93 @@ export function SuperAdminDashboard() {
                       <div>
                         <div className="font-medium text-sm">Top Performing Tenant</div>
                         <div className="text-sm text-gray-600">
-                          {filteredAnalytics.tenantAnalytics.length > 0 ? 
+                          {filteredAnalytics.tenantAnalytics.length > 0 ?
                             `${filteredAnalytics.tenantAnalytics.reduce((max, tenant) => tenant.revenue > max.revenue ? tenant : max).tenantName} leads with ${formatCurrency(filteredAnalytics.tenantAnalytics.reduce((max, tenant) => tenant.revenue > max.revenue ? tenant : max).revenue)}` :
                             'No tenant data available'
                           }
                         </div>
                       </div>
                     </div>
-                    
+
                     <div className="flex items-start space-x-3">
                       <div className="w-2 h-2 bg-red-600 rounded-full mt-2"></div>
                       <div>
                         <div className="font-medium text-sm">Highest Collections/User</div>
                         <div className="text-sm text-gray-600">
-                          {filteredAnalytics.tenantAnalytics.length > 0 ? 
-                          `${filteredAnalytics.tenantAnalytics.reduce((max, tenant) => tenant.avgCollectionPerUser > max.avgCollectionPerUser ? tenant : max).tenantName} has ${filteredAnalytics.tenantAnalytics.reduce((max, tenant) => tenant.avgCollectionPerUser > max.avgCollectionPerUser ? tenant : max).avgCollectionPerUser.toFixed(1)} avg collections per user` :
-                          'No tenant data available'
-                        }
+                          {filteredAnalytics.tenantAnalytics.length > 0 ?
+                            `${filteredAnalytics.tenantAnalytics.reduce((max, tenant) => tenant.avgCollectionPerUser > max.avgCollectionPerUser ? tenant : max).tenantName} has ${filteredAnalytics.tenantAnalytics.reduce((max, tenant) => tenant.avgCollectionPerUser > max.avgCollectionPerUser ? tenant : max).avgCollectionPerUser.toFixed(1)} avg collections per user` :
+                            'No tenant data available'
+                          }
+                        </div>
                       </div>
                     </div>
-                  </div>
-                  
-                  <div className="flex items-start space-x-3">
-                    <div className="w-2 h-2 bg-green-600 rounded-full mt-2"></div>
-                    <div>
-                      <div className="font-medium text-sm">Best Collection Performance</div>
-                      <div className="text-sm text-gray-600">
-                        {filteredAnalytics.tenantAnalytics.length > 0 ? 
-                          (() => {
-                            const best = filteredAnalytics.tenantAnalytics.reduce((best, tenant) => 
-                              tenant.avgCollectionPerUser > best.avgCollectionPerUser ? tenant : best
-                            );
-                            return `${best.tenantName} with ${best.avgCollectionPerUser.toFixed(1)} avg collections per user`;
-                          })() :
-                          'No tenant data available'
-                        }
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Recommendations</CardTitle>
-                <CardDescription>Suggested actions based on analytics</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div className="flex items-start space-x-3">
-                    <div className="w-2 h-2 bg-orange-600 rounded-full mt-2"></div>
-                    <div>
-                      <div className="font-medium text-sm">Focus on Low Performance</div>
-                      <div className="text-sm text-gray-600">
-                        Prioritize follow-up with tenants having below {filteredAnalytics.avgCollectionPerUser.toFixed(1)} avg collections per user
+                    <div className="flex items-start space-x-3">
+                      <div className="w-2 h-2 bg-green-600 rounded-full mt-2"></div>
+                      <div>
+                        <div className="font-medium text-sm">Best Collection Performance</div>
+                        <div className="text-sm text-gray-600">
+                          {filteredAnalytics.tenantAnalytics.length > 0 ?
+                            (() => {
+                              const best = filteredAnalytics.tenantAnalytics.reduce((best, tenant) =>
+                                tenant.avgCollectionPerUser > best.avgCollectionPerUser ? tenant : best
+                              );
+                              return `${best.tenantName} with ${best.avgCollectionPerUser.toFixed(1)} avg collections per user`;
+                            })() :
+                            'No tenant data available'
+                          }
+                        </div>
                       </div>
                     </div>
                   </div>
-                  
-                  <div className="flex items-start space-x-3">
-                    <div className="w-2 h-2 bg-blue-600 rounded-full mt-2"></div>
-                    <div>
-                      <div className="font-medium text-sm">Improve User Engagement</div>
-                      <div className="text-sm text-gray-600">
-                        Target tenants with low payment rates to improve user engagement and collection
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Recommendations</CardTitle>
+                  <CardDescription>Suggested actions based on analytics</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    <div className="flex items-start space-x-3">
+                      <div className="w-2 h-2 bg-orange-600 rounded-full mt-2"></div>
+                      <div>
+                        <div className="font-medium text-sm">Focus on Low Performance</div>
+                        <div className="text-sm text-gray-600">
+                          Prioritize follow-up with tenants having below {filteredAnalytics.avgCollectionPerUser.toFixed(1)} avg collections per user
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-start space-x-3">
+                      <div className="w-2 h-2 bg-blue-600 rounded-full mt-2"></div>
+                      <div>
+                        <div className="font-medium text-sm">Improve User Engagement</div>
+                        <div className="text-sm text-gray-600">
+                          Target tenants with low payment rates to improve user engagement and collection
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-start space-x-3">
+                      <div className="w-2 h-2 bg-green-600 rounded-full mt-2"></div>
+                      <div>
+                        <div className="font-medium text-sm">Expand Successful Models</div>
+                        <div className="text-sm text-gray-600">
+                          Analyze and replicate strategies from top-performing tenants across the network
+                        </div>
                       </div>
                     </div>
                   </div>
-                  
-                  <div className="flex items-start space-x-3">
-                    <div className="w-2 h-2 bg-green-600 rounded-full mt-2"></div>
-                    <div>
-                      <div className="font-medium text-sm">Expand Successful Models</div>
-                      <div className="text-sm text-gray-600">
-                        Analyze and replicate strategies from top-performing tenants across the network
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </>
-      )}
-    </div>
-  );
-};
+                </CardContent>
+              </Card>
+            </div>
+          </>
+        )}
+      </div>
+    );
+  };
 
   // Activity Component
   const Activity = () => (
@@ -1602,16 +1606,14 @@ export function SuperAdminDashboard() {
                 const Icon = activity.icon;
                 return (
                   <div key={activity.id} className="flex items-center space-x-4 p-4 border rounded-lg">
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                      activity.type === 'success' ? 'bg-green-100' : 
-                      activity.type === 'warning' ? 'bg-yellow-100' : 
-                      activity.type === 'info' ? 'bg-blue-100' : 'bg-gray-100'
-                    }`}>
-                      <Icon className={`h-5 w-5 ${
-                        activity.type === 'success' ? 'text-green-600' : 
-                        activity.type === 'warning' ? 'text-yellow-600' : 
-                        activity.type === 'info' ? 'text-blue-600' : 'text-gray-600'
-                      }`} />
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center ${activity.type === 'success' ? 'bg-green-100' :
+                        activity.type === 'warning' ? 'bg-yellow-100' :
+                          activity.type === 'info' ? 'bg-blue-100' : 'bg-gray-100'
+                      }`}>
+                      <Icon className={`h-5 w-5 ${activity.type === 'success' ? 'text-green-600' :
+                          activity.type === 'warning' ? 'text-yellow-600' :
+                            activity.type === 'info' ? 'text-blue-600' : 'text-gray-600'
+                        }`} />
                     </div>
                     <div className="flex-1">
                       <div className="font-medium">{activity.title}</div>
@@ -1757,8 +1759,8 @@ export function SuperAdminDashboard() {
                           <TableCell>
                             <Badge className={
                               payment.state === 'COMPLETED' ? 'bg-green-100 text-green-800' :
-                              payment.state === 'CANCELLED' ? 'bg-red-100 text-red-800' :
-                              'bg-yellow-100 text-yellow-800'
+                                payment.state === 'CANCELLED' ? 'bg-red-100 text-red-800' :
+                                  'bg-yellow-100 text-yellow-800'
                             }>
                               {payment.state}
                             </Badge>
@@ -1873,15 +1875,15 @@ export function SuperAdminDashboard() {
   return (
     <>
       <StatusBarColor theme="white" />
-      
+
       {/* Loading Overlay */}
-      <LoadingOverlay 
+      <LoadingOverlay
         isLoading={mainLoadingState.loadingState.isLoading}
         message="Loading dashboard data..."
         progress={dataFetchProgress}
         variant="fullscreen"
       />
-      
+
       <div className="min-h-screen bg-gray-50 flex flex-col dashboard-screen">
         {/* Navigation */}
         <DashboardNavigation
@@ -1893,43 +1895,51 @@ export function SuperAdminDashboard() {
           notificationCount={notificationCount}
           notifications={notifications}
           user={user ? { displayName: user.displayName, email: user.email } : undefined}
-          onLogout={logout}
+          onLogout={() => setShowLogoutConfirmation(true)}
           onNotificationRead={markNotificationAsRead}
           onAllNotificationsRead={markAllNotificationsAsRead}
         />
 
-      {/* Main Content */}
-      <main className="flex-1 pt-20 sm:pt-16 p-3 sm:p-4 lg:p-6 overflow-y-auto pb-20 lg:pb-6">
-        {/* Header with refresh */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4 sm:mb-6">
-          <div className="flex-1 min-w-0">
-            <h1 className="text-xl sm:text-2xl font-bold text-gray-900 truncate">
-              {navItems.find(item => item.id === activeNav)?.label || 'Dashboard'}
-            </h1>
-            <p className="text-sm text-gray-500 mt-1">
-              Last updated: {formatTimestampWithTime(lastUpdate)}
-            </p>
+        {/* Logout Confirmation Modal */}
+        <LogoutConfirmation
+          open={showLogoutConfirmation}
+          onOpenChange={setShowLogoutConfirmation}
+          onConfirm={logout}
+          userName={user?.displayName || user?.email}
+        />
+
+        {/* Main Content */}
+        <main className="flex-1 pt-20 sm:pt-16 p-3 sm:p-4 lg:p-6 overflow-y-auto pb-20 lg:pb-6">
+          {/* Header with refresh */}
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4 sm:mb-6">
+            <div className="flex-1 min-w-0">
+              <h1 className="text-xl sm:text-2xl font-bold text-gray-900 truncate">
+                {navItems.find(item => item.id === activeNav)?.label || 'Dashboard'}
+              </h1>
+              <p className="text-sm text-gray-500 mt-1">
+                Last updated: {formatTimestampWithTime(lastUpdate)}
+              </p>
+            </div>
+            <LoadingButton
+              isLoading={mainLoadingState.loadingState.isRefreshing}
+              loadingText="Refreshing..."
+              onClick={refreshData}
+              variant="outline"
+              className="flex items-center space-x-2"
+            >
+              <RefreshCw className="h-4 w-4" />
+              <span>Refresh Data</span>
+            </LoadingButton>
           </div>
-          <LoadingButton 
-            isLoading={mainLoadingState.loadingState.isRefreshing}
-            loadingText="Refreshing..."
-            onClick={refreshData} 
-            variant="outline"
-            className="flex items-center space-x-2"
-          >
-            <RefreshCw className="h-4 w-4" />
-            <span>Refresh Data</span>
-          </LoadingButton>
-        </div>
 
-        {error && (
-          <Alert variant="destructive" className="mb-6">
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        )}
+          {error && (
+            <Alert variant="destructive" className="mb-6">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
 
-        {/* Content based on active navigation */}
-        <div className="space-y-6">
+          {/* Content based on active navigation */}
+          <div className="space-y-6">
             {activeNav === 'overview' && <Overview />}
             {activeNav === 'tenants' && <TenantsManagement />}
             {activeNav === 'users' && <UsersOverview />}
@@ -1940,59 +1950,59 @@ export function SuperAdminDashboard() {
             {activeNav === 'settings' && <Settings />}
 
             <div>
-                     <div className="px-4 pb-20 pt-2 text-left">
+              <div className="px-4 pb-20 pt-2 text-left">
 
-                        {/* Tagline */}
-                        <h2
-                          className="fw-bold lh-sm"
-                          style={{
-                            fontSize: "2.2rem",
-                            lineHeight: "1.2",
-                            color: "rgba(75, 75, 75, 1)",
-                            fontWeight: 700,
-                          }}
-                        >
-                          Payment <br />s
-                          Collection Made<br />
-                          More Secure{" "}
-                          <Heart
-                            className="inline-block"
-                            size={30}
-                            fill="red"
-                            color="red"
-                          />
-                        </h2>
+                {/* Tagline */}
+                <h2
+                  className="fw-bold lh-sm"
+                  style={{
+                    fontSize: "2.2rem",
+                    lineHeight: "1.2",
+                    color: "rgba(75, 75, 75, 1)",
+                    fontWeight: 700,
+                  }}
+                >
+                  Payment <br />s
+                  Collection Made<br />
+                  More Secure{" "}
+                  <Heart
+                    className="inline-block"
+                    size={30}
+                    fill="red"
+                    color="red"
+                  />
+                </h2>
 
-                        {/* Divider line */}
-                        <hr
-                          style={{
-                            borderTop: "1px solid rgba(75, 75, 75, 1)",
-                            margin: "18px 0",
-                          }}
-                        />
+                {/* Divider line */}
+                <hr
+                  style={{
+                    borderTop: "1px solid rgba(75, 75, 75, 1)",
+                    margin: "18px 0",
+                  }}
+                />
 
-                        {/* App name */}
-                        <p
-                          style={{
-                            fontSize: "1rem",
-                            color: "rgba(75, 75, 75, 1)",
-                            fontWeight: 500,
-                          }}
-                        >
-                          PharmaLync
-                        </p>
-                      </div>
+                {/* App name */}
+                <p
+                  style={{
+                    fontSize: "1rem",
+                    color: "rgba(75, 75, 75, 1)",
+                    fontWeight: 500,
+                  }}
+                >
+                  PharmaLync
+                </p>
+              </div>
             </div>
           </div>
-      </main>
-      
-      {/* Success Feedback */}
-      <SuccessFeedback 
-        show={feedback.show}
-        message={feedback.message}
-        onClose={hideSuccess}
-      />
-    </div>
+        </main>
+
+        {/* Success Feedback */}
+        <SuccessFeedback
+          show={feedback.show}
+          message={feedback.message}
+          onClose={hideSuccess}
+        />
+      </div>
 
     </>
   );

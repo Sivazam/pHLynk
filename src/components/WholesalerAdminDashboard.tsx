@@ -29,9 +29,9 @@ import { DashboardNavigation, NavItem, NotificationItem } from '@/components/Das
 import { PWANotificationManager } from '@/components/PWANotificationManager';
 
 import { useAuth, useWholesalerAdmin, useSuperAdmin } from '@/contexts/AuthContext';
-import { 
-  areaService, 
-  retailerService, 
+import {
+  areaService,
+  retailerService,
   userService,
   paymentService,
   DashboardService,
@@ -50,8 +50,9 @@ import { WholesalerAnalytics } from '@/components/WholesalerAnalytics';
 import { SuccessFeedback } from '@/components/SuccessFeedback';
 import { Confetti } from '@/components/ui/Confetti';
 import { useSuccessFeedback } from '@/hooks/useSuccessFeedback';
+import { LogoutConfirmation } from '@/components/LogoutConfirmation';
 import { DaySheet } from '@/components/DaySheet';
-import { 
+import {
   // Navigation
   LayoutDashboard,
   MapPin,
@@ -62,7 +63,7 @@ import {
   Activity,
   LogOut,
   Bell,
-  
+
   // Actions
   Plus,
   Edit,
@@ -72,7 +73,7 @@ import {
   Filter,
   Search,
   RefreshCw,
-  
+
   // Icons
   DollarSign,
   Phone,
@@ -126,7 +127,7 @@ export function WholesalerAdminDashboard() {
   const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null);
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
   const [error, setError] = useState<string | null>(null);
-  
+
   // UI States
   const [activeNav, setActiveNav] = useState('overview');
   const [showCreateArea, setShowCreateArea] = useState(false);
@@ -139,11 +140,14 @@ export function WholesalerAdminDashboard() {
   const [editingSelectedAreas, setEditingSelectedAreas] = useState<string[]>([]);
   const [editingActiveStatus, setEditingActiveStatus] = useState<boolean>(true);
   const [viewingPayment, setViewingPayment] = useState<Payment | null>(null);
-  
+
   // Line worker creation state
   const [creatingLineWorker, setCreatingLineWorker] = useState(false);
   const [showLineWorkerSuccess, setShowLineWorkerSuccess] = useState(false);
   const [triggerLineWorkerConfetti, setTriggerLineWorkerConfetti] = useState(false);
+
+  // Logout confirmation state
+  const [showLogoutConfirmation, setShowLogoutConfirmation] = useState(false);
 
   // Simplified dialog state management
   const handleAreaDialogChange = useCallback((open: boolean) => {
@@ -162,7 +166,7 @@ export function WholesalerAdminDashboard() {
     }
   }, []);
 
-  
+
 
   const handleLineWorkerDialogChange = useCallback((open: boolean) => {
     if (open) {
@@ -171,14 +175,14 @@ export function WholesalerAdminDashboard() {
       setShowCreateLineWorker(false);
     }
   }, []);
-  
+
   // Filter States
   const [selectedLineWorker, setSelectedLineWorker] = useState<string>("all");
   const [selectedRetailer, setSelectedRetailer] = useState<string>("all");
   const [selectedArea, setSelectedArea] = useState<string>("all");
-  
+
   const [showInactiveWorkers, setShowInactiveWorkers] = useState<boolean>(false);
-  
+
   // Real-time updates
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
   const [notificationCount, setNotificationCount] = useState(0);
@@ -191,14 +195,14 @@ export function WholesalerAdminDashboard() {
     const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
     return { startDate: startOfDay, endDate: endOfDay };
   });
-  
+
   // Standardized loading state management
   const mainLoadingState = useLoadingState();
   const [dataFetchProgress, setDataFetchProgress] = useState(0);
-  
+
   // Separate state for the filter date picker
   const [filterDate, setFilterDate] = useState<{ from: Date | null; to: Date | null } | null>(null);
-  
+
   // Filter functions for retailer details - memoized to prevent unnecessary re-computations
   const getFilteredRetailers = useMemo(() => {
     return retailers.filter(retailer => {
@@ -206,16 +210,16 @@ export function WholesalerAdminDashboard() {
       if (selectedArea !== "all" && retailer.areaId !== selectedArea) {
         return false;
       }
-      
+
       // Retailer filter
       if (selectedRetailer !== "all" && retailer.id !== selectedRetailer) {
         return false;
       }
-      
+
       return true;
     });
   }, [retailers, selectedArea, selectedRetailer]);
-  
+
   // Helper functions to filter data by date range
   const filterPaymentsByDateRange = (paymentsData: any[]) => {
     return paymentsData.filter(payment => {
@@ -233,66 +237,80 @@ export function WholesalerAdminDashboard() {
   const handleSelectDateRangeChange = (value: string) => {
     // Find the corresponding date range option and call the main handler
     const dateRangeOptions = [
-      { value: 'today', getDateRange: () => {
-        const today = new Date();
-        const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-        const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
-        return { startDate: startOfDay, endDate: endOfDay };
-      }},
-      { value: 'yesterday', getDateRange: () => {
-        const yesterday = new Date();
-        yesterday.setDate(yesterday.getDate() - 1);
-        const startOfDay = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate());
-        const endOfDay = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate(), 23, 59, 59, 999);
-        return { startDate: startOfDay, endDate: endOfDay };
-      }},
-      { value: 'thisWeek', getDateRange: () => {
-        const today = new Date();
-        const dayOfWeek = today.getDay();
-        const startOfWeek = new Date(today.getFullYear(), today.getMonth(), today.getDate() - dayOfWeek);
-        const endOfWeek = new Date(today.getFullYear(), today.getMonth(), today.getDate() + (6 - dayOfWeek), 23, 59, 59, 999);
-        return { startDate: startOfWeek, endDate: endOfWeek };
-      }},
-      { value: 'lastWeek', getDateRange: () => {
-        const today = new Date();
-        const dayOfWeek = today.getDay();
-        const startOfLastWeek = new Date(today.getFullYear(), today.getMonth(), today.getDate() - dayOfWeek - 7);
-        const endOfLastWeek = new Date(today.getFullYear(), today.getMonth(), today.getDate() - dayOfWeek - 1, 23, 59, 59, 999);
-        return { startDate: startOfLastWeek, endDate: endOfLastWeek };
-      }},
-      { value: 'thisMonth', getDateRange: () => {
-        const today = new Date();
-        const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-        const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59, 999);
-        return { startDate: startOfMonth, endDate: endOfMonth };
-      }},
-      { value: 'lastMonth', getDateRange: () => {
-        const today = new Date();
-        const startOfLastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-        const endOfLastMonth = new Date(today.getFullYear(), today.getMonth(), 0, 23, 59, 59, 999);
-        return { startDate: startOfLastMonth, endDate: endOfLastMonth };
-      }},
-      { value: 'custom', getDateRange: () => {
-        const today = new Date();
-        const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-        const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
-        return { startDate: startOfDay, endDate: endOfDay };
-      }}
+      {
+        value: 'today', getDateRange: () => {
+          const today = new Date();
+          const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+          const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
+          return { startDate: startOfDay, endDate: endOfDay };
+        }
+      },
+      {
+        value: 'yesterday', getDateRange: () => {
+          const yesterday = new Date();
+          yesterday.setDate(yesterday.getDate() - 1);
+          const startOfDay = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate());
+          const endOfDay = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate(), 23, 59, 59, 999);
+          return { startDate: startOfDay, endDate: endOfDay };
+        }
+      },
+      {
+        value: 'thisWeek', getDateRange: () => {
+          const today = new Date();
+          const dayOfWeek = today.getDay();
+          const startOfWeek = new Date(today.getFullYear(), today.getMonth(), today.getDate() - dayOfWeek);
+          const endOfWeek = new Date(today.getFullYear(), today.getMonth(), today.getDate() + (6 - dayOfWeek), 23, 59, 59, 999);
+          return { startDate: startOfWeek, endDate: endOfWeek };
+        }
+      },
+      {
+        value: 'lastWeek', getDateRange: () => {
+          const today = new Date();
+          const dayOfWeek = today.getDay();
+          const startOfLastWeek = new Date(today.getFullYear(), today.getMonth(), today.getDate() - dayOfWeek - 7);
+          const endOfLastWeek = new Date(today.getFullYear(), today.getMonth(), today.getDate() - dayOfWeek - 1, 23, 59, 59, 999);
+          return { startDate: startOfLastWeek, endDate: endOfLastWeek };
+        }
+      },
+      {
+        value: 'thisMonth', getDateRange: () => {
+          const today = new Date();
+          const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+          const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59, 999);
+          return { startDate: startOfMonth, endDate: endOfMonth };
+        }
+      },
+      {
+        value: 'lastMonth', getDateRange: () => {
+          const today = new Date();
+          const startOfLastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+          const endOfLastMonth = new Date(today.getFullYear(), today.getMonth(), 0, 23, 59, 59, 999);
+          return { startDate: startOfLastMonth, endDate: endOfLastMonth };
+        }
+      },
+      {
+        value: 'custom', getDateRange: () => {
+          const today = new Date();
+          const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+          const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
+          return { startDate: startOfDay, endDate: endOfDay };
+        }
+      }
     ];
-    
+
     const selectedOption = dateRangeOptions.find(option => option.value === value);
     if (selectedOption) {
       const dateRange = selectedOption.getDateRange();
       handleDateRangeChange(value, dateRange);
     }
   };
-  
+
   // Tenant management for super admin
   const [tenants, setTenants] = useState<any[]>([]);
   const [selectedTenant, setSelectedTenant] = useState<string>('');
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [currentTenantData, setCurrentTenantData] = useState<any>(null); // For regular wholesaler admin
-  
+
   // Retailer assignment state
   const [showRetailerAssignment, setShowRetailerAssignment] = useState(false);
   const [assigningRetailer, setAssigningRetailer] = useState<Retailer | null>(null);
@@ -377,7 +395,7 @@ export function WholesalerAdminDashboard() {
   }, []);
 
   // Prevent multiple dialog openings
-  
+
 
   // Navigation items
   const navItems: NavItem[] = [
@@ -394,18 +412,18 @@ export function WholesalerAdminDashboard() {
   const handleNotificationUpdate = useCallback((newNotifications: NotificationItem[]) => {
     console.log('🔔 Received real-time notifications callback:', newNotifications.length, 'notifications');
     console.log('🔔 Real-time notification details:', newNotifications.map(n => ({ id: n.id, title: n.title, read: n.read })));
-    
+
     // Use functional updates to avoid dependency on notifications state
     setNotifications(prevNotifications => {
       // Only update if notifications have actually changed
-      if (prevNotifications.length === newNotifications.length && 
-          JSON.stringify(prevNotifications) === JSON.stringify(newNotifications)) {
+      if (prevNotifications.length === newNotifications.length &&
+        JSON.stringify(prevNotifications) === JSON.stringify(newNotifications)) {
         console.log('🔔 Notifications unchanged, skipping state update');
         return prevNotifications;
       }
       return newNotifications;
     });
-    
+
     // Update notification count using functional update
     setNotificationCount(prevCount => {
       const newCount = newNotifications.filter(n => !n.read).length;
@@ -417,12 +435,12 @@ export function WholesalerAdminDashboard() {
     const currentTenantId = getCurrentTenantId();
     if (isWholesalerAdmin && user?.uid && currentTenantId) {
       console.log('🔔 Setting up wholesaler admin real-time notifications for user:', user.uid, 'tenant:', currentTenantId);
-      
+
       // Reset loading state and start fetching data
       mainLoadingState.setLoading(true);
       setDataFetchProgress(0);
       fetchDashboardData();
-      
+
       // Start real-time notifications - ensure it's always set up
       realtimeNotificationService.startListening(
         user.uid,
@@ -464,7 +482,7 @@ export function WholesalerAdminDashboard() {
   useEffect(() => {
     if (retailers.length > 0 && payments.length > 0) {
       console.log('🔄 Regenerating activity logs due to retailer data change');
-      
+
       // Debug: Analyze retailer data structure
       const retailerAnalysis = retailers.map(r => ({
         id: r.id,
@@ -475,15 +493,15 @@ export function WholesalerAdminDashboard() {
         profileKeys: r.profile ? Object.keys(r.profile) : [],
         nameSource: r.profile?.realName ? 'profile.realName' : (r.name ? 'name' : 'Unknown')
       }));
-      
+
       console.log('📊 Retailer data analysis:', retailerAnalysis);
-      
+
       // Check for payments with missing retailer names
       const paymentsWithMissingRetailers = payments.filter(p => {
         const retailer = retailers.find(r => r.id === p.retailerId);
         return !retailer || (!retailer.profile?.realName && !retailer.name);
       });
-      
+
       if (paymentsWithMissingRetailers.length > 0) {
         console.warn('⚠️ Payments with missing retailer data:', paymentsWithMissingRetailers.map(p => ({
           paymentId: p.id,
@@ -492,12 +510,12 @@ export function WholesalerAdminDashboard() {
           state: p.state
         })));
       }
-      
+
       const currentTenantId = getCurrentTenantId();
       if (currentTenantId) {
         // Use the current filter settings to determine activity logs data
         let activityLogsData = payments;
-        
+
         const refreshedLogs = generateActivityLogs(activityLogsData, retailers, lineWorkers);
         setActivityLogs(prevLogs => {
           // Check if there are actual differences in retailer names
@@ -505,7 +523,7 @@ export function WholesalerAdminDashboard() {
             const prevLog = prevLogs[index];
             return prevLog && log.targetName !== prevLog.targetName;
           });
-          
+
           if (hasChanges) {
             console.log('✅ Activity logs updated with corrected retailer names');
             console.log('🔄 Sample changes:', refreshedLogs.slice(0, 3).map(log => ({
@@ -525,7 +543,7 @@ export function WholesalerAdminDashboard() {
   // useEffect(() => {
   //   if (isWholesalerAdmin && user?.uid) {
   //     console.log('🔔 Setting up notification service sync for user:', user.uid);
-      
+
   //     // Add a listener to the notification service to ensure we stay in sync
   //     const notificationListener = (newNotifications: NotificationItem[]) => {
   //       console.log('🔔 Notification service update received:', newNotifications.length, 'notifications');
@@ -556,10 +574,10 @@ export function WholesalerAdminDashboard() {
       setError('No tenant selected. Please select a tenant to continue.');
       return;
     }
-    
+
     setError(null);
     setDataFetchProgress(20);
-    
+
     try {
       // Fetch base data
       setDataFetchProgress(40);
@@ -596,13 +614,13 @@ export function WholesalerAdminDashboard() {
         displayName: w.displayName,
         assignedAreas: w.assignedAreas
       })));
-      
+
       setPayments(paymentsQuery);
       setDashboardStats(stats);
-      
+
       // Generate activity logs - use filtered data only for Overview tab
       let activityLogsData = paymentsQuery;
-      
+
       // If on Overview tab, use the filtered data for activity logs
       // If on other tabs, use all data for activity logs
       if (activeNav === 'overview') {
@@ -619,7 +637,7 @@ export function WholesalerAdminDashboard() {
           return true;
         });
       }
-      
+
       // Recompute retailer data for accuracy
       setDataFetchProgress(80);
       try {
@@ -631,7 +649,7 @@ export function WholesalerAdminDashboard() {
         const updatedRetailers = await retailerService.getAll(currentTenantId);
         setRetailers(updatedRetailers);
         console.log('✅ Retailer data recomputed and updated');
-        
+
         // Regenerate activity logs with updated retailer data to fix "Unknown" retailer names
         const refreshedLogs = generateActivityLogs(activityLogsData, updatedRetailers, lineWorkersData);
         setActivityLogs(refreshedLogs);
@@ -639,18 +657,18 @@ export function WholesalerAdminDashboard() {
       } catch (error) {
         console.warn('Warning: Could not recompute retailer data:', error);
       }
-      
+
       // Generate initial activity logs (will be refreshed after retailer data update)
       const logs = generateActivityLogs(activityLogsData, retailersData, lineWorkersData);
       setActivityLogs(logs);
-      
+
       // Note: Notifications are now handled by real-time service only
       // Local notification generation removed to prevent conflicts
-      
+
       setLastUpdate(new Date());
       setDataFetchProgress(100);
       mainLoadingState.setLoading(false);
-      
+
     } catch (err: any) {
       setError(err.message || 'Failed to fetch dashboard data');
       setDataFetchProgress(100);
@@ -661,25 +679,25 @@ export function WholesalerAdminDashboard() {
   const handleManualRefresh = async () => {
     const currentTenantId = getCurrentTenantId();
     if (!currentTenantId) return;
-    
+
     mainLoadingState.setRefreshing(true);
     try {
       await fetchDashboardData();
-      
+
       // Also refresh notifications manually - only if they've changed
       const currentNotifications = notificationService.getNotifications();
       console.log('🔔 Manual notification refresh:', currentNotifications.length, 'notifications');
       console.log('🔔 Manual refresh notification details:', currentNotifications.map(n => ({ id: n.id, title: n.title, read: n.read })));
-      
+
       // Only update if notifications have actually changed
-      if (currentNotifications.length !== notifications.length || 
-          JSON.stringify(currentNotifications) !== JSON.stringify(notifications)) {
+      if (currentNotifications.length !== notifications.length ||
+        JSON.stringify(currentNotifications) !== JSON.stringify(notifications)) {
         setNotifications(currentNotifications);
         setNotificationCount(currentNotifications.filter(n => !n.read).length);
       } else {
         console.log('🔔 Manual refresh: Notifications unchanged, skipping state update');
       }
-      
+
     } catch (error) {
       console.error('Error during manual refresh:', error);
     } finally {
@@ -712,8 +730,8 @@ export function WholesalerAdminDashboard() {
     });
 
     // 1. Individual completed payments (last 24 hours) - Success notifications
-    const recentCompletedPayments = payments.filter(payment => 
-      payment.state === 'COMPLETED' && 
+    const recentCompletedPayments = payments.filter(payment =>
+      payment.state === 'COMPLETED' &&
       payment.timeline.completedAt &&
       toDate(payment.timeline.completedAt) >= oneDayAgo
     );
@@ -723,7 +741,7 @@ export function WholesalerAdminDashboard() {
     recentCompletedPayments.forEach(payment => {
       const worker = workers.find(w => w.id === payment.lineWorkerId);
       const retailer = retailers.find(r => r.id === payment.retailerId);
-      
+
       notifications.push({
         id: `payment_collected_${payment.id}`,
         type: 'success',
@@ -738,8 +756,8 @@ export function WholesalerAdminDashboard() {
     });
 
     // 2. Pending payments older than 1 hour - Warning notifications
-    const pendingPayments = payments.filter(payment => 
-      payment.state === 'INITIATED' && 
+    const pendingPayments = payments.filter(payment =>
+      payment.state === 'INITIATED' &&
       toDate(payment.createdAt) <= oneHourAgo
     );
 
@@ -749,7 +767,7 @@ export function WholesalerAdminDashboard() {
       const worker = workers.find(w => w.id === payment.lineWorkerId);
       const retailerName = getRetailerNameFromData(payment.retailerId, retailers);
       const timeDiff = Math.floor((now.getTime() - toDate(payment.createdAt).getTime()) / (60 * 60 * 1000));
-      
+
       notifications.push({
         id: `payment_pending_${payment.id}`,
         type: 'warning',
@@ -770,7 +788,7 @@ export function WholesalerAdminDashboard() {
     failedPayments.slice(0, 3).forEach(payment => {
       const worker = workers.find(w => w.id === payment.lineWorkerId);
       const retailerName = getRetailerNameFromData(payment.retailerId, retailers);
-      
+
       notifications.push({
         id: `payment_failed_${payment.id}`,
         type: 'warning',
@@ -784,8 +802,8 @@ export function WholesalerAdminDashboard() {
     });
 
     // 4. High performing line workers (today) - Success notifications
-    const todayCompletedPayments = payments.filter(payment => 
-      payment.state === 'COMPLETED' && 
+    const todayCompletedPayments = payments.filter(payment =>
+      payment.state === 'COMPLETED' &&
       payment.timeline.completedAt &&
       toDate(payment.timeline.completedAt) >= oneDayAgo
     );
@@ -822,19 +840,19 @@ export function WholesalerAdminDashboard() {
     });
 
     // 6. Inactive line workers with recent activity - Info notifications
-    const inactiveWorkersWithActivity = workers.filter(worker => 
-      !worker.active && 
+    const inactiveWorkersWithActivity = workers.filter(worker =>
+      !worker.active &&
       payments.some(payment => payment.lineWorkerId === worker.id && toDate(payment.createdAt) >= oneDayAgo)
     );
 
     console.log('Inactive workers with activity:', inactiveWorkersWithActivity.length);
 
     inactiveWorkersWithActivity.slice(0, 3).forEach(worker => {
-      const recentPayments = payments.filter(payment => 
-        payment.lineWorkerId === worker.id && 
+      const recentPayments = payments.filter(payment =>
+        payment.lineWorkerId === worker.id &&
         toDate(payment.createdAt) >= oneDayAgo
       );
-      
+
       notifications.push({
         id: `inactive_worker_activity_${worker.id}`,
         type: 'info',
@@ -855,7 +873,7 @@ export function WholesalerAdminDashboard() {
     // Helper function to get retailer name from the provided retailers array
     const getRetailerNameFromData = (retailerId: string, retailersArray: Retailer[]) => {
       const retailer = retailersArray.find(r => r.id === retailerId);
-      
+
       if (retailer?.profile?.realName) {
         return retailer.profile.realName;
       }
@@ -870,11 +888,11 @@ export function WholesalerAdminDashboard() {
       }
       return true; // For other tabs, show all payments
     });
-    
+
     recentPayments.forEach(payment => {
       const worker = workers.find(w => w.id === payment.lineWorkerId);
       const retailerName = getRetailerNameFromData(payment.retailerId, retailers);
-      
+
       logs.push({
         id: `payment_${payment.id}`,
         type: 'PAYMENT',
@@ -888,15 +906,15 @@ export function WholesalerAdminDashboard() {
         timestamp: payment.createdAt
       });
     });
-    
+
     // Sort by timestamp (newest first)
     return logs.sort((a, b) => b.timestamp.toMillis() - a.timestamp.toMillis());
   };
 
   // Helper function to check if an area is already assigned to another line worker
   const isAreaAssignedToOtherWorker = (areaId: string, currentWorkerId?: string): boolean => {
-    return lineWorkers.some(worker => 
-      worker.id !== currentWorkerId && 
+    return lineWorkers.some(worker =>
+      worker.id !== currentWorkerId &&
       worker.assignedAreas?.includes(areaId)
     );
   };
@@ -957,7 +975,7 @@ export function WholesalerAdminDashboard() {
   const handleAssignRetailer = async (retailerId: string, lineWorkerId: string | null) => {
     const currentTenantId = getCurrentTenantId();
     if (!currentTenantId) return;
-    
+
     // Check if there's actually a change being made
     const retailer = retailers.find(r => r.id === retailerId);
     if (retailer && retailer.assignedLineWorkerId === lineWorkerId) {
@@ -968,7 +986,7 @@ export function WholesalerAdminDashboard() {
       setError(null);
       return;
     }
-    
+
     try {
       // Use the enhanced reassign API for better consistency and validation
       if (lineWorkerId) {
@@ -984,19 +1002,19 @@ export function WholesalerAdminDashboard() {
             newLineWorkerId: lineWorkerId
           })
         });
-        
+
         if (!response.ok) {
           const errorData = await response.json();
           throw new Error(errorData.error || 'Failed to reassign retailer');
         }
-        
+
         const result = await response.json();
         console.log('✅ Retailer reassigned successfully:', result);
       } else {
         // Unassign retailer
         await retailerService.assignLineWorker(currentTenantId, retailerId, null);
       }
-      
+
       await fetchDashboardData();
       setShowRetailerAssignment(false);
       setAssigningRetailer(null);
@@ -1015,13 +1033,13 @@ export function WholesalerAdminDashboard() {
       setError('No tenant selected. Please select a tenant to continue.');
       return;
     }
-    
+
     try {
       await areaService.createArea(currentTenantId, {
         name: data.name,
         zipcodes: data.zipcodes
       });
-      
+
       await fetchDashboardData();
       setShowCreateArea(false);
       showSuccess(`Area "${data.name}" created successfully with ${data.zipcodes.length} zipcodes!`);
@@ -1049,7 +1067,7 @@ export function WholesalerAdminDashboard() {
         areaId: data.areaId || '',
         zipcodes: data.zipcodes
       });
-      
+
       // 🔄 CRITICAL: Automatically assign retailer to Line Worker if area has one
       if (data.areaId) {
         const assignedWorker = getAssignedWorkerForArea(data.areaId);
@@ -1059,16 +1077,16 @@ export function WholesalerAdminDashboard() {
             areaId: data.areaId,
             lineWorkerName: assignedWorker.displayName
           });
-          
+
           try {
             // Need to get the newly created retailer ID first
             const updatedRetailers = await retailerService.getAll(currentTenantId);
-            const newRetailer = updatedRetailers.find(r => 
-              (r.profile ? r.profile.realName : r.name) === data.name && 
-              (r.profile ? r.profile.phone : r.phone) === data.phone && 
+            const newRetailer = updatedRetailers.find(r =>
+              (r.profile ? r.profile.realName : r.name) === data.name &&
+              (r.profile ? r.profile.phone : r.phone) === data.phone &&
               r.areaId === data.areaId
             );
-            
+
             if (newRetailer) {
               await retailerService.assignLineWorker(currentTenantId, newRetailer.id, assignedWorker.id);
               console.log(`✅ Auto-assigned new retailer "${data.name}" to Line Worker "${assignedWorker.displayName}"`);
@@ -1079,7 +1097,7 @@ export function WholesalerAdminDashboard() {
           }
         }
       }
-      
+
       await fetchDashboardData();
       setShowCreateRetailer(false);
       showSuccess(`Retailer "${data.name}" created successfully!`);
@@ -1095,16 +1113,16 @@ export function WholesalerAdminDashboard() {
       setError('No tenant selected. Please select a tenant to continue.');
       return;
     }
-    
+
     try {
       console.log('🔗 Adding existing retailer to tenant:', retailer.id, currentTenantId, { areaId, zipcodes });
-      
+
       const response = await fetch('/api/retailer/add-to-tenant', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           retailerId: retailer.id,
           tenantId: currentTenantId,
           areaId,
@@ -1119,14 +1137,14 @@ export function WholesalerAdminDashboard() {
       }
 
       console.log('✅ Retailer added successfully:', data);
-      
+
       // Check if retailer was already associated
       if (data.alreadyAssociated) {
         showSuccess(`Retailer "${retailer.profile?.realName || retailer.name}" is already in your account!`);
       } else {
         showSuccess(`Retailer "${retailer.profile?.realName || retailer.name}" added to your account successfully!`);
       }
-      
+
       await fetchDashboardData();
       setShowCreateRetailer(false);
     } catch (err: any) {
@@ -1139,26 +1157,26 @@ export function WholesalerAdminDashboard() {
   const handleCreateLineWorker = async (data: { email: string; password: string; displayName?: string; phone?: string; assignedAreas?: string[] }) => {
     const currentTenantId = getCurrentTenantId();
     if (!currentTenantId) return;
-    
+
     setCreatingLineWorker(true);
-    
+
     try {
       // VALIDATION: Check for area conflicts before creating line worker
       if (data.assignedAreas && data.assignedAreas.length > 0) {
-        const areaConflicts = data.assignedAreas.filter(areaId => 
+        const areaConflicts = data.assignedAreas.filter(areaId =>
           isAreaAssignedToOtherWorker(areaId)
         );
-        
+
         if (areaConflicts.length > 0) {
           const conflictAreas = areaConflicts.map(areaId => {
             const area = areas.find(a => a.id === areaId);
             return area?.name || areaId;
           }).join(', ');
-          
+
           throw new Error(`Cannot create line worker: The following areas are already assigned to other line workers: ${conflictAreas}`);
         }
       }
-      
+
       const userData: any = {
         email: data.email,
         password: data.password,
@@ -1166,36 +1184,36 @@ export function WholesalerAdminDashboard() {
         phone: data.phone,
         roles: ['LINE_WORKER']
       };
-      
+
       // Only include assignedAreas if it has values
       if (data.assignedAreas && data.assignedAreas.length > 0) {
         userData.assignedAreas = data.assignedAreas;
       }
-      
+
       const createdLineWorkerId = await userService.createUserWithAuth(currentTenantId, userData);
-      
+
       // 🔄 CRITICAL: Automatically assign retailers from the assigned areas to this Line Worker
       if (data.assignedAreas && data.assignedAreas.length > 0) {
         console.log('🔄 Auto-assigning retailers from areas to new Line Worker:', {
           lineWorkerEmail: data.email,
           assignedAreas: data.assignedAreas
         });
-        
+
         try {
           // Find all retailers in these areas who are not already assigned
-          const unassignedRetailersInAreas = retailers.filter(retailer => 
-            data.assignedAreas!.includes(retailer.areaId || '') && 
+          const unassignedRetailersInAreas = retailers.filter(retailer =>
+            data.assignedAreas!.includes(retailer.areaId || '') &&
             !retailer.assignedLineWorkerId
           );
-          
+
           console.log(`🎯 Found ${unassignedRetailersInAreas.length} unassigned retailers in assigned areas`);
-          
+
           // Assign each retailer to this new Line Worker
           for (const retailer of unassignedRetailersInAreas) {
             await retailerService.assignLineWorker(currentTenantId, retailer.id, createdLineWorkerId);
             console.log(`✅ Auto-assigned retailer "${retailer.profile?.realName || retailer.name}" to Line Worker`);
           }
-          
+
           if (unassignedRetailersInAreas.length > 0) {
             console.log(`🎉 Successfully auto-assigned ${unassignedRetailersInAreas.length} retailers to new Line Worker`);
           }
@@ -1204,13 +1222,13 @@ export function WholesalerAdminDashboard() {
           // Don't fail the Line Worker creation, just log the error
         }
       }
-      
+
       await fetchDashboardData();
-      
+
       // Show success state and trigger confetti
       setShowLineWorkerSuccess(true);
       setTriggerLineWorkerConfetti(true);
-      
+
       // Close dialog and reset after success
       setTimeout(() => {
         setShowCreateLineWorker(false);
@@ -1219,10 +1237,10 @@ export function WholesalerAdminDashboard() {
       }, 2000);
     } catch (err: any) {
       console.error('❌ Line Worker Creation Error:', err);
-      
+
       // Provide more specific error messages based on the error type
       let errorMessage = 'Failed to create line worker';
-      
+
       if (err.code) {
         switch (err.code) {
           case 'auth/email-already-in-use':
@@ -1262,7 +1280,7 @@ export function WholesalerAdminDashboard() {
           errorMessage = `Failed to create line worker: ${err.message}`;
         }
       }
-      
+
       setError(errorMessage);
       throw err;
     } finally {
@@ -1284,7 +1302,7 @@ export function WholesalerAdminDashboard() {
   const handleDeleteArea = async (areaId: string) => {
     const currentTenantId = getCurrentTenantId();
     if (!currentTenantId) return;
-    
+
     if (confirm('Are you sure you want to delete this area? This will affect all retailers in this area.')) {
       try {
         await areaService.delete(areaId, currentTenantId);
@@ -1298,7 +1316,7 @@ export function WholesalerAdminDashboard() {
   const handleDeleteRetailer = async (retailerId: string) => {
     const currentTenantId = getCurrentTenantId();
     if (!currentTenantId) return;
-    
+
     if (confirm('Are you sure you want to remove this retailer from your business? This will remove their association with you but preserve all transaction history and their account for other wholesalers.')) {
       try {
         await retailerService.delete(retailerId, currentTenantId);
@@ -1312,7 +1330,7 @@ export function WholesalerAdminDashboard() {
   const handleDeleteLineWorker = async (workerId: string) => {
     const currentTenantId = getCurrentTenantId();
     if (!currentTenantId) return;
-    
+
     if (confirm('Are you sure you want to delete this line worker? This action cannot be undone.')) {
       try {
         await userService.delete(workerId, currentTenantId);
@@ -1326,7 +1344,7 @@ export function WholesalerAdminDashboard() {
   const handleToggleLineWorkerStatus = async (workerId: string, currentStatus: boolean) => {
     const currentTenantId = getCurrentTenantId();
     if (!currentTenantId) return;
-    
+
     try {
       await userService.update(workerId, {
         active: !currentStatus
@@ -1340,30 +1358,30 @@ export function WholesalerAdminDashboard() {
   const handleUpdateLineWorker = async (data: { active?: boolean; displayName?: string; phone?: string }) => {
     const currentTenantId = getCurrentTenantId();
     if (!currentTenantId || !editingLineWorker) return;
-    
+
     // Check for area conflicts
-    const areaConflicts = editingSelectedAreas.filter(areaId => 
+    const areaConflicts = editingSelectedAreas.filter(areaId =>
       isAreaAssignedToOtherWorker(areaId, editingLineWorker.id)
     );
-    
+
     if (areaConflicts.length > 0) {
       const conflictAreas = areaConflicts.map(areaId => {
         const area = areas.find(a => a.id === areaId);
         const worker = getAssignedWorkerForArea(areaId);
         return `${area?.name || 'Unknown'} (assigned to ${worker?.displayName || 'another worker'})`;
       }).join(', ');
-      
+
       setError(`Cannot save: The following areas are already assigned to other workers: ${conflictAreas}`);
       return;
     }
-    
+
     try {
       const updateData: any = {
         active: data.active,
         displayName: data.displayName,
         phone: data.phone
       };
-      
+
       // Handle assignedAreas - include if has values, explicitly delete if empty
       if (editingSelectedAreas.length > 0) {
         updateData.assignedAreas = editingSelectedAreas;
@@ -1371,48 +1389,50 @@ export function WholesalerAdminDashboard() {
         // If worker currently has areas but we're removing them all, delete the field
         updateData.assignedAreas = null; // This will remove the field from Firestore
       }
-      
+
       console.log('🔧 Updating line worker:', {
         workerId: editingLineWorker.id,
         updateData,
         currentAssignedAreas: editingLineWorker.assignedAreas,
         newSelectedAreas: editingSelectedAreas
       });
-      
+
       await userService.update(editingLineWorker.id, updateData, currentTenantId);
-      
+
       // 🔄 CRITICAL: Automatically assign/unassign retailers based on area changes
       const oldAreas = editingLineWorker.assignedAreas || [];
       const newAreas = editingSelectedAreas;
-      
+
       // Find newly added areas
       const addedAreas = newAreas.filter(area => !oldAreas.includes(area));
       // Find removed areas
       const removedAreas = oldAreas.filter(area => !newAreas.includes(area));
-      
+
       console.log('🔄 Area changes detected:', {
         oldAreas,
         newAreas,
         addedAreas,
         removedAreas
       });
-      
+
       try {
         // Assign retailers from newly added areas
         if (addedAreas.length > 0) {
-          const unassignedRetailersInAddedAreas = retailers.filter(retailer => 
-            addedAreas.includes(retailer.areaId || '') && 
-            !retailer.assignedLineWorkerId
+          // CRITICAL: Only auto-assign retailers that were NEVER assigned (undefined)
+          // Do NOT auto-assign retailers that were explicitly unassigned (null) - they were intentionally removed
+          const unassignedRetailersInAddedAreas = retailers.filter(retailer =>
+            addedAreas.includes(retailer.areaId || '') &&
+            retailer.assignedLineWorkerId === undefined  // Only never-assigned, not explicitly unassigned (null)
           );
-          
+
           console.log(`🎯 Found ${unassignedRetailersInAddedAreas.length} unassigned retailers in newly added areas`);
-          
+
           for (const retailer of unassignedRetailersInAddedAreas) {
             await retailerService.assignLineWorker(currentTenantId, retailer.id, editingLineWorker.id);
             console.log(`✅ Auto-assigned retailer "${retailer.profile?.realName || retailer.name}" to Line Worker for new area`);
           }
         }
-        
+
         // Unassign retailers from removed areas
         if (removedAreas.length > 0) {
           // Two cases to handle:
@@ -1438,7 +1458,7 @@ export function WholesalerAdminDashboard() {
             console.log(`✅ Auto-unassigned retailer "${retailer.profile?.realName || retailer.name}" from Line Worker for removed area`);
           }
         }
-        
+
         if (addedAreas.length > 0 || removedAreas.length > 0) {
           console.log(`🎉 Successfully processed area-based retailer assignments`);
         }
@@ -1446,7 +1466,7 @@ export function WholesalerAdminDashboard() {
         console.error('❌ Error processing area-based retailer assignments:', assignmentError);
         // Don't fail the Line Worker update, just log the error
       }
-      
+
       console.log('✅ Line worker updated, fetching fresh data...');
       await fetchDashboardData();
       setShowEditLineWorkerDialog(false);
@@ -1530,11 +1550,11 @@ export function WholesalerAdminDashboard() {
             </p>
           </CardContent>
         </Card>
-      
 
-      
+
+
       </div>
-      
+
     );
   };
 
@@ -1553,11 +1573,11 @@ export function WholesalerAdminDashboard() {
             lineWorkers={lineWorkers}
             areas={areas}
             retailers={retailers}
-            wholesalerBusinessName={isSuperAdmin && selectedTenant ? 
+            wholesalerBusinessName={isSuperAdmin && selectedTenant ?
               tenants.find(t => t.id === selectedTenant)?.name || 'Unknown Wholesaler' :
               currentTenantData?.name || user?.displayName || 'Wholesaler'
             }
-            wholesalerAddress={isSuperAdmin && selectedTenant ? 
+            wholesalerAddress={isSuperAdmin && selectedTenant ?
               tenants.find(t => t.id === selectedTenant)?.address || 'Address not provided' :
               currentTenantData?.address || 'Address not provided'
             }
@@ -1574,14 +1594,14 @@ export function WholesalerAdminDashboard() {
         </div>
       </div>
       <StatsCards />
-      
+
       {/* Recent Activity */}
       <Card>
         <CardHeader>
           <CardTitle>Recent Activity</CardTitle>
           <CardDescription>
-            {activeNav === 'overview' 
-              ? 'Latest activities in your system (filtered by selected date range)' 
+            {activeNav === 'overview'
+              ? 'Latest activities in your system (filtered by selected date range)'
               : 'Latest activities in your system (all time)'
             }
           </CardDescription>
@@ -1675,7 +1695,7 @@ export function WholesalerAdminDashboard() {
                   Add a new service area with zip codes
                 </DialogDescription>
               </DialogHeader>
-              <CreateAreaForm 
+              <CreateAreaForm
                 key="area-form"
                 onSubmit={handleCreateArea}
                 onCancel={() => setShowCreateArea(false)}
@@ -1762,11 +1782,11 @@ export function WholesalerAdminDashboard() {
               </DialogDescription>
             </DialogHeader>
             {editingArea && (
-              <CreateAreaForm 
+              <CreateAreaForm
                 onSubmit={async (data) => {
                   const currentTenantId = getCurrentTenantId();
                   if (!currentTenantId) return;
-                  
+
                   try {
                     await areaService.update(editingArea.id, {
                       name: data.name,
@@ -1818,7 +1838,7 @@ export function WholesalerAdminDashboard() {
                   Add a new retailer to your network
                 </DialogDescription>
               </DialogHeader>
-              <CreateRetailerForm 
+              <CreateRetailerForm
                 key="retailer-form"
                 onSubmit={handleCreateRetailer}
                 onAddExistingRetailer={handleAddExistingRetailer}
@@ -1922,43 +1942,43 @@ export function WholesalerAdminDashboard() {
               </DialogDescription>
             </DialogHeader>
             {editingRetailer && (
-              <RetailerServiceAreaEdit 
+              <RetailerServiceAreaEdit
                 retailer={editingRetailer}
                 onSubmit={async (data) => {
                   const currentTenantId = getCurrentTenantId();
                   if (!currentTenantId) return;
-                  
+
                   try {
                     console.log('🔧 Starting retailer service area update...');
-                    
+
                     await retailerService.updateWholesalerAssignment(
-                      editingRetailer.id, 
-                      currentTenantId, 
-                      data.areaId, 
+                      editingRetailer.id,
+                      currentTenantId,
+                      data.areaId,
                       data.zipcodes
                     );
                     console.log('✅ Wholesaler assignment updated successfully');
-                    
+
                     // Add a small delay to ensure Firestore cache is updated
                     await new Promise(resolve => setTimeout(resolve, 500));
-                    
+
                     // Fetch the updated retailer with proper data merging
                     const updatedRetailer = await retailerService.getRetailerForTenant(editingRetailer.id, currentTenantId);
-                    
+
                     if (updatedRetailer) {
                       // Update only the specific retailer in the existing retailers array
-                      setRetailers(prevRetailers => 
-                        prevRetailers.map(r => 
+                      setRetailers(prevRetailers =>
+                        prevRetailers.map(r =>
                           r.id === editingRetailer.id ? updatedRetailer : r
                         )
                       );
                       console.log('🔄 Updated retailer in state with new area/zipcodes');
-                      
+
                       // Show success feedback with confetti
                       const areaName = areas.find(a => a.id === data.areaId)?.name || 'Updated area';
                       showSuccess(`Service area for "${editingRetailer.name}" updated to "${areaName}" successfully!`);
                       setTriggerLineWorkerConfetti(true);
-                      
+
                       // Close dialog after showing success
                       setTimeout(() => {
                         setEditingRetailer(null);
@@ -2071,7 +2091,7 @@ export function WholesalerAdminDashboard() {
                         {areas.map((area) => {
                           const isAssignedToOther = isAreaAssignedToOtherWorker(area.id);
                           const assignedWorker = getAssignedWorkerForArea(area.id);
-                          
+
                           return (
                             <div key={area.id} className="flex items-center space-x-2">
                               <input
@@ -2082,8 +2102,8 @@ export function WholesalerAdminDashboard() {
                                 disabled={creatingLineWorker || isAssignedToOther}
                                 style={{ opacity: isAssignedToOther ? 0.5 : 1 }}
                               />
-                              <label 
-                                htmlFor={`area-${area.id}`} 
+                              <label
+                                htmlFor={`area-${area.id}`}
                                 className={`text-sm ${isAssignedToOther ? 'text-gray-400 line-through' : ''}`}
                                 title={isAssignedToOther ? `Already assigned to: ${assignedWorker?.displayName || 'Unknown Worker'}` : ''}
                               >
@@ -2105,14 +2125,14 @@ export function WholesalerAdminDashboard() {
                       )}
                     </div>
                     <div className="flex space-x-2">
-                      <Button 
+                      <Button
                         onClick={async () => {
                           const email = (document.getElementById('workerEmail') as HTMLInputElement)?.value;
                           const password = (document.getElementById('workerPassword') as HTMLInputElement)?.value;
                           const displayName = (document.getElementById('workerDisplayName') as HTMLInputElement)?.value;
                           const phone = (document.getElementById('workerPhone') as HTMLInputElement)?.value;
                           const assignedAreas: string[] = [];
-                          
+
                           areas.forEach(area => {
                             const checkbox = document.getElementById(`area-${area.id}`) as HTMLInputElement;
                             if (checkbox?.checked) {
@@ -2127,12 +2147,12 @@ export function WholesalerAdminDashboard() {
                               displayName: displayName || undefined,
                               phone: phone || undefined
                             };
-                            
+
                             // Only include assignedAreas if it has values
                             if (assignedAreas.length > 0) {
                               createData.assignedAreas = assignedAreas;
                             }
-                            
+
                             try {
                               await handleCreateLineWorker(createData);
                             } catch (error) {
@@ -2157,8 +2177,8 @@ export function WholesalerAdminDashboard() {
                           'Create Line Worker'
                         )}
                       </Button>
-                      <Button 
-                        variant="outline" 
+                      <Button
+                        variant="outline"
                         onClick={() => setShowCreateLineWorker(false)}
                         disabled={creatingLineWorker}
                       >
@@ -2211,7 +2231,7 @@ export function WholesalerAdminDashboard() {
                         {worker.active ? 'Active' : 'Inactive'}
                       </Badge>
                     </div>
-                    
+
                     <div className="flex items-center space-x-4">
                       <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
                         <Users className="h-5 w-5 text-blue-600" />
@@ -2222,7 +2242,7 @@ export function WholesalerAdminDashboard() {
                         <div className="text-sm text-gray-500">{worker.phone}</div>
                       </div>
                     </div>
-                    
+
                     <div className="flex space-x-2 flex-wrap gap-y-2 sm:flex-nowrap sm:items-center">
                       <Button
                         variant={worker.active ? "outline" : "default"}
@@ -2284,24 +2304,24 @@ export function WholesalerAdminDashboard() {
         if (selectedLineWorker !== "all" && payment.lineWorkerId !== selectedLineWorker) {
           return false;
         }
-        
+
         // Apply retailer filter
         if (selectedRetailer !== "all" && payment.retailerId !== selectedRetailer) {
           return false;
         }
-        
+
         // Apply date range filter
         const paymentDate = payment.createdAt.toDate();
         if (paymentDate < dateRange.startDate || paymentDate > dateRange.endDate) {
           return false;
         }
-        
+
         return true;
       })
       .sort((a, b) => b.createdAt.toDate().getTime() - a.createdAt.toDate().getTime());
-    
+
     const completedPayments = filteredPayments.filter(payment => payment.state === 'COMPLETED');
-    const pendingCancelledPayments = filteredPayments.filter(payment => 
+    const pendingCancelledPayments = filteredPayments.filter(payment =>
       ['INITIATED', 'OTP_SENT', 'OTP_VERIFIED', 'CANCELLED', 'EXPIRED'].includes(payment.state)
     );
 
@@ -2375,7 +2395,7 @@ export function WholesalerAdminDashboard() {
                   <span>Pending/Cancelled ({pendingCancelledPayments.length})</span>
                 </TabsTrigger>
               </TabsList>
-              
+
               <TabsContent value="completed" className="space-y-4">
                 <div className="overflow-x-auto">
                   {mainLoadingState.loadingState.isRefreshing ? (
@@ -2409,40 +2429,40 @@ export function WholesalerAdminDashboard() {
                         {completedPayments.map((payment) => {
                           const retailerExists = retailers.some(r => r.id === payment.retailerId);
                           return (
-                          <TableRow key={payment.id}>
-                            <TableCell>{formatTimestampWithTime(payment.createdAt)}</TableCell>
-                            <TableCell>
-                              <div className="flex flex-col">
-                                <span>{payment.retailerName}</span>
-                                {!retailerExists && (
-                                  <Badge variant="destructive" className="mt-1 text-xs">Deleted</Badge>
-                                )}
-                              </div>
-                            </TableCell>
-                            <TableCell>{getLineWorkerName(payment.lineWorkerId)}</TableCell>
-                            <TableCell>
-                              <div className="text-right">
-                                <div className="font-medium">{formatCurrency(payment.totalPaid)}</div>
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant="outline">{payment.method}</Badge>
-                            </TableCell>
-                            <TableCell>
-                              <Badge className="bg-green-100 text-green-800">
-                                {payment.state}
-                              </Badge>
-                            </TableCell>
-                            <TableCell>
-                              <Button variant="outline" size="sm" onClick={() => setViewingPayment(payment)}>
-                                <Eye className="h-4 w-4 mr-1" />
-                                View
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
+                            <TableRow key={payment.id}>
+                              <TableCell>{formatTimestampWithTime(payment.createdAt)}</TableCell>
+                              <TableCell>
+                                <div className="flex flex-col">
+                                  <span>{payment.retailerName}</span>
+                                  {!retailerExists && (
+                                    <Badge variant="destructive" className="mt-1 text-xs">Deleted</Badge>
+                                  )}
+                                </div>
+                              </TableCell>
+                              <TableCell>{getLineWorkerName(payment.lineWorkerId)}</TableCell>
+                              <TableCell>
+                                <div className="text-right">
+                                  <div className="font-medium">{formatCurrency(payment.totalPaid)}</div>
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <Badge variant="outline">{payment.method}</Badge>
+                              </TableCell>
+                              <TableCell>
+                                <Badge className="bg-green-100 text-green-800">
+                                  {payment.state}
+                                </Badge>
+                              </TableCell>
+                              <TableCell>
+                                <Button variant="outline" size="sm" onClick={() => setViewingPayment(payment)}>
+                                  <Eye className="h-4 w-4 mr-1" />
+                                  View
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
                     </Table>
                   ) : (
                     <div className="text-center py-8">
@@ -2453,7 +2473,7 @@ export function WholesalerAdminDashboard() {
                   )}
                 </div>
               </TabsContent>
-              
+
               <TabsContent value="pending" className="space-y-4">
                 <div className="overflow-x-auto">
                   {mainLoadingState.loadingState.isRefreshing ? (
@@ -2487,44 +2507,44 @@ export function WholesalerAdminDashboard() {
                         {pendingCancelledPayments.map((payment) => {
                           const retailerExists = retailers.some(r => r.id === payment.retailerId);
                           return (
-                          <TableRow key={payment.id}>
-                            <TableCell>{formatTimestampWithTime(payment.createdAt)}</TableCell>
-                            <TableCell>
-                              <div className="flex flex-col">
-                                <span>{payment.retailerName}</span>
-                                {!retailerExists && (
-                                  <Badge variant="destructive" className="mt-1 text-xs">Deleted</Badge>
-                                )}
-                              </div>
-                            </TableCell>
-                            <TableCell>{getLineWorkerName(payment.lineWorkerId)}</TableCell>
-                            <TableCell>
-                              <div className="text-right">
-                                <div className="font-medium">{formatCurrency(payment.totalPaid)}</div>
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant="outline">{payment.method}</Badge>
-                            </TableCell>
-                            <TableCell>
-                              <Badge className={
-                                payment.state === 'INITIATED' ? 'bg-yellow-100 text-yellow-800' :
-                                
-                                'bg-red-100 text-red-800'
-                              }>
-                                {payment.state}
-                              </Badge>
-                            </TableCell>
-                            <TableCell>
-                              <Button variant="outline" size="sm" onClick={() => setViewingPayment(payment)}>
-                                <Eye className="h-4 w-4 mr-1" />
-                                View
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
+                            <TableRow key={payment.id}>
+                              <TableCell>{formatTimestampWithTime(payment.createdAt)}</TableCell>
+                              <TableCell>
+                                <div className="flex flex-col">
+                                  <span>{payment.retailerName}</span>
+                                  {!retailerExists && (
+                                    <Badge variant="destructive" className="mt-1 text-xs">Deleted</Badge>
+                                  )}
+                                </div>
+                              </TableCell>
+                              <TableCell>{getLineWorkerName(payment.lineWorkerId)}</TableCell>
+                              <TableCell>
+                                <div className="text-right">
+                                  <div className="font-medium">{formatCurrency(payment.totalPaid)}</div>
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <Badge variant="outline">{payment.method}</Badge>
+                              </TableCell>
+                              <TableCell>
+                                <Badge className={
+                                  payment.state === 'INITIATED' ? 'bg-yellow-100 text-yellow-800' :
+
+                                    'bg-red-100 text-red-800'
+                                }>
+                                  {payment.state}
+                                </Badge>
+                              </TableCell>
+                              <TableCell>
+                                <Button variant="outline" size="sm" onClick={() => setViewingPayment(payment)}>
+                                  <Eye className="h-4 w-4 mr-1" />
+                                  View
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
                     </Table>
                   ) : (
                     <div className="text-center py-8">
@@ -2585,14 +2605,14 @@ export function WholesalerAdminDashboard() {
             <SelectItem value="custom">Custom Range</SelectItem>
           </SelectContent>
         </Select>
-        
+
         <Button variant="outline" className="w-full sm:w-auto">
           <Download className="h-4 w-4 mr-2" />
           Export
         </Button>
       </div>
 
-      <WholesalerAnalytics 
+      <WholesalerAnalytics
         retailers={retailers}
         payments={payments}
         lineWorkers={lineWorkers}
@@ -2626,8 +2646,8 @@ export function WholesalerAdminDashboard() {
                 <Label>Status</Label>
                 <Badge className={
                   viewingPayment.state === 'COMPLETED' ? 'bg-green-100 text-green-800' :
-                  viewingPayment.state === 'INITIATED' ? 'bg-yellow-100 text-yellow-800' :
-                  'bg-red-100 text-red-800'
+                    viewingPayment.state === 'INITIATED' ? 'bg-yellow-100 text-yellow-800' :
+                      'bg-red-100 text-red-800'
                 }>
                   {viewingPayment.state}
                 </Badge>
@@ -2704,7 +2724,7 @@ export function WholesalerAdminDashboard() {
                   const isAssignedToOther = isAreaAssignedToOtherWorker(area.id, editingLineWorker?.id);
                   const assignedWorker = getAssignedWorkerForArea(area.id);
                   const isCurrentlyAssigned = editingSelectedAreas.includes(area.id);
-                  
+
                   return (
                     <div key={area.id} className="flex items-center space-x-2">
                       <input
@@ -2722,7 +2742,7 @@ export function WholesalerAdminDashboard() {
                             isAssignedToOther,
                             isCurrentlyAssigned
                           });
-                          
+
                           if (e.target.checked) {
                             const newSelectedAreas = [...editingSelectedAreas, area.id];
                             console.log('✅ Adding area to selection:', newSelectedAreas);
@@ -2735,8 +2755,8 @@ export function WholesalerAdminDashboard() {
                         }}
                         className={`rounded ${isAssignedToOther && !isCurrentlyAssigned ? 'opacity-50 cursor-not-allowed' : ''}`}
                       />
-                      <label 
-                        htmlFor={`edit-area-${area.id}`} 
+                      <label
+                        htmlFor={`edit-area-${area.id}`}
                         className={`text-sm ${isAssignedToOther && !isCurrentlyAssigned ? 'text-gray-400' : ''}`}
                       >
                         {area.name}
@@ -2755,7 +2775,7 @@ export function WholesalerAdminDashboard() {
               <Button onClick={() => {
                 const displayName = (document.getElementById('editDisplayName') as HTMLInputElement)?.value;
                 const phone = (document.getElementById('editPhone') as HTMLInputElement)?.value;
-                
+
                 handleUpdateLineWorker({
                   active: editingActiveStatus,
                   displayName: displayName || undefined,
@@ -2780,7 +2800,7 @@ export function WholesalerAdminDashboard() {
   );
 
   const RetailerAssignmentDialog = () => {
-    const currentAssignedWorker = assigningRetailer?.assignedLineWorkerId 
+    const currentAssignedWorker = assigningRetailer?.assignedLineWorkerId
       ? lineWorkers.find(worker => worker.id === assigningRetailer.assignedLineWorkerId)
       : null;
 
@@ -2829,13 +2849,13 @@ export function WholesalerAdminDashboard() {
                 </Select>
               </div>
               <div className="flex space-x-2">
-                <Button 
+                <Button
                   onClick={() => handleConfirmAssignmentAction(assigningRetailer.id, selectedLineWorkerForAssignment === "unassign" ? null : selectedLineWorkerForAssignment || null)}
                   disabled={!selectedLineWorkerForAssignment && !currentAssignedWorker}
                 >
-                  {selectedLineWorkerForAssignment === "unassign" ? 'Unassign' : 
-                   selectedLineWorkerForAssignment ? 'Assign' : 
-                   currentAssignedWorker ? 'Keep Current Assignment' : 'Assign'}
+                  {selectedLineWorkerForAssignment === "unassign" ? 'Unassign' :
+                    selectedLineWorkerForAssignment ? 'Assign' :
+                      currentAssignedWorker ? 'Keep Current Assignment' : 'Assign'}
                 </Button>
                 <Button variant="outline" onClick={() => {
                   setShowRetailerAssignment(false);
@@ -2874,7 +2894,7 @@ export function WholesalerAdminDashboard() {
       if (!filteredRetailerIds.includes(payment.retailerId)) {
         return false;
       }
-      
+
       // Date range filter - only apply for Overview tab
       if (activeNav === 'overview' && dateRange) {
         const paymentDate = toDate(payment.createdAt);
@@ -2882,7 +2902,7 @@ export function WholesalerAdminDashboard() {
           return false;
         }
       }
-      
+
       return true;
     });
   };
@@ -2944,259 +2964,259 @@ export function WholesalerAdminDashboard() {
 
       {!error && (
         <>
-        {/* Filter Controls */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Filters</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <div>
-                <Label htmlFor="filterArea">Filter by Area</Label>
-                <Select value={selectedArea} onValueChange={setSelectedArea}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select area" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Areas</SelectItem>
-                    {areas.map(area => (
-                      <SelectItem key={area.id} value={area.id}>{area.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label htmlFor="filterRetailer">Filter by Retailer</Label>
-                <Select value={selectedRetailer} onValueChange={setSelectedRetailer}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select retailer" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Retailers</SelectItem>
-                    {retailers.map(retailer => (
-                      <SelectItem key={retailer.id} value={retailer.id}>{retailer.profile?.realName || retailer.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label htmlFor="dateRange">Filter Date</Label>
-                <EnhancedDatePicker
-                  date={filterDate?.from || undefined}
-                  onSelect={(date) => setFilterDate(date ? { from: date, to: date } : null)}
-                  placeholder="Select date"
-                  className="w-full"
-                />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
-          <Card className="border-l-4 border-l-blue-500">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">Total Retailers</CardTitle>
-              <Store className="h-4 w-4 text-blue-600" />
+          {/* Filter Controls */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Filters</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-gray-900">{getFilteredRetailers.length}</div>
-              <p className="text-xs text-gray-500">
-                Total retailers in system
-              </p>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div>
+                  <Label htmlFor="filterArea">Filter by Area</Label>
+                  <Select value={selectedArea} onValueChange={setSelectedArea}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select area" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Areas</SelectItem>
+                      {areas.map(area => (
+                        <SelectItem key={area.id} value={area.id}>{area.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label htmlFor="filterRetailer">Filter by Retailer</Label>
+                  <Select value={selectedRetailer} onValueChange={setSelectedRetailer}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select retailer" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Retailers</SelectItem>
+                      {retailers.map(retailer => (
+                        <SelectItem key={retailer.id} value={retailer.id}>{retailer.profile?.realName || retailer.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label htmlFor="dateRange">Filter Date</Label>
+                  <EnhancedDatePicker
+                    date={filterDate?.from || undefined}
+                    onSelect={(date) => setFilterDate(date ? { from: date, to: date } : null)}
+                    placeholder="Select date"
+                    className="w-full"
+                  />
+                </div>
+              </div>
             </CardContent>
           </Card>
 
-          <Card className="border-l-4 border-l-purple-500">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">Total Payments</CardTitle>
-              <CreditCard className="h-4 w-4 text-purple-600" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-gray-900">{getFilteredPayments().length}</div>
-              <p className="text-xs text-gray-500">
-                {getFilteredPayments().filter(p => p.state === 'COMPLETED').length} completed
-              </p>
-            </CardContent>
-          </Card>
+          {/* Summary Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+            <Card className="border-l-4 border-l-blue-500">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium text-gray-600">Total Retailers</CardTitle>
+                <Store className="h-4 w-4 text-blue-600" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-gray-900">{getFilteredRetailers.length}</div>
+                <p className="text-xs text-gray-500">
+                  Total retailers in system
+                </p>
+              </CardContent>
+            </Card>
 
-          <Card className="border-l-4 border-l-green-600">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">Total Collected</CardTitle>
-              <DollarSign className="h-4 w-4 text-green-600" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-gray-900">
-                {formatCurrency(getFilteredPayments().filter(p => p.state === 'COMPLETED').reduce((sum, pay) => sum + pay.totalPaid, 0))}
-              </div>
-              <p className="text-xs text-gray-500">
-                From completed payments only
-              </p>
-            </CardContent>
-          </Card>
-        </div>
+            <Card className="border-l-4 border-l-purple-500">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium text-gray-600">Total Payments</CardTitle>
+                <CreditCard className="h-4 w-4 text-purple-600" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-gray-900">{getFilteredPayments().length}</div>
+                <p className="text-xs text-gray-500">
+                  {getFilteredPayments().filter(p => p.state === 'COMPLETED').length} completed
+                </p>
+              </CardContent>
+            </Card>
 
-        {/* Retailers with Detailed Logs */}
-        <div className="space-y-6">
-          {getFilteredRetailers.map(retailer => {
-            const retailerPayments = getFilteredPayments().filter(pay => pay.retailerId === retailer.id);
-            // Check for direct assignment first (single source of truth)
-            // Area-based assignments are only used for line worker visibility, not display
-            const assignedLineWorker = retailer.assignedLineWorkerId
-              ? lineWorkers.find(worker => worker.id === retailer.assignedLineWorkerId)
-              : null; // No direct assignment = Unassigned
+            <Card className="border-l-4 border-l-green-600">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium text-gray-600">Total Collected</CardTitle>
+                <DollarSign className="h-4 w-4 text-green-600" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-gray-900">
+                  {formatCurrency(getFilteredPayments().filter(p => p.state === 'COMPLETED').reduce((sum, pay) => sum + pay.totalPaid, 0))}
+                </div>
+                <p className="text-xs text-gray-500">
+                  From completed payments only
+                </p>
+              </CardContent>
+            </Card>
+          </div>
 
-            return (
-              <Card key={retailer.id} className="overflow-hidden">
-                <CardHeader className="bg-gray-50">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <CardTitle className="text-lg flex items-center gap-2">
-                        {retailer.profile?.realName || retailer.name}
-                        {retailer.assignedLineWorkerId && (
-                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                            <UserIcon className="h-3 w-3 mr-1" />
-                            Directly Assigned
-                          </span>
-                        )}
-                      </CardTitle>
-                      <CardDescription className="mt-1">
-                        <div className="flex flex-wrap gap-4 text-sm">
-                          <span>
-                            <a href={`tel:${retailer.profile?.phone || retailer.phone}`} className="text-blue-600 hover:underline">📞 {retailer.profile?.phone || retailer.phone}</a>
-                          </span>
-                          <span>📍 {areas.find(a => a.id === retailer.areaId)?.name || 'Unassigned'}</span>
-                          <span>🏷️ {retailer.zipcodes.join(', ')}</span>
-                          <span className="flex items-center gap-1">
-                            👤 
-                            <span className={retailer.assignedLineWorkerId ? "font-medium text-green-700" : ""}>
-                              {assignedLineWorker?.displayName || 'Unassigned'}
+          {/* Retailers with Detailed Logs */}
+          <div className="space-y-6">
+            {getFilteredRetailers.map(retailer => {
+              const retailerPayments = getFilteredPayments().filter(pay => pay.retailerId === retailer.id);
+              // Check for direct assignment first (single source of truth)
+              // Area-based assignments are only used for line worker visibility, not display
+              const assignedLineWorker = retailer.assignedLineWorkerId
+                ? lineWorkers.find(worker => worker.id === retailer.assignedLineWorkerId)
+                : null; // No direct assignment = Unassigned
+
+              return (
+                <Card key={retailer.id} className="overflow-hidden">
+                  <CardHeader className="bg-gray-50">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <CardTitle className="text-lg flex items-center gap-2">
+                          {retailer.profile?.realName || retailer.name}
+                          {retailer.assignedLineWorkerId && (
+                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                              <UserIcon className="h-3 w-3 mr-1" />
+                              Directly Assigned
                             </span>
-                          </span>
+                          )}
+                        </CardTitle>
+                        <CardDescription className="mt-1">
+                          <div className="flex flex-wrap gap-4 text-sm">
+                            <span>
+                              <a href={`tel:${retailer.profile?.phone || retailer.phone}`} className="text-blue-600 hover:underline">📞 {retailer.profile?.phone || retailer.phone}</a>
+                            </span>
+                            <span>📍 {areas.find(a => a.id === retailer.areaId)?.name || 'Unassigned'}</span>
+                            <span>🏷️ {retailer.zipcodes.join(', ')}</span>
+                            <span className="flex items-center gap-1">
+                              👤
+                              <span className={retailer.assignedLineWorkerId ? "font-medium text-green-700" : ""}>
+                                {assignedLineWorker?.displayName || 'Unassigned'}
+                              </span>
+                            </span>
+                          </div>
+                        </CardDescription>
+                      </div>
+                      <div className="text-right">
+                        <div className="mt-2">
+                          <Button
+                            variant={retailer.assignedLineWorkerId ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => {
+                              setAssigningRetailer(retailer);
+                              setSelectedLineWorkerForAssignment(retailer.assignedLineWorkerId || '');
+                              setShowRetailerAssignment(true);
+                            }}
+                            className="text-xs"
+                          >
+                            <UserIcon className="h-3 w-3 mr-1" />
+                            {retailer.assignedLineWorkerId ? 'Reassign' : 'Assign'}
+                          </Button>
                         </div>
-                      </CardDescription>
-                    </div>
-                    <div className="text-right">
-                      <div className="mt-2">
-                        <Button
-                          variant={retailer.assignedLineWorkerId ? "default" : "outline"}
-                          size="sm"
-                          onClick={() => {
-                            setAssigningRetailer(retailer);
-                            setSelectedLineWorkerForAssignment(retailer.assignedLineWorkerId || '');
-                            setShowRetailerAssignment(true);
-                          }}
-                          className="text-xs"
-                        >
-                          <UserIcon className="h-3 w-3 mr-1" />
-                          {retailer.assignedLineWorkerId ? 'Reassign' : 'Assign'}
-                        </Button>
                       </div>
                     </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="p-4">
-                  {/* Quick Stats */}
-                  <div className="grid grid-cols-2 md:grid-cols-2 gap-3 mb-4">
-                    <div className="text-center p-2 bg-green-50 rounded-lg border border-green-100">
-                      <div className="text-xl font-bold text-green-600">{retailerPayments.length}</div>
-                      <div className="text-xs text-gray-600">Payments</div>
-                    </div>
-                    <div className="text-center p-2 bg-orange-50 rounded-lg border border-orange-100">
-                      <div className="text-lg font-bold text-orange-600">
-                        {formatCurrency(retailerPayments.filter(p => p.state === 'COMPLETED').reduce((sum, pay) => sum + pay.totalPaid, 0))}
+                  </CardHeader>
+                  <CardContent className="p-4">
+                    {/* Quick Stats */}
+                    <div className="grid grid-cols-2 md:grid-cols-2 gap-3 mb-4">
+                      <div className="text-center p-2 bg-green-50 rounded-lg border border-green-100">
+                        <div className="text-xl font-bold text-green-600">{retailerPayments.length}</div>
+                        <div className="text-xs text-gray-600">Payments</div>
                       </div>
-                      <div className="text-xs text-gray-600">Paid</div>
+                      <div className="text-center p-2 bg-orange-50 rounded-lg border border-orange-100">
+                        <div className="text-lg font-bold text-orange-600">
+                          {formatCurrency(retailerPayments.filter(p => p.state === 'COMPLETED').reduce((sum, pay) => sum + pay.totalPaid, 0))}
+                        </div>
+                        <div className="text-xs text-gray-600">Paid</div>
+                      </div>
                     </div>
-                  </div>
 
-                  {/* Payment Status Breakdown */}
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4 text-xs">
-                    <div className="text-center p-1 bg-green-50 rounded">
-                      <div className="font-medium text-green-700">
-                        {retailerPayments.filter(p => p.state === 'COMPLETED').length}
+                    {/* Payment Status Breakdown */}
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4 text-xs">
+                      <div className="text-center p-1 bg-green-50 rounded">
+                        <div className="font-medium text-green-700">
+                          {retailerPayments.filter(p => p.state === 'COMPLETED').length}
+                        </div>
+                        <div className="text-green-600">Completed</div>
                       </div>
-                      <div className="text-green-600">Completed</div>
-                    </div>
-                    <div className="text-center p-1 bg-yellow-50 rounded">
-                      <div className="font-medium text-yellow-700">
-                        {retailerPayments.filter(p => p.state === 'INITIATED').length}
+                      <div className="text-center p-1 bg-yellow-50 rounded">
+                        <div className="font-medium text-yellow-700">
+                          {retailerPayments.filter(p => p.state === 'INITIATED').length}
+                        </div>
+                        <div className="text-yellow-600">Initiated</div>
                       </div>
-                      <div className="text-yellow-600">Initiated</div>
-                    </div>
-                    <div className="text-center p-1 bg-red-50 rounded">
-                      <div className="font-medium text-red-700">
-                        {retailerPayments.filter(p => p.state === 'CANCELLED').length}
+                      <div className="text-center p-1 bg-red-50 rounded">
+                        <div className="font-medium text-red-700">
+                          {retailerPayments.filter(p => p.state === 'CANCELLED').length}
+                        </div>
+                        <div className="text-red-600">Failed</div>
                       </div>
-                      <div className="text-red-600">Failed</div>
                     </div>
-                  </div>
 
-                  {/* Payments Tab */}
-                  <Tabs defaultValue="payments" className="w-full">
-                    <TabsList className="grid w-full grid-cols-1 h-8">
-                      <TabsTrigger value="payments" className="text-xs">Payments ({retailerPayments.length})</TabsTrigger>
-                    </TabsList>
-                    
-                    <TabsContent value="payments" className="space-y-4 mt-4">
-                      {retailerPayments.length > 0 ? (
-                        <div className="overflow-x-auto border rounded-lg">
-                          <Table>
-                            <TableHeader className="bg-gray-50">
-                              <TableRow>
-                                <TableHead className="text-xs font-medium text-gray-700 uppercase tracking-wider">Payment ID</TableHead>
-                                <TableHead className="text-xs font-medium text-gray-700 uppercase tracking-wider">Date</TableHead>
-                                <TableHead className="text-xs font-medium text-gray-700 uppercase tracking-wider">Amount</TableHead>
-                                <TableHead className="text-xs font-medium text-gray-700 uppercase tracking-wider">Method</TableHead>
-                                <TableHead className="text-xs font-medium text-gray-700 uppercase tracking-wider">Status</TableHead>
-                                <TableHead className="text-xs font-medium text-gray-700 uppercase tracking-wider">Line Worker</TableHead>
-                              </TableRow>
-                            </TableHeader>
-                            <TableBody className="divide-y divide-gray-200">
-                              {retailerPayments.map(payment => (
-                                <TableRow key={payment.id} className="hover:bg-gray-50">
-                                  <TableCell className="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-900">{payment.id.substring(0, 8)}</TableCell>
-                                  <TableCell className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{formatTimestampWithTime(payment.createdAt)}</TableCell>
-                                  <TableCell className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{formatCurrency(payment.totalPaid)}</TableCell>
-                                  <TableCell className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{payment.method}</TableCell>
-                                  <TableCell className="px-4 py-2 whitespace-nowrap">
-                                    <Badge className={
-                                      payment.state === 'COMPLETED' ? 'bg-green-100 text-green-800' :
-                                      payment.state === 'INITIATED' ? 'bg-yellow-100 text-yellow-800' :
-                                      'bg-red-100 text-red-800'
-                                    }>
-                                      {payment.state}
-                                    </Badge>
-                                  </TableCell>
-                                  <TableCell className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{getLineWorkerName(payment.lineWorkerId)}</TableCell>
+                    {/* Payments Tab */}
+                    <Tabs defaultValue="payments" className="w-full">
+                      <TabsList className="grid w-full grid-cols-1 h-8">
+                        <TabsTrigger value="payments" className="text-xs">Payments ({retailerPayments.length})</TabsTrigger>
+                      </TabsList>
+
+                      <TabsContent value="payments" className="space-y-4 mt-4">
+                        {retailerPayments.length > 0 ? (
+                          <div className="overflow-x-auto border rounded-lg">
+                            <Table>
+                              <TableHeader className="bg-gray-50">
+                                <TableRow>
+                                  <TableHead className="text-xs font-medium text-gray-700 uppercase tracking-wider">Payment ID</TableHead>
+                                  <TableHead className="text-xs font-medium text-gray-700 uppercase tracking-wider">Date</TableHead>
+                                  <TableHead className="text-xs font-medium text-gray-700 uppercase tracking-wider">Amount</TableHead>
+                                  <TableHead className="text-xs font-medium text-gray-700 uppercase tracking-wider">Method</TableHead>
+                                  <TableHead className="text-xs font-medium text-gray-700 uppercase tracking-wider">Status</TableHead>
+                                  <TableHead className="text-xs font-medium text-gray-700 uppercase tracking-wider">Line Worker</TableHead>
                                 </TableRow>
-                              ))}
-                            </TableBody>
-                          </Table>
-                        </div>
-                      ) : (
-                        <div className="text-center py-6 text-gray-500 bg-gray-50 rounded-lg">
-                          <CreditCard className="h-8 w-8 mx-auto mb-2 text-gray-400" />
-                          No payments found for this retailer
-                        </div>
-                      )}
-                    </TabsContent>
-                  </Tabs>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
+                              </TableHeader>
+                              <TableBody className="divide-y divide-gray-200">
+                                {retailerPayments.map(payment => (
+                                  <TableRow key={payment.id} className="hover:bg-gray-50">
+                                    <TableCell className="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-900">{payment.id.substring(0, 8)}</TableCell>
+                                    <TableCell className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{formatTimestampWithTime(payment.createdAt)}</TableCell>
+                                    <TableCell className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{formatCurrency(payment.totalPaid)}</TableCell>
+                                    <TableCell className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{payment.method}</TableCell>
+                                    <TableCell className="px-4 py-2 whitespace-nowrap">
+                                      <Badge className={
+                                        payment.state === 'COMPLETED' ? 'bg-green-100 text-green-800' :
+                                          payment.state === 'INITIATED' ? 'bg-yellow-100 text-yellow-800' :
+                                            'bg-red-100 text-red-800'
+                                      }>
+                                        {payment.state}
+                                      </Badge>
+                                    </TableCell>
+                                    <TableCell className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{getLineWorkerName(payment.lineWorkerId)}</TableCell>
+                                  </TableRow>
+                                ))}
+                              </TableBody>
+                            </Table>
+                          </div>
+                        ) : (
+                          <div className="text-center py-6 text-gray-500 bg-gray-50 rounded-lg">
+                            <CreditCard className="h-8 w-8 mx-auto mb-2 text-gray-400" />
+                            No payments found for this retailer
+                          </div>
+                        )}
+                      </TabsContent>
+                    </Tabs>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
         </>
       )}
-      
+
       {!error && getFilteredRetailers.length === 0 && (
         <div className="text-center py-12">
           <Store className="h-16 w-16 mx-auto mb-4 text-gray-400" />
           <h3 className="text-lg font-medium text-gray-900 mb-2">No retailers found</h3>
           <p className="text-gray-500 mb-4">Try adjusting your filters or search terms</p>
-          <Button 
-            variant="outline" 
+          <Button
+            variant="outline"
             onClick={() => {
               setSelectedArea("all");
               setSelectedRetailer("all");
@@ -3218,15 +3238,15 @@ export function WholesalerAdminDashboard() {
   return (
     <>
       <StatusBarColor theme="white" />
-      
+
       {/* Loading Overlay */}
-      <LoadingOverlay 
+      <LoadingOverlay
         isLoading={mainLoadingState.loadingState.isLoading}
         message="Loading dashboard data..."
         progress={dataFetchProgress}
         variant="fullscreen"
       />
-      
+
       <div className="min-h-screen bg-gray-50 flex flex-col dashboard-screen">
         {/* Navigation */}
         <DashboardNavigation
@@ -3235,160 +3255,168 @@ export function WholesalerAdminDashboard() {
           navItems={navItems}
           title="PharmaLync"
           subtitle="Wholesaler Dashboard"
-        notificationCount={notificationCount}
-        notifications={notifications}
-        user={user ? { displayName: user.displayName, email: user.email } : undefined}
-        onLogout={logout}
-      />
+          notificationCount={notificationCount}
+          notifications={notifications}
+          user={user ? { displayName: user.displayName, email: user.email } : undefined}
+          onLogout={() => setShowLogoutConfirmation(true)}
+        />
 
-      {/* Tenant Selector for Super Admin */}
-      {isSuperAdmin && (
-        <div className="bg-white border-b border-gray-200 px-4 lg:px-6 py-3">
-          <div className="max-w-7xl mx-auto flex items-center space-x-4">
-            <label className="text-sm font-medium text-gray-700">Working with Tenant:</label>
-            <Select value={selectedTenant} onValueChange={setSelectedTenant}>
-              <SelectTrigger className="w-64">
-                <SelectValue placeholder="Select a tenant" />
-              </SelectTrigger>
-              <SelectContent>
-                {tenants.map((tenant) => (
-                  <SelectItem key={tenant.id} value={tenant.id}>
-                    {tenant.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {!selectedTenant && (
-              <p className="text-sm text-red-600">Please select a tenant to continue</p>
-            )}
+        {/* Logout Confirmation Modal */}
+        <LogoutConfirmation
+          open={showLogoutConfirmation}
+          onOpenChange={setShowLogoutConfirmation}
+          onConfirm={logout}
+          userName={user?.displayName || user?.email}
+        />
+
+        {/* Tenant Selector for Super Admin */}
+        {isSuperAdmin && (
+          <div className="bg-white border-b border-gray-200 px-4 lg:px-6 py-3">
+            <div className="max-w-7xl mx-auto flex items-center space-x-4">
+              <label className="text-sm font-medium text-gray-700">Working with Tenant:</label>
+              <Select value={selectedTenant} onValueChange={setSelectedTenant}>
+                <SelectTrigger className="w-64">
+                  <SelectValue placeholder="Select a tenant" />
+                </SelectTrigger>
+                <SelectContent>
+                  {tenants.map((tenant) => (
+                    <SelectItem key={tenant.id} value={tenant.id}>
+                      {tenant.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {!selectedTenant && (
+                <p className="text-sm text-red-600">Please select a tenant to continue</p>
+              )}
+            </div>
           </div>
-        </div>
-      )}
-
-      {/* Main Content */}
-      <main className="flex-1 pt-24 sm:pt-16 p-3 sm:p-4 lg:p-6 overflow-y-auto pb-20 lg:pb-6">
-        {error && (
-          <Alert className="border-red-200 bg-red-50 mb-4 sm:mb-6">
-            <AlertCircle className="h-4 w-4 text-red-600" />
-            <AlertDescription className="text-red-800 text-sm">{error}</AlertDescription>
-          </Alert>
         )}
 
-        <div className="max-w-7xl mx-auto space-y-4 sm:space-y-6">
-          {activeNav === 'overview' && <Overview />}
-          {activeNav === 'areas' && <Areas />}
-          {activeNav === 'retailers' && <Retailers />}
-          {activeNav === 'retailer-details' && <RetailerDetails />}
-          {activeNav === 'workers' && <LineWorkers />}
-          {activeNav === 'transactions' && <Transactions />}
-          {activeNav === 'analytics' && <AnalyticsComponent />}
+        {/* Main Content */}
+        <main className="flex-1 pt-24 sm:pt-16 p-3 sm:p-4 lg:p-6 overflow-y-auto pb-20 lg:pb-6">
+          {error && (
+            <Alert className="border-red-200 bg-red-50 mb-4 sm:mb-6">
+              <AlertCircle className="h-4 w-4 text-red-600" />
+              <AlertDescription className="text-red-800 text-sm">{error}</AlertDescription>
+            </Alert>
+          )}
 
-        <div >
-            <div className="px-4 pb-20 pt-2 text-left">
-            {/* Tagline */}
-            <h2
-              className="fw-bold lh-sm"
-              style={{
-                fontSize: "2.2rem",
-                lineHeight: "1.2",
-                color: "rgba(75, 75, 75, 1)",
-                fontWeight: 700,
-              }}
-            >
-              Payment <br />
-              Collection Made<br />
-              More Secure{" "}
-              <Heart
-                className="inline-block"
-                size={30}
-                fill="red"
-                color="red"
-              />
-            </h2>
+          <div className="max-w-7xl mx-auto space-y-4 sm:space-y-6">
+            {activeNav === 'overview' && <Overview />}
+            {activeNav === 'areas' && <Areas />}
+            {activeNav === 'retailers' && <Retailers />}
+            {activeNav === 'retailer-details' && <RetailerDetails />}
+            {activeNav === 'workers' && <LineWorkers />}
+            {activeNav === 'transactions' && <Transactions />}
+            {activeNav === 'analytics' && <AnalyticsComponent />}
 
-            {/* Divider line */}
-            <hr
-              style={{
-                borderTop: "1px solid rgba(75, 75, 75, 1)",
-                margin: "18px 0",
-              }}
-            />
+            <div >
+              <div className="px-4 pb-20 pt-2 text-left">
+                {/* Tagline */}
+                <h2
+                  className="fw-bold lh-sm"
+                  style={{
+                    fontSize: "2.2rem",
+                    lineHeight: "1.2",
+                    color: "rgba(75, 75, 75, 1)",
+                    fontWeight: 700,
+                  }}
+                >
+                  Payment <br />
+                  Collection Made<br />
+                  More Secure{" "}
+                  <Heart
+                    className="inline-block"
+                    size={30}
+                    fill="red"
+                    color="red"
+                  />
+                </h2>
 
-            {/* App name */}
-            <p
-              style={{
-                fontSize: "1rem",
-                color: "rgba(75, 75, 75, 1)",
-                fontWeight: 500,
-              }}
-            >
-              PharmaLync
-            </p>
+                {/* Divider line */}
+                <hr
+                  style={{
+                    borderTop: "1px solid rgba(75, 75, 75, 1)",
+                    margin: "18px 0",
+                  }}
+                />
+
+                {/* App name */}
+                <p
+                  style={{
+                    fontSize: "1rem",
+                    color: "rgba(75, 75, 75, 1)",
+                    fontWeight: 500,
+                  }}
+                >
+                  PharmaLync
+                </p>
+              </div>
             </div>
-        </div>
 
-        </div>
+          </div>
 
-          
 
-        {/* Dialog Components */}
-        {ViewPaymentDialog()}
-        
-        {/* Edit Line Worker Dialog */}
-        {EditLineWorkerDialog()}
-        
-        {/* Retailer Assignment Dialog */}
-        {RetailerAssignmentDialog()}
 
-        {/* Assignment Confirmation Dialog */}
-        <AlertDialog open={showAssignmentConfirmation} onOpenChange={setShowAssignmentConfirmation}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>
-                {pendingAssignment?.action === 'unassign' ? 'Unassign Retailer' : 'Reassign Retailer'}
-              </AlertDialogTitle>
-              <AlertDialogDescription>
-                {pendingAssignment?.action === 'unassign' ? (
-                  <>
-                    Are you sure you want to unassign <strong>{pendingAssignment?.retailerName}</strong> from <strong>{pendingAssignment?.lineWorkerName}</strong>?
-                    <br /><br />
-                    <span className="text-sm text-amber-600">
-                      This retailer will no longer be visible to this line worker unless assigned to an area they manage.
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    Are you sure you want to reassign <strong>{pendingAssignment?.retailerName}</strong> from <strong>{pendingAssignment?.lineWorkerName}</strong> to a different line worker?
-                  </>
-                )}
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel onClick={cancelPendingAssignment}>
-                Cancel
-              </AlertDialogCancel>
-              <AlertDialogAction onClick={executeConfirmedAssignment}>
-                {pendingAssignment?.action === 'unassign' ? 'Unassign' : 'Reassign'}
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+          {/* Dialog Components */}
+          {ViewPaymentDialog()}
 
-        {/* Success Feedback */}
-        <SuccessFeedback
-          show={feedback.show}
-          message={feedback.message}
-          onClose={hideSuccess}
-        />
- 
-      </main>
-   
-   
-    </div>
+          {/* Edit Line Worker Dialog */}
+          {EditLineWorkerDialog()}
+
+          {/* Retailer Assignment Dialog */}
+          {RetailerAssignmentDialog()}
+
+          {/* Assignment Confirmation Dialog */}
+          <AlertDialog open={showAssignmentConfirmation} onOpenChange={setShowAssignmentConfirmation}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>
+                  {pendingAssignment?.action === 'unassign' ? 'Unassign Retailer' : 'Reassign Retailer'}
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  {pendingAssignment?.action === 'unassign' ? (
+                    <>
+                      Are you sure you want to unassign <strong>{pendingAssignment?.retailerName}</strong> from <strong>{pendingAssignment?.lineWorkerName}</strong>?
+                      <br /><br />
+                      <span className="text-sm text-amber-600">
+                        This retailer will no longer be visible to this line worker unless assigned to an area they manage.
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      Are you sure you want to reassign <strong>{pendingAssignment?.retailerName}</strong> from <strong>{pendingAssignment?.lineWorkerName}</strong> to a different line worker?
+                    </>
+                  )}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel onClick={cancelPendingAssignment}>
+                  Cancel
+                </AlertDialogCancel>
+                <AlertDialogAction onClick={executeConfirmedAssignment}>
+                  {pendingAssignment?.action === 'unassign' ? 'Unassign' : 'Reassign'}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+
+          {/* Success Feedback */}
+          <SuccessFeedback
+            show={feedback.show}
+            message={feedback.message}
+            onClose={hideSuccess}
+          />
+
+        </main>
+
+
+      </div>
 
     </>
 
-    
+
   );
 
 
