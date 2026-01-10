@@ -56,15 +56,15 @@ export interface Retailer extends BaseDocument {
   email?: string;
   address?: string;
   active?: boolean; // Added active field
-  
+
   // Profile and verification
   profile?: any;
   verification?: any;
-  
+
   // Legacy fields (kept for backward compatibility)
   areaId?: string;
   zipcodes: string[];
-  
+
   // Legacy wholesaler assignments (will be migrated to wholesalerData)
   wholesalerAssignments?: {
     [tenantId: string]: {
@@ -73,7 +73,7 @@ export interface Retailer extends BaseDocument {
       assignedAt: Timestamp;
     };
   };
-  
+
   // NEW: Wholesaler-specific isolated data
   wholesalerData?: {
     [tenantId: string]: {
@@ -91,22 +91,22 @@ export interface Retailer extends BaseDocument {
       currentBalance?: number;
     };
   };
-  
+
   // Direct line worker assignment (optional, overrides area-based assignment)
   assignedLineWorkerId?: string | null;
-  
+
   // Computed fields for performance
   totalPaidAmount?: number;
   totalPaymentsCount?: number;
   lastPaymentDate?: Timestamp;
   recentPayments?: PaymentSummary[];
   computedAt?: Timestamp;
-  
+
   // Additional fields
   gstNumber?: string;
   paymentTerms?: string;
   fcmDevices?: FCMDevice[];
-  
+
   // Active OTPs for this retailer
   activeOTPs?: Array<{
     paymentId: string;
@@ -118,7 +118,7 @@ export interface Retailer extends BaseDocument {
     isUsed?: boolean;
     usedAt?: Timestamp;
   }>;
-  
+
   // Helper methods for tenant management
   getTenantIds?(): string[];
   hasTenantId?(tenantId: string): boolean;
@@ -194,6 +194,8 @@ export interface Payment extends BaseDocument {
   upi?: PaymentUPI;
   evidence: PaymentEvidence[];
   timeline: PaymentTimeline;
+  notes?: string;   // Optional notes from line worker
+  utr?: string;     // Optional UTR for UPI payments (shorthand)
 }
 
 // Payment Event
