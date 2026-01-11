@@ -5,10 +5,10 @@ import { motion, AnimatePresence, Variants } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import Image from 'next/image';
-import { 
-  Pill, 
-  User, 
-  Store, 
+import {
+  Pill,
+  User,
+  Store,
   Shield,
   ArrowRight,
   HelpCircle,
@@ -31,14 +31,14 @@ export function NetflixRoleSelection({ onRoleSelect, onBack }: NetflixRoleSelect
   useEffect(() => {
     // Replace current history state to prevent back navigation to dashboard
     window.history.replaceState({}, '', '/');
-    
+
     const handlePopState = (event: PopStateEvent) => {
       // If user tries to navigate back, prevent it
       window.history.pushState({}, '', '/');
     };
 
     window.addEventListener('popstate', handlePopState);
-    
+
     return () => {
       window.removeEventListener('popstate', handlePopState);
     };
@@ -123,8 +123,8 @@ export function NetflixRoleSelection({ onRoleSelect, onBack }: NetflixRoleSelect
   };
 
   const profileVariants: Variants = {
-    hidden: { 
-      opacity: 0, 
+    hidden: {
+      opacity: 0,
       scale: 0.7,
       y: 60,
       rotateX: 15
@@ -166,8 +166,8 @@ export function NetflixRoleSelection({ onRoleSelect, onBack }: NetflixRoleSelect
   };
 
   const iconVariants: Variants = {
-    hidden: { 
-      scale: 0, 
+    hidden: {
+      scale: 0,
       rotate: -180,
       opacity: 0
     },
@@ -196,8 +196,8 @@ export function NetflixRoleSelection({ onRoleSelect, onBack }: NetflixRoleSelect
   };
 
   const glowVariants: Variants = {
-    hidden: { 
-      opacity: 0, 
+    hidden: {
+      opacity: 0,
       scale: 0.6,
       filter: "blur(0px)"
     },
@@ -223,8 +223,8 @@ export function NetflixRoleSelection({ onRoleSelect, onBack }: NetflixRoleSelect
   };
 
   const textVariants: Variants = {
-    hidden: { 
-      opacity: 0, 
+    hidden: {
+      opacity: 0,
       y: 20
     },
     visible: {
@@ -247,9 +247,9 @@ export function NetflixRoleSelection({ onRoleSelect, onBack }: NetflixRoleSelect
   };
 
   return (
-     <>
+    <>
       <StatusBarColor theme="black" />
-          
+
       <div className="min-h-screen bg-black flex flex-col font-sans">
         {/* Netflix-style Header */}
         <header className="relative z-50">
@@ -259,9 +259,9 @@ export function NetflixRoleSelection({ onRoleSelect, onBack }: NetflixRoleSelect
               {/* PharmaLync Branding integrated with Netflix style */}
               <div className="flex items-center space-x-2 sm:space-x-3">
                 <div className="relative">
-                  <Image 
-                    src="/logoMain.png" 
-                    alt="PharmaLync" 
+                  <Image
+                    src="/logoMain.png"
+                    alt="PharmaLync"
                     width={28}
                     height={28}
                     className="rounded sm:w-8 sm:h-8"
@@ -276,9 +276,9 @@ export function NetflixRoleSelection({ onRoleSelect, onBack }: NetflixRoleSelect
                 </span>
               </div>
             </div>
-            <h2 style={{color:'white'}}>
+            {/* <h2 style={{color:'white'}}>
               Powered by SAANVI SYSTEMS
-            </h2>
+            </h2> */}
 
             {/* Right side navigation */}
             <div className="flex items-center space-x-3 sm:space-x-4">
@@ -291,7 +291,7 @@ export function NetflixRoleSelection({ onRoleSelect, onBack }: NetflixRoleSelect
               </Button>
             </div>
           </div>
-          
+
           {/* Netflix-style gradient divider */}
           <div className="h-px bg-gradient-to-r from-transparent via-gray-700 to-transparent"></div>
         </header>
@@ -359,7 +359,7 @@ export function NetflixRoleSelection({ onRoleSelect, onBack }: NetflixRoleSelect
                           transform: 'translateZ(-20px)'
                         }}
                       />
-                      
+
                       {/* Profile circle with enhanced styling */}
                       <div className={`
                         relative w-24 h-24 sm:w-28 sm:h-28 md:w-32 md:h-32 lg:w-40 lg:h-40 
@@ -381,7 +381,7 @@ export function NetflixRoleSelection({ onRoleSelect, onBack }: NetflixRoleSelect
                         >
                           <Icon className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 lg:w-14 lg:h-14" />
                         </motion.div>
-                        
+
                         {/* Enhanced pattern overlay */}
                         <div className="absolute inset-0 bg-white/10 opacity-20"></div>
                         {/* Inner glow */}
@@ -413,11 +413,11 @@ export function NetflixRoleSelection({ onRoleSelect, onBack }: NetflixRoleSelect
                       <motion.div
                         initial={{ opacity: 0, scale: 0.6, rotate: -10 }}
                         animate={{ opacity: 1, scale: 1, rotate: 0 }}
-                        transition={{ 
-                          type: "spring", 
-                          stiffness: 400, 
+                        transition={{
+                          type: "spring",
+                          stiffness: 400,
                           damping: 15,
-                          duration: 0.3 
+                          duration: 0.3
                         }}
                         className="absolute -top-2 -right-2 sm:-top-3 sm:-right-3 z-10"
                       >
@@ -455,28 +455,28 @@ export function NetflixRoleSelection({ onRoleSelect, onBack }: NetflixRoleSelect
               {/* Questions? Contact */}
               <div className="text-center mb-8 sm:mb-12">
                 <p className="text-gray-500 text-sm sm:text-base mb-4">
-                  {/* Questions? Contact us 24/7 for support */}
-                  ABOUT US
+                  Questions? Contact us 24/7 for support
+                  {/* ABOUT US */}
                 </p>
                 <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-                <h2>
-SAANVI SYSTEMS is a technology company specializing in software solutions for the pharmaceutical supply chain. Our flagship product, PharmaLync, is designed to streamline operations for wholesalers, line workers, and retailers, enhancing efficiency and transparency across the supply chain.
-                </h2>
+                  {/* <h2>
+                    SAANVI SYSTEMS is a technology company specializing in software solutions for the pharmaceutical supply chain. Our flagship product, PharmaLync, is designed to streamline operations for wholesalers, line workers, and retailers, enhancing efficiency and transparency across the supply chain.
+                  </h2> */}
 
-                  {/* <a 
-                    href="tel:9014882779" 
+                  <a
+                    href="tel:9014882779"
                     className="flex items-center text-blue-600 hover:text-blue-500 transition-colors"
                   >
                     <Phone className="h-4 w-4 mr-2" />
                     <span className="text-sm sm:text-base">+91 9014882779</span>
                   </a>
-                  <a 
-                    href="mailto:support@pharmalynk.com" 
+                  <a
+                    href="mailto:support@pharmalynk.com"
                     className="flex items-center text-blue-600 hover:text-blue-500 transition-colors"
                   >
                     <Mail className="h-4 w-4 mr-2" />
                     <span className="text-sm sm:text-base">support@pharmalynk.com</span>
-                  </a> */}
+                  </a>
                 </div>
               </div>
 
