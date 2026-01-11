@@ -30,13 +30,13 @@ export function PWAInstallPrompt() {
       const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
       const isInWebAppiOS = (window.navigator as any).standalone === true;
       const isInstalled = isStandalone || isInWebAppiOS;
-      
+
       console.log('📱 PWA Installation Status:', {
         isStandalone,
         isInWebAppiOS,
         isInstalled
       });
-      
+
       return isInstalled;
     };
 
@@ -81,7 +81,7 @@ export function PWAInstallPrompt() {
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
       setDeferredPrompt(e as BeforeInstallPromptEvent);
-      
+
       // Only show dialog if app is not installed and not shown recently
       if (!installed && !shownRecently) {
         setShowInstallDialog(true);
@@ -113,7 +113,7 @@ export function PWAInstallPrompt() {
     try {
       await deferredPrompt.prompt();
       const { outcome } = await deferredPrompt.userChoice;
-      
+
       if (outcome === 'accepted') {
         toast.success('Installing pHLynk app...');
         console.log('📱 User accepted install prompt');
@@ -121,10 +121,10 @@ export function PWAInstallPrompt() {
         toast.info('Install cancelled');
         console.log('📱 User declined install prompt');
       }
-      
+
       setDeferredPrompt(null);
       setShowInstallDialog(false);
-      
+
       // Remember that we showed the prompt
       localStorage.setItem('pwa-install-prompt-shown', Date.now().toString());
     } catch (error) {
@@ -136,20 +136,20 @@ export function PWAInstallPrompt() {
   const handleDismiss = () => {
     setShowInstallDialog(false);
     setDeferredPrompt(null);
-    
+
     // Remember that we showed the prompt
     localStorage.setItem('pwa-install-prompt-shown', Date.now().toString());
-    
+
     toast.info('You can install the app later from the browser menu');
   };
 
   const handleNeverShowAgain = () => {
     setShowInstallDialog(false);
     setDeferredPrompt(null);
-    
+
     // Set a very long time to essentially never show again
     localStorage.setItem('pwa-install-prompt-shown', (Date.now() + 365 * 24 * 60 * 60 * 1000).toString());
-    
+
     toast.info('Install prompt disabled');
   };
 
@@ -171,13 +171,13 @@ export function PWAInstallPrompt() {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-lg">
             <Download className="h-5 w-5 text-blue-600" />
-            Install pHLynk App
+            Add pHLynk to Home Screen
           </DialogTitle>
           <DialogDescription>
             Get the best experience with our app - install it on your device for offline access and real-time notifications
           </DialogDescription>
         </DialogHeader>
-        
+
         <CardContent className="space-y-4">
           {isIOS ? (
             // iOS Install Instructions
@@ -190,7 +190,7 @@ export function PWAInstallPrompt() {
                   <li>Tap "Add" to install the app</li>
                 </ol>
               </div>
-              
+
               <div className="flex items-center gap-2 p-3 bg-blue-50 rounded-lg">
                 <Bell className="h-4 w-4 text-blue-600" />
                 <span className="text-sm text-blue-700">
@@ -213,27 +213,27 @@ export function PWAInstallPrompt() {
                   <li>Background notifications even when app is closed</li>
                 </ul>
               </div>
-              
+
               <div className="flex flex-col gap-2">
-                <Button 
+                <Button
                   onClick={handleInstallClick}
                   className="w-full"
                   size="lg"
                 >
                   <Download className="h-4 w-4 mr-2" />
-                  Install App
+                  Add as Shortcut
                 </Button>
-                
+
                 <div className="flex gap-2">
-                  <Button 
-                    variant="outline" 
+                  <Button
+                    variant="outline"
                     onClick={handleDismiss}
                     className="flex-1"
                   >
                     Maybe Later
                   </Button>
-                  <Button 
-                    variant="ghost" 
+                  <Button
+                    variant="ghost"
                     onClick={handleNeverShowAgain}
                     className="flex-1 text-xs"
                   >

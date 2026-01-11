@@ -2084,7 +2084,7 @@ export function RetailerDashboard() {
                                 <TableCell>{formatCurrency(payment.totalPaid)}</TableCell>
                                 <TableCell>{payment.method}</TableCell>
                                 <TableCell>
-                                  <WholesalerNameCell tenantId={payment.tenantIds?.[0] || ''} />
+                                  <WholesalerNameCell tenantId={payment.tenantId || ''} />
                                 </TableCell>
                                 <TableCell>{lineWorkerNames[payment.lineWorkerId] || 'Loading...'}</TableCell>
                                 <TableCell>
@@ -2149,7 +2149,7 @@ export function RetailerDashboard() {
                               <TableCell>{payment.method}</TableCell>
                               <TableCell>
                                 <Badge variant="outline" className="text-xs">
-                                  {wholesalerNames[payment.tenantIds?.[0] || ''] || 'Unknown Wholesaler'}
+                                  {wholesalerNames[payment.tenantId || ''] || 'Unknown Wholesaler'}
                                 </Badge>
                               </TableCell>
                               <TableCell>

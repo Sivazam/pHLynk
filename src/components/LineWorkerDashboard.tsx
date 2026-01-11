@@ -1367,27 +1367,7 @@ Thank you for your payment!
       {/* Main Content Area */}
       <div className="pt-20 sm:pt-16 pb-20 lg:pb-0"> {/* Add padding for fixed header and bottom nav */}
         <div className="p-4 sm:p-6">
-          {/* Header */}
-          <div className="flex items-center justify-between mb-8">
-            {/* <div>
-                <h1 className="text-3xl font-bold text-gray-900">Line Worker Dashboard</h1>
-                <p className="text-gray-600 mt-1">Manage your assigned retailers and collect payments</p>
-              </div> */}
-            {/* <div className="flex items-center space-x-3">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={refreshData}
-                  disabled={mainLoadingState.loadingState.isRefreshing}
-                  className="h-10 px-4 border-gray-300 text-gray-700 hover:bg-gray-50 font-medium"
-                >
-                  <RefreshCw className={`h-4 w-4 mr-2 ${mainLoadingState.loadingState.isRefreshing ? 'animate-spin' : ''}`} />
-                  Refresh Data
-                </Button>
-              </div> */}
-          </div>
-
-          {/* Error Display */}
+          {/* Header removed - using DashboardNavigation instead */}          {/* Error Display */}
           {error && (
             <Alert className="mb-6 border-red-200 bg-red-50">
               <AlertCircle className="h-4 w-4 text-red-600" />
@@ -1408,97 +1388,36 @@ Thank you for your payment!
               {/* Overview Stats */}
               {activeNav === 'overview' && (
                 <div className="space-y-6">
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                    <Card className="border border-gray-200 shadow-sm">
-                      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-                        <CardTitle className="text-sm font-medium text-gray-600">Total Retailers</CardTitle>
-                        <div className="bg-blue-100 p-2.5 rounded-full">
-                          <Store className="h-5 w-5 text-blue-600" />
+                  {/* Stats Cards - Bento style 2-column on mobile */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <Card className="border-0 bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-lg rounded-xl">
+                      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium text-blue-100">Total Retailers</CardTitle>
+                        <div className="bg-white/20 p-2 rounded-lg">
+                          <Store className="h-4 w-4 text-white" />
                         </div>
                       </CardHeader>
                       <CardContent className="pt-0">
-                        <div className="text-2xl font-bold text-gray-900">{retailers.length}</div>
-                        <p className="text-xs text-gray-500 mt-1">Assigned to you</p>
+                        <div className="text-2xl sm:text-3xl font-bold">{retailers.length}</div>
+                        <p className="text-xs text-blue-100 mt-1">Assigned to you</p>
                       </CardContent>
                     </Card>
 
-                    {/* <Card className="border border-gray-200 shadow-sm">
-                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-                          <CardTitle className="text-sm font-medium text-gray-600">Total Collected</CardTitle>
-                          <div className="bg-green-100 p-2.5 rounded-full">
-                            <DollarSign className="h-5 w-5 text-green-600" />
-                          </div>
-                        </CardHeader>
-                        <CardContent className="pt-0">
-                          <div className="text-2xl font-bold text-gray-900">{formatCurrency(totalCollected)}</div>
-                          <p className="text-xs text-gray-500 mt-1">All time</p>
-                        </CardContent>
-                      </Card> */}
-
-                    <Card className="border border-gray-200 shadow-sm">
-                      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-                        <CardTitle className="text-sm font-medium text-gray-600">Today's Collection</CardTitle>
-                        <div className="bg-purple-100 p-2.5 rounded-full">
-                          <TrendingUp className="h-5 w-5 text-purple-600" />
+                    <Card className="border-0 bg-gradient-to-br from-emerald-500 to-emerald-600 text-white shadow-lg rounded-xl">
+                      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium text-emerald-100">Today's Collection</CardTitle>
+                        <div className="bg-white/20 p-2 rounded-lg">
+                          <TrendingUp className="h-4 w-4 text-white" />
                         </div>
                       </CardHeader>
                       <CardContent className="pt-0">
-                        <div className="text-2xl font-bold text-gray-900">{formatCurrency(todayCollected)}</div>
-                        <p className="text-xs text-gray-500 mt-1">{todayPayments.length} payments</p>
+                        <div className="text-2xl sm:text-3xl font-bold">{formatCurrency(todayCollected)}</div>
+                        <p className="text-xs text-emerald-100 mt-1">{todayPayments.length} payments</p>
                       </CardContent>
                     </Card>
-                    {/* 
-                      <Card className="border border-gray-200 shadow-sm">
-                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-                          <CardTitle className="text-sm font-medium text-gray-600">Success Rate</CardTitle>
-                          <div className="bg-orange-100 p-2.5 rounded-full">
-                            <CheckCircle className="h-5 w-5 text-orange-600" />
-                          </div>
-                        </CardHeader>
-                        <CardContent className="pt-0">
-                          <div className="text-2xl font-bold text-gray-900">
-                            {payments.length > 0 ? ((completedPayments.length / payments.length) * 100).toFixed(1) : 0}%
-                          </div>
-                          <p className="text-xs text-gray-500 mt-1">Payment success rate</p>
-                        </CardContent>
-                      </Card> */}
                   </div>
 
-                  {/* Quick Actions */}
-                  <Card className="border border-gray-200 shadow-sm">
-                    <CardHeader className="pb-4">
-                      <CardTitle className="text-lg font-semibold text-gray-900">Quick Actions</CardTitle>
-                      <CardDescription className="text-gray-600">Common tasks you can perform</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <Button
-                          onClick={() => handleOpenPaymentDialog()}
-                          className="h-24 flex-col bg-blue-600 hover:bg-blue-700 text-white border-0 shadow-sm"
-                        >
-                          <Plus className="h-8 w-8 mb-3" />
-                          <span className="font-medium">Collect Payment</span>
-                        </Button>
-                        <Button
-                          variant="outline"
-                          onClick={() => setActiveNav('retailers')}
-                          className="h-24 flex-col border-gray-300 text-gray-700 hover:bg-gray-50"
-                        >
-                          <Store className="h-8 w-8 mb-3 text-gray-600" />
-                          <span className="font-medium">View Retailers</span>
-                        </Button>
-                        {/* <Button
-                            variant="outline"
-                            onClick={() => setActiveNav('history')}
-                            className="h-24 flex-col border-gray-300 text-gray-700 hover:bg-gray-50"
-                          >
-                            <History className="h-8 w-8 mb-3 text-gray-600" />
-                            <span className="font-medium">Payment History</span>
-                          </Button> */}
-                      </div>
-                    </CardContent>
-                  </Card>
-
+                  {/* Quick Actions card removed - replaced by floating FAB button */}
                   {/* Test Notifications */}
                   {/* <Card className="border border-gray-200 shadow-sm">
                       <CardHeader className="pb-4">
@@ -1741,6 +1660,14 @@ Thank you for your payment!
         </div>
       </div>
 
+      {/* Floating Action Button - Collect Payment */}
+      <button
+        onClick={() => handleOpenPaymentDialog()}
+        className="fixed bottom-24 right-4 lg:bottom-8 lg:right-8 z-40 w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-lg hover:shadow-xl hover:scale-105 active:scale-95 transition-all duration-200 flex items-center justify-center"
+        aria-label="Collect Payment"
+      >
+        <Plus className="h-7 w-7" />
+      </button>
       {/* Payment Collection Dialog */}
       <Dialog open={showPaymentDialog} onOpenChange={(open) => {
         setShowPaymentDialog(open);
