@@ -602,6 +602,12 @@ export function LineWorkerDashboard() {
         totalPaid: pendingPaymentData.amount,
         method: pendingPaymentData.paymentMethod,
         state: 'COMPLETED',
+        tenantId: getCurrentTenantId() || '',
+        evidence: [],
+        timeline: {
+          initiatedAt: Timestamp.fromDate(completionTime),
+          completedAt: Timestamp.fromDate(completionTime)
+        },
         createdAt: Timestamp.fromDate(completionTime),
         updatedAt: Timestamp.fromDate(completionTime),
         notes: pendingPaymentData.notes,
