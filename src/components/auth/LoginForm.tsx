@@ -69,9 +69,11 @@ export function LoginForm({ onToggleMode, onResetPassword, onShowRoleSelection, 
 
     try {
       await login(data.email, data.password);
+      // Don't set loading to false on success - let the redirect happen
+      // content will unmount when AuthContext updates user state
     } catch (err: any) {
+      console.error('Login failed:', err);
       setError(err.message || 'Failed to login');
-    } finally {
       setLoading(false);
     }
   };
@@ -82,15 +84,15 @@ export function LoginForm({ onToggleMode, onResetPassword, onShowRoleSelection, 
 
     try {
       await loginWithGoogle();
+      // Don't set loading to false on success - let the redirect happen
     } catch (err: any) {
       setError(err.message || 'Failed to login with Google');
-    } finally {
       setLoading(false);
     }
   };
 
   return (
-     <>
+    <>
       <StatusBarColor theme="white" />
 
       <Card className="w-full max-w-md mx-auto border-0 shadow-xl bg-white/80 backdrop-blur-sm">

@@ -1,5 +1,5 @@
-// Stable cache version - only change when actual updates are deployed
-const CACHE_VERSION = 'pharmalynk-v3-1.0.0';
+// Stable cache version - bumped to force update for Old UI fix
+const CACHE_VERSION = 'pharmalynk-v3-1.0.2';
 const CACHE_NAME = CACHE_VERSION;
 const STATIC_CACHE_NAME = 'pharmalynk-static-v3';
 const RUNTIME_CACHE_NAME = 'pharmalynk-runtime-v3';
@@ -25,7 +25,7 @@ const CACHE_BUST_PARAM = '_v=' + CACHE_VERSION;
 // Install event - cache static resources
 self.addEventListener('install', event => {
   console.log('Service Worker installing with version:', CACHE_VERSION);
-  
+
   event.waitUntil(
     Promise.all([
       // Cache static assets
@@ -33,7 +33,7 @@ self.addEventListener('install', event => {
         console.log('Caching static assets');
         return cache.addAll(STATIC_ASSETS);
       }),
-      
+
       // Cache core pages
       caches.open(CACHE_NAME).then(cache => {
         console.log('Caching core pages');
@@ -41,7 +41,7 @@ self.addEventListener('install', event => {
       })
     ])
   );
-  
+
   // Force the waiting service worker to become the active service worker
   self.skipWaiting();
 });
@@ -49,24 +49,24 @@ self.addEventListener('install', event => {
 // Activate event - clean up old caches and take control immediately
 self.addEventListener('activate', event => {
   console.log('Service Worker activating with version:', CACHE_VERSION);
-  
+
   event.waitUntil(
     Promise.all([
       // Clean up old caches
       caches.keys().then(cacheNames => {
         return Promise.all(
           cacheNames.map(cacheName => {
-            if (cacheName !== CACHE_NAME && 
-                cacheName !== STATIC_CACHE_NAME && 
-                cacheName !== RUNTIME_CACHE_NAME &&
-                cacheName.startsWith('pharmalynk-')) {
+            if (cacheName !== CACHE_NAME &&
+              cacheName !== STATIC_CACHE_NAME &&
+              cacheName !== RUNTIME_CACHE_NAME &&
+              cacheName.startsWith('pharmalynk-')) {
               console.log('Deleting old cache:', cacheName);
               return caches.delete(cacheName);
             }
           })
         );
       }),
-      
+
       // Take control of all open clients immediately
       self.clients.claim()
     ])
@@ -76,11 +76,11 @@ self.addEventListener('activate', event => {
 // Push notification event - handle OTP notifications
 self.addEventListener('push', event => {
   console.log('📱 Push notification received');
-  
+
   if (event.data) {
     const data = event.data.json();
     console.log('Push notification data:', data);
-    
+
     const options = {
       body: data.body || 'New notification received',
       icon: '/icon-192x192.png',
@@ -92,12 +92,12 @@ self.addEventListener('push', event => {
       // Mobile-specific enhancements
       silent: false
     };
-    
+
     // Add sound if supported
     if ('sound' in Notification.prototype) {
       options.sound = '/notification-sound.mp3';
     }
-    
+
     // Customize for OTP notifications
     if (data.type === 'otp') {
       options.body = `🔐 OTP: ${data.otp} for ₹${data.amount}`;
@@ -116,21 +116,21 @@ self.addEventListener('push', event => {
         }
       ];
     }
-    
+
     // Customize for payment completion
     if (data.type === 'payment-completed' || data.type === 'payment_completed') {
       options.body = `✅ Payment of ₹${data.amount} completed successfully`;
       options.tag = `payment-${data.paymentId}`;
       options.requireInteraction = false;
     }
-    
+
     // Customize for test notifications
     if (data.type === 'test') {
       options.body = '📱 This is a test notification from pHLynk';
       options.tag = 'test-notification';
       options.requireInteraction = false;
     }
-    
+
     event.waitUntil(
       self.registration.showNotification(data.title || 'PharmaLync', options)
         .then(() => {
@@ -146,13 +146,13 @@ self.addEventListener('push', event => {
 // Notification click event - handle user interaction
 self.addEventListener('notificationclick', event => {
   console.log('📱 Notification clicked:', event.action);
-  
+
   event.notification.close();
-  
+
   if (event.action === 'view' || event.action === 'open') {
     // Open the retailer dashboard or specific payment
     const urlToOpen = event.notification.data.url || '/';
-    
+
     event.waitUntil(
       clients.matchAll({ type: 'window', includeUncontrolled: true })
         .then(clientList => {
@@ -162,7 +162,7 @@ self.addEventListener('notificationclick', event => {
               return client.focus();
             }
           }
-          
+
           // If no window is open, open a new one
           if (clients.openWindow) {
             return clients.openWindow(urlToOpen);
@@ -170,7 +170,7 @@ self.addEventListener('notificationclick', event => {
         })
     );
   }
-  
+
   // Handle dismiss action
   if (event.action === 'dismiss') {
     console.log('📱 Notification dismissed');
@@ -186,35 +186,35 @@ self.addEventListener('notificationclose', event => {
 self.addEventListener('message', event => {
   if (event.data && event.data.type === 'SUBSCRIBE_TO_PUSH') {
     console.log('📱 Subscribing to push notifications');
-    
+
     event.waitUntil(
       self.registration.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: event.data.publicKey
       })
-      .then(subscription => {
-        console.log('✅ Push notification subscription successful');
-        
-        // Send subscription back to client
-        event.ports[0].postMessage({
-          type: 'SUBSCRIPTION_SUCCESS',
-          subscription: subscription
-        });
-      })
-      .catch(error => {
-        console.error('❌ Push notification subscription failed:', error);
-        
-        event.ports[0].postMessage({
-          type: 'SUBSCRIPTION_ERROR',
-          error: error.message
-        });
-      })
+        .then(subscription => {
+          console.log('✅ Push notification subscription successful');
+
+          // Send subscription back to client
+          event.ports[0].postMessage({
+            type: 'SUBSCRIPTION_SUCCESS',
+            subscription: subscription
+          });
+        })
+        .catch(error => {
+          console.error('❌ Push notification subscription failed:', error);
+
+          event.ports[0].postMessage({
+            type: 'SUBSCRIPTION_ERROR',
+            error: error.message
+          });
+        })
     );
   }
-  
+
   if (event.data && event.data.type === 'SEND_TEST_NOTIFICATION') {
     console.log('📱 Sending test notification');
-    
+
     event.waitUntil(
       self.registration.showNotification('Test Notification', {
         body: 'This is a test notification from PharmaLync',
@@ -224,12 +224,12 @@ self.addEventListener('message', event => {
       })
     );
   }
-  
+
   if (event.data && event.data.type === 'SHOW_NOTIFICATION') {
     console.log('📱 Showing role-based notification:', event.data.payload);
-    
+
     const payload = event.data.payload;
-    
+
     // Enhanced notification options for mobile
     const notificationOptions = {
       body: payload.body,
@@ -245,17 +245,17 @@ self.addEventListener('message', event => {
       // Mobile-specific enhancements
       silent: false
     };
-    
+
     // Add sound if supported
     if ('sound' in Notification.prototype) {
       notificationOptions.sound = '/notification-sound.mp3';
     }
-    
+
     // Additional mobile-specific handling
     if (payload.tag && payload.tag.includes('otp')) {
       notificationOptions.requireInteraction = true;
     }
-    
+
     event.waitUntil(
       self.registration.showNotification(payload.title, notificationOptions)
         .then(() => {
@@ -266,11 +266,11 @@ self.addEventListener('message', event => {
         })
     );
   }
-  
+
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
   }
-  
+
   if (event.data && event.data.type === 'CACHE_BUST') {
     // Force clear all caches and reload
     caches.keys().then(cacheNames => {
@@ -295,12 +295,12 @@ self.addEventListener('message', event => {
 // Fetch event - intelligent caching strategy
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
-  
+
   // Skip non-GET requests
   if (event.request.method !== 'GET') {
     return;
   }
-  
+
   // Handle different types of requests
   if (STATIC_ASSETS.includes(url.pathname)) {
     // Static assets - try cache first, then network
@@ -328,16 +328,16 @@ async function handleStaticAsset(request) {
     if (cachedResponse) {
       return cachedResponse;
     }
-    
+
     // If not in cache, fetch from network
     const networkResponse = await fetch(request);
-    
+
     // Cache successful responses
     if (networkResponse && networkResponse.status === 200) {
       const cache = await caches.open(STATIC_CACHE_NAME);
       cache.put(request, networkResponse.clone());
     }
-    
+
     return networkResponse;
   } catch (error) {
     console.error('Static asset fetch failed:', error);
@@ -350,13 +350,13 @@ async function handleVersionedFiles(request) {
   try {
     // Always fetch from network to get the latest version
     const response = await fetch(request);
-    
+
     // Cache the response for future use
     if (response && response.status === 200) {
       const cache = await caches.open(STATIC_CACHE_NAME);
       cache.put(request, response.clone());
     }
-    
+
     return response;
   } catch (error) {
     // Fallback to cache if network fails
@@ -373,29 +373,29 @@ async function handleNavigationRequest(request) {
   try {
     // Try network first for fresh content
     const networkResponse = await fetch(request);
-    
+
     // Cache successful responses
     if (networkResponse && networkResponse.status === 200) {
       const cache = await caches.open(CACHE_NAME);
       cache.put(request, networkResponse.clone());
     }
-    
+
     return networkResponse;
   } catch (error) {
     console.log('Network request failed, trying cache for navigation');
-    
+
     // Fallback to cache
     const cachedResponse = await caches.match(request);
     if (cachedResponse) {
       return cachedResponse;
     }
-    
+
     // If no cached response, try to return the main page
     const mainPageResponse = await caches.match('/?' + CACHE_BUST_PARAM);
     if (mainPageResponse) {
       return mainPageResponse;
     }
-    
+
     throw error;
   }
 }
@@ -414,16 +414,16 @@ async function handleRuntimeRequest(request) {
     if (cachedResponse) {
       return cachedResponse;
     }
-    
+
     // Fetch from network
     const networkResponse = await fetch(request);
-    
+
     // Cache successful responses
     if (networkResponse && networkResponse.status === 200) {
       const cache = await caches.open(RUNTIME_CACHE_NAME);
       cache.put(request, networkResponse.clone());
     }
-    
+
     return networkResponse;
   } catch (error) {
     console.error('Runtime request failed:', error);
@@ -436,7 +436,7 @@ self.addEventListener('message', event => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
   }
-  
+
   if (event.data && event.data.type === 'CACHE_BUST') {
     // Force clear all caches and reload
     caches.keys().then(cacheNames => {

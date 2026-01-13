@@ -1,7 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
-import { 
+import {
   User as FirebaseUser,
   onAuthStateChanged,
   signInWithEmailAndPassword,
@@ -45,37 +45,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     // Initialize progress immediately
     updateProgress(5, 'Initializing application...');
-    
+
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: FirebaseUser | null) => {
       clearTimeout(timeoutId); // Clear timeout once auth state changes
-      
+
       try {
         updateProgress(15, 'Checking authentication status...');
-        
+
         console.log('🔍 Auth state changed. Firebase user:', firebaseUser ? firebaseUser.uid : 'null');
-        
+
         // Small delay for auth state check
         await new Promise(resolve => setTimeout(resolve, 200));
-        
+
         if (firebaseUser) {
           updateProgress(30, 'Loading user profile...');
-          
+
           // Small delay before Firestore call
           await new Promise(resolve => setTimeout(resolve, 150));
-          
+
           // For phone-authenticated users (retailers), check retailerUsers collection first
           if (firebaseUser.phoneNumber) {
             updateProgress(40, 'Checking retailer account...');
-            
+
             const phone = firebaseUser.phoneNumber.replace('+91', '').replace(/\D/g, '');
             const retailerUid = `retailer_${phone}`;
             const retailerUserDoc = await getDoc(doc(db, 'retailerUsers', retailerUid));
-            
+
             if (retailerUserDoc.exists()) {
               updateProgress(70, 'Loading retailer profile...');
-              
+
               const retailerData = retailerUserDoc.data();
-              
+
               // Check if retailer account is active
               if (!retailerData.isActive) {
                 console.error('Retailer account is inactive:', firebaseUser.uid);
@@ -84,7 +84,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 if (isMounted.current) { setUser(null); };
                 return;
               }
-              
+
               const authUser: AuthUser = {
                 uid: firebaseUser.uid,
                 email: firebaseUser.email || `retailer_${phone}@pharmalynk.local`,
@@ -97,89 +97,89 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 retailerId: retailerData.retailerId,
                 phone: retailerData.phone
               };
-              
+
               // Also store retailerId in localStorage for backward compatibility
               localStorage.setItem('retailerId', retailerData.retailerId);
-              
+
               // 🔐 SECURITY: Clear any logout timestamp on successful login
               localStorage.removeItem('logged_out_at');
               console.log('✅ Cleared logout timestamp on successful login');
-              
+
               // 🔄 Initialize FCM for returning retailer users
-                try {
-                  updateProgress(78, 'Setting up notifications...');
-                  console.log('🔔 Initializing FCM for returning retailer user:', {
-                    authUid: firebaseUser.uid,
-                    retailerId: retailerData.retailerId,
-                    retailerName: retailerData.name,
-                    phone: retailerData.phone,
-                    caller: 'AuthContext.retailerAuth'
-                  });
-                  
-                  // Validate retailer document exists before initializing FCM
-                  const hasValidDocument = await hasValidRetailerDocument(retailerData.retailerId);
-                  
-                  if (!hasValidDocument) {
-                    console.warn('⚠️ Retailer document not found or inactive, skipping FCM:', retailerData.retailerId);
-                    // Clear the invalid retailer ID from localStorage
-                    localStorage.removeItem('retailerId');
-                    updateProgress(85, 'Skipping notifications (invalid retailer)');
-                  } else {
-                    console.log('✅ Retailer document validated, proceeding with FCM initialization');
-                    // Initialize FCM in background without blocking the UI
-                    initializeFCM(retailerData.retailerId, 'retailers').then(fcmToken => {
-                      if (fcmToken) {
-                        console.log('✅ FCM initialized successfully for returning retailer user:', {
-                          retailerId: retailerData.retailerId,
-                          tokenLength: fcmToken.length,
-                          tokenPrefix: fcmToken.substring(0, 20) + '...'
-                        });
-                      } else {
-                        console.warn('⚠️ FCM initialization failed for returning retailer user:', {
-                          retailerId: retailerData.retailerId
-                        });
-                      }
-                    }).catch(error => {
-                      console.error('❌ FCM initialization error for returning retailer user:', {
+              try {
+                updateProgress(78, 'Setting up notifications...');
+                console.log('🔔 Initializing FCM for returning retailer user:', {
+                  authUid: firebaseUser.uid,
+                  retailerId: retailerData.retailerId,
+                  retailerName: retailerData.name,
+                  phone: retailerData.phone,
+                  caller: 'AuthContext.retailerAuth'
+                });
+
+                // Validate retailer document exists before initializing FCM
+                const hasValidDocument = await hasValidRetailerDocument(retailerData.retailerId);
+
+                if (!hasValidDocument) {
+                  console.warn('⚠️ Retailer document not found or inactive, skipping FCM:', retailerData.retailerId);
+                  // Clear the invalid retailer ID from localStorage
+                  localStorage.removeItem('retailerId');
+                  updateProgress(85, 'Skipping notifications (invalid retailer)');
+                } else {
+                  console.log('✅ Retailer document validated, proceeding with FCM initialization');
+                  // Initialize FCM in background without blocking the UI
+                  initializeFCM(retailerData.retailerId, 'retailers').then(fcmToken => {
+                    if (fcmToken) {
+                      console.log('✅ FCM initialized successfully for returning retailer user:', {
                         retailerId: retailerData.retailerId,
-                        error: error instanceof Error ? error.message : 'Unknown error'
+                        tokenLength: fcmToken.length,
+                        tokenPrefix: fcmToken.substring(0, 20) + '...'
                       });
+                    } else {
+                      console.warn('⚠️ FCM initialization failed for returning retailer user:', {
+                        retailerId: retailerData.retailerId
+                      });
+                    }
+                  }).catch(error => {
+                    console.error('❌ FCM initialization error for returning retailer user:', {
+                      retailerId: retailerData.retailerId,
+                      error: error instanceof Error ? error.message : 'Unknown error'
                     });
-                    console.log('✅ FCM initialization enabled for retailer - storing tokens for cloud functions');
-                  }
-                } catch (error) {
-                  console.error('❌ Failed to initialize FCM for returning retailer user:', {
-                    retailerId: retailerData.retailerId,
-                    error: error instanceof Error ? error.message : 'Unknown error'
                   });
+                  console.log('✅ FCM initialization enabled for retailer - storing tokens for cloud functions');
                 }
-              
+              } catch (error) {
+                console.error('❌ Failed to initialize FCM for returning retailer user:', {
+                  retailerId: retailerData.retailerId,
+                  error: error instanceof Error ? error.message : 'Unknown error'
+                });
+              }
+
               updateProgress(85, 'Setting up retailer dashboard...');
-              
+
               // Final delay before completing
               await new Promise(resolve => setTimeout(resolve, 150));
-              
+
               updateProgress(95, 'Almost ready...');
               if (isMounted.current) { setUser(authUser); };
               setLoading(false);
               return;
             }
           }
-          
+
           // For email-authenticated users (wholesaler admins, line workers, super admins), check users collection
           updateProgress(50, 'Loading user profile...');
           const userDoc = await getDoc(doc(db, COLLECTIONS.USERS, firebaseUser.uid));
-          
+
           updateProgress(50, 'Validating user permissions...');
-          
+
           // Small delay for validation
           await new Promise(resolve => setTimeout(resolve, 200));
-          
+
           if (userDoc.exists()) {
             updateProgress(70, 'Validating user permissions...');
-            
+
             const userData = userDoc.data() as User;
-            
+
             // Check if user is active
             if (!userData.active) {
               console.error('User account is inactive:', firebaseUser.uid);
@@ -215,10 +215,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     const message = tenantData.status === 'PENDING'
                       ? 'Your account is pending approval by administrator. Please wait for approval.'
                       : tenantData.status === 'SUSPENDED'
-                      ? 'Your account has been suspended. Please contact support.'
-                      : tenantData.status === 'REJECTED'
-                      ? 'Your account application has been rejected. Please contact support.'
-                      : 'Your account is not active. Please contact support.';
+                        ? 'Your account has been suspended. Please contact support.'
+                        : tenantData.status === 'REJECTED'
+                          ? 'Your account application has been rejected. Please contact support.'
+                          : 'Your account is not active. Please contact support.';
 
                     updateProgress(90, message);
                     await new Promise(resolve => setTimeout(resolve, 2000));
@@ -259,9 +259,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               }
               // Continue to FCM initialization below
             }
-            
+
             updateProgress(85, 'Setting up dashboard...');
-            
+
             const authUser: AuthUser = {
               uid: firebaseUser.uid,
               email: firebaseUser.email!,
@@ -273,7 +273,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               assignedAreas: userData.assignedAreas,
               assignedZips: userData.assignedZips
             };
-            
+
             // 🔐 SECURITY: Clear any logout timestamp on successful login
             localStorage.removeItem('logged_out_at');
             console.log('✅ Cleared logout timestamp on successful login');
@@ -342,12 +342,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               });
             }
             console.log('✅ FCM initialization enabled for all user types');
-            
+
             updateProgress(95, 'Almost ready...');
-            
+
             // Final delay before completing
             await new Promise(resolve => setTimeout(resolve, 150));
-            
+
             updateProgress(100, 'Complete');
             if (isMounted.current) { setUser(authUser); };
           } else {
@@ -359,18 +359,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         } else {
           console.log('👋 No Firebase user - setting user to null');
           updateProgress(40, 'Preparing guest interface...');
-          
+
           // Delay for non-authenticated user setup
           await new Promise(resolve => setTimeout(resolve, 200));
-          
+
           updateProgress(70, 'Loading welcome screen...');
           await new Promise(resolve => setTimeout(resolve, 150));
-          
+
           updateProgress(90, 'Finalizing setup...');
           if (isMounted.current) { setUser(null); };
           console.log('✅ User state set to null');
         }
-        
+
         // Final completion
         await new Promise(resolve => setTimeout(resolve, 100));
         updateProgress(100, 'Complete');
@@ -381,7 +381,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (isMounted.current) { setUser(null); };
         updateProgress(100, 'Complete');
       }
-      
+
       setLoading(false);
     });
 
@@ -408,14 +408,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Create Firebase Auth user
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
     const firebaseUser = userCredential.user;
-    
+
     // Check if this is a super admin signup with valid code
     if (superAdminCode === '1376') {
       // This is a super admin signup - we need to create the Firestore document
       // Note: The calling code will handle creating the Firestore document
       return { user: firebaseUser, isSuperAdmin: true };
     }
-    
+
     // For non-super admin signups, the Firestore document should be created by the appropriate admin
     return { user: firebaseUser, isSuperAdmin: false };
   };
@@ -423,7 +423,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = async () => {
     try {
       console.log('🚪 Starting logout process...');
-      
+
       // 🔐 SECURITY: Unregister FCM token to prevent notifications to logged-out users
       try {
         const { deleteFCMToken } = await import('@/lib/fcm');
@@ -433,7 +433,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.warn('⚠️ Error unregistering FCM token:', fcmError);
         // Continue with logout even if FCM unregistration fails
       }
-      
+
       // 🔐 SECURITY: Additional cleanup - mark all devices as inactive for this user
       try {
         if (user && user.isRetailer && user.retailerId) {
@@ -449,7 +449,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               markAllInactive: true
             })
           });
-          
+
           if (response.ok) {
             const result = await response.json();
             console.log('✅ All devices marked as inactive:', result);
@@ -469,7 +469,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               markAllInactive: true
             })
           });
-          
+
           if (response.ok) {
             const result = await response.json();
             console.log('✅ All devices marked as inactive:', result);
@@ -481,9 +481,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.warn('⚠️ Error during device cleanup:', cleanupError);
         // Continue with logout even if cleanup fails
       }
-      
+
       console.log('✅ FCM token cleanup completed');
-      
+
       // 🔌 Disconnect socket connections
       try {
         if (typeof window !== 'undefined' && (window as any).socket) {
@@ -494,60 +494,66 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } catch (socketError) {
         console.warn('⚠️ Error disconnecting socket:', socketError);
       }
-      
+
       // Clear any retailer-specific data
       localStorage.removeItem('retailerId');
       console.log('🗑️ Cleared retailerId from localStorage');
-      
+
       // 🔐 SECURITY: Set logout timestamp to prevent notifications to recently logged-out users
       localStorage.setItem('logged_out_at', Date.now().toString());
       console.log('🚫 Set logout timestamp for notification blocking');
-      
+
       // Clear any role selection state
       sessionStorage.removeItem('auth_view');
       sessionStorage.removeItem('selected_role');
       console.log('🗑️ Cleared session storage');
-      
+
       // Clear any notification states
       Object.keys(sessionStorage).forEach(key => {
         if (key.startsWith('notifications_') || key.includes('auth')) {
           sessionStorage.removeItem(key);
         }
       });
-      
+
       // Clear notification service state
       try {
         if (typeof window !== 'undefined') {
           // Clear any in-app notification state
           localStorage.removeItem('shownOTPpopups');
           localStorage.removeItem('shownCompletedPaymentPopups');
-          
+
           // Stop any real-time listeners
           const { enhancedNotificationService } = await import('@/services/enhanced-notification-service');
           if (auth.currentUser) {
             enhancedNotificationService.stopRealtimeListening(auth.currentUser.uid);
           }
+
+          // 🧹 Clear Service Worker cache to prevent "Old UI" issues
+          if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+            console.log('🧹 Requesting Service Worker cache clear...');
+            navigator.serviceWorker.controller.postMessage({ type: 'CACHE_BUST' });
+          }
         }
       } catch (notificationError) {
         console.warn('⚠️ Error clearing notification state:', notificationError);
       }
-      
+
       // Sign out from Firebase - this will clear the Firebase Auth session
       // for both email/password users and retailer phone auth users
       console.log('🔥 Signing out from Firebase...');
       await signOut(auth);
       console.log('✅ Firebase sign out successful');
-      
+
       // The onAuthStateChanged listener will automatically detect the signout
       // and set the user state to null, so we don't need to manually if (isMounted.current) { setUser(null)
-      
+
       // Replace current history entry to prevent back navigation
       if (typeof window !== 'undefined') {
         console.log('🔄 Waiting for auth state to clear before redirect...');
-        
+
         // Wait a moment for the auth state to update before redirecting
         await new Promise(resolve => setTimeout(resolve, 500));
-        
+
         console.log('🔄 Redirecting to home page...');
         window.history.replaceState({}, '', '/');
         // Force a redirect to home to ensure clean state
