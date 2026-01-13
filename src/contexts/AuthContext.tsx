@@ -538,8 +538,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.warn('⚠️ Error clearing notification state:', notificationError);
       }
 
+      // 🧹 SUPER CLEANUP: Unregister Service Workers and Clear Caches
+      // This ensures "Old UI" is never served after logout and prevents cross-user pollution
+      try {
+        if ('serviceWorker' in navigator) {
+          const registrations = await navigator.serviceWorker.getRegistrations();
+          for (const registration of registrations) {
+            console.log('🧹 Unregistering Service Worker:', registration.scope);
+            await registration.unregister();
+          }
+        }
+
+        if ('caches' in window) {
+          const cacheNames = await caches.keys();
+          for (const cacheName of cacheNames) {
+            console.log('🧹 Deleting Cache:', cacheName);
+            await caches.delete(cacheName);
+          }
+        }
+      } catch (cleanupError) {
+        console.warn('⚠️ Error during aggressive cleanup:', cleanupError);
+      }
+
       // Sign out from Firebase - this will clear the Firebase Auth session
-      // for both email/password users and retailer phone auth users
       console.log('🔥 Signing out from Firebase...');
       await signOut(auth);
       console.log('✅ Firebase sign out successful');
@@ -555,15 +576,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await new Promise(resolve => setTimeout(resolve, 500));
 
         console.log('🔄 Redirecting to home page...');
-        window.history.replaceState({}, '', '/');
-        // Force a redirect to home to ensure clean state
-        window.location.href = '/';
+
+        // Force full page reload to ensure no in-memory state remains
+        window.location.replace('/'); // distinct from href to replace history
       }
     } catch (error) {
       console.error('❌ Logout error:', error);
       // Still try to redirect even if logout fails partially
       if (typeof window !== 'undefined') {
-        window.location.href = '/';
+        window.location.replace('/');
       }
     }
   };
