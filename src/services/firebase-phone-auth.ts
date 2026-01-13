@@ -1,7 +1,7 @@
 import { auth } from '@/lib/firebase';
-import { 
-  RecaptchaVerifier, 
-  signInWithPhoneNumber, 
+import {
+  RecaptchaVerifier,
+  signInWithPhoneNumber,
   ConfirmationResult,
   PhoneAuthProvider,
   signInWithCredential,
@@ -28,7 +28,7 @@ export class FirebasePhoneAuthService {
 
       // Set app verification for Firebase to handle the current domain
       auth.settings.appVerificationDisabledForTesting = false;
-      
+
       this.recaptchaVerifier = new RecaptchaVerifier(auth, containerId, {
         size: this.useVisibleRecaptcha ? 'normal' : 'invisible',
         callback: (response: string) => {
@@ -44,7 +44,7 @@ export class FirebasePhoneAuthService {
       await this.recaptchaVerifier.render();
       console.log(`reCAPTCHA initialized (${this.useVisibleRecaptcha ? 'visible' : 'invisible'})`);
     } catch (error) {
-        console.log('Error initializing reCAPTCHA:', error);
+      console.log('Error initializing reCAPTCHA:', error);
       throw error;
     }
   }
@@ -61,7 +61,7 @@ export class FirebasePhoneAuthService {
 
       // Format phone number for Firebase (should include country code)
       const formattedPhone = phoneNumber.startsWith('+') ? phoneNumber : `+91${phoneNumber}`;
-      
+
       console.log('Sending OTP via Firebase to:', formattedPhone);
 
       // Send OTP using Firebase Authentication
@@ -69,18 +69,18 @@ export class FirebasePhoneAuthService {
         throw new Error('reCAPTCHA verifier not initialized');
       }
       this.confirmationResult = await signInWithPhoneNumber(auth, formattedPhone, this.recaptchaVerifier);
-      
+
       console.log('OTP sent successfully via Firebase');
-      
+
       return {
         success: true,
         message: 'OTP sent successfully to your mobile number'
       };
     } catch (error: any) {
       console.log('Error sending OTP via Firebase:', error);
-      
+
       let errorMessage = 'Failed to send OTP';
-      
+
       // Handle specific Firebase auth errors
       if (error.code === 'auth/invalid-phone-number') {
         errorMessage = 'Invalid phone number format';
@@ -108,7 +108,7 @@ export class FirebasePhoneAuthService {
       } else if (error.message) {
         errorMessage = error.message;
       }
-      
+
       return {
         success: false,
         message: errorMessage
@@ -130,23 +130,23 @@ export class FirebasePhoneAuthService {
       // Verify OTP using Firebase Authentication
       const result = await this.confirmationResult.confirm(otp);
       const user = result.user;
-      
+
       console.log('OTP verified successfully');
       console.log('User:', user.uid, user.phoneNumber);
-      
+
       // Clear confirmation result after successful verification
       this.confirmationResult = null;
-      
+
       return {
         success: true,
         user,
         message: 'OTP verified successfully'
       };
     } catch (error: any) {
-        console.log('Error verifying OTP:', error);
-      
+      console.log('Error verifying OTP:', error);
+
       let errorMessage = 'Invalid OTP';
-      
+
       // Handle specific Firebase auth errors
       if (error.code === 'auth/invalid-verification-code') {
         errorMessage = 'Invalid verification code';
@@ -157,7 +157,7 @@ export class FirebasePhoneAuthService {
       } else if (error.message) {
         errorMessage = error.message;
       }
-      
+
       return {
         success: false,
         message: errorMessage
@@ -172,7 +172,7 @@ export class FirebasePhoneAuthService {
     try {
       // Clear previous confirmation result
       this.confirmationResult = null;
-      
+
       // Send new OTP
       return await this.sendOTP(phoneNumber);
     } catch (error: any) {

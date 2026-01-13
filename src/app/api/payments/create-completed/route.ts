@@ -205,6 +205,7 @@ export async function POST(request: NextRequest) {
         initiatedAt: Timestamp.fromDate(completionTime),
         completedAt: Timestamp.fromDate(completionTime)
       },
+      tenantId, // Explicitly save tenantId (singular) for easier querying/display
       ...(utr && { utr }),
       ...(notes && notes.trim().length > 0 && { notes })
     };

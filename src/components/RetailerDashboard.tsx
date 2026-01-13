@@ -1796,155 +1796,42 @@ export function RetailerDashboard() {
               {/* Overview Stats */}
               {activeNav === 'overview' && (
                 <div className="mt-6 space-y-6">
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                    {/* <Card>
-                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                          <CardTitle className="text-sm font-medium text-gray-600">Total Paid</CardTitle>
-                          <div className="bg-green-100 p-2 rounded-full">
-                            <DollarSign className="h-4 w-4 text-green-600" />
-                          </div>
-                        </CardHeader>
-                        <CardContent>
-                          <div className="text-2xl font-bold text-gray-900">{formatCurrency(totalPaid)}</div>
-                          <p className="text-xs text-gray-500">All time payments</p>
-                        </CardContent>
-                      </Card> */}
-
-                    <Card>
+                  <div className="grid grid-cols-2 gap-4">
+                    <Card className="border-0 bg-gradient-to-br from-emerald-500 to-emerald-600 text-white shadow-lg rounded-xl">
                       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium text-gray-600">Today's Payments</CardTitle>
-                        <div className="bg-blue-100 p-2 rounded-full">
-                          <TrendingUp className="h-4 w-4 text-blue-600" />
+                        <CardTitle className="text-sm font-medium text-emerald-100">Today's Payments</CardTitle>
+                        <div className="bg-white/20 p-2 rounded-lg">
+                          <TrendingUp className="h-4 w-4 text-white" />
                         </div>
                       </CardHeader>
-                      <CardContent>
-                        <div className="text-2xl font-bold tnpm run devext-gray-900">{formatCurrency(todayPaid)}</div>
-                        <p className="text-xs text-gray-500">{todayPayments.length} transactions</p>
+                      <CardContent className="pt-0">
+                        <div className="text-2xl sm:text-3xl font-bold">{formatCurrency(todayPaid)}</div>
+                        <p className="text-xs text-emerald-100 mt-1">{todayPayments.length} transactions</p>
                       </CardContent>
                     </Card>
 
-                    <Card>
+                    <Card className="border-0 bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-lg rounded-xl">
                       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium text-gray-600">Active OTPs</CardTitle>
-                        <div className="bg-orange-100 p-2 rounded-full">
-                          <Bell className="h-4 w-4 text-orange-600" />
+                        <CardTitle className="text-sm font-medium text-blue-100">Total Paid</CardTitle>
+                        <div className="bg-white/20 p-2 rounded-lg">
+                          <DollarSign className="h-4 w-4 text-white" />
                         </div>
                       </CardHeader>
-                      <CardContent>
-                        <div className="text-2xl font-bold text-gray-900">
-                          {activeOTPs.filter(otp => {
-                            const timeLeft = otpCountdowns.get(otp.paymentId) || 0;
-                            const isExpired = timeLeft <= 0;
-                            const isCompleted = completedPayments.some(cp => cp.paymentId === otp.paymentId);
-                            return !isExpired && !isCompleted;
-                          }).length}
-                        </div>
-                        <p className="text-xs text-gray-500">Pending verification</p>
+                      <CardContent className="pt-0">
+                        <div className="text-2xl sm:text-3xl font-bold">{formatCurrency(totalPaid)}</div>
+                        <p className="text-xs text-blue-100 mt-1">All time</p>
                       </CardContent>
                     </Card>
 
-                    <WholesalerSlider
-                      wholesalerNames={wholesalerNames}
-                      availableTenants={availableTenants}
-                      currentTenantId={tenantId}
-                    />
+                    {/* Wholesaler Slider - Spanning full width on mobile if needed, or keeping in flow */}
+                    <div className="col-span-2">
+                      <WholesalerSlider
+                        wholesalerNames={wholesalerNames}
+                        availableTenants={availableTenants}
+                        currentTenantId={tenantId}
+                      />
+                    </div>
                   </div>
-
-                  {/* Active OTP Cards - Clickable to reopen popup */}
-                  {activeOTPs.length > 0 && activeOTPs.some(otp => {
-                    const timeLeft = otpCountdowns.get(otp.paymentId) || 0;
-                    const isExpired = timeLeft <= 0;
-                    const isCompleted = completedPayments.some(cp => cp.paymentId === otp.paymentId);
-                    return !isExpired && !isCompleted;
-                  }) && (
-                      <Card>
-                        <CardHeader>
-                          <CardTitle className="flex items-center gap-2">
-                            <Bell className="h-5 w-5 text-orange-600" />
-                            Active OTP Requests
-                            <Badge variant="secondary" className="ml-2">{activeOTPs.length}</Badge>
-                          </CardTitle>
-                          <CardDescription>
-                            Click on any OTP card to view the verification details
-                          </CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                            {activeOTPs.filter(otp => {
-                              const isCompleted = completedPayments.some(cp => cp.paymentId === otp.paymentId);
-                              return !isCompleted;  // Show all OTPs that aren't completed (including expired ones)
-                            }).map((otp) => {
-                              const timeLeft = otpCountdowns.get(otp.paymentId) || 0;
-                              const isExpired = timeLeft <= 0;
-
-                              return (
-                                <div
-                                  key={otp.paymentId}
-                                  className={`p-4 border rounded-lg cursor-pointer transition-all hover:shadow-md ${isExpired
-                                    ? 'border-gray-300 bg-gray-50'
-                                    : 'border-orange-200 bg-orange-50 hover:border-orange-300'
-                                    }`}
-                                  onClick={() => {
-                                    // Reopen the OTP popup for this specific OTP
-                                    setNewPayment({
-                                      ...otp,
-                                      id: otp.paymentId,
-                                      retailerId: retailer?.id || '',
-                                      retailerName: retailer?.name || '',
-                                      lineWorkerId: '',
-                                      totalPaid: otp.amount,
-                                      method: 'CASH' as any,
-                                      state: 'OTP_SENT' as any,
-                                      evidence: [],
-                                      tenantId: tenantId || '',
-                                      timeline: {
-                                        initiatedAt: { toDate: () => otp.createdAt } as any,
-                                        otpSentAt: { toDate: () => otp.createdAt } as any,
-                                      },
-                                      createdAt: { toDate: () => otp.createdAt } as any,
-                                      updatedAt: { toDate: () => otp.createdAt } as any,
-                                    });
-                                    setShowOTPPopup(true);
-                                  }}
-                                >
-                                  <div className="space-y-3">
-                                    <div className="flex justify-between items-start">
-                                      <div>
-                                        <div className="font-medium text-gray-900">Amount</div>
-                                        <div className="text-lg font-bold text-green-600">{formatCurrency(otp.amount)}</div>
-                                      </div>
-                                      <div className={`px-2 py-1 rounded text-xs font-medium ${isExpired
-                                        ? 'bg-gray-200 text-gray-700'
-                                        : 'bg-orange-200 text-orange-800'
-                                        }`}>
-                                        {isExpired ? 'EXPIRED' : 'ACTIVE'}
-                                      </div>
-                                    </div>
-
-                                    <div>
-                                      <div className="text-sm text-gray-600">Line Worker</div>
-                                      <div className="font-medium">{otp.lineWorkerName}</div>
-                                    </div>
-
-                                    <div>
-                                      <div className="text-sm text-gray-600">Time Remaining</div>
-                                      <div className={`font-mono text-sm ${timeLeft < 60 ? 'text-red-600' : 'text-orange-600'
-                                        }`}>
-                                        {isExpired ? 'Expired' : formatCountdown(timeLeft)}
-                                      </div>
-                                    </div>
-
-                                    <div className="text-xs text-gray-500">
-                                      Click to view OTP details
-                                    </div>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </CardContent>
-                      </Card>
-                    )}
 
                   {/* Retailer Information */}
                   <Card>
@@ -2084,7 +1971,7 @@ export function RetailerDashboard() {
                                 <TableCell>{formatCurrency(payment.totalPaid)}</TableCell>
                                 <TableCell>{payment.method}</TableCell>
                                 <TableCell>
-                                  <WholesalerNameCell tenantId={payment.tenantId || ''} />
+                                  <WholesalerNameCell tenantId={payment.tenantId || payment.tenantIds?.[0] || ''} />
                                 </TableCell>
                                 <TableCell>{lineWorkerNames[payment.lineWorkerId] || 'Loading...'}</TableCell>
                                 <TableCell>
@@ -2148,9 +2035,7 @@ export function RetailerDashboard() {
                               <TableCell>{formatCurrency(payment.totalPaid)}</TableCell>
                               <TableCell>{payment.method}</TableCell>
                               <TableCell>
-                                <Badge variant="outline" className="text-xs">
-                                  {wholesalerNames[payment.tenantId || ''] || 'Unknown Wholesaler'}
-                                </Badge>
+                                <WholesalerNameCell tenantId={payment.tenantId || payment.tenantIds?.[0] || ''} />
                               </TableCell>
                               <TableCell>
                                 <PaymentStatusCell state={payment.state} />
