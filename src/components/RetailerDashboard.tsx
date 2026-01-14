@@ -1721,9 +1721,8 @@ export function RetailerDashboard() {
         activeNav={activeNav}
         setActiveNav={setActiveNav}
         title={activeNav === 'overview' ? 'Retailer Dashboard' :
-          activeNav === 'payments' ? 'Payments' :
-            activeNav === 'history' ? 'Payment History' :
-              activeNav === 'settings' ? 'Settings' : 'Retailer Dashboard'}
+          activeNav === 'payments' ? 'Payment History' :
+            activeNav === 'settings' ? 'Settings' : 'Retailer Dashboard'}
         subtitle="Retailer"
         user={user ? { displayName: user.displayName, email: user.email } : undefined}
         onLogout={() => setShowLogoutConfirmation(true)}
@@ -1773,7 +1772,7 @@ export function RetailerDashboard() {
       )}
 
       {/* Main Content Area */}
-      <div className={`${availableTenants.length > 1 ? 'pt-20 sm:pt-24' : 'pt-20 sm:pt-16'} pb-20 lg:pb-0`}> {/* Further reduced mobile spacing to match desktop */}
+      <div className={`${availableTenants.length > 1 ? 'pt-20 sm:pt-20 lg:pt-0' : 'pt-20 sm:pt-20 lg:pt-0'} pb-20 lg:pb-0`}> {/* Further reduced mobile spacing to match desktop */}
         <div className="p-4 sm:p-6">
           {/* Error Display */}
           {error && (
@@ -1960,6 +1959,7 @@ export function RetailerDashboard() {
                               <TableHead>Amount</TableHead>
                               <TableHead>Method</TableHead>
                               <TableHead>Wholesaler</TableHead>
+                              <TableHead>Status</TableHead>
                               <TableHead>Line Worker</TableHead>
                               <TableHead>Actions</TableHead>
                             </TableRow>
@@ -1972,6 +1972,9 @@ export function RetailerDashboard() {
                                 <TableCell>{payment.method}</TableCell>
                                 <TableCell>
                                   <WholesalerNameCell tenantId={payment.tenantId || payment.tenantIds?.[0] || ''} />
+                                </TableCell>
+                                <TableCell>
+                                  <PaymentStatusCell state={payment.state} />
                                 </TableCell>
                                 <TableCell>{lineWorkerNames[payment.lineWorkerId] || 'Loading...'}</TableCell>
                                 <TableCell>
@@ -2005,71 +2008,7 @@ export function RetailerDashboard() {
               )}
 
               {/* History View */}
-              {activeNav === 'history' && (
-                <div className="space-y-6">
-                  <h2 className="text-xl font-semibold">Complete Payment History</h2>
-                  <DateRangeFilter
-                    value={selectedDateRangeOption}
-                    onValueChange={handleDateRangeChange}
-                  />
 
-                  <div className="overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Date</TableHead>
-                          <TableHead>Amount</TableHead>
-                          <TableHead>Method</TableHead>
-                          <TableHead>Wholesaler</TableHead>
-                          <TableHead>Status</TableHead>
-                          <TableHead>Line Worker</TableHead>
-                          <TableHead>Actions</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {payments
-                          .sort((a, b) => b.createdAt.toDate().getTime() - a.createdAt.toDate().getTime())
-                          .map((payment) => (
-                            <TableRow key={payment.id}>
-                              <TableCell>{formatTimestampWithTime(payment.createdAt)}</TableCell>
-                              <TableCell>{formatCurrency(payment.totalPaid)}</TableCell>
-                              <TableCell>{payment.method}</TableCell>
-                              <TableCell>
-                                <WholesalerNameCell tenantId={payment.tenantId || payment.tenantIds?.[0] || ''} />
-                              </TableCell>
-                              <TableCell>
-                                <PaymentStatusCell state={payment.state} />
-                              </TableCell>
-                              <TableCell>{lineWorkerNames[payment.lineWorkerId] || 'Loading...'}</TableCell>
-                              <TableCell>
-                                <div className="flex space-x-2">
-                                  {payment.state === 'COMPLETED' && (
-                                    <Button
-                                      variant="outline"
-                                      size="sm"
-                                      onClick={() => openReceiptDialog(payment)}
-                                      className="h-7 px-2 text-xs"
-                                    >
-                                      <Download className="h-3 w-3 mr-1" />
-                                      View Receipt
-                                    </Button>
-                                  )}
-                                </div>
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        {payments.length === 0 && (
-                          <TableRow>
-                            <TableCell colSpan={6} className="text-center py-8 text-gray-500">
-                              No payment history found
-                            </TableCell>
-                          </TableRow>
-                        )}
-                      </TableBody>
-                    </Table>
-                  </div>
-                </div>
-              )}
 
               {/* Settings View */}
               {activeNav === 'settings' && (

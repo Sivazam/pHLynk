@@ -1365,7 +1365,7 @@ Thank you for your payment!
       />
 
       {/* Main Content Area */}
-      <div className="pt-20 sm:pt-16 pb-20 lg:pb-0"> {/* Add padding for fixed header and bottom nav */}
+      <div className="pt-20 lg:pt-0 pb-20 lg:pb-0"> {/* Add padding for fixed header and bottom nav */}
         <div className="p-4 sm:p-6">
           {/* Header removed - using DashboardNavigation instead */}          {/* Error Display */}
           {error && (

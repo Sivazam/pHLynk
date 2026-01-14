@@ -3297,7 +3297,7 @@ export function WholesalerAdminDashboard() {
         )}
 
         {/* Main Content */}
-        <main className="flex-1 pt-24 sm:pt-16 p-3 sm:p-4 lg:p-6 overflow-y-auto pb-20 lg:pb-6">
+        <main className="flex-1 pt-20 lg:pt-0 p-3 sm:p-4 lg:p-6 overflow-y-auto pb-20 lg:pb-6">
           {error && (
             <Alert className="border-red-200 bg-red-50 mb-4 sm:mb-6">
               <AlertCircle className="h-4 w-4 text-red-600" />
