@@ -395,7 +395,6 @@ export function RetailerDashboard() {
   const navItems: NavItem[] = [
     { id: 'overview', label: 'Overview', icon: LayoutDashboard },
     { id: 'payments', label: 'Payments', icon: CreditCard },
-    { id: 'history', label: 'History', icon: History },
     { id: 'settings', label: 'Settings', icon: Settings },
   ];
 
@@ -1832,59 +1831,7 @@ export function RetailerDashboard() {
                     </div>
                   </div>
 
-                  {/* Retailer Information */}
-                  <Card>
-                    <CardHeader>
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <CardTitle>Store Information</CardTitle>
-                          <CardDescription>Your retailer profile details</CardDescription>
-                        </div>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            const retailerId = localStorage.getItem('retailerId');
-                            if (retailerId) {
-                              window.location.href = `/retailer/profile?mode=edit&retailerId=${retailerId}`;
-                            }
-                          }}
-                          className="flex items-center space-x-1"
-                        >
-                          <Settings className="h-4 w-4" />
-                          <span>Edit Profile</span>
-                        </Button>
-                      </div>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <Label className="text-sm font-medium text-gray-700">Store Name</Label>
-                          <p className="text-gray-900">
-                            {retailer?.profile?.realName || retailer?.name || retailerUser?.name || 'Not provided'}
-                          </p>
-                        </div>
-                        <div>
-                          <Label className="text-sm font-medium text-gray-700">Phone</Label>
-                          <p className="text-gray-900">
-                            +91 {retailer?.profile?.phone || retailer?.phone || retailerUser?.phone || user?.phone || 'Not provided'}
-                          </p>
-                        </div>
-                        <div>
-                          <Label className="text-sm font-medium text-gray-700">Email</Label>
-                          <p className="text-gray-900">
-                            {retailer?.profile?.email || retailer?.email || retailerUser?.email || user?.email || 'Not provided'}
-                          </p>
-                        </div>
-                        <div>
-                          <Label className="text-sm font-medium text-gray-700">Address</Label>
-                          <p className="text-gray-900">
-                            {retailer?.profile?.address || retailer?.address || retailerUser?.address || 'Not provided'}
-                          </p>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
+
 
                   {/* Recent Activity */}
                   <Card>
@@ -2006,9 +1953,6 @@ export function RetailerDashboard() {
                   </Tabs>
                 </div>
               )}
-
-              {/* History View */}
-
 
               {/* Settings View */}
               {activeNav === 'settings' && (

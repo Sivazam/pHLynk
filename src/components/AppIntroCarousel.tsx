@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { X, CheckCircle, ArrowRight, ChevronLeft, ChevronRight } from 'lucide-react';
 import { markIntroCarouselAsSeen } from '@/lib/intro-carousel';
 import { StatusBarColor } from '@/components/ui/StatusBarColor';
+import { LOGO_BASE64 } from '@/constants/assets';
 
 interface AppIntroCarouselProps {
   onComplete: () => void;
@@ -40,7 +41,7 @@ export function AppIntroCarousel({ onComplete, onSkip }: AppIntroCarouselProps) 
     },
     {
       title: "Powerful Features",
-      subtitle: "Everything You Need to Succeed", 
+      subtitle: "Everything You Need to Succeed",
       description: "Comprehensive tools to manage your medical distribution business efficiently. From line worker management to detailed analytics, PharmaLync empowers your growth.",
       backgroundImage: "https://plus.unsplash.com/premium_photo-1732319199800-62583bd04f13?q=80&w=870&auto=format&fit=crop",
       buttonText: "Explore",
@@ -133,9 +134,8 @@ export function AppIntroCarousel({ onComplete, onSkip }: AppIntroCarouselProps) 
           {slides.map((slide, index) => (
             <div
               key={index}
-              className={`absolute inset-0 transition-all duration-1000 ${
-                index === currentSlide ? 'opacity-100 scale-100' : 'opacity-0 scale-105'
-              }`}
+              className={`absolute inset-0 transition-all duration-1000 ${index === currentSlide ? 'opacity-100 scale-100' : 'opacity-0 scale-105'
+                }`}
             >
               <div
                 className="absolute inset-0 bg-cover bg-center"
@@ -150,7 +150,7 @@ export function AppIntroCarousel({ onComplete, onSkip }: AppIntroCarouselProps) 
         {/* Logo */}
         <div className="absolute top-8 left-1/2 -translate-x-1/2 z-30">
           <div className="flex items-center space-x-3 bg-white/10 backdrop-blur-xl border border-white/20 rounded-full px-6 py-3">
-            <img src="/logoMain.png" alt="PharmaLync Logo" className="w-8 h-8 rounded object-cover" />
+            <img src={LOGO_BASE64} alt="PharmaLync Logo" className="w-8 h-8 rounded object-cover" />
             <span className="text-white font-semibold text-lg tracking-wide">PharmaLync</span>
           </div>
         </div>
@@ -172,11 +172,10 @@ export function AppIntroCarousel({ onComplete, onSkip }: AppIntroCarouselProps) 
           {slides.map((slide, index) => (
             <div
               key={index}
-              className={`absolute inset-x-0 bottom-0 px-6 md:px-12 lg:px-16 transition-all duration-1000 ${
-                index === currentSlide
-                  ? 'opacity-100 translate-y-0'
-                  : 'opacity-0 translate-y-12 pointer-events-none'
-              }`}
+              className={`absolute inset-x-0 bottom-0 px-6 md:px-12 lg:px-16 transition-all duration-1000 ${index === currentSlide
+                ? 'opacity-100 translate-y-0'
+                : 'opacity-0 translate-y-12 pointer-events-none'
+                }`}
             >
               <div className="bg-white/10 backdrop-blur-2xl border-t border-white/20 rounded-t-2xl p-6 md:p-10 space-y-6">
                 {/* Subtitle */}
@@ -253,16 +252,14 @@ export function AppIntroCarousel({ onComplete, onSkip }: AppIntroCarouselProps) 
                 <button
                   key={index}
                   onClick={() => goToSlide(index)}
-                  className={`relative transition-all duration-500 ${
-                    index === currentSlide ? 'w-12' : 'w-2'
-                  }`}
+                  className={`relative transition-all duration-500 ${index === currentSlide ? 'w-12' : 'w-2'
+                    }`}
                   disabled={isAnimating}
                 >
-                  <div className={`h-2 rounded-full ${
-                    index === currentSlide
-                      ? `bg-gradient-to-r ${slides[currentSlide].accentColor}`
-                      : 'bg-white/40 hover:bg-white/60'
-                  }`}></div>
+                  <div className={`h-2 rounded-full ${index === currentSlide
+                    ? `bg-gradient-to-r ${slides[currentSlide].accentColor}`
+                    : 'bg-white/40 hover:bg-white/60'
+                    }`}></div>
                 </button>
               ))}
             </div>

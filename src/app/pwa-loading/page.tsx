@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
+import { LOGO_BASE64 } from '@/constants/assets';
 
 export default function PWALoadingPage() {
   const [progress, setProgress] = useState(0);
@@ -52,10 +53,10 @@ export default function PWALoadingPage() {
       <div className="flex flex-col items-center justify-center space-y-8">
         {/* Bouncing Logo */}
         <div className="animate-bounce">
-          <Image 
-            src="/logoMain.png" 
-            alt="PharmaLync" 
-            width={120} 
+          <Image
+            src={LOGO_BASE64}
+            alt="PharmaLync"
+            width={120}
             height={120}
             className="drop-shadow-lg"
             priority
@@ -65,7 +66,7 @@ export default function PWALoadingPage() {
         {/* Progress Bar */}
         <div className="w-64 space-y-2">
           <div className="w-full bg-white/20 rounded-full h-2 overflow-hidden">
-            <div 
+            <div
               className="bg-white h-2 rounded-full transition-all duration-300 ease-out"
               style={{ width: `${Math.min(progress, 100)}%` }}
             ></div>
@@ -84,7 +85,7 @@ export default function PWALoadingPage() {
             <div className="w-3 h-3 bg-white rounded-full animate-pulse" style={{ animationDelay: '150ms' }}></div>
             <div className="w-3 h-3 bg-white rounded-full animate-pulse" style={{ animationDelay: '300ms' }}></div>
           </div>
-          
+
           <p className="text-white/80 text-sm font-medium animate-pulse">
             {stage}
           </p>

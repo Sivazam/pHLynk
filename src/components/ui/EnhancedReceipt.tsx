@@ -140,133 +140,28 @@ export function EnhancedReceipt({
 
   const generateCanvas = async (element: HTMLElement) => {
     try {
-      console.log('Starting canvas generation with simplified approach...');
+      console.log('Starting canvas generation from DOM element...');
 
-      // Create a clean, simple receipt container for PDF generation
-      const pdfContainer = document.createElement('div');
-      pdfContainer.style.cssText = `
-        position: absolute;
-        left: -9999px;
-        top: 0;
-        width: 800px;
-        background: white;
-        padding: 40px;
-        font-family: Arial, sans-serif;
-        color: #000000;
-        line-height: 1.4;
-      `;
+      if (!element) {
+        throw new Error('Receipt element not found');
+      }
 
-      // Build a clean HTML structure for PDF
-      const paymentDate = formatTimestampWithTime(payment.createdAt);
-      const receiptHtml = `
-        <div style="text-align: center; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 2px solid #000;">
-          <h1 style="margin: 0; font-size: 28px; font-weight: bold; color: #000;">PharmaLync</h1>
-          <p style="margin: 5px 0; font-size: 14px; color: #666;">Verify. Collect. Track.</p>
-          <p style="margin: 10px 0 0 0; font-size: 12px; color: #888;">Payment Receipt</p>
-        </div>
-        
-        <div style="margin-bottom: 25px; padding: 15px; background: #f8f9fa; border-radius: 5px;">
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; font-size: 13px;">
-            <div>
-              <strong style="color: #333;">Receipt ID:</strong><br>
-              <span style="font-family: monospace; font-size: 11px; color: #000;">${payment.id}</span>
-            </div>
-            <div>
-              <strong style="color: #333;">Date & Time:</strong><br>
-              <span style="color: #000;">${paymentDate}</span>
-            </div>
-          </div>
-        </div>
-        
-        <div style="margin-bottom: 25px;">
-          <h2 style="margin: 0 0 15px 0; font-size: 18px; font-weight: bold; color: #000; padding-bottom: 8px; border-bottom: 1px solid #ddd;">
-            Payment Details
-          </h2>
-          <div style="font-size: 14px;">
-            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #eee;">
-              <span style="color: #666;">Amount Paid:</span>
-              <span style="font-weight: bold; font-size: 16px; color: #22c55e;">${formatCurrency(payment.totalPaid)}</span>
-            </div>
-            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #eee;">
-              <span style="color: #666;">Payment Method:</span>
-              <span style="color: #000;">${payment.method}</span>
-            </div>
-            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #eee;">
-              <span style="color: #666;">Line Worker:</span>
-              <span style="color: #000;">${lineWorkerName}</span>
-            </div>
-            <div style="display: flex; justify-content: space-between; padding: 8px 0;">
-              <span style="color: #666;">Wholesaler:</span>
-              <span style="color: #000;">${wholesalerName}</span>
-            </div>
-            ${tenantInfo?.address ? `
-              <div style="padding: 8px 0;">
-                <span style="color: #666;">Wholesaler Address:</span><br>
-                <span style="color: #000;">${tenantInfo.address}</span>
-              </div>
-            ` : ''}
-          </div>
-        </div>
-        
-        <div style="margin-bottom: 25px;">
-          <h2 style="margin: 0 0 15px 0; font-size: 18px; font-weight: bold; color: #000; padding-bottom: 8px; border-bottom: 1px solid #ddd;">
-            Retailer Information
-          </h2>
-          <div style="font-size: 14px;">
-            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #eee;">
-              <span style="color: #666;">Name:</span>
-              <span style="color: #000;">${getRetailerName(retailer)}</span>
-            </div>
-            ${getRetailerPhone(retailer) ? `
-              <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #eee;">
-                <span style="color: #666;">Phone:</span>
-                <span style="color: #000;">${getRetailerPhone(retailer)}</span>
-              </div>
-            ` : ''}
-            ${getRetailerAddress(retailer) ? `
-              <div style="padding: 8px 0;">
-                <span style="color: #666;">Address:</span><br>
-                <span style="color: #000;">${getRetailerAddress(retailer)}</span>
-              </div>
-            ` : ''}
-          </div>
-        </div>
-        
-        <div style="margin-top: 40px; padding-top: 20px; border-top: 2px solid #000; text-align: center;">
-          <p style="margin: 0 0 8px 0; font-size: 14px; color: #666;">Thank you for your payment!</p>
-          <p style="margin: 0; font-size: 11px; color: #888;">This is a computer-generated receipt and does not require a signature.</p>
-          <div style="margin-top: 15px; font-size: 10px; color: #aaa;">
-            Powered by PharmaLync - Your Trusted Pharmacy Management System
-          </div>
-        </div>
-      `;
-
-      pdfContainer.innerHTML = receiptHtml;
-      document.body.appendChild(pdfContainer);
-
-      // Wait for the content to render
-      await new Promise(resolve => setTimeout(resolve, 300));
-
-      // Generate canvas from our clean container
-      const canvas = await html2canvas(pdfContainer, {
-        scale: 2,
-        useCORS: true,
+      // Generate canvas from the existing visible element
+      const canvas = await html2canvas(element, {
+        scale: 2, // Higher quality
+        useCORS: true, // Handle images
         allowTaint: true,
-        backgroundColor: '#ffffff',
-        logging: false,
-        removeContainer: false,
-        width: 800,
-        height: pdfContainer.scrollHeight
+        backgroundColor: '#ffffff', // Ensure white background
+        logging: true,
+        width: element.offsetWidth,
+        height: element.offsetHeight
       });
 
-      // Clean up
-      document.body.removeChild(pdfContainer);
-
-      console.log('Canvas generated successfully with simplified approach');
+      console.log('Canvas generated successfully');
       return canvas;
 
     } catch (error) {
-      console.error('Error in simplified canvas generation:', error);
+      console.error('Error in canvas generation:', error);
       throw new Error('Failed to generate receipt image. Please try again.');
     }
   };

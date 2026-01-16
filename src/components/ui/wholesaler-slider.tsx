@@ -10,10 +10,10 @@ interface WholesalerSliderProps {
   currentTenantId: string | null;
 }
 
-export function WholesalerSlider({ 
-  wholesalerNames, 
-  availableTenants, 
-  currentTenantId 
+export function WholesalerSlider({
+  wholesalerNames,
+  availableTenants,
+  currentTenantId
 }: WholesalerSliderProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
 
@@ -43,8 +43,8 @@ export function WholesalerSlider({
               {currentTenantId === 'all' ? 'All Wholesalers' : (wholesalerNames[currentTenantId || ''] || 'Loading...')}
             </div>
             <p className="text-xs text-gray-500">
-              {currentTenantId === 'all' 
-                ? `Consolidated view (${availableTenants.length} wholesalers)` 
+              {currentTenantId === 'all'
+                ? `Consolidated view (${availableTenants.length} wholesalers)`
                 : `Your wholesaler ${availableTenants.length > 0 ? `(${availableTenants.length} total)` : ''}`
               }
             </p>
@@ -71,8 +71,10 @@ export function WholesalerSlider({
           <div className="flex transition-transform duration-500 ease-in-out">
             <div className="w-full flex-shrink-0">
               <div className="text-center">
-                <div className="text-2xl font-bold text-gray-900 mb-1">
-                  {currentWholesalerName}
+                <div className="text-2xl font-bold text-gray-900 mb-1 h-16 flex items-center justify-center px-1">
+                  <span className="line-clamp-2 overflow-hidden text-ellipsis leading-tight">
+                    {currentWholesalerName}
+                  </span>
                 </div>
                 <div className="flex items-center justify-center space-x-2 text-xs text-gray-500">
                   <span>{currentIndex + 1} of {availableTenants.length}</span>
@@ -88,11 +90,10 @@ export function WholesalerSlider({
             {availableTenants.map((_, index) => (
               <button
                 key={index}
-                className={`w-2 h-2 rounded-full transition-colors ${
-                  index === currentIndex 
-                    ? 'bg-purple-600' 
+                className={`w-2 h-2 rounded-full transition-colors ${index === currentIndex
+                    ? 'bg-purple-600'
                     : 'bg-gray-300 hover:bg-gray-400'
-                }`}
+                  }`}
                 onClick={() => setCurrentIndex(index)}
                 aria-label={`Go to wholesaler ${index + 1}`}
               />
