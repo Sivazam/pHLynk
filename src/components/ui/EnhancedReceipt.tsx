@@ -4,10 +4,12 @@ import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Download, Share, X, FileText } from 'lucide-react';
-import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
 import { formatTimestampWithTime, formatCurrency } from '@/lib/timestamp-utils';
 import { doc, getDoc, getFirestore } from 'firebase/firestore';
+import { pdf } from '@react-pdf/renderer';
+import { PaymentReceiptPDF } from '@/components/receipts/PaymentReceiptPDF';
+import { saveAs } from 'file-saver';
+import { LOGO_BASE64 } from '@/constants/assets';
 
 interface Payment {
   id: string;
@@ -136,79 +138,36 @@ export function EnhancedReceipt({
       : (wholesalerNames[tenantId || ''] || 'Unknown Wholesaler')
     );
 
+  const wholesalerAddress = tenantInfo?.address;
+
   const lineWorkerName = payment.lineWorkerName || lineWorkerNames[payment.lineWorkerId] || 'Unknown Line Worker';
 
-  const generateCanvas = async (element: HTMLElement) => {
-    try {
-      console.log('Starting canvas generation from DOM element...');
-
-      if (!element) {
-        throw new Error('Receipt element not found');
-      }
-
-      // Generate canvas from the existing visible element
-      const canvas = await html2canvas(element, {
-        scale: 2, // Higher quality
-        useCORS: true, // Handle images
-        allowTaint: true,
-        backgroundColor: '#ffffff', // Ensure white background
-        logging: true,
-        width: element.offsetWidth,
-        height: element.offsetHeight
-      });
-
-      console.log('Canvas generated successfully');
-      return canvas;
-
-    } catch (error) {
-      console.error('Error in canvas generation:', error);
-      throw new Error('Failed to generate receipt image. Please try again.');
-    }
+  // Helper to generate basic blob
+  const generatePdfBlob = async () => {
+    return await pdf(
+      <PaymentReceiptPDF
+        payment={payment}
+        retailer={retailer}
+        wholesalerName={wholesalerName}
+        wholesalerAddress={wholesalerAddress}
+        lineWorkerName={lineWorkerName}
+      />
+    ).toBlob();
   };
 
   const downloadPDF = async () => {
     setIsGenerating(true);
     try {
-      console.log('Starting PDF generation...');
+      console.log('Starting PDF generation with @react-pdf/renderer...');
 
-      // Wait a bit for any pending renders
-      await new Promise(resolve => setTimeout(resolve, 100));
-
-      const canvas = await generateCanvas(document.getElementById('receipt-content')!);
-
-      console.log('Canvas generated successfully');
-
-      const imgData = canvas.toDataURL('image/png', 1.0);
-      const pdf = new jsPDF({
-        orientation: 'portrait',
-        unit: 'mm',
-        format: 'a4'
-      });
-
-      const imgWidth = 210; // A4 width in mm
-      const pageHeight = 297; // A4 height in mm
-      const imgHeight = (canvas.height * imgWidth) / canvas.width;
-      let heightLeft = imgHeight;
-      let position = 0;
-
-      // Add first page
-      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-      heightLeft -= pageHeight;
-
-      // Add additional pages if needed
-      while (heightLeft >= 0) {
-        position = heightLeft - imgHeight;
-        pdf.addPage();
-        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-        heightLeft -= pageHeight;
-      }
-
-      console.log('PDF generated successfully, saving...');
+      const blob = await generatePdfBlob();
 
       // Generate unique filename
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
       const filename = `receipt-${payment.id}-${timestamp}.pdf`;
-      pdf.save(filename);
+
+      saveAs(blob, filename);
+      console.log('PDF downloaded successfully');
 
     } catch (error) {
       console.error('Error generating PDF:', error);
@@ -223,43 +182,13 @@ export function EnhancedReceipt({
     try {
       console.log('Starting share PDF generation...');
 
-      // Wait a bit for any pending renders
-      await new Promise(resolve => setTimeout(resolve, 100));
-
-      const canvas = await generateCanvas(document.getElementById('receipt-content')!);
-
-      console.log('Share canvas generated successfully');
-
-      const imgData = canvas.toDataURL('image/png', 1.0);
-      const pdf = new jsPDF({
-        orientation: 'portrait',
-        unit: 'mm',
-        format: 'a4'
-      });
-
-      const imgWidth = 210; // A4 width in mm
-      const pageHeight = 297; // A4 height in mm
-      const imgHeight = (canvas.height * imgWidth) / canvas.width;
-      let heightLeft = imgHeight;
-      let position = 0;
-
-      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-      heightLeft -= pageHeight;
-
-      while (heightLeft >= 0) {
-        position = heightLeft - imgHeight;
-        pdf.addPage();
-        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-        heightLeft -= pageHeight;
-      }
-
-      console.log('Share PDF generated successfully, creating blob...');
-      const pdfBlob = pdf.output('blob');
+      const blob = await generatePdfBlob();
 
       // Generate unique filename
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
       const filename = `receipt-${payment.id}-${timestamp}.pdf`;
-      const pdfFile = new File([pdfBlob], filename, { type: 'application/pdf' });
+
+      const pdfFile = new File([blob], filename, { type: 'application/pdf' });
 
       if (navigator.share && navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
         try {
@@ -271,24 +200,14 @@ export function EnhancedReceipt({
           });
           console.log('Share successful');
         } catch (shareError) {
-          console.log('Share failed, falling back to download:', shareError);
-          // Fallback to download if share fails
-          const url = URL.createObjectURL(pdfBlob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = filename;
-          a.click();
-          URL.revokeObjectURL(url);
+          console.log('Share failed/cancelled:', shareError);
+          // Don't fallback automatically on user cancel, only on error if needed
         }
       } else {
         console.log('Web Share API not available, falling back to download');
-        // Fallback to download
-        const url = URL.createObjectURL(pdfBlob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        a.click();
-        URL.revokeObjectURL(url);
+        saveAs(blob, filename);
+        // Optionally notify user
+        // alert('Sharing is not supported on this device/browser. The file has been downloaded instead.');
       }
     } catch (error) {
       console.error('Error sharing receipt:', error);
@@ -305,24 +224,15 @@ export function EnhancedReceipt({
           <DialogTitle className="text-xl font-bold">Payment Receipt</DialogTitle>
         </DialogHeader>
 
-        {/* Receipt Content */}
+        {/* Receipt Content Visualization (HTML version for preview) */}
         <div id="receipt-content" className="bg-white p-8 border border-gray-200 rounded-lg">
           {/* Header */}
           <div className="text-center mb-6 pb-4 border-b-2 border-gray-800">
             <div className="flex items-center justify-center mb-2">
               <img
-                src="/logoMain.png"
+                src={LOGO_BASE64}
                 alt="PharmaLync"
                 className="h-12 w-12 mr-3"
-                onError={(e) => {
-                  // Fallback if image fails to load
-                  const target = e.target as HTMLImageElement;
-                  target.style.display = 'none';
-                  const fallback = document.createElement('div');
-                  fallback.className = 'h-12 w-12 mr-3 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold text-xl';
-                  fallback.textContent = 'P';
-                  target.parentNode?.insertBefore(fallback, target);
-                }}
               />
               <h1 className="text-2xl font-bold text-gray-900">PharmaLync</h1>
             </div>
@@ -368,10 +278,10 @@ export function EnhancedReceipt({
                 <span className="text-gray-600">Wholesaler:</span>
                 <span className="font-medium">{wholesalerName}</span>
               </div>
-              {tenantInfo?.address && (
+              {wholesalerAddress && (
                 <div className="py-2">
                   <span className="text-gray-600">Wholesaler Address:</span>
-                  <p className="font-medium mt-1">{tenantInfo.address}</p>
+                  <p className="font-medium mt-1">{wholesalerAddress}</p>
                 </div>
               )}
             </div>

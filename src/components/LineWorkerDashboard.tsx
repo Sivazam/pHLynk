@@ -63,9 +63,18 @@ import {
   ChevronUp
 } from 'lucide-react';
 import { StatusBarColor } from './ui/StatusBarColor';
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
+import { OfflineBlockingScreen } from '@/components/ui/OfflineBlockingScreen';
 
 export function LineWorkerDashboard() {
+  const isOnline = useOnlineStatus();
   const { user, logout } = useAuth();
+  // ...
+  // ...
+  if (!isOnline) {
+    return <OfflineBlockingScreen />;
+  }
+
   const isLineWorker = useLineWorker();
   const [retailers, setRetailers] = useState<Retailer[]>([]);
   const [filteredRetailers, setFilteredRetailers] = useState<Retailer[]>([]);
