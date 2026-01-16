@@ -1,16 +1,15 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Download, Share, X, FileText } from 'lucide-react';
+import { Download, Share, X, Printer } from 'lucide-react';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 import { formatTimestampWithTime, formatCurrency } from '@/lib/timestamp-utils';
-import { doc, getDoc, getFirestore } from 'firebase/firestore';
-import { pdf } from '@react-pdf/renderer';
-import { PaymentReceiptPDF } from '@/components/receipts/PaymentReceiptPDF';
-import { saveAs } from 'file-saver';
 import { LOGO_BASE64 } from '@/constants/assets';
 
+// ... (Interfaces remain the same)
 interface Payment {
   id: string;
   totalPaid: number;
@@ -67,111 +66,86 @@ export function EnhancedReceipt({
   onClose
 }: EnhancedReceiptProps) {
   const [isGenerating, setIsGenerating] = useState(false);
-  const [tenantInfo, setTenantInfo] = useState<{ name: string; address?: string } | null>(null);
+  const receiptRef = useRef<HTMLDivElement>(null);
 
   // Helper functions to get retailer information
-  const getRetailerName = (retailer: Retailer | null) => {
-    if (retailer?.profile?.realName) {
-      return retailer.profile.realName;
-    }
-    return retailer?.name || 'Unknown Retailer';
-  };
+  const getRetailerName = (retailer: Retailer | null) => retailer?.profile?.realName || retailer?.name || 'Unknown Retailer';
+  const getRetailerPhone = (retailer: Retailer | null) => retailer?.profile?.phone || retailer?.phone;
+  const getRetailerAddress = (retailer: Retailer | null) => retailer?.profile?.address || retailer?.address;
 
-  const getRetailerPhone = (retailer: Retailer | null) => {
-    if (retailer?.profile?.phone) {
-      return retailer.profile.phone;
-    }
-    return retailer?.phone;
-  };
-
-  const getRetailerAddress = (retailer: Retailer | null) => {
-    if (retailer?.profile?.address) {
-      return retailer.profile.address;
-    }
-    return retailer?.address;
-  };
-
-  useEffect(() => {
-    const fetchTenantInfo = async () => {
-      // Try tenantId first, then tenantIds[0] as fallback
-      let actualTenantId = payment.tenantId || payment.tenantIds?.[0];
-
-      // If no tenantId in payment, try to get it from lineWorkerId
-      if (!actualTenantId && payment.lineWorkerId) {
-        try {
-          const db = getFirestore();
-          const lineWorkerDoc = await getDoc(doc(db, 'users', payment.lineWorkerId));
-          if (lineWorkerDoc.exists()) {
-            const lineWorkerData = lineWorkerDoc.data();
-            actualTenantId = lineWorkerData?.tenantId || '';
-            console.log('📋 Receipt: Fetched tenantId from lineWorker:', actualTenantId);
-          }
-        } catch (error) {
-          console.error('Error fetching tenantId from lineWorker:', error);
-        }
-      }
-
-      if (actualTenantId && actualTenantId !== 'all') {
-        try {
-          const db = getFirestore();
-          const tenantDoc = await getDoc(doc(db, 'tenants', actualTenantId));
-          if (tenantDoc.exists()) {
-            const tenantData = tenantDoc.data();
-            setTenantInfo({
-              name: tenantData.name || 'Unknown Wholesaler',
-              address: tenantData.address || undefined
-            });
-            console.log('📋 Receipt: Fetched wholesaler name:', tenantData.name);
-          }
-        } catch (error) {
-          console.error('Error fetching tenant info:', error);
-        }
-      }
-    };
-
-    fetchTenantInfo();
-  }, [payment.tenantId, payment.lineWorkerId]);
-
-  const wholesalerName = tenantInfo?.name ||
+  const wholesalerName =
     (tenantId === 'all'
       ? (wholesalerNames[payment.tenantId || ''] || 'Unknown Wholesaler')
       : (wholesalerNames[tenantId || ''] || 'Unknown Wholesaler')
     );
 
-  const wholesalerAddress = tenantInfo?.address;
-
   const lineWorkerName = payment.lineWorkerName || lineWorkerNames[payment.lineWorkerId] || 'Unknown Line Worker';
 
-  // Helper to generate basic blob
-  const generatePdfBlob = async () => {
-    return await pdf(
-      <PaymentReceiptPDF
-        payment={payment}
-        retailer={retailer}
-        wholesalerName={wholesalerName}
-        wholesalerAddress={wholesalerAddress}
-        lineWorkerName={lineWorkerName}
-      />
-    ).toBlob();
+  // Robust generation function that clones the element to avoid scroll/viewport issues
+  const generateReceiptCanvas = async () => {
+    if (!receiptRef.current) throw new Error('Receipt element not found');
+
+    const originalElement = receiptRef.current;
+
+    // 1. Clone the element
+    const clone = originalElement.cloneNode(true) as HTMLElement;
+
+    // 2. Style the clone to be visible but off-screen, with fixed width/height
+    // This ensures html2canvas sees the *whole* receipt, even if the user scrolled
+    clone.style.position = 'fixed';
+    clone.style.top = '-10000px';
+    clone.style.left = '-10000px';
+    clone.style.width = '800px'; // Fixed A4-like width
+    clone.style.height = 'auto';
+    clone.style.zIndex = '-1000';
+    clone.style.background = 'white';
+    clone.style.overflow = 'visible'; // Ensure nothing is clipped
+
+    // Append to body temporarily
+    document.body.appendChild(clone);
+
+    // Wait for images to load in clone if any (Logo is base64 so it's instant usually)
+    // but good practice to wait a tick
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    try {
+      const canvas = await html2canvas(clone, {
+        scale: 2, // Retina quality
+        useCORS: true,
+        logging: false,
+        backgroundColor: '#ffffff',
+        width: 800, // Match the clone width
+        windowWidth: 800
+      });
+      return canvas;
+    } finally {
+      // Clean up
+      document.body.removeChild(clone);
+    }
   };
 
   const downloadPDF = async () => {
     setIsGenerating(true);
     try {
-      console.log('Starting PDF generation with @react-pdf/renderer...');
+      const canvas = await generateReceiptCanvas();
+      const imgData = canvas.toDataURL('image/png');
 
-      const blob = await generatePdfBlob();
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4'
+      });
 
-      // Generate unique filename
+      const imgWidth = 210; // A4 width
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+      pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
+
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
-      const filename = `receipt-${payment.id}-${timestamp}.pdf`;
-
-      saveAs(blob, filename);
-      console.log('PDF downloaded successfully');
-
+      pdf.save(`receipt-${payment.id}-${timestamp}.pdf`);
     } catch (error) {
-      console.error('Error generating PDF:', error);
-      alert('Failed to generate PDF. Please try again or contact support if the issue persists.');
+      console.error('PDF Generation failed:', error);
+      alert('Failed to generate PDF. Please try again.');
     } finally {
       setIsGenerating(false);
     }
@@ -180,38 +154,37 @@ export function EnhancedReceipt({
   const shareReceipt = async () => {
     setIsGenerating(true);
     try {
-      console.log('Starting share PDF generation...');
+      const canvas = await generateReceiptCanvas();
+      const imgData = canvas.toDataURL('image/png');
 
-      const blob = await generatePdfBlob();
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4'
+      });
 
-      // Generate unique filename
+      const imgWidth = 210;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
+
+      const pdfBlob = pdf.output('blob');
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
-      const filename = `receipt-${payment.id}-${timestamp}.pdf`;
+      const file = new File([pdfBlob], `receipt-${payment.id}-${timestamp}.pdf`, { type: 'application/pdf' });
 
-      const pdfFile = new File([blob], filename, { type: 'application/pdf' });
-
-      if (navigator.share && navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
-        try {
-          console.log('Attempting to share via Web Share API...');
-          await navigator.share({
-            title: 'PharmaLync Payment Receipt',
-            text: `Payment receipt for ${formatCurrency(payment.totalPaid)} from ${getRetailerName(retailer)}`,
-            files: [pdfFile]
-          });
-          console.log('Share successful');
-        } catch (shareError) {
-          console.log('Share failed/cancelled:', shareError);
-          // Don't fallback automatically on user cancel, only on error if needed
-        }
+      if (navigator.share && navigator.canShare({ files: [file] })) {
+        await navigator.share({
+          title: 'Payment Receipt',
+          text: `Receipt for ${formatCurrency(payment.totalPaid)}`,
+          files: [file]
+        });
       } else {
-        console.log('Web Share API not available, falling back to download');
-        saveAs(blob, filename);
-        // Optionally notify user
-        // alert('Sharing is not supported on this device/browser. The file has been downloaded instead.');
+        // Fallback to download
+        downloadPDF();
       }
     } catch (error) {
-      console.error('Error sharing receipt:', error);
-      alert('Failed to share receipt. Please try again or contact support if the issue persists.');
+      console.error('Share failed:', error);
+      alert('Sharing failed. Downloading instead...');
+      downloadPDF();
     } finally {
       setIsGenerating(false);
     }
@@ -220,127 +193,121 @@ export function EnhancedReceipt({
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
+        <DialogHeader className="flex flex-row items-center justify-between space-y-0 pb-4 border-b">
           <DialogTitle className="text-xl font-bold">Payment Receipt</DialogTitle>
+
+          {/* Action Buttons - Moved to Header */}
+          <div className="flex items-center space-x-2 mr-8">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={shareReceipt}
+              disabled={isGenerating}
+              className="flex items-center gap-2"
+            >
+              <Share className="h-4 w-4" />
+              <span className="hidden sm:inline">Share</span>
+            </Button>
+            <Button
+              size="sm"
+              onClick={downloadPDF}
+              disabled={isGenerating}
+              className="flex items-center gap-2"
+            >
+              <Download className="h-4 w-4" />
+              <span className="hidden sm:inline">Download</span>
+            </Button>
+          </div>
         </DialogHeader>
 
-        {/* Receipt Content Visualization (HTML version for preview) */}
-        <div id="receipt-content" className="bg-white p-8 border border-gray-200 rounded-lg">
-          {/* Header */}
-          <div className="text-center mb-6 pb-4 border-b-2 border-gray-800">
-            <div className="flex items-center justify-center mb-2">
-              <img
-                src={LOGO_BASE64}
-                alt="PharmaLync"
-                className="h-12 w-12 mr-3"
-              />
-              <h1 className="text-2xl font-bold text-gray-900">PharmaLync</h1>
-            </div>
-            <p className="text-sm text-gray-600">Verify. Collect. Track.</p>
-            <div className="mt-2 text-xs text-gray-500">
-              Payment Receipt
-            </div>
-          </div>
+        {/* Receipt Content - Wrapped in a ref for capture */}
+        <div className="bg-white p-4 sm:p-8" ref={receiptRef}>
+          {/* Receipt Border Container */}
+          <div className="border border-gray-200 rounded-lg p-6 sm:p-8">
 
-          {/* Receipt Info */}
-          <div className="mb-6 p-4 bg-gray-50 rounded-lg">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+            {/* Header */}
+            <div className="text-center mb-8 pb-6 border-b-2 border-gray-800">
+              <div className="flex items-center justify-center mb-3">
+                <img
+                  src={LOGO_BASE64}
+                  alt="PharmaLync"
+                  className="h-14 w-14 mr-3 object-contain"
+                />
+                <h1 className="text-3xl font-bold text-gray-900 tracking-tight">PharmaLync</h1>
+              </div>
+              <p className="text-sm text-gray-600 font-medium tracking-wide uppercase">Verify. Collect. Track.</p>
+              <div className="mt-3 inline-block px-3 py-1 bg-gray-100 rounded-full text-xs font-semibold text-gray-600">
+                OFFICIAL RECEIPT
+              </div>
+            </div>
+
+            {/* Receipt Info Grid */}
+            <div className="grid grid-cols-2 gap-6 mb-8 bg-gray-50 p-4 rounded-lg border border-gray-100">
               <div>
-                <span className="font-semibold text-gray-700">Receipt ID:</span>
-                <p className="text-gray-900 font-mono text-xs break-all">{payment.id}</p>
+                <span className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Receipt ID</span>
+                <p className="text-gray-900 font-mono text-sm break-all font-medium">{payment.id}</p>
               </div>
+              <div className="text-right">
+                <span className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Date & Time</span>
+                <p className="text-gray-900 font-medium">{formatTimestampWithTime(payment.createdAt)}</p>
+              </div>
+            </div>
+
+            {/* Main Details Section */}
+            <div className="space-y-6 mb-8">
+              {/* Payment Info */}
               <div>
-                <span className="font-semibold text-gray-700">Date & Time:</span>
-                <p className="text-gray-900">{formatTimestampWithTime(payment.createdAt)}</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Payment Details */}
-          <div className="mb-6">
-            <h2 className="text-lg font-bold text-gray-900 mb-3 pb-2 border-b border-gray-300">
-              Payment Details
-            </h2>
-            <div className="space-y-2">
-              <div className="flex justify-between py-2">
-                <span className="text-gray-600">Amount Paid:</span>
-                <span className="font-bold text-lg text-green-600">{formatCurrency(payment.totalPaid)}</span>
-              </div>
-              <div className="flex justify-between py-2">
-                <span className="text-gray-600">Payment Method:</span>
-                <span className="font-medium">{payment.method}</span>
-              </div>
-              <div className="flex justify-between py-2">
-                <span className="text-gray-600">Line Worker:</span>
-                <span className="font-medium">{lineWorkerName}</span>
-              </div>
-              <div className="flex justify-between py-2">
-                <span className="text-gray-600">Wholesaler:</span>
-                <span className="font-medium">{wholesalerName}</span>
-              </div>
-              {wholesalerAddress && (
-                <div className="py-2">
-                  <span className="text-gray-600">Wholesaler Address:</span>
-                  <p className="font-medium mt-1">{wholesalerAddress}</p>
+                <h3 className="text-sm font-bold text-gray-900 border-b border-gray-200 pb-2 mb-3">PAYMENT DETAILS</h3>
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-600 text-sm">Amount Paid</span>
+                    <span className="font-bold text-xl text-green-600">{formatCurrency(payment.totalPaid)}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-600 text-sm">Payment Method</span>
+                    <span className="font-medium text-gray-900">{payment.method}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-600 text-sm">Collected By</span>
+                    <span className="font-medium text-gray-900">{lineWorkerName}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-600 text-sm">Wholesaler</span>
+                    <span className="font-medium text-gray-900">{wholesalerName}</span>
+                  </div>
                 </div>
-              )}
-            </div>
-          </div>
-
-          {/* Retailer Information */}
-          <div className="mb-6">
-            <h2 className="text-lg font-bold text-gray-900 mb-3 pb-2 border-b border-gray-300">
-              Retailer Information
-            </h2>
-            <div className="space-y-2">
-              <div className="flex justify-between py-2">
-                <span className="text-gray-600">Name:</span>
-                <span className="font-medium">{getRetailerName(retailer)}</span>
               </div>
-              {getRetailerPhone(retailer) && (
-                <div className="flex justify-between py-2">
-                  <span className="text-gray-600">Phone:</span>
-                  <span className="font-medium">{getRetailerPhone(retailer)}</span>
+
+              {/* Retailer Info */}
+              <div>
+                <h3 className="text-sm font-bold text-gray-900 border-b border-gray-200 pb-2 mb-3">RETAILER DETAILS</h3>
+                <div className="space-y-3">
+                  <div className="flex justify-between items-start">
+                    <span className="text-gray-600 text-sm">Name</span>
+                    <span className="font-medium text-gray-900 text-right">{getRetailerName(retailer)}</span>
+                  </div>
+                  {getRetailerPhone(retailer) && (
+                    <div className="flex justify-between items-start">
+                      <span className="text-gray-600 text-sm">Phone</span>
+                      <span className="font-medium text-gray-900 text-right">{getRetailerPhone(retailer)}</span>
+                    </div>
+                  )}
+                  {getRetailerAddress(retailer) && (
+                    <div className="flex justify-between items-start">
+                      <span className="text-gray-600 text-sm">Address</span>
+                      <span className="font-medium text-gray-900 text-right max-w-[200px]">{getRetailerAddress(retailer)}</span>
+                    </div>
+                  )}
                 </div>
-              )}
-              {getRetailerAddress(retailer) && (
-                <div className="py-2">
-                  <span className="text-gray-600">Address:</span>
-                  <p className="font-medium mt-1">{getRetailerAddress(retailer)}</p>
-                </div>
-              )}
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="text-center pt-6 border-t-2 border-dashed border-gray-200">
+              <p className="text-sm font-medium text-gray-800 mb-1">Thank you for your business!</p>
+              <p className="text-[10px] text-gray-400 uppercase tracking-widest">Computer Generated Receipt</p>
             </div>
           </div>
-
-          {/* Footer */}
-          <div className="mt-8 pt-4 border-t-2 border-gray-800 text-center">
-            <p className="text-sm text-gray-600 mb-2">Thank you for your payment!</p>
-            <p className="text-xs text-gray-500">This is a computer-generated receipt and does not require a signature.</p>
-            <div className="mt-4 text-xs text-gray-400">
-              Powered by PharmaLync - Your Trusted Pharmacy Management System
-            </div>
-          </div>
-        </div>
-
-        {/* Action Buttons */}
-        <div className="flex justify-end space-x-3 mt-6 pt-4 border-t">
-          <Button
-            variant="outline"
-            onClick={shareReceipt}
-            disabled={isGenerating}
-            className="flex items-center space-x-2"
-          >
-            <Share className="h-4 w-4" />
-            <span>{isGenerating ? 'Generating...' : 'Share'}</span>
-          </Button>
-          <Button
-            onClick={downloadPDF}
-            disabled={isGenerating}
-            className="flex items-center space-x-2"
-          >
-            <Download className="h-4 w-4" />
-            <span>{isGenerating ? 'Generating...' : 'Download PDF'}</span>
-          </Button>
         </div>
       </DialogContent>
     </Dialog>
