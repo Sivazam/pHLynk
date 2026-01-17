@@ -335,17 +335,32 @@ export function RetailerDashboard() {
   const [dataFetchProgress, setDataFetchProgress] = useState(0);
 
   // Helper functions to filter data by date range
-  const filterPaymentsByDateRange = (paymentsData: Payment[]) => {
+  const filterPaymentsByRange = (paymentsData: Payment[], range: DateRange | undefined) => {
+    if (!range?.from) return paymentsData;
+
     return paymentsData.filter(payment => {
+      if (!payment.createdAt) return false;
       const paymentDate = payment.createdAt.toDate();
-      return paymentDate >= dateRange.startDate && paymentDate <= dateRange.endDate;
+
+      const start = startOfDay(range.from!);
+      const end = endOfDay(range.to || range.from!); // Default 'to' to end of 'from' day if undefined
+
+      return isWithinInterval(paymentDate, { start, end });
     });
   };
 
-  const handleDateRangeChange = (value: string, newDateRange: { startDate: Date; endDate: Date }) => {
-    setSelectedDateRangeOption(value);
-    setDateRange(newDateRange);
-  };
+  // Filtered Data Calculations
+  const overviewPayments = filterPaymentsByRange(payments, overviewDateRange);
+  const paymentsTabPayments = filterPaymentsByRange(payments, paymentsDateRange);
+
+  // Derived Metrics based on 'overviewPayments'
+  const totalPaid = overviewPayments
+    .reduce((sum, p) => sum + p.totalPaid, 0);
+
+  // Recent activity also from overviewPayments
+  const recentActivity = [...overviewPayments]
+    .sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis())
+    .slice(0, 5);
 
   // Handle profile updates
   const handleProfileUpdate = async (updatedProfile: any) => {
