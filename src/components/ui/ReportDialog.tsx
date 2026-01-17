@@ -17,23 +17,19 @@ interface ReportDialogProps {
   retailerPhone?: string
 }
 
-import { DateRangePicker } from '@/components/ui/date-range-picker'
-import { DateRange } from 'react-day-picker'
-import { startOfDay, endOfDay } from 'date-fns'
-
-// ... existing imports
+const dateRanges = [
+  { value: 'today', label: 'Today' },
+  { value: 'last_7_days', label: 'Last 7 Days' },
+  { value: 'this_month', label: 'This Month' },
+  { value: 'last_month', label: 'Last Month' },
+  { value: 'last_6_months', label: 'Last 6 Months' },
+  { value: 'last_1_year', label: 'Last 1 Year' },
+]
 
 export default function ReportDialog({ retailerId, retailerPhone }: ReportDialogProps) {
   const [open, setOpen] = useState(false)
   const [selectedWholesaler, setSelectedWholesaler] = useState('all')
-
-  // New Date Range State
-  const [dateRange, setDateRange] = useState<DateRange | undefined>({
-    from: startOfDay(new Date()),
-    to: endOfDay(new Date())
-  })
-
-  // Restored State
+  const [selectedDateRange, setSelectedDateRange] = useState('today')
   const [generating, setGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [generatedReport, setGeneratedReport] = useState<any>(null)
@@ -54,7 +50,7 @@ export default function ReportDialog({ retailerId, retailerPhone }: ReportDialog
       console.log('🔄 Generating report with params:', {
         retailerId,
         wholesalerId: selectedWholesaler,
-        dateRange,
+        dateRange: selectedDateRange,
         phone: retailerPhone
       })
 
@@ -68,12 +64,7 @@ export default function ReportDialog({ retailerId, retailerPhone }: ReportDialog
         body: JSON.stringify({
           retailerId,
           wholesalerId: selectedWholesaler,
-          // Send actual date objects/strings
-          dateRange: {
-            from: dateRange?.from?.toISOString(),
-            to: (dateRange?.to || dateRange?.from)?.toISOString()
-          },
-          // Legacy support if needed, or remove 'selectedDateRange' usage
+          dateRange: selectedDateRange,
         }),
       })
 
@@ -108,8 +99,7 @@ export default function ReportDialog({ retailerId, retailerPhone }: ReportDialog
     // Generate dynamic filename with timestamp and random suffix
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5)
     const randomSuffix = Math.random().toString(36).substring(2, 8)
-    const fromStr = dateRange?.from ? dateRange.from.toISOString().split('T')[0] : 'undated';
-    const filename = `payment-report-${fromStr}-${timestamp}-${randomSuffix}.csv`
+    const filename = `payment-report-${selectedDateRange}-${timestamp}-${randomSuffix}.csv`
 
     link.setAttribute('href', url)
     link.setAttribute('download', filename)
@@ -225,9 +215,7 @@ export default function ReportDialog({ retailerId, retailerPhone }: ReportDialog
                   <div className="space-y-2 text-sm text-green-700">
                     <div className="flex justify-between">
                       <span>Period:</span>
-                      <span className="font-medium">
-                        {dateRange?.from?.toLocaleDateString()} - {(dateRange?.to || dateRange?.from)?.toLocaleDateString()}
-                      </span>
+                      <span className="font-medium">{dateRanges.find(r => r.value === selectedDateRange)?.label}</span>
                     </div>
                     <div className="flex justify-between">
                       <span>Wholesaler:</span>
@@ -308,8 +296,8 @@ export default function ReportDialog({ retailerId, retailerPhone }: ReportDialog
                     {/* All Wholesalers Card */}
                     <div
                       className={`p-4 border-2 rounded-lg cursor-pointer transition-all duration-200 hover:shadow-md ${selectedWholesaler === 'all'
-                        ? 'bg-blue-600 border-blue-600 text-white'
-                        : 'bg-white border-gray-200 hover:border-gray-300'
+                          ? 'bg-blue-600 border-blue-600 text-white'
+                          : 'bg-white border-gray-200 hover:border-gray-300'
                         }`}
                       onClick={() => setSelectedWholesaler('all')}
                     >
@@ -317,8 +305,8 @@ export default function ReportDialog({ retailerId, retailerPhone }: ReportDialog
                         <div className="flex items-center gap-3">
                           <div
                             className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${selectedWholesaler === 'all'
-                              ? 'bg-white border-white'
-                              : 'border-gray-300'
+                                ? 'bg-white border-white'
+                                : 'border-gray-300'
                               }`}
                           >
                             {selectedWholesaler === 'all' && (
@@ -343,8 +331,8 @@ export default function ReportDialog({ retailerId, retailerPhone }: ReportDialog
                       <div
                         key={wholesaler.id}
                         className={`p-4 border-2 rounded-lg cursor-pointer transition-all duration-200 hover:shadow-md ${selectedWholesaler === wholesaler.id
-                          ? 'bg-blue-600 border-blue-600 text-white'
-                          : 'bg-white border-gray-200 hover:border-gray-300'
+                            ? 'bg-blue-600 border-blue-600 text-white'
+                            : 'bg-white border-gray-200 hover:border-gray-300'
                           }`}
                         onClick={() => setSelectedWholesaler(wholesaler.id)}
                       >
@@ -352,8 +340,8 @@ export default function ReportDialog({ retailerId, retailerPhone }: ReportDialog
                           <div className="flex items-center gap-3">
                             <div
                               className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${selectedWholesaler === wholesaler.id
-                                ? 'bg-white border-white'
-                                : 'border-gray-300'
+                                  ? 'bg-white border-white'
+                                  : 'border-gray-300'
                                 }`}
                             >
                               {selectedWholesaler === wholesaler.id && (
@@ -378,13 +366,22 @@ export default function ReportDialog({ retailerId, retailerPhone }: ReportDialog
               {/* Date Range Selection */}
               <div className="space-y-3">
                 <Label className="text-sm font-medium">Select Date Range</Label>
-                <div className="w-full">
-                  <DateRangePicker
-                    date={dateRange}
-                    setDate={setDateRange}
-                    className="w-full"
-                  />
-                </div>
+                <Select value={selectedDateRange} onValueChange={setSelectedDateRange}>
+                  <SelectTrigger>
+                    <Calendar className="h-4 w-4 mr-2" />
+                    <SelectValue placeholder="Select date range" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {dateRanges.map((range) => (
+                      <SelectItem key={range.value} value={range.value}>
+                        {range.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  {getDateRangeDescription(selectedDateRange)}
+                </p>
               </div>
 
               {/* Generate Button */}

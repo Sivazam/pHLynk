@@ -1,11 +1,10 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Download, Share, X, Printer } from 'lucide-react';
+import { Download, Share, X } from 'lucide-react';
 import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
 import { formatTimestampWithTime, formatCurrency } from '@/lib/timestamp-utils';
 import { LOGO_BASE64 } from '@/constants/assets';
 
@@ -66,7 +65,6 @@ export function EnhancedReceipt({
   onClose
 }: EnhancedReceiptProps) {
   const [isGenerating, setIsGenerating] = useState(false);
-  const receiptRef = useRef<HTMLDivElement>(null);
 
   // Helper functions to get retailer information
   const getRetailerName = (retailer: Retailer | null) => retailer?.profile?.realName || retailer?.name || 'Unknown Retailer';
@@ -81,105 +79,147 @@ export function EnhancedReceipt({
 
   const lineWorkerName = payment.lineWorkerName || lineWorkerNames[payment.lineWorkerId] || 'Unknown Line Worker';
 
-  // Robust generation function that clones the element to avoid scroll/viewport issues
-  const generateReceiptCanvas = async () => {
-    if (!receiptRef.current) throw new Error('Receipt element not found');
+  // --- PURE PROGRAMMATIC PDF GENERATION (The Standard Approach) ---
+  // drawing everything manually with x,y coords guarantees 100% success independent of CSS
+  const generateReceiptPDF = () => {
+    const doc = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'a4'
+    });
 
-    const originalElement = receiptRef.current;
+    // 1. Header & Logo
+    const logoSize = 15;
+    const startY = 20;
 
-    // 1. Clone the element
-    const clone = originalElement.cloneNode(true) as HTMLElement;
-
-    // 2. Style the clone for capture (A4 proportions, off-screen)
-    clone.style.position = 'fixed';
-    clone.style.top = '0';
-    clone.style.left = '0'; // Use 0,0 but z-index -1000 to avoid viewport/scroll issues sometimes caused by large negative values
-    clone.style.width = '800px';
-    clone.style.height = 'auto'; // Let height adapt
-    clone.style.zIndex = '-1000';
-    clone.style.backgroundColor = '#ffffff';
-    clone.style.padding = '40px'; // Add consistent padding for the PDF itself
-    clone.style.boxSizing = 'border-box';
-
-    // Hide the border in the PDF version if desired, or keep it. 
-    // Usually a clean PDF doesn't need the dashboard-style border wrapper, 
-    // but we'll keep the inner logic.
-
-    // Remove any shadow or border from the clone container if needed, 
-    // but since we clone the inner receiptRef (which includes the border div), it's fine.
-
-    // Append to body temporarily
-    document.body.appendChild(clone);
-
-    // 3. INJECT SAFE STYLES TO OVERRIDE TAILWIND/OKLCH VARIABLES and ensure white bg
-    // html2canvas fails on 'oklch' and 'lab' colors, so we force safe hex values for specific classes used in receipt
-    const styleId = 'print-safe-styles';
-    if (!clone.querySelector(`#${styleId}`)) {
-      const style = document.createElement('style');
-      style.id = styleId;
-      style.innerHTML = `
-        * {
-          border-color: #e5e7eb !important;
-          color: #111827 !important;
-        }
-        .bg-white { background-color: #ffffff !important; }
-        .bg-gray-50 { background-color: #f9fafb !important; }
-        .bg-gray-100 { background-color: #f3f4f6 !important; }
-        .border-gray-100 { border-color: #f3f4f6 !important; }
-        .border-gray-200 { border-color: #e5e7eb !important; }
-        .border-gray-800 { border-color: #1f2937 !important; }
-        .text-gray-400 { color: #9ca3af !important; }
-        .text-gray-500 { color: #6b7280 !important; }
-        .text-gray-600 { color: #4b5563 !important; }
-        .text-gray-800 { color: #1f2937 !important; }
-        .text-gray-900 { color: #111827 !important; }
-        .text-green-600 { color: #16a34a !important; }
-        .text-blue-600 { color: #2563eb !important; }
-      `;
-      clone.appendChild(style);
-    }
-
-    // Wait for render
-    await new Promise(resolve => setTimeout(resolve, 500)); // Increased timeout slightly
-
+    // Add Logo (if base64 is valid)
     try {
-      const canvas = await html2canvas(clone, {
-        scale: 2, // Retina
-        useCORS: true,
-        allowTaint: true, // Allow tainted images (like base64 or legit external)
-        logging: false,
-        backgroundColor: '#ffffff',
-        width: 800,
-        windowWidth: 800
-      });
-      return canvas;
-    } finally {
-      // Clean up
-      if (document.body.contains(clone)) {
-        document.body.removeChild(clone);
-      }
+      doc.addImage(LOGO_BASE64, 'PNG', 15, startY, logoSize, logoSize);
+    } catch (e) {
+      console.warn('Logo failed to add to PDF', e);
     }
+
+    // Header Text
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(22);
+    doc.text("PharmaLync", 35, startY + 8);
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(100);
+    doc.text("Verify. Collect. Track.", 35, startY + 14);
+
+    // "Official Receipt" Badge
+    doc.setFillColor(243, 244, 246); // gray-100
+    doc.roundedRect(150, startY, 45, 10, 3, 3, 'F');
+    doc.setFontSize(8);
+    doc.setTextColor(75, 85, 99); // gray-600
+    doc.text("OFFICIAL RECEIPT", 172.5, startY + 6.5, { align: 'center' });
+
+    // 2. Receipt ID & Date Grid
+    const gridY = startY + 25;
+    doc.setDrawColor(229, 231, 235); // gray-200
+    doc.setFillColor(249, 250, 251); // gray-50
+    doc.rect(15, gridY, 180, 20, 'FD'); // Fill and Draw
+
+    doc.setFontSize(8);
+    doc.setTextColor(107, 114, 128); // gray-500
+    doc.text("RECEIPT ID", 20, gridY + 6);
+    doc.text("DATE & TIME", 130, gridY + 6); // visual column
+
+    doc.setFontSize(10);
+    doc.setTextColor(17, 24, 39); // gray-900 font-medium
+    doc.setFont("helvetica", "bold"); // mimic font-medium
+    doc.text(payment.id, 20, gridY + 14);
+    doc.text(formatTimestampWithTime(payment.createdAt), 130, gridY + 14);
+
+    // 3. Payment Details
+    let cursorY = gridY + 35;
+    doc.setFontSize(12);
+    doc.setTextColor(0);
+    doc.text("Payment Details", 15, cursorY);
+    doc.setDrawColor(229, 231, 235);
+    doc.line(15, cursorY + 2, 195, cursorY + 2);
+    cursorY += 10;
+
+    // Helper row function
+    const addRow = (label: string, value: string, isGreen = false) => {
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(75, 85, 99); // gray-600
+      doc.text(label, 15, cursorY);
+
+      doc.setFont("helvetica", "bold");
+      if (isGreen) doc.setTextColor(22, 163, 74); // green-600
+      else doc.setTextColor(17, 24, 39); // gray-900
+
+      // Right align value
+      doc.text(value, 195, cursorY, { align: 'right' });
+
+      cursorY += 8;
+    };
+
+    addRow("Amount Paid", formatCurrency(payment.totalPaid), true);
+    addRow("Payment Method", payment.method);
+    addRow("Collected By", lineWorkerName);
+    addRow("Wholesaler", wholesalerName);
+
+    cursorY += 10;
+
+    // 4. Retailer Details
+    doc.setFontSize(12);
+    doc.setTextColor(0);
+    doc.text("Retailer Details", 15, cursorY);
+    doc.line(15, cursorY + 2, 195, cursorY + 2);
+    cursorY += 10;
+
+    addRow("Name", getRetailerName(retailer));
+    if (getRetailerPhone(retailer)) {
+      addRow("Phone", getRetailerPhone(retailer)!);
+    }
+    if (getRetailerAddress(retailer)) {
+      // Handle address wrapping
+      const address = getRetailerAddress(retailer)!;
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(75, 85, 99);
+      doc.text("Address", 15, cursorY);
+
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(17, 24, 39);
+
+      const splitAddr = doc.splitTextToSize(address, 80); // wrap to 80mm
+      doc.text(splitAddr, 195, cursorY, { align: 'right' });
+
+      cursorY += (splitAddr.length * 5) + 5;
+    }
+
+    // 5. Footer
+    cursorY += 10;
+    doc.setDrawColor(200, 200, 200);
+    doc.setLineDashPattern([1, 1], 0); // Dashed line
+    doc.line(15, cursorY, 195, cursorY);
+    doc.setLineDashPattern([], 0); // Reset
+
+    cursorY += 8;
+    doc.setFontSize(9);
+    doc.setTextColor(75, 85, 99);
+    doc.text("Thank you for your business!", 105, cursorY, { align: 'center' });
+
+    cursorY += 5;
+    doc.setFontSize(7);
+    doc.setTextColor(156, 163, 175); // gray-400
+    doc.text("COMPUTER GENERATED RECEIPT", 105, cursorY, { align: 'center' });
+
+    return doc;
   };
 
   const downloadPDF = async () => {
     setIsGenerating(true);
     try {
-      const canvas = await generateReceiptCanvas();
-      const imgData = canvas.toDataURL('image/png');
-
-      const pdf = new jsPDF({
-        orientation: 'portrait',
-        unit: 'mm',
-        format: 'a4'
-      });
-
-      const imgWidth = 210; // A4 width
-      const imgHeight = (canvas.height * imgWidth) / canvas.width;
-
-      pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
-
+      const doc = generateReceiptPDF();
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
-      pdf.save(`receipt-${payment.id}-${timestamp}.pdf`);
+      doc.save(`receipt-${payment.id}-${timestamp}.pdf`);
     } catch (error: any) {
       console.error('PDF Generation failed:', error);
       alert(`Failed to generate PDF: ${error.message || 'Unknown error'}`);
@@ -191,20 +231,9 @@ export function EnhancedReceipt({
   const shareReceipt = async () => {
     setIsGenerating(true);
     try {
-      const canvas = await generateReceiptCanvas();
-      const imgData = canvas.toDataURL('image/png');
+      const doc = generateReceiptPDF();
+      const pdfBlob = doc.output('blob');
 
-      const pdf = new jsPDF({
-        orientation: 'portrait',
-        unit: 'mm',
-        format: 'a4'
-      });
-
-      const imgWidth = 210;
-      const imgHeight = (canvas.height * imgWidth) / canvas.width;
-      pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
-
-      const pdfBlob = pdf.output('blob');
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
       const file = new File([pdfBlob], `receipt-${payment.id}-${timestamp}.pdf`, { type: 'application/pdf' });
 
@@ -215,16 +244,20 @@ export function EnhancedReceipt({
           files: [file]
         });
       } else {
-        // Fallback to download if web share is invalid
-        // But throwing here allows the catch block to handle mixed fallback
-        downloadPDF();
+        // Fallback to download
+        doc.save(`receipt-${payment.id}-${timestamp}.pdf`);
       }
     } catch (error: any) {
       console.error('Share failed:', error);
-      // Only alert if it's not a user cancellation (which often has no message or 'AbortError')
       if (error.name !== 'AbortError') {
-        alert('Sharing failed on this device. Downloading file instead...');
-        downloadPDF();
+        // Fallback to download on known share failures
+        try {
+          const doc = generateReceiptPDF();
+          const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+          doc.save(`receipt-${payment.id}-${timestamp}.pdf`);
+        } catch (e) {
+          alert('Sharing failed and download fallback failed.');
+        }
       }
     } finally {
       setIsGenerating(false);
@@ -262,13 +295,12 @@ export function EnhancedReceipt({
               <Download className="h-4 w-4" />
               <span className="hidden sm:inline">Download</span>
             </Button>
-            {/* Custom Close Button */}
+            {/* Custom Close Buttons */}
             <Button
               variant="ghost"
               size="icon"
               onClick={onClose}
-              className="ml-2 h-8 w-8 rounded-full md:hidden" // Show icon close on mobile only if needed, or always?
-            // Actually, standard X is nice. Let's make it consistent.
+              className="ml-2 h-8 w-8 rounded-full md:hidden"
             >
               <X className="h-5 w-5" />
             </Button>
@@ -283,16 +315,15 @@ export function EnhancedReceipt({
           </div>
         </div>
 
-        {/* Scrollable Content */}
+        {/* Scrollable Content (Visual Only) */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-gray-50/50">
-          <div className="max-w-xl mx-auto bg-white shadow-sm border border-gray-200 rounded-lg" ref={receiptRef}>
+          <div className="max-w-xl mx-auto bg-white shadow-sm border border-gray-200 rounded-lg">
             {/* Inner Content Padding */}
             <div className="p-6 sm:p-8">
 
               {/* Receipt Header */}
               <div className="text-center mb-8 pb-6 border-b-2 border-gray-800">
                 <div className="flex items-center justify-center mb-3">
-                  {/* Using Base64 Logo - Critical for offline/canvas */}
                   <img
                     src={LOGO_BASE64}
                     alt="PharmaLync"

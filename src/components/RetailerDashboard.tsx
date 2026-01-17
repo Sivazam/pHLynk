@@ -28,15 +28,12 @@ import { otpBridge } from '@/lib/otp-bridge';
 import { db } from '@/lib/firebase';
 import { doc, getDoc, getDocs, onSnapshot, collection, query, where } from 'firebase/firestore';
 import { logger } from '@/lib/logger';
-import { DateRangeFilter, DateRangeOption } from '@/components/ui/DateRangeFilter'; // Keep for now if referenced elsewhere, or remove if fully replaced
+import { DateRangeFilter, DateRangeOption } from '@/components/ui/DateRangeFilter';
 import { Skeleton } from '@/components/ui/skeleton';
 import { LoadingOverlay } from '@/components/ui/LoadingOverlay';
 import { LoadingButton } from '@/components/ui/LoadingButton';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { useLoadingState } from '@/hooks/useLoadingState';
-import { DateRangePicker } from '@/components/ui/date-range-picker';
-import { DateRange } from 'react-day-picker';
-import { startOfDay, endOfDay, isWithinInterval } from 'date-fns';
 import {
   Store,
   DollarSign,
@@ -124,16 +121,13 @@ export function RetailerDashboard() {
   const [notificationCount, setNotificationCount] = useState(0);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [paymentTab, setPaymentTab] = useState('completed');
-
-  // default to Today
-  const defaultDateRange: DateRange = {
-    from: startOfDay(new Date()),
-    to: endOfDay(new Date())
-  };
-
-  const [overviewDateRange, setOverviewDateRange] = useState<DateRange | undefined>(defaultDateRange);
-  const [paymentsDateRange, setPaymentsDateRange] = useState<DateRange | undefined>(defaultDateRange);
-
+  const [selectedDateRangeOption, setSelectedDateRangeOption] = useState('today');
+  const [dateRange, setDateRange] = useState<{ startDate: Date; endDate: Date }>(() => {
+    const today = new Date();
+    const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
+    return { startDate: startOfDay, endDate: endOfDay };
+  });
   const [notificationTenantId, setNotificationTenantId] = useState<string | null>(null);
   const [otpUnsubscribe, setOtpUnsubscribe] = useState<(() => void) | null>(null);
 
@@ -335,32 +329,17 @@ export function RetailerDashboard() {
   const [dataFetchProgress, setDataFetchProgress] = useState(0);
 
   // Helper functions to filter data by date range
-  const filterPaymentsByRange = (paymentsData: Payment[], range: DateRange | undefined) => {
-    if (!range?.from) return paymentsData;
-
+  const filterPaymentsByDateRange = (paymentsData: Payment[]) => {
     return paymentsData.filter(payment => {
-      if (!payment.createdAt) return false;
       const paymentDate = payment.createdAt.toDate();
-
-      const start = startOfDay(range.from!);
-      const end = endOfDay(range.to || range.from!); // Default 'to' to end of 'from' day if undefined
-
-      return isWithinInterval(paymentDate, { start, end });
+      return paymentDate >= dateRange.startDate && paymentDate <= dateRange.endDate;
     });
   };
 
-  // Filtered Data Calculations
-  const overviewPayments = filterPaymentsByRange(payments, overviewDateRange);
-  const paymentsTabPayments = filterPaymentsByRange(payments, paymentsDateRange);
-
-  // Derived Metrics based on 'overviewPayments'
-  const totalPaid = overviewPayments
-    .reduce((sum, p) => sum + p.totalPaid, 0);
-
-  // Recent activity also from overviewPayments
-  const recentActivity = [...overviewPayments]
-    .sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis())
-    .slice(0, 5);
+  const handleDateRangeChange = (value: string, newDateRange: { startDate: Date; endDate: Date }) => {
+    setSelectedDateRangeOption(value);
+    setDateRange(newDateRange);
+  };
 
   // Handle profile updates
   const handleProfileUpdate = async (updatedProfile: any) => {
@@ -1712,23 +1691,22 @@ export function RetailerDashboard() {
   };
 
   // Calculate statistics
-  // Calculate statistics
   const completedPaymentsList = payments.filter(p => p.state === 'COMPLETED');
-
-  // Today's payments calculation using new helper
-  const todayRange = { from: startOfDay(new Date()), to: endOfDay(new Date()) };
-  const todayPayments = filterPaymentsByRange(completedPaymentsList, todayRange);
+  const totalPaid = completedPaymentsList.reduce((sum, p) => sum + p.totalPaid, 0);
+  const todayPayments = filterPaymentsByDateRange(completedPaymentsList);
   const todayPaid = todayPayments.reduce((sum, p) => sum + p.totalPaid, 0);
 
-  // Use the pre-calculated paymentsTabPayments for the table
-  // Filter by tab status
-  const filteredPayments = paymentsTabPayments.filter(payment => {
+  // Filter payments based on selected tab
+  const filteredPayments = payments.filter(payment => {
+    const paymentDate = payment.createdAt.toDate();
+    const isInDateRange = paymentDate >= dateRange.startDate && paymentDate <= dateRange.endDate;
+
     if (paymentTab === 'completed') {
-      return payment.state === 'COMPLETED';
+      return payment.state === 'COMPLETED' && isInDateRange;
     } else if (paymentTab === 'pending') {
-      return payment.state === 'INITIATED' || payment.state === 'OTP_SENT';
+      return (payment.state === 'INITIATED' || payment.state === 'OTP_SENT') && isInDateRange;
     }
-    return true; // 'all' tab
+    return isInDateRange;
   });
 
   return (
@@ -1816,15 +1794,6 @@ export function RetailerDashboard() {
               {/* Overview Stats */}
               {activeNav === 'overview' && (
                 <div className="mt-6 space-y-6">
-                  {/* Date Picker for Overview */}
-                  <div className="flex justify-end">
-                    <DateRangePicker
-                      date={overviewDateRange}
-                      setDate={setOverviewDateRange}
-                      align="end"
-                    />
-                  </div>
-
                   <div className="grid grid-cols-2 gap-4">
                     <Card className="border-0 bg-gradient-to-br from-emerald-500 to-emerald-600 text-white shadow-lg rounded-xl">
                       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -1924,13 +1893,10 @@ export function RetailerDashboard() {
                     </TabsList>
 
                     <TabsContent value={paymentTab} className="space-y-4">
-
-                      <div className="flex justify-between items-center">
-                        <DateRangePicker
-                          date={paymentsDateRange}
-                          setDate={setPaymentsDateRange}
-                        />
-                      </div>
+                      <DateRangeFilter
+                        value={selectedDateRangeOption}
+                        onValueChange={handleDateRangeChange}
+                      />
 
                       <div className="overflow-x-auto">
                         <Table>
