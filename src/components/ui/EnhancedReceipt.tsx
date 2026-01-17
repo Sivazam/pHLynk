@@ -108,11 +108,39 @@ export function EnhancedReceipt({
     // Remove any shadow or border from the clone container if needed, 
     // but since we clone the inner receiptRef (which includes the border div), it's fine.
 
-    // Append to body
+    // Append to body temporarily
     document.body.appendChild(clone);
 
+    // 3. INJECT SAFE STYLES TO OVERRIDE TAILWIND/OKLCH VARIABLES and ensure white bg
+    // html2canvas fails on 'oklch' and 'lab' colors, so we force safe hex values for specific classes used in receipt
+    const styleId = 'print-safe-styles';
+    if (!clone.querySelector(`#${styleId}`)) {
+      const style = document.createElement('style');
+      style.id = styleId;
+      style.innerHTML = `
+        * {
+          border-color: #e5e7eb !important;
+          color: #111827 !important;
+        }
+        .bg-white { background-color: #ffffff !important; }
+        .bg-gray-50 { background-color: #f9fafb !important; }
+        .bg-gray-100 { background-color: #f3f4f6 !important; }
+        .border-gray-100 { border-color: #f3f4f6 !important; }
+        .border-gray-200 { border-color: #e5e7eb !important; }
+        .border-gray-800 { border-color: #1f2937 !important; }
+        .text-gray-400 { color: #9ca3af !important; }
+        .text-gray-500 { color: #6b7280 !important; }
+        .text-gray-600 { color: #4b5563 !important; }
+        .text-gray-800 { color: #1f2937 !important; }
+        .text-gray-900 { color: #111827 !important; }
+        .text-green-600 { color: #16a34a !important; }
+        .text-blue-600 { color: #2563eb !important; }
+      `;
+      clone.appendChild(style);
+    }
+
     // Wait for render
-    await new Promise(resolve => setTimeout(resolve, 200)); // Increased timeout slightly
+    await new Promise(resolve => setTimeout(resolve, 500)); // Increased timeout slightly
 
     try {
       const canvas = await html2canvas(clone, {
