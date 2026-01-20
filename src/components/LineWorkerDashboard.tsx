@@ -414,18 +414,18 @@ export function LineWorkerDashboard() {
         }
 
         // Check if retailer is in assigned areas (by areaId)
-        // CRITICAL: Allow area-based visibility if:
-        //   - retailer was never assigned (undefined) - can be assigned to anyone with area
-        //   - retailer is NOT explicitly unassigned (null) - means removed from line worker intentionally
-        const isExplicitlyUnassigned = retailer.assignedLineWorkerId === null;
-        if (retailer.areaId && freshAssignedAreas.includes(retailer.areaId) && !isExplicitlyUnassigned) {
+        // Area-based visibility works for:
+        //   - retailer was never assigned (undefined)
+        //   - retailer was explicitly unassigned (null) - allowing area reassignment
+        // It does NOT work for retailers directly assigned to someone else (handled above)
+        if (retailer.areaId && freshAssignedAreas.includes(retailer.areaId)) {
           console.log(`✅ Retailer "${getRetailerName(retailer)}" matched by areaId: ${retailer.areaId}`);
           return true;
         }
 
         // Check if retailer has zipcodes that match assigned zips
-        // CRITICAL: Only allow zip-based visibility if retailer was NOT explicitly unassigned
-        if (retailer.zipcodes && retailer.zipcodes.length > 0 && freshAssignedZips.length > 0 && !isExplicitlyUnassigned) {
+        // Same logic as area-based: works for undefined or null assignedLineWorkerId
+        if (retailer.zipcodes && retailer.zipcodes.length > 0 && freshAssignedZips.length > 0) {
           const matchingZips = retailer.zipcodes.filter(zip => freshAssignedZips.includes(zip));
           if (matchingZips.length > 0) {
             console.log(`✅ Retailer "${getRetailerName(retailer)}" matched by zips: ${matchingZips.join(', ')}`);
