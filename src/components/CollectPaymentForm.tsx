@@ -365,7 +365,7 @@ const CollectPaymentFormComponent = ({
                     ref={fileInputRef}
                     className="hidden"
                     accept="image/*"
-                    capture="environment" // Hint to open camera on mobile
+                    // capture="environment" - Removed to allow Gallery selection
                     onChange={handleImageChange}
                   />
 

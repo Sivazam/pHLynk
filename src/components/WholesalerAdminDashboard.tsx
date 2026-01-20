@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
@@ -54,6 +54,7 @@ import { useSuccessFeedback } from '@/hooks/useSuccessFeedback';
 import { LogoutConfirmation } from '@/components/LogoutConfirmation';
 import { DaySheet } from '@/components/DaySheet';
 import { WholesalerProfileSettings } from '@/components/WholesalerProfileSettings';
+import { PaymentVerificationModal } from '@/components/PaymentVerificationModal';
 import {
   // Navigation
   LayoutDashboard,
@@ -122,7 +123,7 @@ export function WholesalerAdminDashboard() {
   const { user, logout } = useAuth();
   const isWholesalerAdmin = useWholesalerAdmin();
   const isSuperAdminUser = useSuperAdmin();
-  const { showSuccess, hideSuccess, feedback } = useSuccessFeedback();
+
   const [areas, setAreas] = useState<Area[]>([]);
   const [retailers, setRetailers] = useState<Retailer[]>([]);
   const [lineWorkers, setLineWorkers] = useState<User[]>([]);
@@ -205,6 +206,13 @@ export function WholesalerAdminDashboard() {
   const mainLoadingState = useLoadingState();
   const [dataFetchProgress, setDataFetchProgress] = useState(0);
 
+  // Success Feedback
+  const {
+    showSuccess,
+    hideSuccess,
+    feedback
+  } = useSuccessFeedback();
+
   // Separate state for the filter date picker
   const [filterDate, setFilterDate] = useState<{ from: Date | null; to: Date | null } | null>(null);
 
@@ -236,6 +244,76 @@ export function WholesalerAdminDashboard() {
   const handleDateRangeChange = (value: string, newDateRange: { startDate: Date; endDate: Date }) => {
     setSelectedDateRangeOption(value);
     setDateRange(newDateRange);
+  };
+
+  // Payment Verification State
+  const [isVerificationModalOpen, setIsVerificationModalOpen] = useState(false);
+  const [selectedPaymentForVerification, setSelectedPaymentForVerification] = useState<Payment | null>(null);
+  const [isMarkingVerified, setIsMarkingVerified] = useState(false);
+  const [paymentMethodFilter, setPaymentMethodFilter] = useState<'all' | 'UPI' | 'CASH' | 'BANK_TRANSFER'>('all');
+
+  const handleOpenVerification = (payment: Payment) => {
+    setSelectedPaymentForVerification(payment);
+    setIsVerificationModalOpen(true);
+  };
+
+  const handleVerifyPayment = async (paymentId: string) => {
+    const currentTenantId = getCurrentTenantId();
+    if (!currentTenantId) return;
+
+    setIsMarkingVerified(true);
+    try {
+      await paymentService.verifyPayment(paymentId, currentTenantId);
+
+      // Update local state to reflect change immediately
+      setPayments(prev => prev.map(p =>
+        p.id === paymentId ? { ...p, verified: true, proofUrl: undefined, proofPath: undefined } : p
+      ));
+
+      // Find next pending payment if we are in review mode
+      const pendingPayments = payments.filter(p =>
+        p.id !== paymentId && // Exclude current
+        !p.verified &&
+        p.method === 'UPI' &&
+        p.state !== 'CANCELLED'
+      ).sort((a, b) => b.createdAt.toDate().getTime() - a.createdAt.toDate().getTime());
+
+      if (pendingPayments.length > 0) {
+        // Auto-advance to next
+        setSelectedPaymentForVerification(pendingPayments[0]);
+      } else {
+        // No more pending, close modal
+        setIsVerificationModalOpen(false);
+        setSelectedPaymentForVerification(null);
+      }
+
+      // Trigger success notification
+      showSuccess('Payment has been verified and proof image cleared.');
+    } catch (error) {
+      console.error('Failed to verify payment:', error);
+      setError('Failed to verify payment. Please try again.');
+    } finally {
+      setIsMarkingVerified(false);
+    }
+  };
+
+  const handleSkipVerification = () => {
+    if (!selectedPaymentForVerification) return;
+
+    // Find next pending payment
+    const pendingPayments = payments.filter(p =>
+      !p.verified &&
+      p.method === 'UPI' &&
+      p.state !== 'CANCELLED' &&
+      p.id !== selectedPaymentForVerification.id
+    ).sort((a, b) => b.createdAt.toDate().getTime() - a.createdAt.toDate().getTime());
+
+    if (pendingPayments.length > 0) {
+      setSelectedPaymentForVerification(pendingPayments[0]);
+    } else {
+      setIsVerificationModalOpen(false);
+      setSelectedPaymentForVerification(null);
+    }
   };
 
   // Wrapper function for Select component that only takes the value parameter
@@ -2369,6 +2447,11 @@ export function WholesalerAdminDashboard() {
           return false;
         }
 
+        // Apply payment method filter
+        if (paymentMethodFilter !== 'all' && payment.method !== paymentMethodFilter) {
+          return false;
+        }
+
         // Apply date range filter
         const paymentDate = payment.createdAt.toDate();
         if (paymentDate < dateRange.startDate || paymentDate > dateRange.endDate) {
@@ -2384,6 +2467,13 @@ export function WholesalerAdminDashboard() {
       ['INITIATED', 'OTP_SENT', 'OTP_VERIFIED', 'CANCELLED', 'EXPIRED'].includes(payment.state)
     );
 
+    // Get count of unverified UPI payments for the alert
+    const pendingVerificationCount = payments.filter(p =>
+      !p.verified &&
+      p.method === 'UPI' &&
+      p.state === 'COMPLETED'
+    ).length;
+
     return (
       <div className="space-y-6">
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
@@ -2393,6 +2483,19 @@ export function WholesalerAdminDashboard() {
           </div>
           <div className="flex flex-col sm:flex-row sm:items-start gap-2">
             <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full sm:w-auto">
+              {/* Payment Method Filter */}
+              <Select value={paymentMethodFilter} onValueChange={(val: any) => setPaymentMethodFilter(val)}>
+                <SelectTrigger className="w-full sm:w-40">
+                  <SelectValue placeholder="All Methods" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Methods</SelectItem>
+                  <SelectItem value="CASH">Cash</SelectItem>
+                  <SelectItem value="UPI">UPI</SelectItem>
+                  <SelectItem value="BANK_TRANSFER">Bank Transfer</SelectItem>
+                </SelectContent>
+              </Select>
+
               <Select value={selectedLineWorker} onValueChange={setSelectedLineWorker}>
                 <SelectTrigger className="w-full sm:w-48">
                   <SelectValue placeholder="Filter by worker" />
@@ -2436,6 +2539,34 @@ export function WholesalerAdminDashboard() {
             </Button>
           </div>
         </div>
+
+        {/* Verification Alert Banner */}
+        {pendingVerificationCount > 0 && (
+          <Alert className="bg-blue-50 border-blue-200 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="bg-blue-100 p-2 rounded-full">
+                <AlertCircle className="h-5 w-5 text-blue-600" />
+              </div>
+              <div>
+                <AlertTitle className="text-blue-800 font-semibold text-base">Payment Proofs Pending Review</AlertTitle>
+                <AlertDescription className="text-blue-600">
+                  You have <strong>{pendingVerificationCount}</strong> unverified UPI payments waiting for approval.
+                </AlertDescription>
+              </div>
+            </div>
+            <Button
+              onClick={() => {
+                // Find first unverified UPI payment
+                const firstPending = payments.filter(p => !p.verified && p.method === 'UPI' && p.state === 'COMPLETED')
+                  .sort((a, b) => b.createdAt.toDate().getTime() - a.createdAt.toDate().getTime())[0];
+                if (firstPending) handleOpenVerification(firstPending);
+              }}
+              className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm whitespace-nowrap w-full md:w-auto"
+            >
+              Review Pending Proofs
+            </Button>
+          </Alert>
+        )}
 
         <Card>
           <CardHeader>
@@ -2488,7 +2619,7 @@ export function WholesalerAdminDashboard() {
                         {completedPayments.map((payment) => {
                           const retailerExists = retailers.some(r => r.id === payment.retailerId);
                           return (
-                            <TableRow key={payment.id}>
+                            <TableRow key={payment.id} className={!payment.verified && payment.method === 'UPI' ? "bg-blue-50/50" : ""}>
                               <TableCell>{formatTimestampWithTime(payment.createdAt)}</TableCell>
                               <TableCell>
                                 <div className="flex flex-col">
@@ -2498,14 +2629,24 @@ export function WholesalerAdminDashboard() {
                                   )}
                                 </div>
                               </TableCell>
-                              <TableCell>{getLineWorkerName(payment.lineWorkerId)}</TableCell>
+                              <TableCell>{payment.lineWorkerName}</TableCell>
+                              <TableCell className="font-semibold">{formatCurrency(payment.totalPaid)}</TableCell>
                               <TableCell>
-                                <div className="text-right">
-                                  <div className="font-medium">{formatCurrency(payment.totalPaid)}</div>
+                                <div className="flex items-center gap-2">
+                                  <Badge variant="outline">{payment.method}</Badge>
+                                  {payment.method === 'UPI' && (
+                                    payment.verified ? (
+                                      <span className="flex items-center text-xs text-green-600 font-medium">
+                                        <CheckCircle className="w-3 h-3 mr-1" />
+                                        Verified
+                                      </span>
+                                    ) : (
+                                      <span className="flex items-center text-xs text-amber-600 font-medium bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                                        Needs Review
+                                      </span>
+                                    )
+                                  )}
                                 </div>
-                              </TableCell>
-                              <TableCell>
-                                <Badge variant="outline">{payment.method}</Badge>
                               </TableCell>
                               <TableCell>
                                 <Badge className="bg-green-100 text-green-800">
@@ -2513,10 +2654,31 @@ export function WholesalerAdminDashboard() {
                                 </Badge>
                               </TableCell>
                               <TableCell>
-                                <Button variant="outline" size="sm" onClick={() => setViewingPayment(payment)}>
-                                  <Eye className="h-4 w-4 mr-1" />
-                                  View
-                                </Button>
+                                <div className="flex space-x-2">
+                                  {/* Verification Action */}
+                                  {payment.method === 'UPI' && !payment.verified && (
+                                    <Button
+                                      size="sm"
+                                      onClick={() => handleOpenVerification(payment)}
+                                      className="bg-blue-600 hover:bg-blue-700 text-white h-8 px-3"
+                                    >
+                                      Verify
+                                    </Button>
+                                  )}
+
+                                  {/* View Proof Button (if verified but maybe has URL? No, URL is deleted. Just UTR) */}
+                                  {payment.method === 'UPI' && payment.verified && (
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="text-gray-500 cursor-default hover:bg-transparent"
+                                      disabled
+                                    >
+                                      <CheckCircle className="w-4 h-4 text-green-500 mr-1" />
+                                      Verified
+                                    </Button>
+                                  )}
+                                </div>
                               </TableCell>
                             </TableRow>
                           );
@@ -2524,10 +2686,8 @@ export function WholesalerAdminDashboard() {
                       </TableBody>
                     </Table>
                   ) : (
-                    <div className="text-center py-8">
-                      <CheckCircle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                      <h3 className="text-lg font-medium text-gray-900 mb-2">No completed payments</h3>
-                      <p className="text-gray-500">There are no completed payments in the system.</p>
+                    <div className="text-center py-8 text-gray-500">
+                      No completed payments found matching your filters.
                     </div>
                   )}
                 </div>
@@ -2614,10 +2774,10 @@ export function WholesalerAdminDashboard() {
                   )}
                 </div>
               </TabsContent>
-            </Tabs>
-          </CardContent>
-        </Card>
-      </div>
+            </Tabs >
+          </CardContent >
+        </Card >
+      </div >
     );
   };
 
@@ -3437,10 +3597,22 @@ export function WholesalerAdminDashboard() {
                 </p>
               </div>
             </div>
-
           </div>
 
 
+
+          {/* Payment Verification Modal */}
+          <PaymentVerificationModal
+            payment={selectedPaymentForVerification}
+            isOpen={isVerificationModalOpen}
+            onClose={() => {
+              setIsVerificationModalOpen(false);
+              setSelectedPaymentForVerification(null);
+            }}
+            onVerify={handleVerifyPayment}
+            onSkip={handleSkipVerification}
+            isVerifying={isMarkingVerified}
+          />
 
           {/* Dialog Components */}
           {ViewPaymentDialog()}
@@ -3449,7 +3621,6 @@ export function WholesalerAdminDashboard() {
           {EditLineWorkerDialog()}
 
           {/* Retailer Assignment Dialog */}
-          {RetailerAssignmentDialog()}
 
           {/* Assignment Confirmation Dialog */}
           <AlertDialog open={showAssignmentConfirmation} onOpenChange={setShowAssignmentConfirmation}>

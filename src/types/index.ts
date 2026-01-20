@@ -199,6 +199,8 @@ export interface Payment extends BaseDocument {
   notes?: string;   // Optional notes from line worker
   utr?: string;     // Optional UTR for UPI payments (shorthand)
   proofUrl?: string; // Optional URL for payment screenshot/proof
+  proofPath?: string; // Storage path for easier deletion (transient proof)
+  verified?: boolean; // Whether the payment proof has been verified by wholesaler
 }
 
 // Payment Event

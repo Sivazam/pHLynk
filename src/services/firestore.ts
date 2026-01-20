@@ -32,6 +32,7 @@ import {
   Area,
   Retailer,
   Payment,
+  PaymentUPI,
   PaymentEvent,
   Subscription,
   Config,
@@ -2039,6 +2040,93 @@ export class PaymentService extends FirestoreService<Payment> {
     return payments.sort((a, b) =>
       toMillis(b.timeline.initiatedAt) - toMillis(a.timeline.initiatedAt)
     );
+  }
+
+  // Verify payment proof and transiently delete the proof image
+  async verifyPayment(paymentId: string, tenantId: string): Promise<void> {
+    try {
+      const payment = await this.getById(paymentId, tenantId);
+      if (!payment) throw new Error('Payment not found');
+
+      // 1. Delete proof image from storage if it exists (Transient Proof)
+      if (payment.proofPath) {
+        // Dynamic import to avoid circular dependency
+        const { storageService } = await import('./storage-service');
+        await storageService.deleteFile(payment.proofPath);
+        logger.success(`Deleted transient proof for payment ${paymentId}`, { context: 'PaymentService' });
+      }
+
+      // 2. Mark payment as verified and clear proof links
+      await this.update(paymentId, {
+        verified: true,
+        proofUrl: undefined, // Clear URL (undefined to remove field in some setups or deleteField() if generic update handles it)
+        proofPath: undefined, // Clear path
+        timeline: {
+          ...payment.timeline,
+          verifiedAt: Timestamp.now()
+        }
+      }, tenantId);
+
+      // 3. Log event
+      const eventService = new PaymentEventService();
+      await eventService.logPaymentEvent(tenantId, {
+        paymentId,
+        type: 'STATE_CHANGE',
+        fromState: payment.state,
+        toState: payment.state, // State remains same, just verified
+        at: Timestamp.now(), // Fixed: Missing 'at' property
+        meta: {
+          action: 'VERIFY_PROOF',
+          previousProofUrl: payment.proofUrl
+        }
+      });
+
+      logger.success(`Verified payment ${paymentId}`, { context: 'PaymentService' });
+    } catch (error) {
+      logger.error(`Error verifying payment ${paymentId}`, error, { context: 'PaymentService' });
+      throw error;
+    }
+  }
+
+  // Create payment method to include proofPath
+  async createPayment(tenantId: string, data: InitiatePaymentForm & {
+    notes?: string;
+    utr?: string;
+    proofUrl?: string;
+    proofPath?: string; // Added proofPath support
+    upi?: PaymentUPI
+  }, lineWorkerId: string, lineWorkerName: string): Promise<string> {
+    try {
+      const { retailerId, retailerName, totalPaid, method, notes, utr, proofUrl, proofPath, upi } = data;
+
+      const paymentData: Omit<Payment, 'id' | 'createdAt' | 'updatedAt'> = {
+        retailerId,
+        retailerName,
+        lineWorkerId,
+        lineWorkerName,
+        totalPaid,
+        method,
+        state: 'INITIATED', // Default state
+        tenantId,
+        proofUrl,
+        proofPath, // Store the storage path
+        utr,
+        evidence: [],
+        timeline: {
+          initiatedAt: Timestamp.now()
+        },
+        notes,
+        upi
+      };
+
+      // If method is CASH, auto-complete (or whatever business logic exists)
+      // For now just creating it.
+
+      return await this.create(paymentData, tenantId);
+    } catch (error) {
+      logger.error('Error creating payment', error, { context: 'PaymentService' });
+      throw error;
+    }
   }
 
   async updatePaymentState(paymentId: string, tenantId: string, state: "INITIATED" | "OTP_SENT" | "OTP_VERIFIED" | "COMPLETED" | "CANCELLED" | "EXPIRED", updates: Partial<Payment> = {}): Promise<void> {

@@ -583,26 +583,28 @@ export function LineWorkerDashboard() {
 
     try {
       console.log('🚀 Starting completed payment creation process...');
-      console.log('💳 Payment data:', {
-        retailerId: pendingPaymentData.retailerId,
-        retailerName: pendingPaymentData.retailerName,
-        amount: pendingPaymentData.amount,
-        method: pendingPaymentData.paymentMethod,
-        utr: pendingPaymentData.utr,
-        hasProofImage: !!pendingPaymentData.proofImage,
-        notes: pendingPaymentData.notes
-      });
-
       // Upload Proof Image if exists
-      let proofUrl: string | null = null;
-      if (pendingPaymentData.proofImage) {
-        console.log('📤 Uploading payment proof...');
-        const timestamp = Date.now();
-        const storageRef = ref(storage, `payment-proofs/${currentTenantId}/${user.uid}/${timestamp}_${pendingPaymentData.proofImage.name}`);
+      let proofUrl: string | undefined = undefined;
+      let proofPath: string | undefined = undefined;
 
-        const snapshot = await uploadBytes(storageRef, pendingPaymentData.proofImage);
-        proofUrl = await getDownloadURL(snapshot.ref);
-        console.log('✅ Proof uploaded:', proofUrl);
+      if (pendingPaymentData.proofImage) {
+        try {
+          console.log('📤 Uploading payment proof via StorageService...');
+          // Dynamic import to avoid circular dependency
+          const { storageService } = await import('@/services/storage-service');
+          const uploadResult = await storageService.uploadPaymentProof(
+            pendingPaymentData.proofImage,
+            `payments/${currentTenantId}/${user.uid}/${Date.now()}_${pendingPaymentData.proofImage.name}`
+          );
+          proofUrl = uploadResult.url;
+          proofPath = uploadResult.fullPath;
+          console.log('✅ Proof uploaded:', proofUrl);
+        } catch (error) {
+          console.error('❌ Error uploading proof:', error);
+          // We could throw here, or proceed without proof but with a warning. 
+          // For now, let's treat it as critical for UPI if it was provided
+          throw new Error('Failed to upload payment proof. Please try again.');
+        }
       }
 
       // Call to new API to create completed payment
@@ -620,7 +622,8 @@ export function LineWorkerDashboard() {
           totalPaid: pendingPaymentData.amount,
           method: pendingPaymentData.paymentMethod,
           utr: pendingPaymentData.utr,
-          proofUrl: proofUrl, // Add proof URL
+          proofUrl,
+          proofPath, // Pass the path for deletion later
           notes: pendingPaymentData.notes
         }),
       });
