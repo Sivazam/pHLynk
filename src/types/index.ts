@@ -90,6 +90,7 @@ export interface Retailer extends BaseDocument {
       notes?: string;
       creditLimit?: number;
       currentBalance?: number;
+      code?: string; // Wholesaler-specific retailer code
     };
   };
 

@@ -362,6 +362,25 @@ export class UserService extends FirestoreService<User> {
     }
   }
 
+  async getUserByPhone(phone: string): Promise<User | null> {
+    try {
+      const q = query(
+        collection(db, this.collectionName),
+        where('phone', '==', phone)
+      );
+      const querySnapshot = await getDocs(q);
+
+      if (!querySnapshot.empty) {
+        const doc = querySnapshot.docs[0];
+        return { id: doc.id, ...doc.data() } as User;
+      }
+      return null;
+    } catch (error) {
+      logger.error(`Error getting user by phone ${phone}`, error, { context: 'UserService' });
+      return null;
+    }
+  }
+
   async getUsersByRole(tenantId: string, role: string): Promise<User[]> {
     try {
       // Direct query to avoid multiple array-contains filters
@@ -541,7 +560,8 @@ export class RetailerService extends FirestoreService<Retailer> {
           // Update wholesaler data anyway in case area changed
           await this.upsertWholesalerData(existingRetailer.id, tenantId, {
             areaId: data.areaId,
-            zipcodes: data.zipcodes
+            zipcodes: data.zipcodes,
+            code: data.code // Update code if provided
           });
           return existingRetailer.id;
         }
@@ -552,7 +572,8 @@ export class RetailerService extends FirestoreService<Retailer> {
         // Add wholesaler-specific data using NEW method
         await this.upsertWholesalerData(existingRetailer.id, tenantId, {
           areaId: data.areaId,
-          zipcodes: data.zipcodes
+          zipcodes: data.zipcodes,
+          code: data.code // Add code for this wholesaler
         });
 
         // Create retailer user account for this tenant if it doesn't exist
@@ -608,7 +629,8 @@ export class RetailerService extends FirestoreService<Retailer> {
             }],
             notes: '',
             creditLimit: 0,
-            currentBalance: 0
+            currentBalance: 0,
+            code: data.code || '' // Store wholesaler-specific code
           }
         },
         // Keep wholesalerAssignments for backward compatibility during transition
@@ -1679,6 +1701,7 @@ export class RetailerService extends FirestoreService<Retailer> {
       notes?: string;
       creditLimit?: number;
       currentBalance?: number;
+      code?: string;
     }
   ): Promise<void> {
     try {
@@ -1703,7 +1726,8 @@ export class RetailerService extends FirestoreService<Retailer> {
         areaAssignmentHistory: existingData?.areaAssignmentHistory || [],
         notes: data.notes !== undefined ? data.notes : (existingData?.notes || ''),
         creditLimit: data.creditLimit !== undefined ? data.creditLimit : (existingData?.creditLimit || 0),
-        currentBalance: data.currentBalance !== undefined ? data.currentBalance : (existingData?.currentBalance || 0)
+        currentBalance: data.currentBalance !== undefined ? data.currentBalance : (existingData?.currentBalance || 0),
+        code: data.code !== undefined ? data.code : (existingData?.code || '')
       };
 
       // Update area assignment history if area changed
@@ -1785,8 +1809,9 @@ export class RetailerService extends FirestoreService<Retailer> {
           ...retailer,
           // Override with wholesaler-specific data
           areaId: wholesalerSpecificData.currentAreaId || retailer.areaId,
-          zipcodes: (wholesalerSpecificData.currentZipcodes && Array.isArray(wholesalerSpecificData.currentZipcodes) && wholesalerSpecificData.currentZipcodes.length > 0) ? wholesalerSpecificData.currentZipcodes : (retailer.zipcodes || [])
+          zipcodes: (wholesalerSpecificData.currentZipcodes && Array.isArray(wholesalerSpecificData.currentZipcodes) && wholesalerSpecificData.currentZipcodes.length > 0) ? wholesalerSpecificData.currentZipcodes : (retailer.zipcodes || []),
           // Note: notes, creditLimit, currentBalance are stored in wholesalerData but not part of base Retailer interface
+          code: wholesalerSpecificData.code || retailer.code // Overlay code if available
         };
 
         return mergedRetailer;
@@ -1841,7 +1866,8 @@ export class RetailerService extends FirestoreService<Retailer> {
             zipcodes: (wholesalerSpecificData.currentZipcodes && Array.isArray(wholesalerSpecificData.currentZipcodes) && wholesalerSpecificData.currentZipcodes.length > 0) ? wholesalerSpecificData.currentZipcodes : (retailer.zipcodes || []),
             notes: wholesalerSpecificData.notes,
             creditLimit: wholesalerSpecificData.creditLimit,
-            currentBalance: wholesalerSpecificData.currentBalance
+            currentBalance: wholesalerSpecificData.currentBalance,
+            code: wholesalerSpecificData.code || retailer.code // Overlay code if available
           };
 
           documents.push({ id: doc.id, ...mergedRetailer } as Retailer);

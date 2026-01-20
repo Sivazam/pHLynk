@@ -46,6 +46,7 @@ import { CompactDatePicker } from '@/components/ui/compact-date-picker';
 import { CreateAreaForm } from '@/components/ui/create-area-form';
 import { CreateRetailerForm } from '@/components/ui/create-retailer-form';
 import { RetailerServiceAreaEdit } from '@/components/ui/retailer-service-area-edit';
+import { BulkCreateRetailerModal } from '@/components/ui/bulk-create-retailer-modal';
 import { WholesalerAnalytics } from '@/components/WholesalerAnalytics';
 import { SuccessFeedback } from '@/components/SuccessFeedback';
 import { Confetti } from '@/components/ui/Confetti';
@@ -72,6 +73,7 @@ import {
   Trash2,
   Eye,
   Download,
+  Upload,
   Filter,
   Search,
   RefreshCw,
@@ -134,6 +136,7 @@ export function WholesalerAdminDashboard() {
   const [activeNav, setActiveNav] = useState('overview');
   const [showCreateArea, setShowCreateArea] = useState(false);
   const [showCreateRetailer, setShowCreateRetailer] = useState(false);
+  const [showBulkCreate, setShowBulkCreate] = useState(false);
   const [showCreateLineWorker, setShowCreateLineWorker] = useState(false);
   const [editingArea, setEditingArea] = useState<Area | null>(null);
   const [editingRetailer, setEditingRetailer] = useState<Retailer | null>(null);
@@ -1111,7 +1114,7 @@ export function WholesalerAdminDashboard() {
     }
   };
 
-  const handleAddExistingRetailer = async (retailer: Retailer, areaId?: string, zipcodes?: string[]) => {
+  const handleAddExistingRetailer = async (retailer: Retailer, areaId?: string, zipcodes?: string[], code?: string) => {
     const currentTenantId = getCurrentTenantId();
     if (!currentTenantId) {
       setError('No tenant selected. Please select a tenant to continue.');
@@ -1119,7 +1122,7 @@ export function WholesalerAdminDashboard() {
     }
 
     try {
-      console.log('🔗 Adding existing retailer to tenant:', retailer.id, currentTenantId, { areaId, zipcodes });
+      console.log('🔗 Adding existing retailer to tenant:', retailer.id, currentTenantId, { areaId, zipcodes, code });
 
       const response = await fetch('/api/retailer/add-to-tenant', {
         method: 'POST',
@@ -1130,7 +1133,8 @@ export function WholesalerAdminDashboard() {
           retailerId: retailer.id,
           tenantId: currentTenantId,
           areaId,
-          zipcodes
+          zipcodes,
+          code
         }),
       });
 
@@ -1850,6 +1854,10 @@ export function WholesalerAdminDashboard() {
           >
             <RefreshCw className="h-4 w-4 mr-2" />
           </LoadingButton>
+          <Button variant="outline" onClick={() => setShowBulkCreate(true)}>
+            <Upload className="h-4 w-4 mr-2" />
+            Bulk Create
+          </Button>
           <Dialog key="retailer-dialog" open={showCreateRetailer} onOpenChange={handleRetailerDialogChange}>
             <DialogTrigger asChild>
               <Button>
@@ -1874,6 +1882,18 @@ export function WholesalerAdminDashboard() {
               />
             </DialogContent>
           </Dialog>
+
+          <BulkCreateRetailerModal
+            isOpen={showBulkCreate}
+            onClose={() => setShowBulkCreate(false)}
+            onSuccess={() => {
+              setShowBulkCreate(false);
+              fetchDashboardData();
+              showSuccess('Bulk creation completed successfully');
+            }}
+            areas={areas}
+            tenantId={getCurrentTenantId() || ''}
+          />
         </div>
       </div>
 
@@ -1988,9 +2008,14 @@ export function WholesalerAdminDashboard() {
                     console.log('✅ Wholesaler assignment updated successfully');
 
                     // Update code if provided
+                    // Update code if provided using upsertWholesalerData to ensure isolation
                     if (data.code !== undefined) {
-                      await retailerService.update(editingRetailer.id, { code: data.code || undefined }, currentTenantId);
-                      console.log('✅ Retailer code updated successfully');
+                      await retailerService.upsertWholesalerData(
+                        editingRetailer.id,
+                        currentTenantId,
+                        { code: data.code || '' } // Pass empty string if undefined/null to clear it
+                      );
+                      console.log('✅ Retailer code updated successfully (Wholesaler-Specific)');
                     }
 
                     // Add a small delay to ensure Firestore cache is updated
