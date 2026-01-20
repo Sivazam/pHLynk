@@ -98,112 +98,116 @@ export function RetailerServiceAreaEdit({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
-      {/* Retailer Info Display (Read-only) */}
-      <div className="bg-gray-50 p-4 rounded-lg">
-        <div className="flex items-center gap-3 mb-3">
-          <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-            <MapPin className="w-5 h-5 text-blue-600" />
-          </div>
-          <div>
-            <h3 className="font-semibold text-gray-900">Retailer Information</h3>
-            <p className="text-sm text-gray-600">You can only edit the service area</p>
-          </div>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-          <div>
-            <span className="font-medium text-gray-700">Name:</span>
-            <p className="text-gray-900">{retailer.name}</p>
-          </div>
-          <div>
-            <span className="font-medium text-gray-700">Phone:</span>
-            <p className="text-gray-900">{retailer.phone}</p>
-          </div>
-          {retailer.address && (
-            <div className="md:col-span-2">
-              <span className="font-medium text-gray-700">Address:</span>
-              <p className="text-gray-900">{retailer.address}</p>
+    <form onSubmit={handleSubmit} className="flex flex-col h-full">
+      {/* Scrollable Content Container */}
+      <div className="flex-1 overflow-y-auto max-h-[60vh] px-1 space-y-6">
+        {/* Retailer Info Display (Read-only) */}
+        <div className="bg-gray-50 p-4 rounded-lg">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+              <MapPin className="w-5 h-5 text-blue-600" />
             </div>
-          )}
-          {retailer.code && (
             <div>
-              <span className="font-medium text-gray-700">Current Code:</span>
-              <p className="text-gray-900">{retailer.code}</p>
+              <h3 className="font-semibold text-gray-900">Retailer Information</h3>
+              <p className="text-sm text-gray-600">You can only edit the service area</p>
             </div>
-          )}
-        </div>
-      </div>
-
-      {/* Editable Service Area Fields */}
-      <div className="space-y-4">
-        <div>
-          <Label htmlFor="area">Service Area</Label>
-          <Select value={areaId} onValueChange={handleAreaChange} disabled={isSubmitting}>
-            <SelectTrigger>
-              <SelectValue placeholder="Select service area" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">No specific area</SelectItem>
-              {areas.map((area) => (
-                <SelectItem key={area.id} value={area.id}>
-                  {area.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div>
-          <Label htmlFor="code">Retailer Code (Optional)</Label>
-          <Input
-            id="code"
-            value={code}
-            onChange={(e) => setCode(e.target.value)}
-            placeholder="e.g., ABC1234 (4-8 characters)"
-            maxLength={12}
-            disabled={isSubmitting}
-          />
-          <p className="text-xs text-gray-500 mt-1">Alphanumeric code to identify this retailer</p>
-        </div>
-
-        <div>
-          <Label htmlFor="zipcodes">Service Zipcodes</Label>
-          <div className="space-y-2">
-            <div className="flex gap-2">
-              <input
-                id="zipcodes"
-                type="text"
-                value={newZipcode}
-                onChange={(e) => setNewZipcode(e.target.value)}
-                onKeyPress={handleKeyPress}
-                placeholder="Enter zipcode"
-                disabled={isSubmitting}
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-              />
-              <Button type="button" onClick={addZipcode} variant="outline" disabled={isSubmitting}>
-                <Plus className="h-4 w-4" />
-              </Button>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+            <div>
+              <span className="font-medium text-gray-700">Name:</span>
+              <p className="text-gray-900">{retailer.name}</p>
             </div>
-
-            {zipcodes.length > 0 && (
-              <div className="flex flex-wrap gap-2">
-                {zipcodes.map((zipcode) => (
-                  <Badge key={zipcode} variant="secondary" className="flex items-center gap-1">
-                    {zipcode}
-                    <X
-                      className="h-3 w-3 cursor-pointer hover:text-red-500"
-                      onClick={() => removeZipcode(zipcode)}
-                    />
-                  </Badge>
-                ))}
+            <div>
+              <span className="font-medium text-gray-700">Phone:</span>
+              <p className="text-gray-900">{retailer.phone}</p>
+            </div>
+            {retailer.address && (
+              <div className="md:col-span-2">
+                <span className="font-medium text-gray-700">Address:</span>
+                <p className="text-gray-900">{retailer.address}</p>
+              </div>
+            )}
+            {retailer.code && (
+              <div>
+                <span className="font-medium text-gray-700">Current Code:</span>
+                <p className="text-gray-900">{retailer.code}</p>
               </div>
             )}
           </div>
         </div>
+
+        {/* Editable Service Area Fields */}
+        <div className="space-y-4">
+          <div>
+            <Label htmlFor="area">Service Area</Label>
+            <Select value={areaId} onValueChange={handleAreaChange} disabled={isSubmitting}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select service area" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">No specific area</SelectItem>
+                {areas.map((area) => (
+                  <SelectItem key={area.id} value={area.id}>
+                    {area.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
+            <Label htmlFor="code">Retailer Code (Optional)</Label>
+            <Input
+              id="code"
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+              placeholder="e.g., ABC1234 (4-8 characters)"
+              maxLength={12}
+              disabled={isSubmitting}
+            />
+            <p className="text-xs text-gray-500 mt-1">Alphanumeric code to identify this retailer</p>
+          </div>
+
+          <div>
+            <Label htmlFor="zipcodes">Service Zipcodes</Label>
+            <div className="space-y-2">
+              <div className="flex gap-2">
+                <input
+                  id="zipcodes"
+                  type="text"
+                  value={newZipcode}
+                  onChange={(e) => setNewZipcode(e.target.value)}
+                  onKeyPress={handleKeyPress}
+                  placeholder="Enter zipcode"
+                  disabled={isSubmitting}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                />
+                <Button type="button" onClick={addZipcode} variant="outline" disabled={isSubmitting}>
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+
+              {zipcodes.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {zipcodes.map((zipcode) => (
+                    <Badge key={zipcode} variant="secondary" className="flex items-center gap-1">
+                      {zipcode}
+                      <X
+                        className="h-3 w-3 cursor-pointer hover:text-red-500"
+                        onClick={() => removeZipcode(zipcode)}
+                      />
+                    </Badge>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
 
-      <div className="flex justify-end space-x-2 pt-4 border-t">
-        <Button type="button" variant="outline" onClick={onCancel} disabled={isSubmitting}>
+      {/* Footer Actions (Fixed) */}
+      <div className="flex justify-end space-x-2 pt-4 border-t mt-auto text-white">
+        <Button type="button" variant="outline" onClick={onCancel} disabled={isSubmitting} className="text-gray-700">
           Cancel
         </Button>
         <Button type="submit" disabled={isSubmitting}>

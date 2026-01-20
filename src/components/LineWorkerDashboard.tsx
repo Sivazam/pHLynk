@@ -31,8 +31,9 @@ import { notificationService } from '@/services/notification-service';
 import { enhancedNotificationService } from '@/services/enhanced-notification-service';
 import { Retailer, Payment, Area } from '@/types';
 import { formatTimestamp, formatTimestampWithTime, formatCurrency } from '@/lib/timestamp-utils';
-import { db } from '@/lib/firebase';
+import { db, storage } from '@/lib/firebase';
 import { doc, getDoc, onSnapshot, collection, query, where } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { exportToCSV, exportToJSON, preparePaymentDataForExport, formatDateForExport, formatCurrencyForExport } from '@/lib/export-utils';
 import { CollectPaymentForm } from './CollectPaymentForm';
 import { cleanPhoneNumber } from '@/lib/utils';
@@ -101,7 +102,8 @@ export function LineWorkerDashboard() {
   const [lastPaymentAmount, setLastPaymentAmount] = useState<number>(0); // ✅ Store amount separately for success dialog
   const [lastPaymentId, setLastPaymentId] = useState<string | null>(null); // ✅ Store payment ID for receipt
   const [showReceiptInSuccess, setShowReceiptInSuccess] = useState(false); // ✅ Toggle receipt view in success dialog
-  const [wholesalerUpiInfo, setWholesalerUpiInfo] = useState<{ primaryUpiId?: string; primaryQrCodeUrl?: string }>({});
+  const [wholesalerUpiInfo, setWholesalerUpiInfo] = useState<{ primaryUpiId?: string; primaryQrCodeUrl?: string } | undefined>(undefined);
+  const [wholesalerName, setWholesalerName] = useState<string>('PharmaLync Wholesaler');
   const [paymentTab, setPaymentTab] = useState('completed');
   const [selectedDateRangeOption, setSelectedDateRangeOption] = useState('today');
   const [dateRange, setDateRange] = useState<{ startDate: Date; endDate: Date }>(() => {
@@ -328,24 +330,34 @@ export function LineWorkerDashboard() {
     });
   };
 
+  // --- DATA FETCHING ---
   const fetchLineWorkerData = async () => {
-    const currentTenantId = getCurrentTenantId();
-    if (!currentTenantId || !user?.uid) return;
-
-    setError(null);
-    setDataFetchProgress(20);
+    if (!user?.uid) return;
 
     try {
-      // CRITICAL FIX: Fetch fresh user data from Firestore instead of using stale AuthContext data
-      // This ensures line workers see updated assignedAreas when changed by wholesaler
+      mainLoadingState.setLoading(true);
+      setError(null);
+      setDataFetchProgress(10);
+
+      // CRITICAL: Fetch fresh user data from Firestore
       const userDoc = await getDoc(doc(db, 'users', user.uid));
-      const freshUserData = userDoc.exists() ? userDoc.data() : null;
+      if (!userDoc.exists()) {
+        throw new Error('Line worker profile not found');
+      }
+
+      const freshUserData = userDoc.data();
       const freshAssignedAreas = freshUserData?.assignedAreas || [];
       const freshAssignedZips = freshUserData?.assignedZips || [];
+      const currentTenantId = freshUserData?.tenantId; // Primary tenant
 
       console.log('Fetching line worker data for user:', user?.uid);
-      console.log('Fresh assigned areas from Firestore:', freshAssignedAreas);
-      console.log('Fresh assigned zips from Firestore:', freshAssignedZips);
+      console.log('📍 Line Worker assigned to tenant:', currentTenantId);
+
+      if (!currentTenantId) {
+        throw new Error('No wholesaler assignment found');
+      }
+
+      setDataFetchProgress(30);
 
       // Clean up any stuck payments first
       setDataFetchProgress(40);
@@ -362,11 +374,16 @@ export function LineWorkerDashboard() {
       const allAreas = await areaService.getAll(currentTenantId);
       const paymentsData = await paymentService.getPaymentsByLineWorker(currentTenantId, user!.uid);
 
-      // Fetch tenant UPI info for payment collection
+      // Fetch tenant UPI info and Name for payment collection & receipts
       try {
         const tenantDoc = await getDoc(doc(db, 'tenants', currentTenantId));
         if (tenantDoc.exists()) {
           const tenantData = tenantDoc.data();
+
+          // Set Wholesaler Name
+          const tenantName = tenantData.name || tenantData.displayName || 'PharmaLync Wholesaler';
+          setWholesalerName(tenantName);
+
           const upiIds = tenantData.upiIds || [];
           const qrCodes = tenantData.qrCodes || [];
           const primaryUpi = upiIds.find((u: any) => u.isPrimary);
@@ -375,10 +392,10 @@ export function LineWorkerDashboard() {
             primaryUpiId: primaryUpi?.upiId,
             primaryQrCodeUrl: primaryQr?.url
           });
-          console.log('✅ Fetched wholesaler UPI info:', { upiId: primaryUpi?.upiId, hasQr: !!primaryQr?.url });
+          console.log('✅ Fetched wholesaler info:', { name: tenantName, upiId: primaryUpi?.upiId, hasQr: !!primaryQr?.url });
         }
       } catch (upiError) {
-        console.warn('Warning: Could not fetch wholesaler UPI info:', upiError);
+        console.warn('Warning: Could not fetch wholesaler info:', upiError);
       }
 
       console.log('Total retailers found:', allRetailers.length);
@@ -538,10 +555,13 @@ export function LineWorkerDashboard() {
       throw new Error('Invalid payment data');
     }
 
-    // Validate UTR for UPI payments
+    // Validate UTR/Proof for UPI payments
     if (paymentData.paymentMethod === 'UPI') {
-      if (!paymentData.utr || paymentData.utr.length !== 4) {
-        throw new Error('UTR must be exactly 4 digits for UPI payments');
+      const hasUtr = paymentData.utr && paymentData.utr.length === 4;
+      const hasProof = !!paymentData.proofImage;
+
+      if (!hasUtr && !hasProof) {
+        throw new Error('For UPI payments, please enter either UTR (4 digits) or attach a payment screenshot');
       }
     }
 
@@ -569,8 +589,21 @@ export function LineWorkerDashboard() {
         amount: pendingPaymentData.amount,
         method: pendingPaymentData.paymentMethod,
         utr: pendingPaymentData.utr,
+        hasProofImage: !!pendingPaymentData.proofImage,
         notes: pendingPaymentData.notes
       });
+
+      // Upload Proof Image if exists
+      let proofUrl: string | null = null;
+      if (pendingPaymentData.proofImage) {
+        console.log('📤 Uploading payment proof...');
+        const timestamp = Date.now();
+        const storageRef = ref(storage, `payment-proofs/${currentTenantId}/${user.uid}/${timestamp}_${pendingPaymentData.proofImage.name}`);
+
+        const snapshot = await uploadBytes(storageRef, pendingPaymentData.proofImage);
+        proofUrl = await getDownloadURL(snapshot.ref);
+        console.log('✅ Proof uploaded:', proofUrl);
+      }
 
       // Call to new API to create completed payment
       const response = await fetch('/api/payments/create-completed', {
@@ -587,6 +620,7 @@ export function LineWorkerDashboard() {
           totalPaid: pendingPaymentData.amount,
           method: pendingPaymentData.paymentMethod,
           utr: pendingPaymentData.utr,
+          proofUrl: proofUrl, // Add proof URL
           notes: pendingPaymentData.notes
         }),
       });
@@ -1038,9 +1072,16 @@ export function LineWorkerDashboard() {
                       <div className="flex flex-col gap-2">
                         <div className="flex items-center gap-2 flex-wrap">
                           <h3 className="text-base font-semibold text-gray-900 truncate">{getRetailerName(retailer)}</h3>
-                          <Badge variant="secondary" className="bg-green-100 text-green-800 text-xs">
-                            Active
-                          </Badge>
+                          <div className="flex items-center gap-2">
+                            <Badge variant="secondary" className="bg-green-100 text-green-800 text-xs">
+                              Active
+                            </Badge>
+                            {retailer.code && (
+                              <Badge variant="outline" className="text-xs border-gray-300 text-gray-500 font-mono">
+                                {retailer.code}
+                              </Badge>
+                            )}
+                          </div>
                         </div>
                         {hasCompletedToday && lastPaymentDate && (
                           <div className="flex flex-col gap-1">
@@ -1175,7 +1216,7 @@ export function LineWorkerDashboard() {
     });
 
     const retailer = retailers.find(r => r.id === payment.retailerId) || null;
-    const wholesalerName = "PharmaLync Wholesaler"; // Fallback as we don't have detailed wholesaler map here
+    // const wholesalerName = "PharmaLync Wholesaler"; // Removed hardcoded val
 
     // 1. Header & Logo
     const logoSize = 15;
@@ -1404,7 +1445,7 @@ export function LineWorkerDashboard() {
                 </Button>
               )}
 
-              <Button
+              {/* <Button
                 variant="outline"
                 size="sm"
                 onClick={() => {
@@ -1416,7 +1457,7 @@ export function LineWorkerDashboard() {
                 className="w-full"
               >
                 View Details
-              </Button>
+              </Button> */}
 
               {payment.state === 'COMPLETED' && (
                 <Button
@@ -2065,6 +2106,10 @@ export function LineWorkerDashboard() {
                           <div className="flex justify-between py-1 border-b border-dashed">
                             <span className="text-gray-500">Payment Method</span>
                             <span className="font-medium">{payment.method}</span>
+                          </div>
+                          <div className="flex justify-between py-1 border-b border-dashed">
+                            <span className="text-gray-500">Wholesaler</span>
+                            <span className="font-medium text-right">{wholesalerName}</span>
                           </div>
                           {payment.utr && (
                             <div className="flex justify-between py-1 border-b border-dashed">

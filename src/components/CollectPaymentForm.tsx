@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -11,7 +11,13 @@ import { formatCurrency } from '@/lib/timestamp-utils';
 import {
   CreditCard,
   CheckCircle,
-  AlertCircle
+  AlertCircle,
+  Camera,
+  Upload,
+  X,
+  ChevronDown,
+  ChevronUp,
+  ImageIcon
 } from 'lucide-react';
 
 interface PaymentForm {
@@ -20,6 +26,7 @@ interface PaymentForm {
   paymentMethod: 'CASH' | 'UPI' | 'BANK_TRANSFER';
   utr?: string; // UTR for UPI payments (last 4 digits)
   notes?: string;
+  proofImage?: File | null; // Optional payment screenshot
 }
 
 interface WholesalerUpiInfo {
@@ -51,10 +58,14 @@ const CollectPaymentFormComponent = ({
     amount: 0,
     paymentMethod: 'CASH',
     utr: '',
-    notes: ''
+    notes: '',
+    proofImage: null
   }));
 
   const [error, setError] = useState<string | null>(null);
+  const [isUpiDetailsOpen, setIsUpiDetailsOpen] = useState(true); // Default open
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   // Update form when preSelectedRetailer changes
   React.useEffect(() => {
@@ -73,6 +84,41 @@ const CollectPaymentFormComponent = ({
     if (error) setError(null);
   }, [error]);
 
+  // Handle file selection
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Validate file type
+      if (!file.type.startsWith('image/')) {
+        setError('Please upload an image file');
+        return;
+      }
+
+      // Update form data
+      setFormData(prev => ({ ...prev, proofImage: file }));
+
+      // Create preview URL
+      const url = URL.createObjectURL(file);
+      setPreviewUrl(url);
+
+      // Clear error if any
+      if (error) setError(null);
+    }
+  };
+
+  // Remove selected image
+  const removeImage = () => {
+    setFormData(prev => ({ ...prev, proofImage: null }));
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+      setPreviewUrl(null);
+    }
+    // Reset file input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
   // Submit handler
   const handleSubmit = useCallback(async () => {
     // Validation
@@ -86,10 +132,13 @@ const CollectPaymentFormComponent = ({
       return;
     }
 
-    // Validate UTR for UPI payments
+    // Validate UTR/Proof for UPI payments
     if (formData.paymentMethod === 'UPI') {
-      if (!formData.utr || formData.utr.length !== 4) {
-        setError('Please enter the last 4 digits of UTR');
+      const hasUtr = formData.utr && formData.utr.length === 4;
+      const hasProof = !!formData.proofImage;
+
+      if (!hasUtr && !hasProof) {
+        setError('For UPI payments, please enter either the last 4 digits of UTR OR attach a payment screenshot');
         return;
       }
     }
@@ -113,7 +162,7 @@ const CollectPaymentFormComponent = ({
         setError(null);
       }, 5000);
     }
-  }, [formData.retailerId, formData.amount, formData.paymentMethod, formData.utr, onCollectPayment, onCancel]);
+  }, [formData.retailerId, formData.amount, formData.paymentMethod, formData.utr, formData.proofImage, onCollectPayment, onCancel]);
 
   // Get selected retailer info
   const selectedRetailer = useMemo(() => {
@@ -220,63 +269,82 @@ const CollectPaymentFormComponent = ({
               <p className="text-xs text-gray-500">Select method</p>
             </div>
 
-            {/* UPI Payment Details - Show when UPI is selected */}
+            {/* UPI Payment Details - Collapsible */}
             {formData.paymentMethod === 'UPI' && wholesalerUpiInfo && (wholesalerUpiInfo.primaryUpiId || wholesalerUpiInfo.primaryQrCodeUrl) && (
-              <div className="col-span-2 p-4 bg-blue-50 rounded-lg border border-blue-200">
-                <div className="flex items-center gap-2 mb-3">
-                  <CreditCard className="h-5 w-5 text-blue-600" />
-                  <span className="font-medium text-blue-900">Wholesaler UPI Details</span>
+              <div className="col-span-2 space-y-2">
+                <div
+                  className="flex items-center justify-between p-3 bg-blue-50 rounded-lg border border-blue-200 cursor-pointer"
+                  onClick={() => setIsUpiDetailsOpen(!isUpiDetailsOpen)}
+                >
+                  <div className="flex items-center gap-2">
+                    <CreditCard className="h-5 w-5 text-blue-600" />
+                    <span className="font-medium text-blue-900">Wholesaler UPI Details</span>
+                  </div>
+                  {isUpiDetailsOpen ? (
+                    <ChevronUp className="h-5 w-5 text-blue-600" />
+                  ) : (
+                    <ChevronDown className="h-5 w-5 text-blue-600" />
+                  )}
                 </div>
 
-                {wholesalerUpiInfo.primaryUpiId && (
-                  <div className="mb-3">
-                    <Label className="text-sm text-gray-600">UPI ID</Label>
-                    <div className="flex items-center gap-2 mt-1">
-                      <code className="bg-white px-3 py-2 rounded border text-sm font-mono flex-1">
-                        {wholesalerUpiInfo.primaryUpiId}
-                      </code>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          navigator.clipboard.writeText(wholesalerUpiInfo.primaryUpiId || '');
-                        }}
-                      >
-                        Copy
-                      </Button>
-                    </div>
-                  </div>
-                )}
+                {isUpiDetailsOpen && (
+                  <div className="p-4 bg-white rounded-lg border border-gray-200 shadow-sm animate-in fade-in slide-in-from-top-2">
+                    {wholesalerUpiInfo.primaryUpiId && (
+                      <div className="mb-4">
+                        <Label className="text-sm text-gray-600">UPI ID</Label>
+                        <div className="flex items-center gap-2 mt-1">
+                          <code className="bg-gray-50 px-3 py-2 rounded border text-sm font-mono flex-1 text-gray-800">
+                            {wholesalerUpiInfo.primaryUpiId}
+                          </code>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigator.clipboard.writeText(wholesalerUpiInfo.primaryUpiId || '');
+                            }}
+                          >
+                            Copy
+                          </Button>
+                        </div>
+                      </div>
+                    )}
 
-                {wholesalerUpiInfo.primaryQrCodeUrl && (
-                  <div>
-                    <Label className="text-sm text-gray-600">Scan QR Code</Label>
-                    <div className="mt-2 flex justify-center">
-                      <img
-                        src={wholesalerUpiInfo.primaryQrCodeUrl}
-                        alt="Payment QR Code"
-                        className="max-w-[200px] rounded border"
-                      />
-                    </div>
+                    {wholesalerUpiInfo.primaryQrCodeUrl && (
+                      <div>
+                        <Label className="text-sm text-gray-600">Scan QR Code</Label>
+                        <div className="mt-2 flex justify-center">
+                          <img
+                            src={wholesalerUpiInfo.primaryQrCodeUrl}
+                            alt="Payment QR Code"
+                            className="max-w-[180px] rounded-lg border shadow-sm"
+                          />
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
             )}
 
-            {/* UTR Field - Only shown for UPI payments */}
+            {/* UTR Field & Payment Proof - Only shown for UPI payments */}
             {formData.paymentMethod === 'UPI' && (
-              <div className="space-y-1">
-                <Label className="text-sm font-medium text-gray-700">UTR (Last 4 Digits) *</Label>
-                <div className="relative">
+              <div className="col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t mt-2">
+                {/* UTR Field */}
+                <div className="space-y-1">
+                  <div className="flex justify-between">
+                    <Label className="text-sm font-medium text-gray-700">UTR (Last 4 Digits)</Label>
+                    <span className="text-xs text-gray-500 italic">Optional if proof attached</span>
+                  </div>
                   <Input
                     type="text"
                     placeholder="1234"
                     value={formData.utr || ''}
                     onChange={(e) => {
                       const value = e.target.value;
-                      // Allow only 4 digits
-                      if (/^\d{0,4}$/.test(value) || value === '') {
+                      // Allow only numbers, max 4 digits
+                      if (/^\d{0,4}$/.test(value)) {
                         updateField('utr', value);
                       }
                     }}
@@ -284,7 +352,56 @@ const CollectPaymentFormComponent = ({
                     className="h-10"
                   />
                 </div>
-                <p className="text-xs text-gray-500">Enter last 4 digits of UTR</p>
+
+                {/* Payment Proof Upload */}
+                <div className="space-y-1">
+                  <div className="flex justify-between">
+                    <Label className="text-sm font-medium text-gray-700">Payment Screenshot</Label>
+                    <span className="text-xs text-gray-500 italic">Optional if UTR entered</span>
+                  </div>
+
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    className="hidden"
+                    accept="image/*"
+                    capture="environment" // Hint to open camera on mobile
+                    onChange={handleImageChange}
+                  />
+
+                  {!previewUrl ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full h-10 border-dashed border-gray-300 text-gray-600 hover:bg-gray-50 hover:border-gray-400 hover:text-gray-900"
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      <Camera className="h-4 w-4 mr-2" />
+                      Capture / Upload
+                    </Button>
+                  ) : (
+                    <div className="relative group rounded-lg overflow-hidden border border-gray-200 h-10 flex items-center bg-gray-50 px-3">
+                      <div className="flex items-center flex-1 gap-2 overflow-hidden">
+                        <ImageIcon className="h-4 w-4 text-blue-600 flex-shrink-0" />
+                        <span className="text-sm text-gray-700 truncate">{formData.proofImage?.name || 'Image attached'}</span>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 w-8 p-0 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full ml-1"
+                        onClick={removeImage}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+
+                      {/* Hover Preview for broader view */}
+                      <div className="absolute hidden group-hover:block bottom-full left-0 mb-2 z-50 p-1 bg-white rounded-lg shadow-xl border border-gray-200">
+                        <img src={previewUrl} className="max-w-[200px] max-h-[200px] object-contain rounded" alt="Preview" />
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>

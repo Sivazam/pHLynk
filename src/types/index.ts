@@ -197,6 +197,7 @@ export interface Payment extends BaseDocument {
   timeline: PaymentTimeline;
   notes?: string;   // Optional notes from line worker
   utr?: string;     // Optional UTR for UPI payments (shorthand)
+  proofUrl?: string; // Optional URL for payment screenshot/proof
 }
 
 // Payment Event
