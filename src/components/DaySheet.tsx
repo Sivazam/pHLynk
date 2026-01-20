@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { DateRangePicker } from '@/components/ui/DateRangePicker';
+import { ModernDateRangePicker } from '@/components/ui/ModernDateRangePicker';
 import {
   Download,
   Calendar,
@@ -64,7 +64,6 @@ export function DaySheet({
   const [selectedLineWorker, setSelectedLineWorker] = useState<string>('all');
   const [selectedArea, setSelectedArea] = useState<string>('all');
   const [selectedRetailer, setSelectedRetailer] = useState<string>('all');
-  const [selectedDateRangeOption, setSelectedDateRangeOption] = useState('today');
   const [dateRange, setDateRange] = useState<{ startDate: Date; endDate: Date }>(() => {
     const today = new Date();
     const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
@@ -78,11 +77,6 @@ export function DaySheet({
       const paymentDate = payment.createdAt.toDate();
       return paymentDate >= dateRange.startDate && paymentDate <= dateRange.endDate;
     });
-  };
-
-  const handleDateRangeChange = (value: string, newDateRange: { startDate: Date; endDate: Date }) => {
-    setSelectedDateRangeOption(value);
-    setDateRange(newDateRange);
   };
 
   // Get area name by ID
@@ -178,285 +172,83 @@ export function DaySheet({
 
   // Generate Excel file
   const generateExcel = () => {
+    // Determine which columns to include
+    const showLineWorkerColumn = selectedLineWorker === 'all';
+    const showAreaColumn = selectedArea === 'all';
+
     // Create workbook
     const wb = XLSX.utils.book_new();
 
-    // Get line worker details for the header
-    const getLineWorkerDetails = () => {
-      if (selectedLineWorker === 'all') {
-        // Get all unique line workers from filtered data
-        const uniqueWorkers = [...new Set(filteredData.map(item => item.lineWorkerName))];
-        return uniqueWorkers.map(name => {
-          const worker = lineWorkers.find(lw => lw.displayName === name);
-          return {
-            name: name,
-            phone: worker?.phone || 'No phone'
-          };
-        });
-      } else {
-        const worker = lineWorkers.find(lw => lw.id === selectedLineWorker);
-        return [{
-          name: worker?.displayName || 'Unknown',
-          phone: worker?.phone || 'No phone'
-        }];
-      }
-    };
+    // Prepare content (match CSV structure)
+    const reportTitle = [['Report: Day Sheet']];
+    const dateInfo = [[`Date Range: ${formatTimestamp(dateRange.startDate)} - ${formatTimestamp(dateRange.endDate)}`]];
 
-    // Create header data for the main sheet
-    const headerData = [
-      ['', '', '', '', '', '', '', '', '', ''], // Empty row for spacing
-      ['', '', '', '', '', '', '', '', '', ''], // Empty row for spacing
-      [wholesalerBusinessName.toUpperCase(), '', '', '', '', '', '', '', '', ''], // Business name
-      [wholesalerAddress || 'Address not provided', '', '', '', '', '', '', '', '', ''], // Actual address
-      ['', '', '', '', '', '', '', '', '', ''], // Empty row for spacing
-      ['', '', '', '', '', '', '', '', '', ''], // Empty row for spacing
-      ['DAY SHEET REPORT', '', '', '', '', '', '', '', '', ''], // Report title
-      ['Date Range:', `${formatTimestamp(dateRange.startDate)} - ${formatTimestamp(dateRange.endDate)}`, '', '', '', '', '', '', '', ''],
-      ['Generated on:', formatTimestampWithTime(new Date()), '', '', '', '', '', '', '', ''],
-      ['', '', '', '', '', '', '', '', '', ''], // Empty row for spacing
-      ['', '', '', '', '', '', '', '', '', ''], // Empty row for spacing for line worker table
-    ];
+    // Filter info
+    const filterInfo: string[][] = [];
+    if (!showLineWorkerColumn) {
+      filterInfo.push([`Line Worker: ${getLineWorkerName(selectedLineWorker)}`]);
+    }
+    if (!showAreaColumn) {
+      filterInfo.push([`Service Area: ${getAreaName(selectedArea)}`]);
+    }
 
-    // Add line worker details table
-    const lineWorkerData = getLineWorkerDetails();
-    const lineWorkerTable = [
-      ['LINE WORKER DETAILS', '', '', '', '', '', '', '', '', ''],
-      ['Name', 'Contact Number', '', '', '', '', '', '', '', ''],
-      ...lineWorkerData.map(worker => [worker.name, worker.phone, '', '', '', '', '', '', '', '']),
-      ['', '', '', '', '', '', '', '', '', ''], // Empty row after line worker table
-      ['', '', '', '', '', '', '', '', '', ''], // Empty row before column headers
-    ];
+    // Column Headers
+    const headers = ['Retailer Code', 'Retailer Name', 'Amount Collected', 'Payment Method'];
+    if (showLineWorkerColumn) headers.push('Line Worker');
+    if (showAreaColumn) headers.push('Service Area');
 
-    // Column headers
-    const columnHeaders = [
-      'Payment ID',
-      'Date',
-      'Time',
-      'Line Worker Name',
-      'Assigned Areas',
-      'Retailer Name',
-      'Retailer Address',
-      'Retailer Area',
-      'Amount',
-      'Payment Method'
-    ];
+    // Data Rows
+    const dataRows = filteredData.map(item => {
+      const row = [
+        item.retailerCode,
+        item.retailerName,
+        item.amount,
+        item.paymentMethod
+      ];
+      if (showLineWorkerColumn) row.push(item.lineWorkerName);
+      if (showAreaColumn) row.push(item.retailerArea);
+      return row;
+    });
 
-    // Prepare data for Excel
-    const excelData = filteredData.map(item => ({
-      'Payment ID': item.paymentId,
-      'Date': formatTimestamp(item.date),
-      'Time': item.time,
-      'Line Worker Name': item.lineWorkerName,
-      'Assigned Areas': item.lineWorkerArea,
-      'Retailer Name': item.retailerName,
-      'Retailer Address': item.retailerAddress || 'Not provided',
-      'Retailer Area': item.retailerArea,
-      'Amount': item.amount,
-      'Payment Method': item.paymentMethod
-    }));
+    // Grand Total Row
+    const grandTotalRow = ['Grand Total', '', totalAmount, ''];
+    if (showLineWorkerColumn) grandTotalRow.push('');
+    if (showAreaColumn) grandTotalRow.push('');
 
-    // Convert to worksheet format
+    // Combine all data
     const wsData = [
-      ...headerData,
-      ...lineWorkerTable,
-      columnHeaders,
-      ...excelData.map(row => [
-        row['Payment ID'],
-        row['Date'],
-        row['Time'],
-        row['Line Worker Name'],
-        row['Assigned Areas'],
-        row['Retailer Name'],
-        row['Retailer Address'],
-        row['Retailer Area'],
-        row['Amount'],
-        row['Payment Method']
-      ]),
-      ['', '', '', '', '', '', '', '', '', ''], // Empty row before totals
-      ['', '', '', '', '', '', '', '', '', ''], // Empty row before totals
-      ['', '', '', '', '', '', '', 'TOTAL COLLECTIONS:', totalCollections, ''],
-      ['', '', '', '', '', '', '', 'TOTAL AMOUNT:', totalAmount, ''],
+      ...reportTitle,
+      ...dateInfo,
+      ...filterInfo,
+      [], // Empty row
+      headers,
+      ...dataRows,
+      [], // Empty row
+      grandTotalRow
     ];
 
-    // Create worksheet
     const ws = XLSX.utils.aoa_to_sheet(wsData);
 
     // Set column widths
     const colWidths = [
-      { wch: 15 }, // Payment ID
-      { wch: 12 }, // Date
-      { wch: 10 }, // Time
-      { wch: 20 }, // Line Worker Name
-      { wch: 25 }, // Assigned Areas
-      { wch: 20 }, // Retailer Name
-      { wch: 30 }, // Retailer Address
-      { wch: 20 }, // Retailer Area
-      { wch: 12 }, // Amount
-      { wch: 15 }  // Payment Method
+      { wch: 15 }, // Code
+      { wch: 30 }, // Name
+      { wch: 15 }, // Amount
+      { wch: 15 }, // Method
+      ...(showLineWorkerColumn ? [{ wch: 20 }] : []),
+      ...(showAreaColumn ? [{ wch: 20 }] : [])
     ];
     ws['!cols'] = colWidths;
 
-    // Apply styling to header rows
-    // Make business name bold and larger
-    if (ws['A3']) {
-      ws['A3'].s = { font: { bold: true, sz: 16 } };
-    }
+    // Styling
+    // Title Bold
+    if (ws['A1']) ws['A1'].s = { font: { bold: true, sz: 14 } };
 
-    // Make address normal
-    if (ws['A4']) {
-      ws['A4'].s = { font: { sz: 12 } };
-    }
-
-    // Make report title bold
-    if (ws['A7']) {
-      ws['A7'].s = { font: { bold: true, sz: 14 } };
-    }
-
-    // Style line worker table
-    const lineWorkerStartRow = headerData.length + 1;
-
-    // Line worker details header with blue background and white text
-    if (ws[`A${lineWorkerStartRow}`]) {
-      ws[`A${lineWorkerStartRow}`].s = {
-        font: { bold: true, color: { rgb: "FFFFFF" } },
-        fill: { fgColor: { rgb: "4472C4" } },
-        alignment: { horizontal: "center" }
-      };
-    }
-
-    // Line worker column headers with blue background and white text
-    const headerRow = lineWorkerStartRow + 1;
-    if (ws[`A${headerRow}`]) {
-      ws[`A${headerRow}`].s = {
-        font: { bold: true, color: { rgb: "FFFFFF" } },
-        fill: { fgColor: { rgb: "4472C4" } }
-      };
-    }
-    if (ws[`B${headerRow}`]) {
-      ws[`B${headerRow}`].s = {
-        font: { bold: true, color: { rgb: "FFFFFF" } },
-        fill: { fgColor: { rgb: "4472C4" } }
-      };
-    }
-
-    // Add borders to line worker data cells
-    for (let i = 0; i < lineWorkerData.length; i++) {
-      const dataRow = headerRow + 1 + i;
-      // Name cell
-      if (ws[`A${dataRow}`]) {
-        ws[`A${dataRow}`].s = {
-          border: {
-            top: { style: "thin", color: { rgb: "000000" } },
-            bottom: { style: "thin", color: { rgb: "000000" } },
-            left: { style: "thin", color: { rgb: "000000" } },
-            right: { style: "thin", color: { rgb: "000000" } }
-          }
-        };
-      }
-      // Phone cell
-      if (ws[`B${dataRow}`]) {
-        ws[`B${dataRow}`].s = {
-          border: {
-            top: { style: "thin", color: { rgb: "000000" } },
-            bottom: { style: "thin", color: { rgb: "000000" } },
-            left: { style: "thin", color: { rgb: "000000" } },
-            right: { style: "thin", color: { rgb: "000000" } }
-          }
-        };
-      }
-    }
-
-    // Make column headers bold
-    const columnHeaderRow = headerData.length + lineWorkerTable.length;
-    for (let i = 0; i < columnHeaders.length; i++) {
-      const cellAddress = XLSX.utils.encode_cell({ r: columnHeaderRow, c: i });
-      if (ws[cellAddress]) {
-        ws[cellAddress].s = { font: { bold: true } };
-      }
-    }
-
-    // Make totals bold
-    const totalRow1 = wsData.length - 2;
-    const totalRow2 = wsData.length - 1;
-
-    if (ws[`H${totalRow1 + 1}`]) {
-      ws[`H${totalRow1 + 1}`].s = { font: { bold: true } };
-    }
-    if (ws[`I${totalRow1 + 1}`]) {
-      ws[`I${totalRow1 + 1}`].s = { font: { bold: true } };
-    }
-    if (ws[`H${totalRow2 + 1}`]) {
-      ws[`H${totalRow2 + 1}`].s = { font: { bold: true } };
-    }
-    if (ws[`I${totalRow2 + 1}`]) {
-      ws[`I${totalRow2 + 1}`].s = { font: { bold: true } };
-    }
+    // Headers Bold (row index depends on filter info length)
+    const headerRowIdx = reportTitle.length + dateInfo.length + filterInfo.length + 1; // +1 for empty row
+    // Note: This styling logic is simplified; basic bolding for A1 is good enough for now
 
     XLSX.utils.book_append_sheet(wb, ws, 'Day Sheet');
-
-    // Add summary sheet with more detailed information
-    const summaryData = [
-      ['SUMMARY REPORT', ''],
-      ['', ''],
-      ['BUSINESS INFORMATION', ''],
-      ['Wholesaler Business Name', wholesalerBusinessName],
-      ['Wholesaler Address', wholesalerAddress || 'Not provided'],
-      ['Report Period', `${formatTimestamp(dateRange.startDate)} - ${formatTimestamp(dateRange.endDate)}`],
-      ['Generated On', formatTimestampWithTime(new Date())],
-      ['', ''],
-      ['COLLECTION SUMMARY', ''],
-      ['Total Collections', totalCollections],
-      ['Total Amount Collected', totalAmount],
-      ['Average Collection', totalCollections > 0 ? totalAmount / totalCollections : 0],
-      ['', ''],
-      ['FILTERS APPLIED', ''],
-      ['Line Worker', selectedLineWorker === 'all' ? 'All Line Workers' : getLineWorkerName(selectedLineWorker)],
-      ['Area', selectedArea === 'all' ? 'All Areas' : getAreaName(selectedArea)],
-      ['Retailer', selectedRetailer === 'all' ? 'All Retailers' : getRetailerName(selectedRetailer)],
-      ['', ''],
-      ['LINE WORKER DETAILS', ''],
-      ...(
-        selectedLineWorker === 'all'
-          ? [...new Set(filteredData.map(item => item.lineWorkerName))].map(name => {
-            const worker = lineWorkers.find(lw => lw.displayName === name);
-            return [name, worker?.phone || 'No phone'];
-          })
-          : (() => {
-            const worker = lineWorkers.find(lw => lw.id === selectedLineWorker);
-            return [[worker?.displayName || 'Unknown', worker?.phone || 'No phone']];
-          })()
-      ),
-      ['', ''],
-      ['BREAKDOWN BY LINE WORKER', ''],
-      ...Object.entries(
-        filteredData.reduce((acc, item) => {
-          acc[item.lineWorkerName] = (acc[item.lineWorkerName] || 0) + item.amount;
-          return acc;
-        }, {} as Record<string, number>)
-      ).map(([name, amount]) => [name, amount]),
-      ['', ''],
-      ['BREAKDOWN BY PAYMENT METHOD', ''],
-      ...Object.entries(
-        filteredData.reduce((acc, item) => {
-          acc[item.paymentMethod] = (acc[item.paymentMethod] || 0) + item.amount;
-          return acc;
-        }, {} as Record<string, number>)
-      ).map(([method, amount]) => [method, amount])
-    ];
-
-    const summaryWs = XLSX.utils.aoa_to_sheet(summaryData);
-    summaryWs['!cols'] = [{ wch: 25 }, { wch: 15 }];
-
-    // Apply styling to summary headers
-    if (summaryWs['A1']) summaryWs['A1'].s = { font: { bold: true, sz: 14 } };
-    if (summaryWs['A4']) summaryWs['A4'].s = { font: { bold: true } };
-    if (summaryWs['A9']) summaryWs['A9'].s = { font: { bold: true } };
-    if (summaryWs['A14']) summaryWs['A14'].s = { font: { bold: true } };
-    if (summaryWs['A19']) summaryWs['A19'].s = { font: { bold: true } };
-    if (summaryWs['A24']) summaryWs['A24'].s = { font: { bold: true } };
-    if (summaryWs['A29']) summaryWs['A29'].s = { font: { bold: true } };
-
-    XLSX.utils.book_append_sheet(wb, summaryWs, 'Summary');
 
     // Generate file name
     const fileName = `DaySheet_${wholesalerBusinessName.replace(/\s+/g, '_')}_${formatTimestamp(dateRange.startDate)}.xlsx`;
@@ -655,10 +447,17 @@ export function DaySheet({
                       <Calendar className="h-4 w-4" />
                       <span>Date Range</span>
                     </label>
-                    <DateRangePicker
-                      value={dateRange}
-                      onChange={(range) => setDateRange(range)}
-                    />
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium flex items-center space-x-1">
+                        <Calendar className="h-4 w-4" />
+                        <span>Date Range</span>
+                      </label>
+                      <ModernDateRangePicker
+                        startDate={dateRange.startDate}
+                        endDate={dateRange.endDate}
+                        onChange={setDateRange}
+                      />
+                    </div>
                   </div>
                 </div>
 

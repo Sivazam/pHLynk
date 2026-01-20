@@ -153,6 +153,7 @@ interface CreateCompletedPaymentRequest {
   notes?: string;
   lineWorkerName: string;
   proofUrl?: string; // Optional URL for payment screenshot
+  proofPath?: string; // Optional Storage path for payment screenshot (for deletion)
 }
 
 export async function POST(request: NextRequest) {
@@ -171,7 +172,8 @@ export async function POST(request: NextRequest) {
       utr,
       notes,
       lineWorkerName,
-      proofUrl
+      proofUrl,
+      proofPath
     } = body;
 
     console.log('💳 Creating completed payment request:', {
@@ -211,6 +213,7 @@ export async function POST(request: NextRequest) {
       tenantId, // Explicitly save tenantId (singular) for easier querying/display
       ...(utr && { utr }),
       ...(proofUrl && { proofUrl }),
+      ...(proofPath && { proofPath }),
       ...(notes && notes.trim().length > 0 && { notes })
     };
 
