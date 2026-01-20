@@ -17,6 +17,7 @@ interface CreateRetailerFormProps {
   onSubmit: (data: { name: string; phone: string; address?: string; areaId?: string; zipcodes: string[] }) => Promise<void>;
   onAddExistingRetailer?: (retailer: Retailer, areaId?: string, zipcodes?: string[]) => Promise<void>;
   areas: Area[];
+  existingRetailers?: Retailer[]; // List of retailers already in wholesaler's network
   onCancel?: () => void;
   initialData?: { name: string; phone: string; address?: string; areaId?: string; zipcodes: string[] };
   showPhoneLookup?: boolean;
@@ -24,13 +25,14 @@ interface CreateRetailerFormProps {
 
 type FormMode = 'create' | 'update' | 'lookup';
 
-export function CreateRetailerForm({ 
-  onSubmit, 
+export function CreateRetailerForm({
+  onSubmit,
   onAddExistingRetailer,
-  areas, 
-  onCancel, 
-  initialData, 
-  showPhoneLookup = true 
+  areas,
+  existingRetailers = [],
+  onCancel,
+  initialData,
+  showPhoneLookup = true
 }: CreateRetailerFormProps) {
   const [name, setName] = useState(initialData?.name || '');
   const [phone, setPhone] = useState(initialData?.phone || '');
@@ -55,7 +57,7 @@ export function CreateRetailerForm({
       areaId,
       canSubmit: name.trim() && phone.trim() && (formMode === 'update' || foundRetailer || zipcodes.length > 0 || areaId === 'no-specific-area')
     });
-    
+
     if (name.trim() && phone.trim() && (formMode === 'update' || foundRetailer || zipcodes.length > 0 || areaId === 'no-specific-area')) {
       setIsSubmitting(true);
       try {
@@ -78,7 +80,7 @@ export function CreateRetailerForm({
         // Show success state and trigger confetti
         setShowSuccess(true);
         setTriggerConfetti(true);
-        
+
         // Reset form after success
         setTimeout(() => {
           resetForm();
@@ -106,7 +108,7 @@ export function CreateRetailerForm({
     const retailerName = retailer.profile ? retailer.profile.realName : retailer.name;
     const retailerPhone = retailer.profile ? retailer.profile.phone : retailer.phone;
     const retailerAddress = retailer.profile ? retailer.profile.address : retailer.address;
-    
+
     setName(retailerName || '');
     setPhone(retailerPhone || '');
     setAddress(retailerAddress || '');
@@ -124,7 +126,7 @@ export function CreateRetailerForm({
         await onAddExistingRetailer(foundRetailer, areaId || undefined, areaZipcodes);
         setShowSuccess(true);
         setTriggerConfetti(true);
-        
+
         setTimeout(() => {
           resetForm();
           if (onCancel) onCancel();
@@ -137,11 +139,11 @@ export function CreateRetailerForm({
     }
   };
 
-  const handleAddNewRetailer = () => {
-    // Keep phone number if already entered
-    const currentPhone = phone;
+  const handleAddNewRetailer = (searchedPhone?: string) => {
+    // Use the phone passed from lookup, or keep current phone
+    const phoneToKeep = searchedPhone || phone;
     resetForm();
-    setPhone(currentPhone);
+    setPhone(phoneToKeep);
     setFormMode('create');
   };
 
@@ -200,7 +202,7 @@ export function CreateRetailerForm({
   return (
     <>
       <Confetti trigger={triggerConfetti} onComplete={handleConfettiComplete} />
-      
+
       {/* Phone Lookup Mode */}
       {formMode === 'lookup' && (
         <RetailerPhoneLookup
@@ -208,6 +210,7 @@ export function CreateRetailerForm({
           onAddNewRetailer={handleAddNewRetailer}
           onCancel={handleCancel}
           loading={isSubmitting}
+          existingRetailers={existingRetailers}
         />
       )}
 
@@ -218,13 +221,13 @@ export function CreateRetailerForm({
             <div className="text-center py-8">
               <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
               <h3 className="text-lg font-semibold text-green-700 mb-2">
-                {formMode === 'update' ? 'Retailer Updated Successfully!' : 
-                 foundRetailer ? 'Retailer Added Successfully!' : 'Retailer Created Successfully!'}
+                {formMode === 'update' ? 'Retailer Updated Successfully!' :
+                  foundRetailer ? 'Retailer Added Successfully!' : 'Retailer Created Successfully!'}
               </h3>
               <p className="text-gray-600">
                 {formMode === 'update' ? 'The retailer has been updated.' :
-                 foundRetailer ? 'The existing retailer has been added to your account.' :
-                 'The new retailer has been created and is ready to use.'}
+                  foundRetailer ? 'The existing retailer has been added to your account.' :
+                    'The new retailer has been created and is ready to use.'}
               </p>
             </div>
           ) : (
@@ -330,7 +333,7 @@ export function CreateRetailerForm({
                         <Plus className="h-4 w-4" />
                       </Button>
                     </div>
-                    
+
                     {zipcodes.length > 0 && (
                       <div className="flex flex-wrap gap-2">
                         {zipcodes.map((zipcode) => (
@@ -353,21 +356,21 @@ export function CreateRetailerForm({
                   Cancel
                 </Button>
                 {showPhoneLookup && !initialData && (
-                  <Button 
-                    type="button" 
-                    variant="outline" 
+                  <Button
+                    type="button"
+                    variant="outline"
                     onClick={() => {
                       console.log('🔍 Search Retailer button clicked');
                       setFormMode('lookup');
-                    }} 
+                    }}
                     disabled={isSubmitting}
                   >
                     <Search className="w-4 h-4 mr-2" />
                     Search Retailer
                   </Button>
                 )}
-                <Button 
-                  type="submit" 
+                <Button
+                  type="submit"
                   disabled={isSubmitting || !name || !name.trim() || !phone || !phone.trim() || (formMode !== 'update' && !foundRetailer && zipcodes.length === 0 && areaId !== 'no-specific-area')}
                   onClick={() => {
                     console.log('🔍 Submit button clicked');
@@ -376,12 +379,12 @@ export function CreateRetailerForm({
                   {isSubmitting ? (
                     <>
                       <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      {formMode === 'update' ? 'Updating...' : 
-                       foundRetailer ? 'Adding to Network...' : 'Creating...'}
+                      {formMode === 'update' ? 'Updating...' :
+                        foundRetailer ? 'Adding to Network...' : 'Creating...'}
                     </>
                   ) : (
-                    formMode === 'update' ? 'Update Retailer' : 
-                    foundRetailer ? 'Add Retailer to Network' : 'Create Retailer'
+                    formMode === 'update' ? 'Update Retailer' :
+                      foundRetailer ? 'Add Retailer to Network' : 'Create Retailer'
                   )}
                 </Button>
               </div>

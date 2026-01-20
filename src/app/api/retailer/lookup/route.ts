@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { retailerService } from '@/services/firestore';
 import { RetailerAuthService } from '@/services/retailer-auth';
 import { serverTimestamp } from 'firebase/firestore';
+import { normalizePhoneNumber } from '@/lib/utils';
 
 interface RetailerLookupRequest {
   phone: string;
@@ -12,8 +13,8 @@ interface RetailerLookupRequest {
 
 export async function POST(request: NextRequest) {
   try {
-    console.log('🚀 RETAILER LOOKUP API v2.0 - Fixed Version');
-    
+    console.log('🚀 RETAILER LOOKUP API v2.1 - With Phone Normalization');
+
     const body: RetailerLookupRequest = await request.json();
     const { phone } = body;
 
@@ -26,9 +27,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Clean phone number
-    const cleanPhone = phone.replace(/\D/g, '');
-    
+    // Normalize phone number (strips +91, 91, 0 prefixes)
+    const cleanPhone = normalizePhoneNumber(phone);
+    console.log('📱 Normalized phone:', cleanPhone);
+
     if (cleanPhone.length < 10) {
       return NextResponse.json(
         { error: 'Invalid phone number' },
@@ -38,12 +40,12 @@ export async function POST(request: NextRequest) {
 
     // First try to find retailer in retailers collection (check both phone and profile.phone fields)
     let retailer = await retailerService.getRetailerByPhoneEnhanced(cleanPhone);
-    
+
     // If not found, try retailerUsers collection as fallback
     if (!retailer) {
       console.log('🔍 Retailer not found in retailers collection, checking retailerUsers...');
       const retailerUser = await RetailerAuthService.getRetailerUserByPhone(cleanPhone);
-      
+
       if (retailerUser) {
         console.log('✅ Found retailer user, but no retailer document exists');
         // Return user info but indicate no retailer document
@@ -63,21 +65,21 @@ export async function POST(request: NextRequest) {
     // CRITICAL FIX: Always ensure consistency with retailerUsers collection
     if (retailer) {
       console.log('✅ Initial retailer found:', retailer.id);
-      
+
       // Always check retailerUsers for the correct reference
       const retailerUser = await RetailerAuthService.getRetailerUserByPhone(cleanPhone);
-      
+
       if (retailerUser) {
         console.log(`📋 retailerUsers references retailer ID: ${retailerUser.retailerId}`);
-        
+
         if (retailerUser.retailerId !== retailer.id) {
           console.log('⚠️  INCONSISTENCY DETECTED - correcting:');
           console.log(`   - Search found: ${retailer.id}`);
           console.log(`   - retailerUsers expects: ${retailerUser.retailerId}`);
-          
+
           // Always try to get the retailer document that retailerUsers references
           const correctRetailer = await retailerService.getById(retailerUser.retailerId, retailerUser.tenantId);
-          
+
           if (correctRetailer && correctRetailer.phone === cleanPhone) {
             console.log('✅ CORRECTED: Using retailer document from retailerUsers reference');
             retailer = correctRetailer;
@@ -104,12 +106,12 @@ export async function POST(request: NextRequest) {
       } else {
         console.log('⚠️  No retailerUsers found for this phone number');
       }
-      
+
       // Don't expose tenant information for privacy
       const safeRetailer: any = {
         id: retailer.id,
       };
-      
+
       // Handle both legacy and new profile formats
       if (retailer.profile) {
         // New profile format
@@ -130,7 +132,7 @@ export async function POST(request: NextRequest) {
         safeRetailer.businessType = undefined;
         safeRetailer.licenseNumber = undefined;
       }
-      
+
       // Include zipcodes if available
       if (retailer.zipcodes) {
         safeRetailer.zipcodes = retailer.zipcodes;
@@ -145,7 +147,7 @@ export async function POST(request: NextRequest) {
     }
 
     console.log('ℹ️ No retailer found for phone:', cleanPhone);
-    
+
     return NextResponse.json({
       retailer: null,
       message: 'No retailer found with this phone number'
@@ -153,9 +155,9 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('❌ Error in retailer lookup:', error);
-    
+
     return NextResponse.json(
-      { 
+      {
         error: 'Failed to lookup retailer',
         details: error instanceof Error ? error.message : 'Unknown error'
       },

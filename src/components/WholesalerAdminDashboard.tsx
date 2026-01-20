@@ -1846,6 +1846,7 @@ export function WholesalerAdminDashboard() {
                 onSubmit={handleCreateRetailer}
                 onAddExistingRetailer={handleAddExistingRetailer}
                 areas={areas}
+                existingRetailers={retailers}
                 onCancel={() => setShowCreateRetailer(false)}
               />
             </DialogContent>

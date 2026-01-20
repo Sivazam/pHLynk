@@ -22,8 +22,8 @@ class FCMService {
    * Register a device token for any user type
    */
   async registerDevice(
-    userId: string, 
-    deviceToken: string, 
+    userId: string,
+    deviceToken: string,
     userAgent: string = 'unknown',
     userType: UserType = 'retailers'
   ): Promise<{ success: boolean; message: string }> {
@@ -62,7 +62,7 @@ class FCMService {
 
       // Check if device already exists
       const existingDeviceIndex = currentDevices.findIndex(d => d.deviceId === deviceId);
-      
+
       if (existingDeviceIndex >= 0) {
         // Update existing device
         currentDevices[existingDeviceIndex] = {
@@ -97,7 +97,7 @@ class FCMService {
    * Unregister a specific device token for any user type
    */
   async unregisterDevice(
-    userId: string, 
+    userId: string,
     deviceToken: string,
     userType: UserType = 'retailers'
   ): Promise<{ success: boolean; message: string }> {
@@ -121,8 +121,8 @@ class FCMService {
       const currentDevices: FCMDevice[] = userData.fcmDevices || [];
 
       // Mark device as inactive instead of removing completely (for audit trail)
-      const finalDevices = currentDevices.map(device => 
-        device.token === deviceToken 
+      const finalDevices = currentDevices.map(device =>
+        device.token === deviceToken
           ? { ...device, isActive: false, lastActive: Timestamp.now() }
           : device
       );
@@ -157,10 +157,13 @@ class FCMService {
   }
 
   /**
-   * Check if FCM is properly configured
+   * Check if FCM is properly configured for client-side device registration
+   * Note: Server-side sending is handled by Cloud Functions with Admin SDK
    */
   isConfigured(): boolean {
-    return !!(this.VAPID_KEY || this.SERVER_KEY);
+    // Only VAPID key is required for client-side device registration
+    // Cloud Functions use Admin SDK for actual notification sending
+    return !!this.VAPID_KEY;
   }
 
   /**
@@ -177,7 +180,7 @@ class FCMService {
 
       const userData = userDoc.data();
       const devices: FCMDevice[] = userData.fcmDevices || [];
-      
+
       // Return only active devices
       return devices.filter(device => device.isActive);
     } catch (error) {
@@ -196,14 +199,14 @@ class FCMService {
   ): Promise<{ success: boolean; sent: number; failed: number; message: string }> {
     try {
       const devices = await this.getActiveDevices(userId, userType);
-      
+
       if (devices.length === 0) {
         return { success: true, sent: 0, failed: 0, message: 'No active devices found' };
       }
 
       const tokens = devices.map(device => device.token);
       return await this.sendNotification(tokens, notification);
-      
+
     } catch (error) {
       console.error('❌ FCM Service: Error sending notification to user:', error);
       return { success: false, sent: 0, failed: 0, message: 'Failed to send notification' };
@@ -226,7 +229,7 @@ class FCMService {
       // For now, return a placeholder response
       console.log('📤 FCM Service: Sending notification to', tokens.length, 'devices');
       console.log('📝 Notification:', notification);
-      
+
       // TODO: Implement actual FCM HTTP API call
       // const response = await fetch('https://fcm.googleapis.com/fcm/send', {
       //   method: 'POST',
@@ -241,7 +244,7 @@ class FCMService {
       // });
 
       return { success: true, sent: tokens.length, failed: 0, message: 'Notification sent successfully' };
-      
+
     } catch (error) {
       console.error('❌ FCM Service: Error sending notification:', error);
       return { success: false, sent: 0, failed: tokens.length, message: 'Failed to send notification' };
@@ -275,7 +278,7 @@ class FCMService {
       };
 
       const result = await this.sendNotificationToUser(retailerId, notification, 'retailers');
-      
+
       if (result.success) {
         console.log('✅ OTP notification sent successfully:', { retailerId, paymentId });
         return { success: true, message: 'OTP notification sent successfully' };
@@ -356,7 +359,7 @@ class FCMService {
       }
 
       const result = await this.sendNotificationToUser(retailerId, notification, 'retailers');
-      
+
       if (result.success) {
         console.log('✅ Payment notification sent successfully:', { retailerId, paymentId, status });
         return { success: true, message: 'Payment notification sent successfully' };
