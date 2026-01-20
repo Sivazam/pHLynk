@@ -589,12 +589,17 @@ export function LineWorkerDashboard() {
 
       if (pendingPaymentData.proofImage) {
         try {
-          console.log('📤 Uploading payment proof via StorageService...');
-          // Dynamic import to avoid circular dependency
+          console.log('📤 Compressing and uploading payment proof...');
+          // Dynamic imports to avoid circular dependency
           const { storageService } = await import('@/services/storage-service');
+          const { compressImage } = await import('@/lib/image-compression');
+
+          // Compress image first for faster upload
+          const compressedImage = await compressImage(pendingPaymentData.proofImage);
+
           const uploadResult = await storageService.uploadPaymentProof(
-            pendingPaymentData.proofImage,
-            `payments/${currentTenantId}/${user.uid}/${Date.now()}_${pendingPaymentData.proofImage.name}`
+            compressedImage,
+            `payments/${currentTenantId}/${user.uid}/${Date.now()}_proof.jpg`
           );
           proofUrl = uploadResult.url;
           proofPath = uploadResult.fullPath;
@@ -640,10 +645,11 @@ export function LineWorkerDashboard() {
       setLastPaymentAmount(pendingPaymentData.amount);
       setLastPaymentId(result.paymentId); // Store payment ID for receipt
 
-      // OPTIMISTIC UPDATE: Add new payment to state immediately
+      // OPTIMISTIC UPDATE: Add new payment to state (with deduplication check)
       const completionTime = new Date();
+      const newPaymentId = result.paymentId;
       const newPayment: Payment = {
-        id: result.paymentId,
+        id: newPaymentId,
         retailerId: pendingPaymentData.retailerId,
         retailerName: getRetailerName(retailers.find(r => r.id === pendingPaymentData.retailerId) || { name: pendingPaymentData.retailerName } as any),
         lineWorkerId: user.uid,
@@ -660,10 +666,21 @@ export function LineWorkerDashboard() {
         createdAt: Timestamp.fromDate(completionTime),
         updatedAt: Timestamp.fromDate(completionTime),
         notes: pendingPaymentData.notes,
-        utr: pendingPaymentData.utr
+        utr: pendingPaymentData.utr,
+        proofUrl,
+        proofPath,
+        verified: false
       };
 
-      setPayments(prev => [newPayment, ...prev]);
+      // Deduplicate: Only add if not already present
+      setPayments(prev => {
+        const alreadyExists = prev.some(p => p.id === newPaymentId);
+        if (alreadyExists) {
+          console.log('⚠️ Payment already exists in state, skipping duplicate add');
+          return prev;
+        }
+        return [newPayment, ...prev];
+      });
       console.log('⚡ Optimistic update complete');
 
       setPendingPaymentData(null);

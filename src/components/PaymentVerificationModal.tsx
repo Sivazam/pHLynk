@@ -199,12 +199,12 @@ export function PaymentVerificationModal({
                                     )}
                                 </Button>
                                 <Button
-                                    variant="outline"
+                                    variant="secondary"
                                     onClick={onSkip}
                                     disabled={isVerifying}
-                                    className="h-12 px-6 border-white/20 text-white hover:bg-white/10"
+                                    className="h-12 px-6 bg-gray-700 hover:bg-gray-600 text-gray-100 border-0"
                                 >
-                                    Skip
+                                    Skip →
                                 </Button>
                             </div>
                         </div>
