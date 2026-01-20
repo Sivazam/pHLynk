@@ -2481,61 +2481,58 @@ export function WholesalerAdminDashboard() {
             <h2 className="text-2xl font-bold text-gray-900">Transactions</h2>
             <p className="text-gray-600">View and manage all payment transactions</p>
           </div>
-          <div className="flex flex-col sm:flex-row sm:items-start gap-2">
-            <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full sm:w-auto">
-              {/* Payment Method Filter */}
-              <Select value={paymentMethodFilter} onValueChange={(val: any) => setPaymentMethodFilter(val)}>
-                <SelectTrigger className="w-full sm:w-40">
-                  <SelectValue placeholder="All Methods" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Methods</SelectItem>
-                  <SelectItem value="CASH">Cash</SelectItem>
-                  <SelectItem value="UPI">UPI</SelectItem>
-                  <SelectItem value="BANK_TRANSFER">Bank Transfer</SelectItem>
-                </SelectContent>
-              </Select>
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Payment Method Filter */}
+            <Select value={paymentMethodFilter} onValueChange={(val: any) => setPaymentMethodFilter(val)}>
+              <SelectTrigger className="w-32">
+                <SelectValue placeholder="All Methods" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Methods</SelectItem>
+                <SelectItem value="CASH">Cash</SelectItem>
+                <SelectItem value="UPI">UPI</SelectItem>
+                <SelectItem value="BANK_TRANSFER">Bank Transfer</SelectItem>
+              </SelectContent>
+            </Select>
 
-              <Select value={selectedLineWorker} onValueChange={setSelectedLineWorker}>
-                <SelectTrigger className="w-full sm:w-48">
-                  <SelectValue placeholder="Filter by worker" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Workers</SelectItem>
-                  {lineWorkers.filter(worker => worker.active).map((worker) => (
-                    <SelectItem key={worker.id} value={worker.id}>
-                      {worker.displayName}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select value={selectedRetailer} onValueChange={setSelectedRetailer}>
-                <SelectTrigger className="w-full sm:w-48">
-                  <SelectValue placeholder="Filter by retailer" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Retailers</SelectItem>
-                  {retailers.map(retailer => (
-                    <SelectItem key={retailer.id} value={retailer.id}>{retailer.profile?.realName || retailer.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <DateRangeFilter
-                value={selectedDateRangeOption}
-                onValueChange={handleDateRangeChange}
-              />
-            </div>
+            <Select value={selectedLineWorker} onValueChange={setSelectedLineWorker}>
+              <SelectTrigger className="w-36">
+                <SelectValue placeholder="Worker" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Workers</SelectItem>
+                {lineWorkers.filter(worker => worker.active).map((worker) => (
+                  <SelectItem key={worker.id} value={worker.id}>
+                    {worker.displayName}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={selectedRetailer} onValueChange={setSelectedRetailer}>
+              <SelectTrigger className="w-36">
+                <SelectValue placeholder="Retailer" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Retailers</SelectItem>
+                {retailers.map(retailer => (
+                  <SelectItem key={retailer.id} value={retailer.id}>{retailer.profile?.realName || retailer.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <DateRangeFilter
+              value={selectedDateRangeOption}
+              onValueChange={handleDateRangeChange}
+            />
             <Button
               onClick={handleManualRefresh}
               disabled={mainLoadingState.loadingState.isRefreshing}
-              className="w-full sm:w-auto"
+              size="sm"
             >
               {mainLoadingState.loadingState.isRefreshing ? (
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
-                <RefreshCw className="h-4 w-4 mr-2" />
+                <RefreshCw className="h-4 w-4" />
               )}
-              Refresh
             </Button>
           </div>
         </div>

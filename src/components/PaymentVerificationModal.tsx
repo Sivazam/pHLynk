@@ -49,10 +49,10 @@ export function PaymentVerificationModal({
             <DialogContent className="max-w-6xl h-[90vh] p-0 overflow-hidden flex flex-col md:flex-row gap-0">
 
                 {/* Left Side: Image Viewer */}
-                <div className="flex-1 bg-gray-900 relative flex items-center justify-center p-4 min-h-[40vh] md:h-full overflow-hidden group">
+                <div className="flex-1 bg-gray-900 relative flex items-center justify-center p-4 min-h-[50vh] md:min-h-0 md:h-full overflow-auto group">
                     {payment.proofUrl ? (
                         <div
-                            className="relative transition-transform duration-200 ease-out"
+                            className="relative transition-transform duration-200 ease-out flex items-center justify-center w-full h-full"
                             style={{
                                 transform: `scale(${zoomLevel}) rotate(${rotation}deg)`,
                                 cursor: zoomLevel > 1 ? 'grab' : 'default'
@@ -61,7 +61,7 @@ export function PaymentVerificationModal({
                             <img
                                 src={payment.proofUrl}
                                 alt="Payment Proof"
-                                className="max-H-full max-w-full object-contain shadow-2xl rounded-sm"
+                                className="max-h-[70vh] max-w-full object-contain shadow-2xl rounded-md"
                             />
                         </div>
                     ) : (
