@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Payment } from '@/types';
 import { formatCurrency, formatTimestamp } from '@/lib/timestamp-utils';
-import { CheckCircle, X, ZoomIn, ZoomOut, Maximize2, RotateCcw } from 'lucide-react';
+import { CheckCircle, X, ZoomIn, ZoomOut, RotateCcw, ChevronUp, ChevronDown } from 'lucide-react';
 
 interface PaymentVerificationModalProps {
     payment: Payment | null;
@@ -24,12 +24,13 @@ export function PaymentVerificationModal({
 }: PaymentVerificationModalProps) {
     const [zoomLevel, setZoomLevel] = useState(1);
     const [rotation, setRotation] = useState(0);
+    const [showDetails, setShowDetails] = useState(true);
 
     const handleZoomIn = () => setZoomLevel(prev => Math.min(prev + 0.5, 3));
     const handleZoomOut = () => setZoomLevel(prev => Math.max(prev - 0.5, 1));
     const handleRotate = () => setRotation(prev => (prev + 90) % 360);
 
-    const resetKeys = () => {
+    const resetView = () => {
         setZoomLevel(1);
         setRotation(0);
     };
@@ -37,7 +38,8 @@ export function PaymentVerificationModal({
     // Reset zoom/rotation when payment changes - MUST be before any early returns
     React.useEffect(() => {
         if (payment?.id) {
-            resetKeys();
+            resetView();
+            setShowDetails(true);
         }
     }, [payment?.id]);
 
@@ -46,13 +48,13 @@ export function PaymentVerificationModal({
 
     return (
         <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-            <DialogContent className="max-w-6xl h-[90vh] p-0 overflow-hidden flex flex-col md:flex-row gap-0">
+            <DialogContent className="max-w-4xl h-[90vh] p-0 overflow-hidden flex flex-col bg-gray-900">
 
-                {/* Left Side: Image Viewer */}
-                <div className="flex-1 bg-gray-900 relative flex items-center justify-center p-4 min-h-[50vh] md:min-h-0 md:h-full overflow-auto group">
+                {/* Image Viewer - Takes Full Space */}
+                <div className="flex-1 relative flex items-center justify-center overflow-auto">
                     {payment.proofUrl ? (
                         <div
-                            className="relative transition-transform duration-200 ease-out flex items-center justify-center w-full h-full"
+                            className="transition-transform duration-200 ease-out"
                             style={{
                                 transform: `scale(${zoomLevel}) rotate(${rotation}deg)`,
                                 cursor: zoomLevel > 1 ? 'grab' : 'default'
@@ -61,133 +63,154 @@ export function PaymentVerificationModal({
                             <img
                                 src={payment.proofUrl}
                                 alt="Payment Proof"
-                                className="max-h-[70vh] max-w-full object-contain shadow-2xl rounded-md"
+                                className="max-h-[80vh] max-w-full object-contain"
                             />
                         </div>
                     ) : (
                         <div className="text-gray-400 flex flex-col items-center">
-                            <span className="text-4xl mb-2">📷</span>
-                            <p>No proof image attached</p>
-                            <p className="text-sm mt-1">Check UTR: {payment.utr}</p>
+                            <span className="text-6xl mb-4">📷</span>
+                            <p className="text-lg">No proof image attached</p>
+                            {payment.utr && (
+                                <p className="text-sm mt-2 bg-gray-800 px-4 py-2 rounded-lg">
+                                    UTR: <span className="font-mono font-bold text-white">{String(payment.utr)}</span>
+                                </p>
+                            )}
                         </div>
                     )}
 
-                    {/* Image Controls */}
-                    <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-black/50 backdrop-blur-md p-2 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-white hover:bg-white/20 rounded-full" onClick={handleZoomOut}>
-                            <ZoomOut className="h-4 w-4" />
+                    {/* Top Bar - Close & Zoom Controls */}
+                    <div className="absolute top-4 left-4 right-4 flex justify-between items-start">
+                        {/* Close Button */}
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={onClose}
+                            className="h-10 w-10 bg-black/60 hover:bg-black/80 text-white rounded-full backdrop-blur-sm"
+                        >
+                            <X className="h-5 w-5" />
                         </Button>
-                        <span className="text-white text-xs min-w-[3ch] text-center">{Math.round(zoomLevel * 100)}%</span>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-white hover:bg-white/20 rounded-full" onClick={handleZoomIn}>
-                            <ZoomIn className="h-4 w-4" />
-                        </Button>
-                        <div className="w-px h-4 bg-white/20 mx-1" />
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-white hover:bg-white/20 rounded-full" onClick={handleRotate}>
-                            <RotateCcw className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-white hover:bg-white/20 rounded-full" onClick={resetKeys}>
-                            <Maximize2 className="h-4 w-4" />
-                        </Button>
+
+                        {/* Zoom Controls */}
+                        <div className="flex items-center gap-2 bg-black/60 backdrop-blur-sm p-2 rounded-full">
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-white hover:bg-white/20 rounded-full" onClick={handleZoomOut}>
+                                <ZoomOut className="h-4 w-4" />
+                            </Button>
+                            <span className="text-white text-xs min-w-[3ch] text-center">{Math.round(zoomLevel * 100)}%</span>
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-white hover:bg-white/20 rounded-full" onClick={handleZoomIn}>
+                                <ZoomIn className="h-4 w-4" />
+                            </Button>
+                            <div className="w-px h-4 bg-white/30" />
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-white hover:bg-white/20 rounded-full" onClick={handleRotate}>
+                                <RotateCcw className="h-4 w-4" />
+                            </Button>
+                        </div>
                     </div>
                 </div>
 
-                {/* Right Side: Details & Actions */}
-                <div className="w-full md:w-[400px] flex flex-col bg-white border-l h-full">
-                    <DialogHeader className="p-6 border-b">
-                        <DialogTitle className="text-xl">Verify Payment</DialogTitle>
-                    </DialogHeader>
+                {/* Bottom Overlay Panel */}
+                <div className={`bg-gradient-to-t from-black via-black/95 to-black/80 text-white transition-all duration-300 ${showDetails ? 'max-h-[50vh]' : 'max-h-20'}`}>
+                    {/* Toggle Handle */}
+                    <button
+                        onClick={() => setShowDetails(!showDetails)}
+                        className="w-full flex justify-center py-2 hover:bg-white/10 transition-colors"
+                    >
+                        {showDetails ? <ChevronDown className="h-5 w-5 text-gray-400" /> : <ChevronUp className="h-5 w-5 text-gray-400" />}
+                    </button>
 
-                    <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                        {/* Amount - Key Detail */}
-                        <div className="bg-green-50 p-4 rounded-xl border border-green-100 text-center">
-                            <p className="text-sm text-green-600 font-medium uppercase tracking-wider">Amount Paid</p>
-                            <p className="text-4xl font-bold text-green-700 mt-1">{formatCurrency(payment.totalPaid)}</p>
+                    {/* Collapsed View - Amount Only */}
+                    {!showDetails && (
+                        <div className="px-6 pb-4 flex items-center justify-between">
+                            <div>
+                                <span className="text-gray-400 text-sm">Amount: </span>
+                                <span className="text-2xl font-bold text-green-400">{formatCurrency(payment.totalPaid)}</span>
+                            </div>
+                            <Button
+                                onClick={() => onVerify(payment.id)}
+                                disabled={isVerifying}
+                                className="bg-green-600 hover:bg-green-700 text-white"
+                            >
+                                <CheckCircle className="mr-2 h-4 w-4" />
+                                {isVerifying ? 'Verifying...' : 'Verify'}
+                            </Button>
                         </div>
+                    )}
 
-                        {/* Transaction Details */}
-                        <div className="space-y-4">
-                            <div>
-                                <Label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Retailer</Label>
-                                <p className="text-lg font-medium text-gray-900 leading-tight mt-1">{payment.retailerName || 'Unknown'}</p>
-                            </div>
-
-                            <div>
-                                <Label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Date</Label>
-                                <p className="text-base text-gray-900 mt-1">{payment.createdAt ? formatTimestamp(payment.createdAt) : 'N/A'}</p>
-                            </div>
-
-                            <div>
-                                <Label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Line Worker</Label>
-                                <p className="text-base text-gray-900 mt-1">{payment.lineWorkerName || 'Unknown'}</p>
-                            </div>
-
-                            {payment.utr && (
+                    {/* Expanded View - Full Details */}
+                    {showDetails && (
+                        <div className="px-6 pb-6 space-y-4">
+                            {/* Amount - Hero */}
+                            <div className="flex items-center justify-between border-b border-white/10 pb-4">
                                 <div>
-                                    <Label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">UTR Reference</Label>
-                                    <p className="text-base font-mono bg-gray-100 px-2 py-1 rounded inline-block mt-1 text-gray-800">
-                                        {String(payment.utr)}
-                                    </p>
+                                    <p className="text-xs text-gray-400 uppercase tracking-wider">Amount Paid</p>
+                                    <p className="text-3xl font-bold text-green-400">{formatCurrency(payment.totalPaid)}</p>
                                 </div>
-                            )}
+                                <div className="text-right">
+                                    <p className="text-xs text-gray-400 uppercase tracking-wider">Method</p>
+                                    <p className="text-lg font-semibold">{payment.method}</p>
+                                </div>
+                            </div>
+
+                            {/* Details Grid */}
+                            <div className="grid grid-cols-2 gap-4 text-sm">
+                                <div>
+                                    <p className="text-gray-400 text-xs uppercase tracking-wider">Retailer</p>
+                                    <p className="font-medium truncate">{payment.retailerName || 'Unknown'}</p>
+                                </div>
+                                <div>
+                                    <p className="text-gray-400 text-xs uppercase tracking-wider">Line Worker</p>
+                                    <p className="font-medium truncate">{payment.lineWorkerName || 'Unknown'}</p>
+                                </div>
+                                <div>
+                                    <p className="text-gray-400 text-xs uppercase tracking-wider">Date</p>
+                                    <p className="font-medium">{payment.createdAt ? formatTimestamp(payment.createdAt) : 'N/A'}</p>
+                                </div>
+                                {payment.utr && (
+                                    <div>
+                                        <p className="text-gray-400 text-xs uppercase tracking-wider">UTR</p>
+                                        <p className="font-mono font-medium">{String(payment.utr)}</p>
+                                    </div>
+                                )}
+                            </div>
 
                             {payment.notes && (
-                                <div>
-                                    <Label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Notes</Label>
-                                    <p className="text-sm text-gray-600 italic mt-1 bg-gray-50 p-3 rounded border">
-                                        "{String(payment.notes)}"
-                                    </p>
+                                <div className="bg-white/5 p-3 rounded-lg">
+                                    <p className="text-gray-400 text-xs uppercase tracking-wider mb-1">Notes</p>
+                                    <p className="text-sm italic">"{String(payment.notes)}"</p>
                                 </div>
                             )}
-                        </div>
-                    </div>
 
-                    {/* Action Footer */}
-                    <div className="p-6 border-t bg-gray-50 space-y-3">
-                        <Button
-                            onClick={() => onVerify(payment.id)}
-                            disabled={isVerifying}
-                            className="w-full h-12 text-base bg-green-600 hover:bg-green-700 text-white shadow-md active:scale-[0.98] transition-all"
-                        >
-                            {isVerifying ? (
-                                <div className="flex items-center">
-                                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                                    Verifying & Deleting Proof...
-                                </div>
-                            ) : (
-                                <div className="flex items-center">
-                                    <CheckCircle className="mr-2 h-5 w-5" />
-                                    Verify & Clear Proof
-                                </div>
-                            )}
-                        </Button>
-
-                        <div className="grid grid-cols-2 gap-3">
-                            <Button
-                                variant="outline"
-                                onClick={onSkip}
-                                disabled={isVerifying}
-                                className="w-full text-gray-600 border-gray-300 hover:bg-gray-100"
-                            >
-                                Skip for Now
-                            </Button>
-                            <Button
-                                variant="outline"
-                                onClick={onClose}
-                                disabled={isVerifying}
-                                className="w-full text-gray-600 border-gray-300 hover:bg-gray-100"
-                            >
-                                <X className="mr-2 h-4 w-4" />
-                                Close
-                            </Button>
+                            {/* Action Buttons */}
+                            <div className="flex gap-3 pt-2">
+                                <Button
+                                    onClick={() => onVerify(payment.id)}
+                                    disabled={isVerifying}
+                                    className="flex-1 h-12 bg-green-600 hover:bg-green-700 text-white text-base font-semibold"
+                                >
+                                    {isVerifying ? (
+                                        <div className="flex items-center">
+                                            <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                                            Verifying...
+                                        </div>
+                                    ) : (
+                                        <div className="flex items-center">
+                                            <CheckCircle className="mr-2 h-5 w-5" />
+                                            Verify & Clear Proof
+                                        </div>
+                                    )}
+                                </Button>
+                                <Button
+                                    variant="outline"
+                                    onClick={onSkip}
+                                    disabled={isVerifying}
+                                    className="h-12 px-6 border-white/20 text-white hover:bg-white/10"
+                                >
+                                    Skip
+                                </Button>
+                            </div>
                         </div>
-                    </div>
+                    )}
                 </div>
             </DialogContent>
         </Dialog>
     );
-}
-
-// Utility component for Label
-function Label({ className, children }: { className?: string; children: React.ReactNode }) {
-    return <div className={className}>{children}</div>;
 }
