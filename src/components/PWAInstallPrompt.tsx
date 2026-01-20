@@ -94,7 +94,7 @@ export function PWAInstallPrompt() {
       setIsInstalled(true);
       setShowInstallDialog(false);
       setDeferredPrompt(null);
-      toast.success('pHLynk app installed successfully!');
+      toast.success('Pharmalync app installed successfully!');
       console.log('📱 App installed successfully');
     };
 
@@ -115,7 +115,7 @@ export function PWAInstallPrompt() {
       const { outcome } = await deferredPrompt.userChoice;
 
       if (outcome === 'accepted') {
-        toast.success('Installing pHLynk app...');
+        toast.success('Installing Pharmalync app...');
         console.log('📱 User accepted install prompt');
       } else {
         toast.info('Install cancelled');
@@ -171,7 +171,7 @@ export function PWAInstallPrompt() {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-lg">
             <Download className="h-5 w-5 text-blue-600" />
-            Add pHLynk to Home Screen
+            Add Pharmalync to Home Screen
           </DialogTitle>
           <DialogDescription>
             Get the best experience with our app - install it on your device for offline access and real-time notifications
@@ -183,7 +183,7 @@ export function PWAInstallPrompt() {
             // iOS Install Instructions
             <div className="space-y-3">
               <div className="text-sm space-y-2">
-                <p className="font-medium">To install pHLynk on iOS:</p>
+                <p className="font-medium">To install Pharmalync on iOS:</p>
                 <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
                   <li>Tap the Share button <span className="font-mono bg-muted px-1 rounded">⎙</span></li>
                   <li>Scroll down and tap "Add to Home Screen" <span className="font-mono bg-muted px-1 rounded">+</span></li>

@@ -32,13 +32,13 @@ const spaceGrotesk = Space_Grotesk({
 export const metadata: Metadata = {
   title: "Pharmalync - Verify. Collect. Track",
   description: "Modern pharmaceutical management system built with Firebase authentication and Firestore database. Manage products, inventory, and user accounts securely.",
-  keywords: ["pHLynk", "Pharmacy", "Medical", "Inventory", "Firebase", "Next.js", "TypeScript"],
-  authors: [{ name: "pHLynk Team" }],
+  keywords: ["Pharmalync", "Pharmacy", "Medical", "Inventory", "Firebase", "Next.js", "TypeScript"],
+  authors: [{ name: "Pharmalync Team" }],
   openGraph: {
     title: "Pharmalync - Verify. Collect. Track",
     description: "Comprehensive pharmacy management system with modern web technologies",
-    url: "https://pHLynk.firebaseapp.com",
-    siteName: "pHLynk",
+    url: "https://Pharmalync.firebaseapp.com",
+    siteName: "Pharmalync",
     type: "website",
   },
   twitter: {
@@ -61,7 +61,7 @@ export const metadata: Metadata = {
   other: {
     "apple-mobile-web-app-capable": "yes",
     "apple-mobile-web-app-status-bar-style": "default",
-    "apple-mobile-web-app-title": "pHLynk",
+    "apple-mobile-web-app-title": "Pharmalync",
     "format-detection": "telephone=no",
   },
 };
@@ -89,7 +89,7 @@ export default function RootLayout({
               // PWA Detection and Loading Screen with Cache Busting
               (function() {
                 // Stable version identifier - UPDATE THIS FOR EACH DEPLOYMENT
-                const APP_VERSION = 'pHLynk-v3-1.1.0';
+                const APP_VERSION = 'Pharmalync-v3-1.1.0';
                 
                 // Check if running as PWA (standalone mode)
                 const isPWA = window.matchMedia('(display-mode: standalone)').matches || 
@@ -110,13 +110,13 @@ export default function RootLayout({
                 if ('serviceWorker' in navigator) {
                   window.addEventListener('load', function() {
                     // DISABLED: Version checking to prevent infinite reload loops
-                    // const storedVersion = localStorage.getItem('pHLynk-version');
+                    // const storedVersion = localStorage.getItem('Pharmalync-version');
                     // if (storedVersion && storedVersion !== APP_VERSION) {
                     //   // Version checking disabled
                     // }
                     
                     // Store current version without checking
-                    localStorage.setItem('pHLynk-version', APP_VERSION);
+                    localStorage.setItem('Pharmalync-version', APP_VERSION);
                     
                     // Register service worker normally
                     registerServiceWorker();
@@ -174,7 +174,7 @@ export default function RootLayout({
                   }
                   
                   // Clear problematic version storage to prevent reload loops
-                  localStorage.removeItem('pHLynk-version');
+                  localStorage.removeItem('Pharmalync-version');
                 }
                 
                 // Listen for cache cleared messages from service worker
@@ -198,7 +198,7 @@ export default function RootLayout({
                 // Debug function to force update (remove in production)
                 window.addEventListener('keydown', function(e) {
                   if (e.ctrlKey && e.shiftKey && e.key === 'U') {
-                    localStorage.removeItem('pHLynk-version');
+                    localStorage.removeItem('Pharmalync-version');
                     window.forceCacheBust();
                     console.log('Manual cache bust triggered');
                   }

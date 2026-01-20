@@ -66,7 +66,7 @@ class RoleBasedNotificationService {
     if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
       try {
         console.log('🔧 Registering service worker...');
-        
+
         // Register service worker
         this.serviceWorkerRegistration = await navigator.serviceWorker.register('/sw.js');
         console.log('✅ Service worker registered:', {
@@ -75,7 +75,7 @@ class RoleBasedNotificationService {
           installing: !!this.serviceWorkerRegistration.installing,
           waiting: !!this.serviceWorkerRegistration.waiting
         });
-        
+
         // Wait for service worker to be active
         if (this.serviceWorkerRegistration.active) {
           console.log('✅ Service worker is already active');
@@ -96,7 +96,7 @@ class RoleBasedNotificationService {
             }, 3000);
           });
         }
-        
+
         this.isSupported = 'Notification' in window && 'PushManager' in window;
         console.log('✅ Role-based notification service initialized', {
           supported: this.isSupported,
@@ -126,10 +126,10 @@ class RoleBasedNotificationService {
       console.log('🔔 Requesting notification permission...');
       const permission = await Notification.requestPermission();
       const granted = permission === 'granted';
-      
+
       if (granted) {
         console.log('✅ Notification permission granted');
-        
+
         // Check if we're in a PWA installed environment
         const isPWA = this.isPWAInstalled();
         console.log('📱 PWA Environment:', {
@@ -137,16 +137,16 @@ class RoleBasedNotificationService {
           isInWebApp: window.matchMedia('(display-mode: standalone)').matches,
           isInBrowser: !isPWA
         });
-        
+
         // Subscribe to push notifications for background support
         await this.subscribeToPushNotifications();
-        
+
         // Test immediate notification to verify it works
         await this.testImmediateNotification();
       } else {
         console.warn('❌ Notification permission denied');
       }
-      
+
       return granted;
     } catch (error) {
       console.error('❌ Error requesting notification permission:', error);
@@ -168,7 +168,7 @@ class RoleBasedNotificationService {
       });
 
       console.log('✅ Push subscription created for background notifications');
-      
+
       // In production, send subscription to server
       // await this.sendSubscriptionToServer(subscription);
     } catch (error) {
@@ -199,7 +199,7 @@ class RoleBasedNotificationService {
 
     // Get current user role from stored value or detect it
     const userRole = this.currentUserRole !== 'unknown' ? this.currentUserRole : this.getCurrentUserRole();
-    
+
     // Check if current user should receive this notification
     if (!this.shouldUserReceiveNotification(notificationData.targetRole, userRole)) {
       console.log(`🔕 Notification filtered out - User role: ${userRole}, Target: ${notificationData.targetRole}`);
@@ -208,7 +208,7 @@ class RoleBasedNotificationService {
 
     // Create notification payload based on type
     const payload = this.createNotificationPayload(notificationData);
-    
+
     // Check de-duplicator before showing notification
     const fcmPayload = {
       notification: {
@@ -221,26 +221,26 @@ class RoleBasedNotificationService {
         tag: payload.tag
       }
     };
-    
+
     // Check de-duplicator before showing notification (only if available)
     const deduplicator = notificationDeduplicator;
     if (deduplicator) {
       const { shouldShow, reason } = deduplicator.shouldShowNotification(fcmPayload);
-      
+
       if (!shouldShow) {
         console.log(`🚫 PWA notification blocked by de-duplicator: ${reason}`);
         return false;
       }
-      
+
       console.log(`✅ PWA notification approved by de-duplicator: ${reason}`);
     } else {
       console.log('📱 Deduplicator not available, proceeding with notification');
     }
-    
+
     try {
-      console.log('📱 Sending notification:', { 
-        userRole, 
-        targetRole: notificationData.targetRole, 
+      console.log('📱 Sending notification:', {
+        userRole,
+        targetRole: notificationData.targetRole,
         payload,
         isPWA: this.isPWAInstalled(),
         hasServiceWorker: !!this.serviceWorkerRegistration?.active,
@@ -248,10 +248,10 @@ class RoleBasedNotificationService {
         isMobile: this.isMobileDevice(),
         permission: Notification.permission
       });
-      
+
       // Enhanced notification sending with multiple fallback strategies
       let notificationSent = false;
-      
+
       // Strategy 1: Direct notification (most reliable for mobile)
       if (Notification.permission === 'granted') {
         try {
@@ -259,17 +259,17 @@ class RoleBasedNotificationService {
           const notification = this.createMobileOptimizedNotification(payload, notificationData);
           notificationSent = true;
           console.log('✅ Direct notification sent successfully');
-          
+
           // Store in fallback storage for redundancy
           this.storeFallbackNotification(payload, notificationData);
-          
+
         } catch (directError) {
           console.warn('⚠️ Direct notification failed:', directError);
         }
       } else {
         console.warn('⚠️ Notification permission not granted:', Notification.permission);
       }
-      
+
       // Strategy 2: Service worker notification (if direct failed)
       if (!notificationSent && this.serviceWorkerRegistration && this.serviceWorkerRegistration.active) {
         try {
@@ -281,15 +281,15 @@ class RoleBasedNotificationService {
           });
           notificationSent = true;
           console.log('✅ Service worker notification sent successfully');
-          
+
           // Store in fallback storage for redundancy
           this.storeFallbackNotification(payload, notificationData);
-          
+
         } catch (swError) {
           console.warn('⚠️ Service worker notification failed:', swError);
         }
       }
-      
+
       // Strategy 3: In-app notification fallback
       if (!notificationSent) {
         console.log('📱 Strategy 3: Using in-app notification fallback');
@@ -297,13 +297,13 @@ class RoleBasedNotificationService {
         notificationSent = true;
         console.log('✅ In-app notification created successfully');
       }
-      
+
       // Strategy 4: Audio alert fallback for critical notifications
       if (notificationData.type === 'otp' && this.isMobileDevice()) {
         console.log('🔊 Strategy 4: Playing audio alert for OTP');
         this.playNotificationSound();
       }
-      
+
       if (notificationSent) {
         console.log(`✅ Notification sent to role: ${userRole}`, payload);
         return true;
@@ -333,7 +333,7 @@ class RoleBasedNotificationService {
     if (this.isMobileDevice()) {
       // For mobile, ensure the notification is more interactive
       notificationOptions.requireInteraction = notificationData.type === 'otp';
-      
+
       // Add sound for mobile (if supported)
       if ('sound' in Notification.prototype) {
         (notificationOptions as any).sound = '/notification-sound.mp3';
@@ -380,20 +380,20 @@ class RoleBasedNotificationService {
     if (targetRole === 'all') {
       return true;
     }
-    
+
     // Normalize roles to lowercase for comparison
     const normalizedTargetRole = targetRole.toLowerCase();
     const normalizedUserRole = userRole.toLowerCase();
-    
+
     // Only send to users with matching role
     const roleMatches = normalizedTargetRole === normalizedUserRole;
-    
+
     // 🔐 SECURITY: Additional check - verify user is actually authenticated
     // This prevents notifications to logged-out users who still have role data in localStorage
     const isUserAuthenticated = this.checkUserAuthentication();
-    
+
     const shouldReceive = roleMatches && isUserAuthenticated;
-    
+
     console.log(`🔍 Notification check:`, {
       targetRole,
       userRole,
@@ -401,7 +401,7 @@ class RoleBasedNotificationService {
       isUserAuthenticated,
       shouldReceive
     });
-    
+
     return shouldReceive;
   }
 
@@ -419,12 +419,12 @@ class RoleBasedNotificationService {
           return true;
         }
       }
-      
+
       // Check for retailer-specific authentication indicators
       const retailerId = localStorage.getItem('retailerId');
-      const hasUserSession = sessionStorage.getItem('auth_session') || 
-                            sessionStorage.getItem('firebase_session');
-      
+      const hasUserSession = sessionStorage.getItem('auth_session') ||
+        sessionStorage.getItem('firebase_session');
+
       // Additional check: verify we don't have logout indicators
       const recentlyLoggedOut = localStorage.getItem('logged_out_at');
       if (recentlyLoggedOut) {
@@ -435,16 +435,16 @@ class RoleBasedNotificationService {
           return false;
         }
       }
-      
+
       const isAuthenticated = !!(retailerId && hasUserSession);
-      
+
       console.log(`🔍 Authentication check:`, {
         retailerId: !!retailerId,
         hasUserSession: !!hasUserSession,
         recentlyLoggedOut: !!recentlyLoggedOut,
         isAuthenticated
       });
-      
+
       return isAuthenticated;
     } catch (error) {
       console.warn('⚠️ Error checking user authentication:', error);
@@ -458,12 +458,12 @@ class RoleBasedNotificationService {
       const userData = localStorage.getItem('user');
       if (userData) {
         const user = JSON.parse(userData);
-        
+
         // Check if user is a retailer
         if (user.isRetailer) {
           return 'retailer';
         }
-        
+
         // Check roles array for other user types
         if (user.roles && Array.isArray(user.roles)) {
           // Convert role names to lowercase for consistency
@@ -472,13 +472,13 @@ class RoleBasedNotificationService {
             return role;
           }
         }
-        
+
         // Fallback to role property if it exists
         if (user.role) {
           return user.role.toLowerCase();
         }
       }
-      
+
       // Additional check: if we have retailerId in localStorage, assume retailer
       const retailerId = localStorage.getItem('retailerId');
       if (retailerId) {
@@ -521,7 +521,7 @@ class RoleBasedNotificationService {
       case 'test':
         return {
           title: '📱 Test Notification',
-          body: 'This is a test notification from pHLynk',
+          body: 'This is a test notification from Pharmalync',
           icon: '/icon-192x192.png',
           badge: '/icon-96x96.png',
           tag: 'test-notification',
@@ -544,7 +544,7 @@ class RoleBasedNotificationService {
     // Focus the window if possible
     if (typeof window !== 'undefined') {
       window.focus();
-      
+
       // Navigate to relevant page based on notification type
       switch (notificationData.type) {
         case 'otp':
@@ -615,9 +615,9 @@ class RoleBasedNotificationService {
 
   // Check if PWA is installed
   private isPWAInstalled(): boolean {
-    return window.matchMedia('(display-mode: standalone)').matches || 
-           (window.navigator as any).standalone || 
-           document.referrer.includes('android-app://');
+    return window.matchMedia('(display-mode: standalone)').matches ||
+      (window.navigator as any).standalone ||
+      document.referrer.includes('android-app://');
   }
 
   // Test immediate notification
@@ -653,12 +653,12 @@ class RoleBasedNotificationService {
         timestamp: new Date().toISOString(),
         shown: false
       });
-      
+
       // Keep only last 10 notifications
       if (fallbackNotifications.length > 10) {
         fallbackNotifications.splice(0, fallbackNotifications.length - 10);
       }
-      
+
       localStorage.setItem('fallbackNotifications', JSON.stringify(fallbackNotifications));
       console.log('📝 Notification stored in fallback storage');
     } catch (error) {
@@ -677,13 +677,13 @@ class RoleBasedNotificationService {
           timestamp: new Date().toISOString()
         }
       });
-      
+
       window.dispatchEvent(event);
       console.log('📱 In-app notification event dispatched');
-      
+
       // Also store for when user returns to the app
       this.storeFallbackNotification(payload, notificationData);
-      
+
     } catch (error) {
       console.warn('⚠️ Failed to create in-app notification:', error);
     }
@@ -696,19 +696,19 @@ class RoleBasedNotificationService {
       const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
       const oscillator = audioContext.createOscillator();
       const gainNode = audioContext.createGain();
-      
+
       oscillator.connect(gainNode);
       gainNode.connect(audioContext.destination);
-      
+
       oscillator.frequency.value = 800; // 800Hz tone
       oscillator.type = 'sine';
-      
+
       gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
       gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
-      
+
       oscillator.start(audioContext.currentTime);
       oscillator.stop(audioContext.currentTime + 0.5);
-      
+
       console.log('🔊 Notification sound played');
     } catch (error) {
       console.warn('⚠️ Failed to play notification sound:', error);
@@ -720,16 +720,16 @@ class RoleBasedNotificationService {
     try {
       const fallbackNotifications = JSON.parse(localStorage.getItem('fallbackNotifications') || '[]');
       const unseenNotifications = fallbackNotifications.filter(n => !n.shown);
-      
+
       if (unseenNotifications.length > 0) {
         console.log(`📱 Found ${unseenNotifications.length} missed notifications`);
-        
+
         unseenNotifications.forEach((notification, index) => {
           setTimeout(() => {
             this.createInAppNotification(notification.payload, notification.notificationData);
           }, index * 1000); // Show notifications with 1-second delay
         });
-        
+
         // Mark all as shown
         fallbackNotifications.forEach(n => n.shown = true);
         localStorage.setItem('fallbackNotifications', JSON.stringify(fallbackNotifications));
@@ -741,6 +741,6 @@ class RoleBasedNotificationService {
 }
 
 // Export singleton instance with lazy initialization (client-side only)
-export const roleBasedNotificationService = typeof window !== 'undefined' 
-  ? RoleBasedNotificationService.getInstance() 
+export const roleBasedNotificationService = typeof window !== 'undefined'
+  ? RoleBasedNotificationService.getInstance()
   : null;

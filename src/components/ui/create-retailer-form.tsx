@@ -14,12 +14,12 @@ import { X, Plus, Phone, MapPin, Loader2, CheckCircle, Search, UserPlus } from '
 import { Area, Retailer } from '@/types';
 
 interface CreateRetailerFormProps {
-  onSubmit: (data: { name: string; phone: string; address?: string; areaId?: string; zipcodes: string[] }) => Promise<void>;
+  onSubmit: (data: { name: string; phone: string; address?: string; areaId?: string; zipcodes: string[]; code?: string }) => Promise<void>;
   onAddExistingRetailer?: (retailer: Retailer, areaId?: string, zipcodes?: string[]) => Promise<void>;
   areas: Area[];
   existingRetailers?: Retailer[]; // List of retailers already in wholesaler's network
   onCancel?: () => void;
-  initialData?: { name: string; phone: string; address?: string; areaId?: string; zipcodes: string[] };
+  initialData?: { name: string; phone: string; address?: string; areaId?: string; zipcodes: string[]; code?: string };
   showPhoneLookup?: boolean;
 }
 
@@ -40,6 +40,7 @@ export function CreateRetailerForm({
   const [areaId, setAreaId] = useState(initialData?.areaId || '');
   const [zipcodes, setZipcodes] = useState<string[]>(initialData?.zipcodes || []);
   const [newZipcode, setNewZipcode] = useState('');
+  const [code, setCode] = useState(initialData?.code || '');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [triggerConfetti, setTriggerConfetti] = useState(false);
@@ -74,7 +75,8 @@ export function CreateRetailerForm({
             phone: phone.trim(),
             address: address.trim() || undefined,
             areaId: areaId === 'no-specific-area' ? undefined : (areaId || undefined),
-            zipcodes: zipcodes.filter(z => z.trim())
+            zipcodes: zipcodes.filter(z => z.trim()),
+            code: code.trim() || undefined
           });
         }
         // Show success state and trigger confetti
@@ -154,6 +156,7 @@ export function CreateRetailerForm({
     setAreaId('');
     setZipcodes([]);
     setNewZipcode('');
+    setCode('');
     setFoundRetailer(null);
     setShowSuccess(false);
     if (showPhoneLookup && !initialData) {
@@ -296,6 +299,19 @@ export function CreateRetailerForm({
                   rows={3}
                   disabled={isSubmitting || foundRetailer !== null}
                 />
+              </div>
+
+              <div>
+                <Label htmlFor="code">Retailer Code (Optional)</Label>
+                <Input
+                  id="code"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value)}
+                  placeholder="e.g., ABC1234 (4-8 characters)"
+                  maxLength={12}
+                  disabled={isSubmitting}
+                />
+                <p className="text-xs text-gray-500 mt-1">Alphanumeric code to identify this retailer</p>
               </div>
 
               <div>

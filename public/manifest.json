@@ -1,6 +1,6 @@
 {
-  "name": "pHLynk",
-  "short_name": "pHLynk",
+  "name": "Pharmalync",
+  "short_name": "Pharmalync",
   "description": "Pharmaceutical Supply Chain Management System",
   "start_url": "/",
   "display": "standalone",
@@ -58,8 +58,13 @@
       "purpose": "any maskable"
     }
   ],
-  "categories": ["business", "productivity"],
+  "categories": [
+    "business",
+    "productivity"
+  ],
   "lang": "en",
   "gcm_sender_id": "103953800507",
-  "permissions": ["notifications"]
+  "permissions": [
+    "notifications"
+  ]
 }

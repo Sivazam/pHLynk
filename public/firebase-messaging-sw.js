@@ -30,7 +30,7 @@ async function isUserAuthenticated() {
     // Try to get the authenticated user from IndexedDB (where Firebase Auth stores it)
     const firebaseApp = firebase.app();
     const auth = firebaseApp.auth();
-    
+
     // Wait for auth state to be determined
     return new Promise((resolve) => {
       const unsubscribe = auth.onAuthStateChanged((user) => {
@@ -38,7 +38,7 @@ async function isUserAuthenticated() {
         console.log('🔐 SW Auth check result:', user ? 'AUTHENTICATED' : 'NOT AUTHENTICATED');
         resolve(!!user);
       });
-      
+
       // Timeout after 2 seconds to prevent hanging
       setTimeout(() => {
         unsubscribe();
@@ -57,12 +57,12 @@ async function isUserAuthenticated() {
  */
 async function shouldShowNotification(payload) {
   const isAuthenticated = await isUserAuthenticated();
-  
+
   if (!isAuthenticated) {
     console.log('🚫 User not authenticated - discarding notification:', payload.notification?.title);
     return false;
   }
-  
+
   console.log('✅ User authenticated - showing notification:', payload.notification?.title);
   return true;
 }
@@ -77,7 +77,7 @@ messaging.onBackgroundMessage(async (payload) => {
     return; // Silently discard notification for logged-out users
   }
 
-  const notificationTitle = payload.notification?.title || 'pHLynk Notification';
+  const notificationTitle = payload.notification?.title || 'Pharmalync Notification';
   const notificationOptions = {
     body: payload.notification?.body || 'You have a new notification',
     icon: payload.data?.icon || '/notification-large-192x192.png',
@@ -153,7 +153,7 @@ self.addEventListener('push', (event) => {
       return;
     }
 
-    const notificationTitle = data.notification?.title || data.title || 'pHLynk Notification';
+    const notificationTitle = data.notification?.title || data.title || 'Pharmalync Notification';
     const notificationOptions = {
       body: data.notification?.body || data.body || 'You have a new notification',
       icon: data.notification?.icon || data.icon || data.data?.icon || '/notification-large-192x192.png',
@@ -187,11 +187,11 @@ self.addEventListener('activate', (event) => {
 // Handle service worker messages from main app
 self.addEventListener('message', (event) => {
   console.log('📱 Message received in service worker:', event.data);
-  
+
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
   }
-  
+
   // Handle auth state changes from main app
   if (event.data && event.data.type === 'AUTH_STATE_CHANGED') {
     console.log('🔐 Service worker received auth state change:', event.data.isAuthenticated);

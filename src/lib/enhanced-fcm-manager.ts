@@ -67,27 +67,27 @@ class EnhancedFCMManager {
 
       const unsubscribe = onMessage(messagingInstance, (payload: any) => {
         console.log('📱 Enhanced FCM message received:', payload);
-        
+
         // 🔐 SECURITY: Check if user is authenticated before processing
         if (!this.isUserAuthenticated()) {
           console.log('🚫 User not authenticated - discarding foreground notification:', payload.notification?.title);
           return;
         }
-        
+
         // 🔥 DUPLICATE PREVENTION: Skip OTP notifications as they're handled by service worker
         const notificationData = payload.data || {};
         if (notificationData.type === 'otp') {
           console.log('🚫 OTP notification handled by service worker - skipping foreground display to prevent duplicates');
           return;
         }
-        
+
         // Check de-duplicator before showing notification (only if available)
         const deduplicator = notificationDeduplicator;
         if (deduplicator) {
           const { shouldShow, reason } = deduplicator.shouldShowNotification(payload);
-          
+
           console.log(`🔍 Notification decision: ${shouldShow ? 'SHOW' : 'BLOCK'} - ${reason}`);
-          
+
           if (shouldShow) {
             this.handleNotification(payload);
           } else {
@@ -124,7 +124,7 @@ class EnhancedFCMManager {
    * Handle notification display
    */
   private handleNotification(payload: any): void {
-    const notificationTitle = payload.notification?.title || 'pHLynk Notification';
+    const notificationTitle = payload.notification?.title || 'Pharmalync Notification';
     const notificationBody = payload.notification?.body || 'You have a new notification';
     const notificationData = payload.data || {};
 
@@ -154,7 +154,7 @@ class EnhancedFCMManager {
       };
 
       const notification = new Notification(title, notificationOptions);
-      
+
       // Auto-close after delay
       if (!this.config.requireInteraction && this.config.autoCloseDelay > 0) {
         setTimeout(() => {
@@ -230,7 +230,7 @@ class EnhancedFCMManager {
     const deduplicator = notificationDeduplicator;
     if (deduplicator) {
       const { shouldShow, reason } = deduplicator.shouldShowNotification(testPayload);
-      
+
       if (shouldShow) {
         this.handleNotification(testPayload);
         console.log('🧪 Test notification sent');

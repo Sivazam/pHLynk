@@ -5,25 +5,27 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
 import { X, Plus, Loader2, CheckCircle, MapPin } from 'lucide-react';
 import { Area, Retailer } from '@/types';
 
 interface RetailerServiceAreaEditProps {
   retailer: Retailer;
-  onSubmit: (data: { areaId?: string; zipcodes: string[] }) => Promise<void>;
+  onSubmit: (data: { areaId?: string; zipcodes: string[]; code?: string }) => Promise<void>;
   onCancel: () => void;
   areas: Area[];
 }
 
-export function RetailerServiceAreaEdit({ 
-  retailer, 
-  onSubmit, 
-  onCancel, 
-  areas 
+export function RetailerServiceAreaEdit({
+  retailer,
+  onSubmit,
+  onCancel,
+  areas
 }: RetailerServiceAreaEditProps) {
   const [areaId, setAreaId] = useState(retailer.areaId || 'none');
   const [zipcodes, setZipcodes] = useState<string[]>(retailer.zipcodes || []);
   const [newZipcode, setNewZipcode] = useState('');
+  const [code, setCode] = useState(retailer.code || '');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
 
@@ -33,9 +35,10 @@ export function RetailerServiceAreaEdit({
     try {
       await onSubmit({
         areaId: areaId && areaId !== 'none' ? areaId : undefined,
-        zipcodes: zipcodes.filter(z => z.trim())
+        zipcodes: zipcodes.filter(z => z.trim()),
+        code: code.trim() || undefined
       });
-      
+
       setShowSuccess(true);
       setTimeout(() => {
         if (onCancel) onCancel();
@@ -122,6 +125,12 @@ export function RetailerServiceAreaEdit({
               <p className="text-gray-900">{retailer.address}</p>
             </div>
           )}
+          {retailer.code && (
+            <div>
+              <span className="font-medium text-gray-700">Current Code:</span>
+              <p className="text-gray-900">{retailer.code}</p>
+            </div>
+          )}
         </div>
       </div>
 
@@ -145,6 +154,19 @@ export function RetailerServiceAreaEdit({
         </div>
 
         <div>
+          <Label htmlFor="code">Retailer Code (Optional)</Label>
+          <Input
+            id="code"
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            placeholder="e.g., ABC1234 (4-8 characters)"
+            maxLength={12}
+            disabled={isSubmitting}
+          />
+          <p className="text-xs text-gray-500 mt-1">Alphanumeric code to identify this retailer</p>
+        </div>
+
+        <div>
           <Label htmlFor="zipcodes">Service Zipcodes</Label>
           <div className="space-y-2">
             <div className="flex gap-2">
@@ -162,7 +184,7 @@ export function RetailerServiceAreaEdit({
                 <Plus className="h-4 w-4" />
               </Button>
             </div>
-            
+
             {zipcodes.length > 0 && (
               <div className="flex flex-wrap gap-2">
                 {zipcodes.map((zipcode) => (

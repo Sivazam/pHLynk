@@ -579,6 +579,7 @@ export class RetailerService extends FirestoreService<Retailer> {
         address: data.address,
         areaId: data.areaId,
         zipcodes: data.zipcodes,
+        code: data.code, // Optional retailer code
         // FIX: Populate profile immediately so UI can display retailer data correctly
         profile: {
           realName: data.name,

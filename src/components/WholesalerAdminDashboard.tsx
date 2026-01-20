@@ -1052,7 +1052,7 @@ export function WholesalerAdminDashboard() {
     }
   };
 
-  const handleCreateRetailer = async (data: { name: string; phone: string; address?: string; areaId?: string; zipcodes: string[] }) => {
+  const handleCreateRetailer = async (data: { name: string; phone: string; address?: string; areaId?: string; zipcodes: string[]; code?: string }) => {
     const currentTenantId = getCurrentTenantId();
     if (!currentTenantId) {
       setError('No tenant selected. Please select a tenant to continue.');
@@ -1068,7 +1068,8 @@ export function WholesalerAdminDashboard() {
         phone: cleanedPhone,
         address: data.address || '',
         areaId: data.areaId || '',
-        zipcodes: data.zipcodes
+        zipcodes: data.zipcodes,
+        code: data.code || undefined
       });
 
       // 🔄 CRITICAL: Automatically assign retailer to Line Worker if area has one
@@ -1492,7 +1493,7 @@ export function WholesalerAdminDashboard() {
         successMessage += '\n' + details.join('\n');
       }
 
-      showSuccess(successMessage, 'Line Worker Updated');
+      showSuccess(successMessage);
 
       setShowEditLineWorkerDialog(false);
       setEditingLineWorker(null);
@@ -1975,8 +1976,9 @@ export function WholesalerAdminDashboard() {
                   if (!currentTenantId) return;
 
                   try {
-                    console.log('🔧 Starting retailer service area update...');
+                    console.log('🔧 Starting retailer update...');
 
+                    // Update wholesaler assignment (area/zipcodes)
                     await retailerService.updateWholesalerAssignment(
                       editingRetailer.id,
                       currentTenantId,
@@ -1984,6 +1986,12 @@ export function WholesalerAdminDashboard() {
                       data.zipcodes
                     );
                     console.log('✅ Wholesaler assignment updated successfully');
+
+                    // Update code if provided
+                    if (data.code !== undefined) {
+                      await retailerService.update(editingRetailer.id, { code: data.code || undefined }, currentTenantId);
+                      console.log('✅ Retailer code updated successfully');
+                    }
 
                     // Add a small delay to ensure Firestore cache is updated
                     await new Promise(resolve => setTimeout(resolve, 500));

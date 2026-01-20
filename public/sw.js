@@ -126,7 +126,7 @@ self.addEventListener('push', event => {
 
     // Customize for test notifications
     if (data.type === 'test') {
-      options.body = '📱 This is a test notification from pHLynk';
+      options.body = '📱 This is a test notification from Pharmalync';
       options.tag = 'test-notification';
       options.requireInteraction = false;
     }

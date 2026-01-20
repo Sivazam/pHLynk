@@ -18,7 +18,7 @@ const faqCategories = [
     faqs: [
       {
         question: 'What is PharmaLync?',
-        answer: 'PharmaLync (pHLynk) is a comprehensive pharmaceutical supply chain payment collection system designed to streamline and automate payment processes between wholesalers, medical stores (retailers), and field workers (line workers). It provides real-time payment tracking, OTP-based verification, and comprehensive dashboards for all stakeholders.'
+        answer: 'PharmaLync (Pharmalync) is a comprehensive pharmaceutical supply chain payment collection system designed to streamline and automate payment processes between wholesalers, medical stores (retailers), and field workers (line workers). It provides real-time payment tracking, OTP-based verification, and comprehensive dashboards for all stakeholders.'
       },
       {
         question: 'How does PharmaLync work?',
@@ -157,9 +157,9 @@ export default function FAQPage() {
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
               <Link href="/" className="flex items-center space-x-2">
-                <Image 
-                  src="/logoMain.png" 
-                  alt="PharmaLync Logo" 
+                <Image
+                  src="/logoMain.png"
+                  alt="PharmaLync Logo"
                   width={40}
                   height={40}
                   className="rounded-lg"
@@ -194,7 +194,7 @@ export default function FAQPage() {
           {faqCategories.map((category) => {
             const Icon = category.icon;
             const isOpen = openCategory === category.id;
-            
+
             return (
               <div key={category.id} className="bg-white rounded-lg shadow-sm border">
                 <button
@@ -213,14 +213,14 @@ export default function FAQPage() {
                     <ChevronDown className="h-5 w-5 text-gray-500" />
                   )}
                 </button>
-                
+
                 {isOpen && (
                   <div className="px-6 pb-4">
                     <div className="space-y-4">
                       {category.faqs.map((faq, index) => {
                         const faqId = `${category.id}-${index}`;
                         const isFAQOpen = openFAQ === faqId;
-                        
+
                         return (
                           <div key={index} className="border-l-4 border-blue-200 pl-4">
                             <button
@@ -280,9 +280,9 @@ export default function FAQPage() {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
             <div className="col-span-1 md:col-span-2">
               <div className="flex items-center space-x-2 mb-4">
-                <Image 
-                  src="/logoMain.png" 
-                  alt="PharmaLync Logo" 
+                <Image
+                  src="/logoMain.png"
+                  alt="PharmaLync Logo"
                   width={40}
                   height={40}
                   className="rounded-lg"

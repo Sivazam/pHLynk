@@ -56,6 +56,7 @@ export interface Retailer extends BaseDocument {
   email?: string;
   address?: string;
   active?: boolean; // Added active field
+  code?: string; // Wholesaler-assigned alphanumeric code (4-8+ characters)
 
   // Profile and verification
   profile?: any;
@@ -279,6 +280,7 @@ export interface CreateRetailerForm {
   address?: string;
   areaId?: string;
   zipcodes: string[];
+  code?: string; // Optional alphanumeric retailer code
 }
 
 export interface InitiatePaymentForm {
