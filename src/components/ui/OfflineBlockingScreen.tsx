@@ -9,7 +9,8 @@ export function OfflineBlockingScreen() {
         // A simple retry action - often simply reloading the page or triggering a re-check is enough.
         // Since the hook listens to events, the screen will dismiss automatically when online.
         // This button provides a tactile feedback for the user to "try" something.
-        window.location.reload();
+        // We do NOT want to reload the page as it might break the PWA state if truly offline.
+        console.log('Retry connection clicked - checking status...');
     };
 
     return (

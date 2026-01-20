@@ -213,7 +213,7 @@ export function RetailerServiceAreaEdit({
               Updating...
             </>
           ) : (
-            'Update Service Area'
+            'Update'
           )}
         </Button>
       </div>

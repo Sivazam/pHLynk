@@ -62,6 +62,8 @@ import {
   ChevronDown,
   ChevronUp
 } from 'lucide-react';
+import jsPDF from 'jspdf';
+import { LOGO_BASE64 } from '@/constants/assets';
 import { StatusBarColor } from './ui/StatusBarColor';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { OfflineBlockingScreen } from '@/components/ui/OfflineBlockingScreen';
@@ -71,15 +73,12 @@ export function LineWorkerDashboard() {
   const { user, logout } = useAuth();
   // ...
   // ...
-  if (!isOnline) {
-    return <OfflineBlockingScreen />;
-  }
 
   const isLineWorker = useLineWorker();
   const [retailers, setRetailers] = useState<Retailer[]>([]);
   const [filteredRetailers, setFilteredRetailers] = useState<Retailer[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
-  const [searchType, setSearchType] = useState<'name' | 'area' | 'phone'>('name');
+  const [searchType, setSearchType] = useState<'name' | 'phone' | 'code'>('code');
   const [expandedRetailerId, setExpandedRetailerId] = useState<string | null>(null);
   const [showAllPaymentsRetailerId, setShowAllPaymentsRetailerId] = useState<string | null>(null);
   const [payments, setPayments] = useState<Payment[]>([]);
@@ -97,6 +96,7 @@ export function LineWorkerDashboard() {
   const [isCollectingPayment, setIsCollectingPayment] = useState(false);
   const [showConfirmationDialog, setShowConfirmationDialog] = useState(false);
   const [showPaymentSuccess, setShowPaymentSuccess] = useState(false);
+  const [isGeneratingReceipt, setIsGeneratingReceipt] = useState(false);
   const [pendingPaymentData, setPendingPaymentData] = useState<any>(null);
   const [lastPaymentAmount, setLastPaymentAmount] = useState<number>(0); // ✅ Store amount separately for success dialog
   const [lastPaymentId, setLastPaymentId] = useState<string | null>(null); // ✅ Store payment ID for receipt
@@ -163,26 +163,23 @@ export function LineWorkerDashboard() {
       switch (searchType) {
         case 'name':
           return getRetailerName(retailer).toLowerCase().includes(searchLower);
-        case 'area':
-          // Search by area name
-          const area = areas.find(a => a.id === retailer.areaId);
-          return area?.name.toLowerCase().includes(searchLower) || false;
         case 'phone':
           return retailer.phone?.toLowerCase().includes(searchLower) || false;
+        case 'code':
+          return retailer.code?.toLowerCase().includes(searchLower) || false;
         default:
           return false;
       }
     });
 
     setFilteredRetailers(filtered);
-  }, [searchTerm, searchType, retailers, areas]);
+  }, [searchTerm, searchType, retailers]);
 
   // Navigation items
   const navItems: NavItem[] = [
     { id: 'overview', label: 'Overview', icon: LayoutDashboard },
     { id: 'retailers', label: 'Retailers', icon: Store },
     { id: 'payments', label: 'Payments', icon: CreditCard },
-    { id: 'history', label: 'History', icon: History },
   ];
 
   const [activeNav, setActiveNav] = useState('overview');
@@ -804,80 +801,7 @@ export function LineWorkerDashboard() {
     }
   };
 
-  // Generate receipt content
-  const generateReceiptContent = (payment: Payment) => {
-    const retailer = retailers.find(r => r.id === payment.retailerId);
-    const lineWorkerName = user?.displayName || user?.email || 'Unknown Line Worker';
-
-    return `
-==============================
-        PAYMENT RECEIPT
-==============================
-
-Receipt ID: ${payment.id}
-Date: ${formatTimestampWithTime(payment.createdAt)}
-Status: ${payment.state}
-
-Payment Details:
-- Amount: ${formatCurrency(payment.totalPaid)}
-- Payment Method: ${payment.method}
-- Transaction ID: ${payment.id}
-
-Retailer Information:
-- Name: ${getRetailerName(retailer)}
-- Phone: ${getRetailerPhone(retailer)}
-- Address: ${getRetailerAddress(retailer)}
-
-Collected By:
-- Line Worker: ${lineWorkerName}
-- ID: ${user?.uid}
-
-Payment Timeline:
-- Initiated: ${payment.timeline?.initiatedAt ? formatTimestampWithTime(payment.timeline.initiatedAt) : 'N/A'}
-- OTP Sent: ${payment.timeline?.otpSentAt ? formatTimestampWithTime(payment.timeline.otpSentAt) : 'N/A'}
-- OTP Verified: ${payment.timeline?.verifiedAt ? formatTimestampWithTime(payment.timeline.verifiedAt) : 'N/A'}
-- Completed: ${payment.timeline?.completedAt ? formatTimestampWithTime(payment.timeline.completedAt) : 'N/A'}
-
-Thank you for your payment!
-==============================
-    `.trim();
-  };
-
-  // Download receipt
-  const downloadReceipt = (payment: Payment) => {
-    const content = generateReceiptContent(payment);
-    const blob = new Blob([content], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `receipt-${payment.id}.txt`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
-
-  // Share receipt
-  const shareReceipt = async (payment: Payment) => {
-    const content = generateReceiptContent(payment);
-
-    if (navigator.share) {
-      try {
-        await navigator.share({
-          title: 'Payment Receipt',
-          text: content,
-        });
-      } catch (error) {
-        // Fallback to copying to clipboard
-        await navigator.clipboard.writeText(content);
-        alert('Receipt copied to clipboard!');
-      }
-    } else {
-      // Fallback to copying to clipboard
-      await navigator.clipboard.writeText(content);
-      alert('Receipt copied to clipboard!');
-    }
-  };
+  // Old receipt functions removed in favor of PDF generation logic below
 
   // Export payments data
   const exportPayments = (format: 'csv' | 'json') => {
@@ -1242,91 +1166,354 @@ Thank you for your payment!
     );
   };
 
+  // --- RECEIPT GENERATION LOGIC ---
+  const generateReceiptPDF = (payment: Payment) => {
+    const doc = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'a4'
+    });
+
+    const retailer = retailers.find(r => r.id === payment.retailerId) || null;
+    const wholesalerName = "PharmaLync Wholesaler"; // Fallback as we don't have detailed wholesaler map here
+
+    // 1. Header & Logo
+    const logoSize = 15;
+    const startY = 20;
+
+    // Add Logo (if base64 is valid)
+    try {
+      doc.addImage(LOGO_BASE64, 'PNG', 15, startY, logoSize, logoSize);
+    } catch (e) {
+      console.warn('Logo failed to add to PDF', e);
+    }
+
+    // Header Text
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(22);
+    doc.text("PharmaLync", 35, startY + 8);
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(100);
+    doc.text("Verify. Collect. Track.", 35, startY + 14);
+
+    // "Official Receipt" Badge
+    doc.setFillColor(243, 244, 246); // gray-100
+    doc.roundedRect(150, startY, 45, 10, 3, 3, 'F');
+    doc.setFontSize(8);
+    doc.setTextColor(75, 85, 99); // gray-600
+    doc.text("OFFICIAL RECEIPT", 172.5, startY + 6.5, { align: 'center' });
+
+    // 2. Receipt ID & Date Grid
+    const gridY = startY + 25;
+    doc.setDrawColor(229, 231, 235); // gray-200
+    doc.setFillColor(249, 250, 251); // gray-50
+    doc.rect(15, gridY, 180, 20, 'FD'); // Fill and Draw
+
+    doc.setFontSize(8);
+    doc.setTextColor(107, 114, 128); // gray-500
+    doc.text("RECEIPT ID", 20, gridY + 6);
+    doc.text("DATE & TIME", 130, gridY + 6); // visual column
+
+    doc.setFontSize(10);
+    doc.setTextColor(17, 24, 39); // gray-900 font-medium
+    doc.setFont("helvetica", "bold"); // mimic font-medium
+    doc.text(payment.id, 20, gridY + 14);
+    doc.text(formatTimestampWithTime(payment.createdAt), 130, gridY + 14);
+
+    // 3. Payment Details
+    let cursorY = gridY + 35;
+    doc.setFontSize(12);
+    doc.setTextColor(0);
+    doc.text("Payment Details", 15, cursorY);
+    doc.setDrawColor(229, 231, 235);
+    doc.line(15, cursorY + 2, 195, cursorY + 2);
+    cursorY += 10;
+
+    // Helper row function
+    const addRow = (label: string, value: string, isGreen = false) => {
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(75, 85, 99); // gray-600
+      doc.text(label, 15, cursorY);
+
+      doc.setFont("helvetica", "bold");
+      if (isGreen) doc.setTextColor(22, 163, 74); // green-600
+      else doc.setTextColor(17, 24, 39); // gray-900
+
+      // Right align value
+      doc.text(value, 195, cursorY, { align: 'right' });
+
+      cursorY += 8;
+    };
+
+    addRow("Amount Paid", formatCurrency(payment.totalPaid), true);
+    addRow("Payment Method", payment.method);
+    addRow("Collected By", user?.displayName || 'Line Worker');
+    addRow("Wholesaler", wholesalerName);
+
+    cursorY += 10;
+
+    // 4. Retailer Details
+    doc.setFontSize(12);
+    doc.setTextColor(0);
+    doc.text("Retailer Details", 15, cursorY);
+    doc.line(15, cursorY + 2, 195, cursorY + 2);
+    cursorY += 10;
+
+    if (retailer) {
+      addRow("Name", getRetailerName(retailer));
+      if (getRetailerPhone(retailer)) {
+        addRow("Phone", getRetailerPhone(retailer)!);
+      }
+      if (getRetailerAddress(retailer)) {
+        // Handle address wrapping
+        const address = getRetailerAddress(retailer)!;
+        doc.setFontSize(10);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(75, 85, 99);
+        doc.text("Address", 15, cursorY);
+
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(17, 24, 39);
+
+        const splitAddr = doc.splitTextToSize(address, 80); // wrap to 80mm
+        doc.text(splitAddr, 195, cursorY, { align: 'right' });
+
+        cursorY += (splitAddr.length * 5) + 5;
+      }
+    } else {
+      addRow("Name", payment.retailerName || "Unknown Retailer");
+    }
+
+    // 5. Footer
+    cursorY += 10;
+    doc.setDrawColor(200, 200, 200);
+    doc.setLineDashPattern([1, 1], 0); // Dashed line
+    doc.line(15, cursorY, 195, cursorY);
+    doc.setLineDashPattern([], 0); // Reset
+
+    cursorY += 8;
+    doc.setFontSize(9);
+    doc.setTextColor(75, 85, 99);
+    doc.text("Thank you for your business!", 105, cursorY, { align: 'center' });
+
+    cursorY += 5;
+    doc.setFontSize(7);
+    doc.setTextColor(156, 163, 175); // gray-400
+    doc.text("COMPUTER GENERATED RECEIPT", 105, cursorY, { align: 'center' });
+
+    return doc;
+  };
+
+  const downloadReceipt = async (payment: Payment) => {
+    setIsGeneratingReceipt(true);
+    try {
+      const doc = generateReceiptPDF(payment);
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+      doc.save(`receipt-${payment.id}-${timestamp}.pdf`);
+    } catch (error: any) {
+      console.error('PDF Generation failed:', error);
+      alert(`Failed to generate PDF: ${error.message || 'Unknown error'}`);
+    } finally {
+      setIsGeneratingReceipt(false);
+    }
+  };
+
+  const shareReceipt = async (payment: Payment) => {
+    setIsGeneratingReceipt(true);
+    try {
+      const doc = generateReceiptPDF(payment);
+      const pdfBlob = doc.output('blob');
+
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+      const file = new File([pdfBlob], `receipt-${payment.id}-${timestamp}.pdf`, { type: 'application/pdf' });
+
+      if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({
+          title: 'Payment Receipt',
+          text: `Receipt for ${formatCurrency(payment.totalPaid)}`,
+          files: [file]
+        });
+      } else {
+        // Fallback to download
+        doc.save(`receipt-${payment.id}-${timestamp}.pdf`);
+      }
+    } catch (error: any) {
+      console.error('Share failed:', error);
+      if (error.name !== 'AbortError') {
+        // Fallback to download on known share failures
+        try {
+          const doc = generateReceiptPDF(payment);
+          const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+          doc.save(`receipt-${payment.id}-${timestamp}.pdf`);
+        } catch (e) {
+          alert('Sharing failed and download fallback failed.');
+        }
+      }
+    } finally {
+      setIsGeneratingReceipt(false);
+    }
+  };
+
   // Payment history table component
   const PaymentHistoryTable = () => (
-    <div className="overflow-x-auto">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Date</TableHead>
-            <TableHead>Retailer</TableHead>
-            <TableHead>Amount</TableHead>
-            <TableHead>Method</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead>Actions</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {filteredPayments.map((payment) => (
-            <TableRow key={payment.id}>
-              <TableCell>{formatTimestampWithTime(payment.createdAt)}</TableCell>
-              <TableCell>{payment.retailerName}</TableCell>
-              <TableCell>{formatCurrency(payment.totalPaid)}</TableCell>
-              <TableCell>{payment.method}</TableCell>
-              <TableCell>
+    <div className="space-y-4">
+      {/* Mobile View - Cards */}
+      <div className="md:hidden space-y-4">
+        {filteredPayments.map((payment) => (
+          <div key={payment.id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 space-y-3">
+            <div className="flex justify-between items-start">
+              <div>
+                <h3 className="font-semibold text-gray-900">{payment.retailerName}</h3>
+                <p className="text-xs text-gray-500">{formatTimestampWithTime(payment.createdAt)}</p>
+              </div>
+              <div className="text-right">
+                <div className="font-bold text-green-600">{formatCurrency(payment.totalPaid)}</div>
                 <Badge className={
                   payment.state === 'COMPLETED'
-                    ? 'bg-green-100 text-green-800'
+                    ? 'bg-green-100 text-green-800 border-green-200 mt-1'
                     : payment.state === 'INITIATED'
-                      ? 'bg-yellow-100 text-yellow-800'
-                      : 'bg-red-100 text-red-800'
+                      ? 'bg-yellow-100 text-yellow-800 border-yellow-200 mt-1'
+                      : 'bg-red-100 text-red-800 border-red-200 mt-1'
                 }>
                   {payment.state}
                 </Badge>
-              </TableCell>
-              <TableCell>
-                <div className="flex space-x-1">
-                  {(payment.state === 'INITIATED' || payment.state === 'OTP_SENT') && (
-                    <>
-                      {isOTPExpired(payment) ? (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          disabled
-                          className="h-7 px-2 text-xs bg-gray-100 border-gray-300 text-gray-500 cursor-not-allowed"
-                        >
-                          Expired
-                        </Button>
-                      ) : (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleEnterOTP(payment)}
-                          className="h-7 px-2 text-xs bg-yellow-50 border-yellow-200 text-yellow-800 hover:bg-yellow-100"
-                        >
-                          Enter OTP
-                        </Button>
-                      )}
-                    </>
-                  )}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      setLastPaymentId(payment.id);
-                      setLastPaymentAmount(payment.totalPaid);
-                      setShowReceiptInSuccess(true);
-                      setShowPaymentSuccess(true);
-                    }}
-                  >
-                    View
-                  </Button>
-                  {payment.state === 'COMPLETED' && (
-                    <>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setLastPaymentId(payment.id);
-                          setLastPaymentAmount(payment.totalPaid);
-                          setShowReceiptInSuccess(true);
-                          setShowPaymentSuccess(true);
-                        }}
-                        className="h-7 px-2 text-xs"
-                      >
-                        <Download className="h-3 w-3 mr-1" />
-                        Receipt
-                      </Button>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between text-sm text-gray-600 bg-gray-50 p-2 rounded-lg">
+              <div className="flex items-center">
+                <CreditCard className="h-4 w-4 mr-2 text-gray-400" />
+                <span>{payment.method}</span>
+              </div>
+              {payment.utr && <span className="font-mono text-xs">UTR: ****{payment.utr.slice(-4)}</span>}
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 pt-1">
+              {(payment.state === 'INITIATED' || payment.state === 'OTP_SENT') && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleEnterOTP(payment)}
+                  className="w-full bg-yellow-50 text-yellow-700 border-yellow-200 hover:bg-yellow-100"
+                  disabled={isOTPExpired(payment)}
+                >
+                  {isOTPExpired(payment) ? 'Expired' : 'Enter OTP'}
+                </Button>
+              )}
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setLastPaymentId(payment.id);
+                  setLastPaymentAmount(payment.totalPaid);
+                  setShowReceiptInSuccess(true);
+                  setShowPaymentSuccess(true);
+                }}
+                className="w-full"
+              >
+                View Details
+              </Button>
+
+              {payment.state === 'COMPLETED' && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setLastPaymentId(payment.id);
+                    setLastPaymentAmount(payment.totalPaid);
+                    setShowReceiptInSuccess(true);
+                    setShowPaymentSuccess(true);
+                  }}
+                  className="w-full col-span-2"
+                >
+                  <Share className="h-3 w-3 mr-2" />
+                  View & Share Receipt
+                </Button>
+              )}
+            </div>
+          </div>
+        ))}
+        {filteredPayments.length === 0 && (
+          <div className="text-center py-8 text-gray-500 bg-white rounded-xl border border-dashed">
+            <p>No payments found</p>
+          </div>
+        )}
+      </div>
+
+      {/* Desktop View - Table */}
+      <div className="hidden md:block overflow-x-auto bg-white rounded-lg border shadow-sm">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Date</TableHead>
+              <TableHead>Retailer</TableHead>
+              <TableHead>Amount</TableHead>
+              <TableHead>Method</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {filteredPayments.map((payment) => (
+              <TableRow key={payment.id}>
+                <TableCell>{formatTimestampWithTime(payment.createdAt)}</TableCell>
+                <TableCell className="font-medium">{payment.retailerName}</TableCell>
+                <TableCell>{formatCurrency(payment.totalPaid)}</TableCell>
+                <TableCell>{payment.method}</TableCell>
+                <TableCell>
+                  <Badge className={
+                    payment.state === 'COMPLETED'
+                      ? 'bg-green-100 text-green-800'
+                      : payment.state === 'INITIATED'
+                        ? 'bg-yellow-100 text-yellow-800'
+                        : 'bg-red-100 text-red-800'
+                  }>
+                    {payment.state}
+                  </Badge>
+                </TableCell>
+                <TableCell>
+                  <div className="flex space-x-1">
+                    {(payment.state === 'INITIATED' || payment.state === 'OTP_SENT') && (
+                      <>
+                        {isOTPExpired(payment) ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled
+                            className="h-7 px-2 text-xs bg-gray-100 border-gray-300 text-gray-500 cursor-not-allowed"
+                          >
+                            Expired
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleEnterOTP(payment)}
+                            className="h-7 px-2 text-xs bg-yellow-50 border-yellow-200 text-yellow-800 hover:bg-yellow-100"
+                          >
+                            Enter OTP
+                          </Button>
+                        )}
+                      </>
+                    )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setLastPaymentId(payment.id);
+                        setLastPaymentAmount(payment.totalPaid);
+                        setShowReceiptInSuccess(true);
+                        setShowPaymentSuccess(true);
+                      }}
+                      className="h-7 px-2 text-xs"
+                    >
+                      View
+                    </Button>
+                    {payment.state === 'COMPLETED' && (
                       <Button
                         variant="outline"
                         size="sm"
@@ -1339,18 +1526,29 @@ Thank you for your payment!
                         className="h-7 px-2 text-xs"
                       >
                         <Share className="h-3 w-3 mr-1" />
-                        Share
+                        Receipt
                       </Button>
-                    </>
-                  )}
-                </div>
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+                    )}
+                  </div>
+                </TableCell>
+              </TableRow>
+            ))}
+            {filteredPayments.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={6} className="text-center py-8 text-gray-500">
+                  No payments found
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </div>
     </div>
   );
+
+  if (!isOnline) {
+    return <OfflineBlockingScreen />;
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -1405,7 +1603,10 @@ Thank you for your payment!
                 <div className="space-y-6">
                   {/* Stats Cards - Bento style 2-column on mobile */}
                   <div className="grid grid-cols-2 gap-4">
-                    <Card className="border-0 bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-lg rounded-xl">
+                    <Card
+                      onClick={() => setActiveNav('retailers')}
+                      className="border-0 bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-lg rounded-xl cursor-pointer transition-transform hover:scale-105 active:scale-95"
+                    >
                       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium text-blue-100">Total Retailers</CardTitle>
                         <div className="bg-white/20 p-2 rounded-lg">
@@ -1418,7 +1619,14 @@ Thank you for your payment!
                       </CardContent>
                     </Card>
 
-                    <Card className="border-0 bg-gradient-to-br from-emerald-500 to-emerald-600 text-white shadow-lg rounded-xl">
+                    <Card
+                      onClick={() => {
+                        setActiveNav('payments');
+                        setPaymentTab('completed'); // Assuming showing completed payments for the day
+                        setSelectedDateRangeOption('today');
+                      }}
+                      className="border-0 bg-gradient-to-br from-emerald-500 to-emerald-600 text-white shadow-lg rounded-xl cursor-pointer transition-transform hover:scale-105 active:scale-95"
+                    >
                       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium text-emerald-100">Today's Collection</CardTitle>
                         <div className="bg-white/20 p-2 rounded-lg">
@@ -1490,7 +1698,16 @@ Thank you for your payment!
                           .sort((a, b) => b.createdAt.toDate().getTime() - a.createdAt.toDate().getTime())
                           .slice(0, 5)
                           .map((payment) => (
-                            <div key={payment.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-100">
+                            <div
+                              key={payment.id}
+                              onClick={() => {
+                                setLastPaymentId(payment.id);
+                                setLastPaymentAmount(payment.totalPaid);
+                                setShowReceiptInSuccess(true);
+                                setShowPaymentSuccess(true);
+                              }}
+                              className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-100 cursor-pointer hover:bg-gray-100 transition-colors"
+                            >
                               <div>
                                 <div className="font-medium text-gray-900">{payment.retailerName}</div>
                                 <div className="text-sm text-gray-500">{formatTimestampWithTime(payment.createdAt)}</div>
@@ -1525,10 +1742,10 @@ Thank you for your payment!
                       <p className="text-gray-600 text-sm">Search and view your assigned retailers</p>
                     </div>
                     <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                      <Button onClick={() => handleOpenPaymentDialog()}>
+                      {/* <Button onClick={() => handleOpenPaymentDialog()}>
                         <Plus className="h-4 w-4 mr-2" />
                         Collect Payment
-                      </Button>
+                      </Button> */}
                       {/* <div className="flex space-x-1">
                           <Button
                             variant="outline"
@@ -1578,13 +1795,13 @@ Thank you for your payment!
                           </div>
                         </div>
                         <div className="sm:w-48">
-                          <Select value={searchType} onValueChange={(value: 'name' | 'area' | 'phone') => setSearchType(value)}>
+                          <Select value={searchType} onValueChange={(value: 'name' | 'phone' | 'code') => setSearchType(value)}>
                             <SelectTrigger>
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
+                              <SelectItem value="code">Search by Code</SelectItem>
                               <SelectItem value="name">Search by Name</SelectItem>
-                              <SelectItem value="area">Search by Area</SelectItem>
                               <SelectItem value="phone">Search by Phone</SelectItem>
                             </SelectContent>
                           </Select>
@@ -1659,17 +1876,7 @@ Thank you for your payment!
                 </div>
               )}
 
-              {/* History View */}
-              {activeNav === 'history' && (
-                <div className="space-y-6">
-                  <h2 className="text-xl font-semibold">Complete Payment History</h2>
-                  <DateRangeFilter
-                    value={selectedDateRangeOption}
-                    onValueChange={handleDateRangeChange}
-                  />
-                  <PaymentHistoryTable />
-                </div>
-              )}
+
             </>
           )}
         </div>
@@ -1803,6 +2010,7 @@ Thank you for your payment!
                         if (payment) shareReceipt(payment);
                       }}
                       className="w-full"
+                      disabled={isGeneratingReceipt}
                     >
                       <Share className="h-4 w-4 mr-2" />
                       Share Receipt
@@ -1903,6 +2111,7 @@ Thank you for your payment!
                           if (payment) downloadReceipt(payment);
                         }}
                         className="w-full"
+                        disabled={isGeneratingReceipt}
                       >
                         <Download className="h-4 w-4 mr-2" />
                         Download Receipt
@@ -1914,6 +2123,7 @@ Thank you for your payment!
                           if (payment) shareReceipt(payment);
                         }}
                         className="w-full"
+                        disabled={isGeneratingReceipt}
                       >
                         <Share className="h-4 w-4 mr-2" />
                         Share Receipt
