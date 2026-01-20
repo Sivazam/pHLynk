@@ -30,12 +30,12 @@ const spaceGrotesk = Space_Grotesk({
 });
 
 export const metadata: Metadata = {
-  title: "pHLynk - Verify. Collect. Track",
+  title: "Pharmalync - Verify. Collect. Track",
   description: "Modern pharmaceutical management system built with Firebase authentication and Firestore database. Manage products, inventory, and user accounts securely.",
   keywords: ["pHLynk", "Pharmacy", "Medical", "Inventory", "Firebase", "Next.js", "TypeScript"],
   authors: [{ name: "pHLynk Team" }],
   openGraph: {
-    title: "pHLynk - Verify. Collect. Track",
+    title: "Pharmalync - Verify. Collect. Track",
     description: "Comprehensive pharmacy management system with modern web technologies",
     url: "https://pHLynk.firebaseapp.com",
     siteName: "pHLynk",
@@ -43,7 +43,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "pHLynk - Verify. Collect. Track",
+    title: "Pharmalync - Verify. Collect. Track",
     description: "Comprehensive pharmacy management system with modern web technologies",
   },
   icons: {
