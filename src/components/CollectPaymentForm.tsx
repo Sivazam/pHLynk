@@ -380,24 +380,35 @@ const CollectPaymentFormComponent = ({
                       Capture / Upload
                     </Button>
                   ) : (
-                    <div className="relative group rounded-lg overflow-hidden border border-gray-200 h-10 flex items-center bg-gray-50 px-3">
-                      <div className="flex items-center flex-1 gap-2 overflow-hidden">
-                        <ImageIcon className="h-4 w-4 text-blue-600 flex-shrink-0" />
-                        <span className="text-sm text-gray-700 truncate">{formData.proofImage?.name || 'Image attached'}</span>
-                      </div>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="h-8 w-8 p-0 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full ml-1"
-                        onClick={removeImage}
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
-
-                      {/* Hover Preview for broader view */}
-                      <div className="absolute hidden group-hover:block bottom-full left-0 mb-2 z-50 p-1 bg-white rounded-lg shadow-xl border border-gray-200">
-                        <img src={previewUrl} className="max-w-[200px] max-h-[200px] object-contain rounded" alt="Preview" />
+                    <div className="space-y-2">
+                      {/* Visible Image Preview */}
+                      <div className="relative rounded-lg overflow-hidden border border-green-200 bg-green-50 p-2">
+                        <div className="flex items-start gap-3">
+                          <img
+                            src={previewUrl}
+                            className="w-20 h-20 object-cover rounded-md border border-gray-200 shadow-sm"
+                            alt="Payment Proof Preview"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1 text-green-700 text-sm font-medium">
+                              <CheckCircle className="h-4 w-4" />
+                              Image Attached
+                            </div>
+                            <p className="text-xs text-gray-500 truncate mt-1">
+                              {formData.proofImage?.name || 'proof_image.jpg'}
+                            </p>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="mt-2 h-7 text-xs text-red-600 border-red-200 hover:bg-red-50 hover:border-red-300"
+                              onClick={removeImage}
+                            >
+                              <X className="h-3 w-3 mr-1" />
+                              Remove & Recapture
+                            </Button>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   )}
@@ -460,7 +471,7 @@ const CollectPaymentFormComponent = ({
           <Button
             type="button"
             onClick={handleSubmit}
-            disabled={collectingPayment || !formData.retailerId || !formData.amount || formData.amount < 1 || (formData.paymentMethod === 'UPI' && (!formData.utr || formData.utr.length !== 4))}
+            disabled={collectingPayment || !formData.retailerId || !formData.amount || formData.amount < 1 || (formData.paymentMethod === 'UPI' && !(formData.utr && formData.utr.length === 4) && !formData.proofImage)}
             className="h-10 px-4 text-sm min-w-[120px] w-full sm:w-auto order-1 sm:order-2"
           >
             {collectingPayment ? (

@@ -105,24 +105,24 @@ export function PaymentVerificationModal({
                         <div className="space-y-4">
                             <div>
                                 <Label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Retailer</Label>
-                                <p className="text-lg font-medium text-gray-900 leading-tight mt-1">{payment.retailerName}</p>
+                                <p className="text-lg font-medium text-gray-900 leading-tight mt-1">{payment.retailerName || 'Unknown'}</p>
                             </div>
 
                             <div>
                                 <Label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Date</Label>
-                                <p className="text-base text-gray-900 mt-1">{formatTimestamp(payment.createdAt)}</p>
+                                <p className="text-base text-gray-900 mt-1">{payment.createdAt ? formatTimestamp(payment.createdAt) : 'N/A'}</p>
                             </div>
 
                             <div>
                                 <Label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Line Worker</Label>
-                                <p className="text-base text-gray-900 mt-1">{payment.lineWorkerName}</p>
+                                <p className="text-base text-gray-900 mt-1">{payment.lineWorkerName || 'Unknown'}</p>
                             </div>
 
                             {payment.utr && (
                                 <div>
                                     <Label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">UTR Reference</Label>
                                     <p className="text-base font-mono bg-gray-100 px-2 py-1 rounded inline-block mt-1 text-gray-800">
-                                        {payment.utr}
+                                        {String(payment.utr)}
                                     </p>
                                 </div>
                             )}
@@ -131,7 +131,7 @@ export function PaymentVerificationModal({
                                 <div>
                                     <Label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Notes</Label>
                                     <p className="text-sm text-gray-600 italic mt-1 bg-gray-50 p-3 rounded border">
-                                        "{payment.notes}"
+                                        "{String(payment.notes)}"
                                     </p>
                                 </div>
                             )}
