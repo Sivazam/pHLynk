@@ -493,9 +493,15 @@ export function LineWorkerDashboard() {
                   }
                   return newPayments;
                 } else {
+                  // CRITICAL FIX: Double-check payment doesn't exist (race condition with optimistic update)
+                  // This prevents duplicate entries when real-time listener fires before optimistic update is processed
+                  if (prevPayments.some(p => p.id === paymentId)) {
+                    console.log('⚠️ Payment already exists (race condition prevented):', paymentId);
+                    return prevPayments;
+                  }
                   // Add new payment
                   console.log('➕ Added new payment to state:', paymentId, 'State:', paymentData.state);
-                  return [...prevPayments, updatedPayment];
+                  return [updatedPayment, ...prevPayments]; // Prepend to match optimistic update order
                 }
               });
             } else if (change.type === 'removed') {

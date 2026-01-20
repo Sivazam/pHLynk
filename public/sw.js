@@ -1,8 +1,8 @@
-// Stable cache version - bumped to force update for Old UI fix
-const CACHE_VERSION = 'pharmalynk-v3-1.0.2';
+// Stable cache version - bumped to force update for stale UI fix
+const CACHE_VERSION = 'pharmalynk-v3-1.0.3';
 const CACHE_NAME = CACHE_VERSION;
-const STATIC_CACHE_NAME = 'pharmalynk-static-v3';
-const RUNTIME_CACHE_NAME = 'pharmalynk-runtime-v3';
+const STATIC_CACHE_NAME = 'pharmalynk-static-v4';
+const RUNTIME_CACHE_NAME = 'pharmalynk-runtime-v4';
 
 // Static assets that should be cached long-term
 const STATIC_ASSETS = [
@@ -308,6 +308,9 @@ self.addEventListener('fetch', event => {
   } else if (url.pathname === '/sw.js' || url.pathname === '/manifest.json') {
     // Service worker and manifest - always network first to get latest version
     event.respondWith(handleVersionedFiles(event.request));
+  } else if (url.pathname.startsWith('/_next/')) {
+    // CRITICAL: Next.js bundles - ALWAYS network first to prevent stale UI
+    event.respondWith(handleNextJsAssets(event.request));
   } else if (event.request.mode === 'navigate') {
     // Navigation requests - network first, fallback to cache
     event.respondWith(handleNavigationRequest(event.request));
@@ -315,7 +318,7 @@ self.addEventListener('fetch', event => {
     // API requests - network only
     event.respondWith(handleApiRequest(event.request));
   } else {
-    // Other requests - cache first with network fallback
+    // Other requests - network first with cache fallback
     event.respondWith(handleRuntimeRequest(event.request));
   }
 });
@@ -394,6 +397,32 @@ async function handleNavigationRequest(request) {
     const mainPageResponse = await caches.match('/?' + CACHE_BUST_PARAM);
     if (mainPageResponse) {
       return mainPageResponse;
+    }
+
+    throw error;
+  }
+}
+
+// Handle Next.js assets (JS/CSS bundles) - NETWORK FIRST to prevent stale UI
+async function handleNextJsAssets(request) {
+  try {
+    // Always try network first for fresh bundles
+    const networkResponse = await fetch(request);
+
+    // Cache successful responses for offline fallback
+    if (networkResponse && networkResponse.status === 200) {
+      const cache = await caches.open(RUNTIME_CACHE_NAME);
+      cache.put(request, networkResponse.clone());
+    }
+
+    return networkResponse;
+  } catch (error) {
+    console.log('Network failed for Next.js asset, trying cache:', request.url);
+
+    // Fallback to cache only if network fails (offline scenario)
+    const cachedResponse = await caches.match(request);
+    if (cachedResponse) {
+      return cachedResponse;
     }
 
     throw error;
