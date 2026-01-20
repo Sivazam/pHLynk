@@ -1472,6 +1472,27 @@ export function WholesalerAdminDashboard() {
 
       console.log('✅ Line worker updated, fetching fresh data...');
       await fetchDashboardData();
+
+      // Show success dialog with area assignment details
+      const oldAreas = editingLineWorker.assignedAreas || [];
+      const addedAreasInfo = addedAreas.map(id => areas.find(a => a.id === id)?.name || id);
+      const removedAreasInfo = removedAreas.map(id => areas.find(a => a.id === id)?.name || id);
+
+      let successMessage = `${editingLineWorker.displayName || 'Line Worker'} updated successfully!`;
+      const details: string[] = [];
+
+      if (addedAreas.length > 0) {
+        details.push(`✅ Assigned: ${addedAreasInfo.join(', ')}`);
+      }
+      if (removedAreas.length > 0) {
+        details.push(`❌ Removed: ${removedAreasInfo.join(', ')}`);
+      }
+      if (details.length > 0) {
+        successMessage += '\n' + details.join('\n');
+      }
+
+      showSuccess(successMessage, 'Line Worker Updated');
+
       setShowEditLineWorkerDialog(false);
       setEditingLineWorker(null);
       setEditingSelectedAreas([]);
@@ -3064,11 +3085,20 @@ export function WholesalerAdminDashboard() {
           <div className="space-y-6">
             {getFilteredRetailers.map(retailer => {
               const retailerPayments = getFilteredPayments().filter(pay => pay.retailerId === retailer.id);
-              // Check for direct assignment first (single source of truth)
-              // Area-based assignments are only used for line worker visibility, not display
-              const assignedLineWorker = retailer.assignedLineWorkerId
+
+              // Determine effective line worker assignment:
+              // 1. Direct assignment takes priority
+              // 2. If no direct assignment, check area-based assignment
+              const directlyAssignedWorker = retailer.assignedLineWorkerId
                 ? lineWorkers.find(worker => worker.id === retailer.assignedLineWorkerId)
-                : null; // No direct assignment = Unassigned
+                : null;
+
+              const areaAssignedWorker = !directlyAssignedWorker && retailer.areaId
+                ? getAssignedWorkerForArea(retailer.areaId)
+                : null;
+
+              const assignedLineWorker = directlyAssignedWorker || areaAssignedWorker;
+              const isDirectAssignment = !!directlyAssignedWorker;
 
               return (
                 <Card key={retailer.id} className="overflow-hidden">
@@ -3077,10 +3107,16 @@ export function WholesalerAdminDashboard() {
                       <div>
                         <CardTitle className="text-lg flex items-center gap-2">
                           {retailer.profile?.realName || retailer.name}
-                          {retailer.assignedLineWorkerId && (
+                          {isDirectAssignment && (
                             <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
                               <UserIcon className="h-3 w-3 mr-1" />
                               Directly Assigned
+                            </span>
+                          )}
+                          {areaAssignedWorker && !isDirectAssignment && (
+                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                              <MapPin className="h-3 w-3 mr-1" />
+                              Via Area
                             </span>
                           )}
                         </CardTitle>
@@ -3093,7 +3129,7 @@ export function WholesalerAdminDashboard() {
                             <span>🏷️ {retailer.zipcodes.join(', ')}</span>
                             <span className="flex items-center gap-1">
                               👤
-                              <span className={retailer.assignedLineWorkerId ? "font-medium text-green-700" : ""}>
+                              <span className={assignedLineWorker ? "font-medium text-green-700" : ""}>
                                 {assignedLineWorker?.displayName || 'Unassigned'}
                               </span>
                             </span>
