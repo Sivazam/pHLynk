@@ -15,7 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { DatePicker } from '@/components/ui/date-picker';
-import { EnhancedDatePicker } from '@/components/ui/enhanced-date-picker';
+import { ModernDateRangePicker } from '@/components/ui/ModernDateRangePicker';
 import { DateRangeFilter, DateRangeOption } from '@/components/ui/DateRangeFilter';
 import { Skeleton } from '@/components/ui/skeleton';
 import { LoadingOverlay } from '@/components/ui/LoadingOverlay';
@@ -214,7 +214,12 @@ export function WholesalerAdminDashboard() {
   } = useSuccessFeedback();
 
   // Separate state for the filter date picker
-  const [filterDate, setFilterDate] = useState<{ from: Date | null; to: Date | null } | null>(null);
+  const [filterDate, setFilterDate] = useState<{ from: Date; to: Date } | null>(() => {
+    const today = new Date();
+    const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
+    return { from: startOfDay, to: endOfDay };
+  });
 
   // Filter functions for retailer details - memoized to prevent unnecessary re-computations
   const getFilteredRetailers = useMemo(() => {
@@ -682,13 +687,13 @@ export function WholesalerAdminDashboard() {
       if (selectedRetailer && selectedRetailer !== "all") {
         paymentsQuery = paymentsQuery.filter(p => p.retailerId === selectedRetailer);
       }
-      // Only apply date range filter when on Overview tab
-      if (activeNav === 'overview' && dateRange) {
-        paymentsQuery = paymentsQuery.filter(p => {
-          const paymentDate = p.createdAt.toDate();
-          return paymentDate >= dateRange.startDate && paymentDate <= dateRange.endDate;
-        });
-      }
+      // Date range filter removed from main query to allow DaySheet full access
+      // if (activeNav === 'overview' && dateRange) {
+      //   paymentsQuery = paymentsQuery.filter(p => {
+      //     const paymentDate = p.createdAt.toDate();
+      //     return paymentDate >= dateRange.startDate && paymentDate <= dateRange.endDate;
+      //   });
+      // }
 
       setAreas(areasData);
       setRetailers(retailersData);
@@ -707,9 +712,16 @@ export function WholesalerAdminDashboard() {
 
       // If on Overview tab, use the filtered data for activity logs
       // If on other tabs, use all data for activity logs
-      if (activeNav === 'overview') {
-        activityLogsData = paymentsQuery; // Already filtered for Overview
-      } else {
+      if (activeNav === 'overview' && dateRange) {
+        // Apply date filter specifically for logs
+        activityLogsData = paymentsQuery.filter(p => {
+          const paymentDate = p.createdAt.toDate();
+          return paymentDate >= dateRange.startDate && paymentDate <= dateRange.endDate;
+        });
+      } else if (activeNav === 'overview') {
+        activityLogsData = paymentsQuery;
+      }
+      else {
         // For other tabs, use all payments data (unfiltered by date range)
         activityLogsData = paymentsData.filter(p => {
           if (selectedLineWorker && selectedLineWorker !== "all") {
@@ -726,9 +738,9 @@ export function WholesalerAdminDashboard() {
       setDataFetchProgress(80);
       try {
         console.log('🔄 Recomputing retailer data for accuracy...');
-        for (const retailer of retailersData) {
-          await retailerService.recomputeRetailerData(retailer.id, currentTenantId);
-        }
+        await Promise.all(retailersData.map(retailer =>
+          retailerService.recomputeRetailerData(retailer.id, currentTenantId)
+        ));
         // Refresh retailers after recomputation
         const updatedRetailers = await retailerService.getAll(currentTenantId);
         setRetailers(updatedRetailers);
@@ -1666,8 +1678,8 @@ export function WholesalerAdminDashboard() {
     );
   };
 
-  // Overview Component
-  const Overview = () => (
+  // Overview Component - Render function to prevent remounting
+  const renderOverview = () => (
     <div className="space-y-6 sm:pt-6 pt-2">
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
         <div>
@@ -3168,6 +3180,20 @@ export function WholesalerAdminDashboard() {
         }
       }
 
+      // Date filter for Retailer Details tab
+      if (activeNav === 'retailer-details' && filterDate?.from) {
+        const paymentDate = toDate(payment.createdAt);
+        const fromDate = new Date(filterDate.from);
+        fromDate.setHours(0, 0, 0, 0);
+
+        const toDateVal = filterDate.to ? new Date(filterDate.to) : new Date(fromDate);
+        toDateVal.setHours(23, 59, 59, 999);
+
+        if (paymentDate < fromDate || paymentDate > toDateVal) {
+          return false;
+        }
+      }
+
       return true;
     });
   };
@@ -3266,10 +3292,10 @@ export function WholesalerAdminDashboard() {
                 </div>
                 <div>
                   <Label htmlFor="dateRange">Filter Date</Label>
-                  <EnhancedDatePicker
-                    date={filterDate?.from || undefined}
-                    onSelect={(date) => setFilterDate(date ? { from: date, to: date } : null)}
-                    placeholder="Select date"
+                  <ModernDateRangePicker
+                    startDate={filterDate?.from || undefined}
+                    endDate={filterDate?.to || undefined}
+                    onChange={({ startDate, endDate }) => setFilterDate({ from: startDate, to: endDate })}
                     className="w-full"
                   />
                 </div>
@@ -3583,7 +3609,7 @@ export function WholesalerAdminDashboard() {
           )}
 
           <div className="max-w-7xl mx-auto space-y-4 sm:space-y-6">
-            {activeNav === 'overview' && <Overview />}
+            {activeNav === 'overview' && renderOverview()}
             {activeNav === 'areas' && <Areas />}
             {activeNav === 'retailers' && <Retailers />}
             {activeNav === 'retailer-details' && <RetailerDetails />}

@@ -13,9 +13,9 @@ export default function TermsOfUsePage() {
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
               <Link href="/" className="flex items-center space-x-2">
-                <Image 
-                  src="/logoMain.png" 
-                  alt="PharmaLync Logo" 
+                <Image
+                  src="/logoMain.png"
+                  alt="PharmaLync Logo"
                   width={40}
                   height={40}
                   className="rounded-lg"
@@ -48,7 +48,7 @@ export default function TermsOfUsePage() {
       {/* Terms Content */}
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div className="bg-white rounded-lg shadow-sm p-8">
-          
+
           {/* Acceptance of Terms */}
           <section className="mb-12">
             <h2 className="text-2xl font-bold text-gray-900 mb-4 flex items-center">
@@ -75,7 +75,7 @@ export default function TermsOfUsePage() {
               <p>
                 PharmaLync is a comprehensive pharmaceutical supply chain payment collection system designed to streamline payment processes between wholesalers, medical stores (retailers), and field workers (line workers). The Service includes:
               </p>
-              
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="border border-gray-200 rounded-lg p-4">
                   <h4 className="font-semibold text-gray-900 mb-2">Core Features</h4>
@@ -107,7 +107,7 @@ export default function TermsOfUsePage() {
               <Shield className="h-6 w-6 mr-3 text-purple-600" />
               User Responsibilities
             </h2>
-            
+
             <div className="space-y-6">
               <div>
                 <h3 className="text-lg font-semibold text-gray-900 mb-3">Account Security</h3>
@@ -189,7 +189,7 @@ export default function TermsOfUsePage() {
               <CreditCard className="h-6 w-6 mr-3 text-green-600" />
               Payment Terms
             </h2>
-            
+
             <div className="space-y-6">
               <div className="bg-gray-50 p-6 rounded-lg">
                 <h3 className="text-lg font-semibold text-gray-900 mb-3">Payment Processing</h3>
@@ -231,10 +231,10 @@ export default function TermsOfUsePage() {
               <XCircle className="h-6 w-6 mr-3 text-red-600" />
               Prohibited Activities
             </h2>
-            
+
             <div className="bg-red-50 p-6 rounded-lg">
               <p className="text-gray-700 mb-4 font-semibold">You are strictly prohibited from:</p>
-              
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <h4 className="font-semibold text-gray-900 mb-2">Security Violations</h4>
@@ -285,12 +285,12 @@ export default function TermsOfUsePage() {
               <FileText className="h-6 w-6 mr-3 text-indigo-600" />
               Intellectual Property
             </h2>
-            
+
             <div className="text-gray-600 space-y-4">
               <p>
                 All content, features, and functionality of the Service, including but not limited to text, graphics, logos, images, software, and data compilations, are the exclusive property of PharmaLync or its licensors and are protected by international copyright, trademark, patent, trade secret, and other intellectual property laws.
               </p>
-              
+
               <div className="bg-indigo-50 p-6 rounded-lg">
                 <h3 className="font-semibold text-gray-900 mb-3">Your Rights</h3>
                 <ul className="space-y-2">
@@ -321,12 +321,12 @@ export default function TermsOfUsePage() {
               <Smartphone className="h-6 w-6 mr-3 text-teal-600" />
               Service Availability
             </h2>
-            
+
             <div className="text-gray-600 space-y-4">
               <p>
                 We strive to provide the Service with maximum availability and reliability. However, we do not guarantee that the Service will be uninterrupted, timely, secure, or error-free.
               </p>
-              
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="bg-green-50 p-4 rounded-lg">
                   <h4 className="font-semibold text-gray-900 mb-2">Service Level</h4>
@@ -357,12 +357,12 @@ export default function TermsOfUsePage() {
               <AlertTriangle className="h-6 w-6 mr-3 text-orange-600" />
               Limitation of Liability
             </h2>
-            
+
             <div className="bg-orange-50 p-6 rounded-lg">
               <p className="text-gray-700 mb-4">
                 TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, PHARMALYNC SHALL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES, INCLUDING BUT NOT LIMITED TO:
               </p>
-              
+
               <ul className="text-gray-700 space-y-2 mb-4">
                 <li>• Loss of profits, revenue, or business opportunities</li>
                 <li>• Loss of or damage to data or systems</li>
@@ -370,7 +370,7 @@ export default function TermsOfUsePage() {
                 <li>• Any indirect or consequential damages</li>
                 <li>• Third-party claims or actions</li>
               </ul>
-              
+
               <p className="text-gray-700">
                 Our total liability for any claims related to the Service shall not exceed the fees paid by you for the Service in the six (6) months preceding the claim.
               </p>
@@ -380,12 +380,12 @@ export default function TermsOfUsePage() {
           {/* Termination */}
           <section className="mb-12">
             <h2 className="text-2xl font-bold text-gray-900 mb-4">Termination</h2>
-            
+
             <div className="text-gray-600 space-y-4">
               <p>
                 We reserve the right to terminate or suspend your account and access to the Service immediately, without prior notice, for any reason, including but not limited to:
               </p>
-              
+
               <div className="bg-red-50 p-6 rounded-lg">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
@@ -431,9 +431,9 @@ export default function TermsOfUsePage() {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
             <div className="col-span-1 md:col-span-2">
               <div className="flex items-center space-x-2 mb-4">
-                <Image 
-                  src="/logoMain.png" 
-                  alt="PharmaLync Logo" 
+                <Image
+                  src="/logoMain.png"
+                  alt="PharmaLync Logo"
                   width={40}
                   height={40}
                   className="rounded-lg"
@@ -462,7 +462,7 @@ export default function TermsOfUsePage() {
             </div>
           </div>
           <div className="border-t border-gray-800 mt-8 pt-8 text-center text-gray-400">
-            <p>&copy; 2025 PharmaLync. All rights reserved.</p>
+            <p>&copy;2026 PharmaLync. All rights reserved.</p>
           </div>
         </div>
       </footer>

@@ -8,11 +8,11 @@ const nextConfig: NextConfig = {
   // Add empty turbopack config to silence error
   turbopack: {},
   images: {
-     remotePatterns: [
-    {
-      protocol: 'https',
-      hostname: '**', // This wildcard allows all HTTPS hostnames including Unsplash
-    },
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: '**', // This wildcard allows all HTTPS hostnames including Unsplash
+      },
     ],
   },
   // Allow development origins for Firebase reCAPTCHA and preview
@@ -212,10 +212,7 @@ const nextConfig: NextConfig = {
       },
     ];
   },
-  // Generate unique build ID for cache busting
-  generateBuildId: async () => {
-    return 'pharmalynk-v1';
-  },
+
   // Webpack configuration to exclude Firebase Functions
   webpack: (config, { dev, isServer, defaultLoaders }) => {
     // Exclude functions directory from being processed by Next.js

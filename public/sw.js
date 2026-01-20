@@ -1,5 +1,5 @@
 // Stable cache version - bumped to force update for stale UI fix
-const CACHE_VERSION = 'pharmalynk-v3-1.0.3';
+const CACHE_VERSION = 'pharmalynk-v3-1.0.4';
 const CACHE_NAME = CACHE_VERSION;
 const STATIC_CACHE_NAME = 'pharmalynk-static-v4';
 const RUNTIME_CACHE_NAME = 'pharmalynk-runtime-v4';

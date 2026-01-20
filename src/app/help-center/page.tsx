@@ -1,17 +1,17 @@
 'use client';
 
 import { useState } from 'react';
-import { 
-  HelpCircle, 
-  Phone, 
-  Mail, 
-  MessageCircle, 
-  BookOpen, 
-  Video, 
-  Download, 
-  Users, 
-  Clock, 
-  CheckCircle, 
+import {
+  HelpCircle,
+  Phone,
+  Mail,
+  MessageCircle,
+  BookOpen,
+  Video,
+  Download,
+  Users,
+  Clock,
+  CheckCircle,
   AlertCircle,
   ArrowRight,
   Search,
@@ -168,9 +168,9 @@ export default function HelpCenterPage() {
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
               <Link href="/" className="flex items-center space-x-2">
-                <Image 
-                  src="/logoMain.png" 
-                  alt="PharmaLync Logo" 
+                <Image
+                  src="/logoMain.png"
+                  alt="PharmaLync Logo"
                   width={40}
                   height={40}
                   className="rounded-lg"
@@ -196,7 +196,7 @@ export default function HelpCenterPage() {
           <p className="text-xl text-blue-100 mb-8">
             Find answers, tutorials, and support resources to make the most of PharmaLync.
           </p>
-          
+
           {/* Search Bar */}
           <div className="max-w-2xl mx-auto relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
@@ -261,7 +261,7 @@ export default function HelpCenterPage() {
             {filteredCategories.map((category) => {
               const Icon = category.icon;
               const isOpen = selectedCategory === category.id;
-              
+
               return (
                 <div key={category.id} className="bg-white rounded-lg shadow-sm border overflow-hidden">
                   <button
@@ -282,7 +282,7 @@ export default function HelpCenterPage() {
                       </div>
                     </div>
                   </button>
-                  
+
                   {isOpen && (
                     <div className="px-6 pb-6 border-t">
                       <div className="space-y-3 mt-4">
@@ -396,9 +396,9 @@ export default function HelpCenterPage() {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
             <div className="col-span-1 md:col-span-2">
               <div className="flex items-center space-x-2 mb-4">
-                <Image 
-                  src="/logoMain.png" 
-                  alt="PharmaLync Logo" 
+                <Image
+                  src="/logoMain.png"
+                  alt="PharmaLync Logo"
                   width={40}
                   height={40}
                   className="rounded-lg"
@@ -427,7 +427,7 @@ export default function HelpCenterPage() {
             </div>
           </div>
           <div className="border-t border-gray-800 mt-8 pt-8 text-center text-gray-400">
-            <p>&copy; 2025 PharmaLync. All rights reserved.</p>
+            <p>&copy;2026 PharmaLync. All rights reserved.</p>
           </div>
         </div>
       </footer>

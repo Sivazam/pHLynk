@@ -13,9 +13,9 @@ export default function PrivacyPolicyPage() {
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
               <Link href="/" className="flex items-center space-x-2">
-                <Image 
-                  src="/logoMain.png" 
-                  alt="PharmaLync Logo" 
+                <Image
+                  src="/logoMain.png"
+                  alt="PharmaLync Logo"
                   width={40}
                   height={40}
                   className="rounded-lg"
@@ -48,7 +48,7 @@ export default function PrivacyPolicyPage() {
       {/* Privacy Policy Content */}
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div className="bg-white rounded-lg shadow-sm p-8">
-          
+
           {/* Introduction */}
           <section className="mb-12">
             <h2 className="text-2xl font-bold text-gray-900 mb-4 flex items-center">
@@ -69,7 +69,7 @@ export default function PrivacyPolicyPage() {
               <Database className="h-6 w-6 mr-3 text-green-600" />
               Information We Collect
             </h2>
-            
+
             <div className="space-y-6">
               <div>
                 <h3 className="text-lg font-semibold text-gray-900 mb-2">Personal Information</h3>
@@ -110,7 +110,7 @@ export default function PrivacyPolicyPage() {
               <Globe className="h-6 w-6 mr-3 text-purple-600" />
               How We Use Your Information
             </h2>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="bg-blue-50 p-4 rounded-lg">
                 <h3 className="font-semibold text-gray-900 mb-2">Service Provision</h3>
@@ -160,12 +160,12 @@ export default function PrivacyPolicyPage() {
               <Lock className="h-6 w-6 mr-3 text-red-600" />
               Data Sharing & Disclosure
             </h2>
-            
+
             <div className="bg-gray-50 p-6 rounded-lg">
               <p className="text-gray-600 mb-4">
                 We do not sell, rent, or trade your personal information. We only share your data in the following circumstances:
               </p>
-              
+
               <div className="space-y-4">
                 <div className="flex items-start space-x-3">
                   <div className="w-2 h-2 bg-blue-600 rounded-full mt-2 flex-shrink-0"></div>
@@ -208,12 +208,12 @@ export default function PrivacyPolicyPage() {
               <Shield className="h-6 w-6 mr-3 text-indigo-600" />
               Data Security
             </h2>
-            
+
             <div className="space-y-4 text-gray-600">
               <p>
                 We implement appropriate technical and organizational measures to protect your personal information against unauthorized access, alteration, disclosure, or destruction. These include:
               </p>
-              
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="border border-gray-200 rounded-lg p-4">
                   <h4 className="font-semibold text-gray-900 mb-2">Technical Security</h4>
@@ -244,12 +244,12 @@ export default function PrivacyPolicyPage() {
               <Calendar className="h-6 w-6 mr-3 text-teal-600" />
               Data Retention
             </h2>
-            
+
             <div className="text-gray-600 space-y-4">
               <p>
                 We retain your personal information only as long as necessary to fulfill the purposes for which it was collected, including:
               </p>
-              
+
               <ul className="list-disc list-inside space-y-2 ml-4">
                 <li>For the duration of your active account</li>
                 <li>As required by law or regulatory obligations</li>
@@ -257,7 +257,7 @@ export default function PrivacyPolicyPage() {
                 <li>To resolve disputes and enforce agreements</li>
                 <li>For legitimate business interests with appropriate safeguards</li>
               </ul>
-              
+
               <p>
                 Upon account termination, we will delete or anonymize your personal information, except where retention is required by law or necessary for legitimate business purposes.
               </p>
@@ -270,12 +270,12 @@ export default function PrivacyPolicyPage() {
               <Mail className="h-6 w-6 mr-3 text-yellow-600" />
               Your Rights
             </h2>
-            
+
             <div className="bg-yellow-50 p-6 rounded-lg">
               <p className="text-gray-700 mb-4">
                 You have the following rights regarding your personal information:
               </p>
-              
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <h4 className="font-semibold text-gray-900 mb-2">Access & Portability</h4>
@@ -322,12 +322,12 @@ export default function PrivacyPolicyPage() {
               <Phone className="h-6 w-6 mr-3 text-blue-600" />
               Contact Us
             </h2>
-            
+
             <div className="bg-gray-50 p-6 rounded-lg">
               <p className="text-gray-600 mb-4">
                 If you have any questions about this Privacy Policy or how we handle your personal information, please contact us:
               </p>
-              
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="flex items-center space-x-3">
                   <Mail className="h-5 w-5 text-blue-600" />
@@ -380,9 +380,9 @@ export default function PrivacyPolicyPage() {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
             <div className="col-span-1 md:col-span-2">
               <div className="flex items-center space-x-2 mb-4">
-                <Image 
-                  src="/logoMain.png" 
-                  alt="PharmaLync Logo" 
+                <Image
+                  src="/logoMain.png"
+                  alt="PharmaLync Logo"
                   width={40}
                   height={40}
                   className="rounded-lg"
@@ -411,7 +411,7 @@ export default function PrivacyPolicyPage() {
             </div>
           </div>
           <div className="border-t border-gray-800 mt-8 pt-8 text-center text-gray-400">
-            <p>&copy; 2025 PharmaLync. All rights reserved.</p>
+            <p>&copy;2026 PharmaLync. All rights reserved.</p>
           </div>
         </div>
       </footer>

@@ -342,7 +342,7 @@ export function WholesalerSignupForm({ onSubmit, onBackToLogin, loading = false,
 
           {/* Footer */}
           <div className="text-center mt-8 text-xs text-gray-500">
-            <p>© 2025 PharmaLync. All rights reserved.</p>
+            <p>©2026 PharmaLync. All rights reserved.</p>
             <div className="mt-2 space-x-4">
               <a href="/privacy-policy" className="hover:text-blue-600 transition-colors duration-200">Privacy Policy</a>
               <a href="/terms-of-use" className="hover:text-blue-600 transition-colors duration-200">Terms of Service</a>

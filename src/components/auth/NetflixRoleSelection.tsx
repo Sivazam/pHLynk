@@ -282,13 +282,13 @@ export function NetflixRoleSelection({ onRoleSelect, onBack }: NetflixRoleSelect
 
             {/* Right side navigation */}
             <div className="flex items-center space-x-3 sm:space-x-4">
-              <Button
+              {/* <Button
                 variant="ghost"
                 className="text-gray-300 hover:text-white hover:bg-transparent text-sm sm:text-base font-medium"
                 onClick={onBack}
               >
                 Sign In
-              </Button>
+              </Button> */}
             </div>
           </div>
 
@@ -574,8 +574,8 @@ export function NetflixRoleSelection({ onRoleSelect, onBack }: NetflixRoleSelect
               {/* Copyright */}
               <div className="pt-6 sm:pt-8 border-t border-gray-800">
                 <p className="text-gray-500 text-sm text-center">
-                  {/* © 2025 PharmaLync. All rights reserved. */}
-                  Powered by SAANVI SYSTEMS
+                  © 2026 PharmaLync. All rights reserved.
+                  {/* Powered by SAANVI SYSTEMS */}
                 </p>
               </div>
             </div>

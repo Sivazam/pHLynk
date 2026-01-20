@@ -1,54 +1,22 @@
-'use client';
+"use client"
 
-import React from 'react';
-import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
-import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
-import { DatePicker } from '@mui/x-date-pickers/DatePicker';
-import { TextField } from '@mui/material';
-import { ThemeProvider, createTheme } from '@mui/material/styles';
-import dayjs, { Dayjs } from 'dayjs';
+import * as React from "react"
+import { format } from "date-fns"
+import { Calendar as CalendarIcon } from "lucide-react"
+import { DateRange } from "react-day-picker"
 
-// Create a custom theme to match the app's style more closely if needed
-const theme = createTheme({
-    palette: {
-        primary: {
-            main: '#2563eb', // blue-600
-        },
-    },
-    typography: {
-        fontFamily: 'inherit',
-    },
-    components: {
-        MuiOutlinedInput: {
-            styleOverrides: {
-                root: {
-                    borderRadius: '0.5rem',
-                    height: '40px',
-                    backgroundColor: 'white',
-                },
-                input: {
-                    padding: '8px 14px',
-                    fontSize: '0.875rem',
-                }
-            }
-        },
-        MuiInputLabel: {
-            styleOverrides: {
-                root: {
-                    top: '-7px', // Adjust label position for smaller height
-                    fontSize: '0.875rem',
-                    // shrink: {
-                    //     top: '0px',
-                    // }
-                }
-            }
-        }
-    }
-});
+import { cn } from "@/lib/utils"
+import { Button } from "@/components/ui/button"
+import { Calendar } from "@/components/ui/calendar"
+import {
+    Popover,
+    PopoverContent,
+    PopoverTrigger,
+} from "@/components/ui/popover"
 
 interface ModernDateRangePickerProps {
-    startDate: Date;
-    endDate: Date;
+    startDate?: Date;
+    endDate?: Date;
     onChange: (range: { startDate: Date; endDate: Date }) => void;
     className?: string;
 }
@@ -57,68 +25,82 @@ export function ModernDateRangePicker({
     startDate,
     endDate,
     onChange,
-    className = ''
+    className,
 }: ModernDateRangePickerProps) {
+    // Convert separate dates to DateRange object
+    const date: DateRange | undefined = (startDate && endDate) ? {
+        from: startDate,
+        to: endDate,
+    } : startDate ? {
+        from: startDate,
+        to: startDate
+    } : undefined;
 
-    const handleStartDateChange = (newValue: any) => {
-        if (newValue) {
-            const newStartDate = newValue.toDate();
-            // Ensure start date is set to beginning of day
-            newStartDate.setHours(0, 0, 0, 0);
+    const setDate = (newDate: DateRange | undefined) => {
+        if (newDate?.from) {
+            // Apply selection immediately, or wait for 'to'? 
+            // Usually we wait for 'to' but we can update start if 'to' is missing.
+            // If 'to' is missing, endDate defaults to fromDate (single day range) or kept as is?
+            // User wants "from and to". Standard behavior:
+            // 1. Click -> sets from
+            // 2. Click -> sets to
 
-            let newEndDate = endDate;
-            // If start date is after end date, update end date to match start date
-            if (newStartDate > endDate) {
-                newEndDate = new Date(newStartDate);
-                newEndDate.setHours(23, 59, 59, 999);
-            }
+            const newStart = newDate.from;
+            const newEnd = newDate.to || newDate.from; // Default to start if end not picked yet
 
-            onChange({ startDate: newStartDate, endDate: newEndDate });
-        }
-    };
+            // Ensure distinct dates or same dates are handled.
+            // Adjust time to start/end of day logic is usually handled by parent or here.
+            // Existing logic expected 00:00:00 and 23:59:59.
 
-    const handleEndDateChange = (newValue: any) => {
-        if (newValue) {
-            const newEndDate = newValue.toDate();
-            // Ensure end date is set to end of day
-            newEndDate.setHours(23, 59, 59, 999);
+            const adjustedStart = new Date(newStart);
+            adjustedStart.setHours(0, 0, 0, 0);
 
-            let newStartDate = startDate;
-            // If end date is before start date, update start date to match end date
-            if (newEndDate < startDate) {
-                newStartDate = new Date(newEndDate);
-                newStartDate.setHours(0, 0, 0, 0);
-            }
+            const adjustedEnd = new Date(newEnd);
+            adjustedEnd.setHours(23, 59, 59, 999);
 
-            onChange({ startDate: newStartDate, endDate: newEndDate });
+            onChange({ startDate: adjustedStart, endDate: adjustedEnd });
         }
     };
 
     return (
-        <ThemeProvider theme={theme}>
-            <LocalizationProvider dateAdapter={AdapterDayjs}>
-                <div className={`flex items-center gap-2 ${className}`}>
-                    <div className="w-40">
-                        <DatePicker
-                            label="Start Date"
-                            value={dayjs(startDate)}
-                            onChange={handleStartDateChange}
-                            maxDate={dayjs()} // Cannot select future dates
-                            slotProps={{ textField: { size: 'small', fullWidth: true } }}
-                        />
-                    </div>
-                    <span className="text-gray-500">-</span>
-                    <div className="w-40">
-                        <DatePicker
-                            label="End Date"
-                            value={dayjs(endDate)}
-                            onChange={handleEndDateChange}
-                            maxDate={dayjs()} // Cannot select future dates
-                            slotProps={{ textField: { size: 'small', fullWidth: true } }}
-                        />
-                    </div>
-                </div>
-            </LocalizationProvider>
-        </ThemeProvider>
-    );
+        <div className={cn("grid gap-2", className)}>
+            <Popover>
+                <PopoverTrigger asChild>
+                    <Button
+                        id="date"
+                        variant={"outline"}
+                        className={cn(
+                            "w-[260px] justify-start text-left font-normal bg-white",
+                            !date && "text-muted-foreground"
+                        )}
+                    >
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {date?.from ? (
+                            date.to ? (
+                                <>
+                                    {format(date.from, "LLL dd, y")} -{" "}
+                                    {format(date.to, "LLL dd, y")}
+                                </>
+                            ) : (
+                                format(date.from, "LLL dd, y")
+                            )
+                        ) : (
+                            <span>Pick a date</span>
+                        )}
+                    </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="end">
+                    <Calendar
+                        initialFocus
+                        mode="range"
+                        defaultMonth={date?.from}
+                        selected={date}
+                        onSelect={setDate}
+                        numberOfMonths={2}
+                        disabled={(date) => date > new Date()} // Prevent future dates
+                    />
+                </PopoverContent>
+            </Popover>
+        </div>
+    )
 }

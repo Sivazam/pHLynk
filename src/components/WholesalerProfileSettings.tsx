@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import {
     Building2,
     Mail,
@@ -25,11 +26,15 @@ import {
     AlertCircle,
     QrCode,
     CreditCard,
-    AlertTriangle
+    AlertTriangle,
+    Lock,
+    Eye,
+    EyeOff
 } from 'lucide-react';
 import { doc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
-import { db, storage } from '@/lib/firebase';
+import { EmailAuthProvider, reauthenticateWithCredential, updatePassword } from 'firebase/auth';
+import { db, storage, auth } from '@/lib/firebase';
 
 interface UpiEntry {
     id: string;
@@ -83,6 +88,22 @@ export function WholesalerProfileSettings({ tenantId, onProfileUpdated }: Wholes
         upiIds: [],
         qrCodes: []
     });
+
+    // Password change state
+    const [passwordForm, setPasswordForm] = useState({
+        current: '',
+        new: '',
+        confirm: ''
+    });
+    const [passwordLoading, setPasswordLoading] = useState(false);
+    const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+    const [showPassword, setShowPassword] = useState({
+        current: false,
+        new: false,
+        confirm: false
+    });
+    const [passwordError, setPasswordError] = useState<string | null>(null);
+    const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null);
 
     // New UPI input
     const [newUpiId, setNewUpiId] = useState('');
@@ -356,6 +377,71 @@ export function WholesalerProfileSettings({ tenantId, onProfileUpdated }: Wholes
         }));
     };
 
+    // Change Password Handler
+    const handleChangePassword = async () => {
+        setPasswordError(null);
+        setPasswordSuccess(null);
+
+        // Validations
+        if (!passwordForm.current || !passwordForm.new || !passwordForm.confirm) {
+            setPasswordError('All password fields are required');
+            return;
+        }
+
+        if (passwordForm.new.length < 6) {
+            setPasswordError('New password must be at least 6 characters long');
+            return;
+        }
+
+        if (passwordForm.new !== passwordForm.confirm) {
+            setPasswordError('New passwords do not match');
+            return;
+        }
+
+        if (passwordForm.current === passwordForm.new) {
+            setPasswordError('New password cannot be the same as the current password');
+            return;
+        }
+
+        try {
+            setPasswordLoading(true);
+            const user = auth.currentUser;
+
+            if (!user || !user.email) {
+                throw new Error('No authenticated user found');
+            }
+
+            // Re-authenticate user
+            const credential = EmailAuthProvider.credential(user.email, passwordForm.current);
+            await reauthenticateWithCredential(user, credential);
+
+
+            // Update password
+            await updatePassword(user, passwordForm.new);
+
+            setPasswordSuccess('Password updated successfully! Logging you out...');
+            setPasswordForm({ current: '', new: '', confirm: '' });
+
+            // Logout and Redirect
+            setTimeout(async () => {
+                await auth.signOut();
+                window.location.href = `/login?email=${encodeURIComponent(user.email || '')}&message=${encodeURIComponent('Password changed successfully. Please login again.')}`;
+            }, 1500);
+
+        } catch (err: any) {
+            console.error('Error changing password:', err);
+            if (err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
+                setPasswordError('Incorrect current password');
+            } else if (err.code === 'auth/requires-recent-login') {
+                setPasswordError('Please log out and log in again to change your password');
+            } else {
+                setPasswordError('Failed to update password: ' + (err.message || 'Unknown error'));
+            }
+        } finally {
+            setPasswordLoading(false);
+        }
+    };
+
     if (loading) {
         return (
             <div className="flex items-center justify-center py-12">
@@ -394,9 +480,20 @@ export function WholesalerProfileSettings({ tenantId, onProfileUpdated }: Wholes
             {/* Business Profile Card */}
             <Card>
                 <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                        <Building2 className="h-5 w-5" />
-                        Business Profile
+                    <CardTitle className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                            <Building2 className="h-5 w-5" />
+                            Business Profile
+                        </div>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setIsPasswordModalOpen(true)}
+                            className="bg-white"
+                        >
+                            <Lock className="h-4 w-4 mr-2" />
+                            Change Password
+                        </Button>
                     </CardTitle>
                     <CardDescription>
                         Manage your business information
@@ -637,6 +734,158 @@ export function WholesalerProfileSettings({ tenantId, onProfileUpdated }: Wholes
                     )}
                 </CardContent>
             </Card>
+
+            {/* Security Settings Dialog */}
+            <Dialog
+                open={isPasswordModalOpen}
+                onOpenChange={(open) => {
+                    // Only allow closing if NOT loading
+                    if (!passwordLoading && !open) setIsPasswordModalOpen(false);
+                }}
+            >
+                <DialogContent
+                    className="sm:max-w-md"
+                    onInteractOutside={(e) => {
+                        e.preventDefault();
+                    }}
+                >
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <Lock className="h-5 w-5" />
+                            Change Password
+                        </DialogTitle>
+                        <DialogDescription>
+                            Enter your current password to set a new one.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="space-y-4 py-4">
+                        {passwordError && (
+                            <Alert variant="destructive">
+                                <AlertCircle className="h-4 w-4" />
+                                <AlertDescription>{passwordError}</AlertDescription>
+                            </Alert>
+                        )}
+                        {passwordSuccess && (
+                            <Alert className="border-green-200 bg-green-50">
+                                <CheckCircle className="h-4 w-4 text-green-600" />
+                                <AlertDescription className="text-green-800">{passwordSuccess}</AlertDescription>
+                            </Alert>
+                        )}
+
+                        <div className="space-y-2">
+                            <Label htmlFor="currentPassword">Current Password</Label>
+                            <div className="relative">
+                                <Input
+                                    id="currentPassword"
+                                    type={showPassword.current ? 'text' : 'password'}
+                                    value={passwordForm.current}
+                                    onChange={(e) => setPasswordForm(prev => ({ ...prev, current: e.target.value }))}
+                                    placeholder="Enter current password"
+                                    disabled={passwordLoading}
+                                />
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                                    onClick={() => setShowPassword(prev => ({ ...prev, current: !prev.current }))}
+                                    disabled={passwordLoading}
+                                >
+                                    {showPassword.current ? (
+                                        <EyeOff className="h-4 w-4 text-gray-500" />
+                                    ) : (
+                                        <Eye className="h-4 w-4 text-gray-500" />
+                                    )}
+                                </Button>
+                            </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label htmlFor="newPassword">New Password</Label>
+                            <div className="relative">
+                                <Input
+                                    id="newPassword"
+                                    type={showPassword.new ? 'text' : 'password'}
+                                    value={passwordForm.new}
+                                    onChange={(e) => setPasswordForm(prev => ({ ...prev, new: e.target.value }))}
+                                    placeholder="Enter new password"
+                                    disabled={passwordLoading}
+                                />
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                                    onClick={() => setShowPassword(prev => ({ ...prev, new: !prev.new }))}
+                                    disabled={passwordLoading}
+                                >
+                                    {showPassword.new ? (
+                                        <EyeOff className="h-4 w-4 text-gray-500" />
+                                    ) : (
+                                        <Eye className="h-4 w-4 text-gray-500" />
+                                    )}
+                                </Button>
+                            </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label htmlFor="confirmPassword">Confirm New Password</Label>
+                            <div className="relative">
+                                <Input
+                                    id="confirmPassword"
+                                    type={showPassword.confirm ? 'text' : 'password'}
+                                    value={passwordForm.confirm}
+                                    onChange={(e) => setPasswordForm(prev => ({ ...prev, confirm: e.target.value }))}
+                                    placeholder="Confirm new password"
+                                    disabled={passwordLoading}
+                                />
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                                    onClick={() => setShowPassword(prev => ({ ...prev, confirm: !prev.confirm }))}
+                                    disabled={passwordLoading}
+                                >
+                                    {showPassword.confirm ? (
+                                        <EyeOff className="h-4 w-4 text-gray-500" />
+                                    ) : (
+                                        <Eye className="h-4 w-4 text-gray-500" />
+                                    )}
+                                </Button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="flex justify-end gap-3">
+                        <Button
+                            variant="outline"
+                            onClick={() => {
+                                setIsPasswordModalOpen(false);
+                                setPasswordForm({ current: '', new: '', confirm: '' });
+                                setPasswordError(null);
+                            }}
+                            disabled={passwordLoading}
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            onClick={handleChangePassword}
+                            disabled={passwordLoading}
+                        >
+                            {passwordLoading ? (
+                                <>
+                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                    Updating...
+                                </>
+                            ) : (
+                                'Update Password'
+                            )}
+                        </Button>
+                    </div>
+                </DialogContent>
+            </Dialog>
 
             {/* Save Button */}
             <div className="flex justify-end gap-4 items-center">

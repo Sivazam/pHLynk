@@ -265,14 +265,14 @@ export function DaySheet({
 
     // Header section
     rows.push('Report: Day Sheet');
-    rows.push(`Date Range: ${formatTimestamp(dateRange.startDate)} - ${formatTimestamp(dateRange.endDate)}`);
+    rows.push(`"Date Range: ${formatTimestamp(dateRange.startDate)} - ${formatTimestamp(dateRange.endDate)}"`);
 
     // Filter details
     if (selectedLineWorker !== 'all') {
-      rows.push(`Line Worker: ${getLineWorkerName(selectedLineWorker)}`);
+      rows.push(`"Line Worker: ${getLineWorkerName(selectedLineWorker)}"`);
     }
     if (selectedArea !== 'all') {
-      rows.push(`Service Area: ${getAreaName(selectedArea)}`);
+      rows.push(`"Service Area: ${getAreaName(selectedArea)}"`);
     }
     rows.push(''); // Empty row
 
@@ -443,10 +443,10 @@ export function DaySheet({
                   </div>
 
                   <div className="space-y-2">
-                    <label className="text-sm font-medium flex items-center space-x-1">
+                    {/* <label className="text-sm font-medium flex items-center space-x-1">
                       <Calendar className="h-4 w-4" />
                       <span>Date Range</span>
-                    </label>
+                    </label> */}
                     <div className="space-y-2">
                       <label className="text-sm font-medium flex items-center space-x-1">
                         <Calendar className="h-4 w-4" />

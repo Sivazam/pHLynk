@@ -159,7 +159,7 @@ export function EnhancedReceipt({
       cursorY += 8;
     };
 
-    addRow("Amount Paid", formatCurrency(payment.totalPaid), true);
+    addRow("Amount Paid", formatCurrency(payment.totalPaid).replace('₹', 'Rs. '), true);
     addRow("Payment Method", payment.method);
     addRow("Collected By", lineWorkerName);
     addRow("Wholesaler", wholesalerName);
