@@ -25,8 +25,6 @@ export function PaymentVerificationModal({
     const [zoomLevel, setZoomLevel] = useState(1);
     const [rotation, setRotation] = useState(0);
 
-    if (!payment) return null;
-
     const handleZoomIn = () => setZoomLevel(prev => Math.min(prev + 0.5, 3));
     const handleZoomOut = () => setZoomLevel(prev => Math.max(prev - 0.5, 1));
     const handleRotate = () => setRotation(prev => (prev + 90) % 360);
@@ -36,10 +34,15 @@ export function PaymentVerificationModal({
         setRotation(0);
     };
 
-    // Reset zoom/rotation when payment changes
+    // Reset zoom/rotation when payment changes - MUST be before any early returns
     React.useEffect(() => {
-        resetKeys();
-    }, [payment.id]);
+        if (payment?.id) {
+            resetKeys();
+        }
+    }, [payment?.id]);
+
+    // Early return AFTER all hooks
+    if (!payment) return null;
 
     return (
         <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
