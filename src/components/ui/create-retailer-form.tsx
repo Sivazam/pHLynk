@@ -16,19 +16,109 @@ import { Area, Retailer } from '@/types';
 interface CreateRetailerFormProps {
   onSubmit: (data: { name: string; phone: string; address?: string; areaId?: string; zipcodes: string[]; code?: string }) => Promise<void>;
   onAddExistingRetailer?: (retailer: Retailer, areaId?: string, zipcodes?: string[], code?: string) => Promise<void>;
-  // ...
+  areas: Area[];
+  existingRetailers?: Retailer[]; // List of retailers already in wholesaler's network
+  onCancel?: () => void;
+  initialData?: { name: string; phone: string; address?: string; areaId?: string; zipcodes: string[]; code?: string };
+  showPhoneLookup?: boolean;
+}
 
-  // In handleSubmit
-  // If we found an existing retailer, add it to the network instead of creating a new one
-  if(foundRetailer && onAddExistingRetailer) {
-  console.log('🔍 Adding existing retailer to network:', foundRetailer.profile ? foundRetailer.profile.realName : foundRetailer.name);
-  // Get area zipcodes if area is selected, otherwise use empty array
-  const areaZipcodes = areaId ? areas.find(a => a.id === areaId)?.zipcodes || [] : [];
-  await onAddExistingRetailer(foundRetailer, areaId || undefined, areaZipcodes, code.trim() || undefined);
-} else {
-  // ...
+type FormMode = 'create' | 'update' | 'lookup';
 
-  // In handleAddExistingRetailer
+export function CreateRetailerForm({
+  onSubmit,
+  onAddExistingRetailer,
+  areas,
+  existingRetailers = [],
+  onCancel,
+  initialData,
+  showPhoneLookup = true
+}: CreateRetailerFormProps) {
+  const [name, setName] = useState(initialData?.name || '');
+  const [phone, setPhone] = useState(initialData?.phone || '');
+  const [address, setAddress] = useState(initialData?.address || '');
+  const [areaId, setAreaId] = useState(initialData?.areaId || '');
+  const [zipcodes, setZipcodes] = useState<string[]>(initialData?.zipcodes || []);
+  const [newZipcode, setNewZipcode] = useState('');
+  const [code, setCode] = useState(initialData?.code || '');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
+  const [triggerConfetti, setTriggerConfetti] = useState(false);
+  const [formMode, setFormMode] = useState<FormMode>(initialData ? 'update' : (showPhoneLookup ? 'lookup' : 'create'));
+  const [foundRetailer, setFoundRetailer] = useState<Retailer | null>(null);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    console.log('🔍 Form submission attempt:', {
+      name: name.trim(),
+      phone: phone.trim(),
+      formMode,
+      foundRetailer: !!foundRetailer,
+      zipcodesLength: zipcodes.length,
+      areaId,
+      canSubmit: name.trim() && phone.trim() && (formMode === 'update' || foundRetailer || zipcodes.length > 0 || areaId === 'no-specific-area')
+    });
+
+    if (name.trim() && phone.trim() && (formMode === 'update' || foundRetailer || zipcodes.length > 0 || areaId === 'no-specific-area')) {
+      setIsSubmitting(true);
+      try {
+        // If we found an existing retailer, add it to the network instead of creating a new one
+        if (foundRetailer && onAddExistingRetailer) {
+          console.log('🔍 Adding existing retailer to network:', foundRetailer.profile ? foundRetailer.profile.realName : foundRetailer.name);
+          // Get area zipcodes if area is selected, otherwise use empty array
+          const areaZipcodes = areaId ? areas.find(a => a.id === areaId)?.zipcodes || [] : [];
+          await onAddExistingRetailer(foundRetailer, areaId || undefined, areaZipcodes, code.trim() || undefined);
+        } else {
+          console.log('🔍 Creating new retailer:', name.trim());
+          await onSubmit({
+            name: name.trim(),
+            phone: phone.trim(),
+            address: address.trim() || undefined,
+            areaId: areaId === 'no-specific-area' ? undefined : (areaId || undefined),
+            zipcodes: zipcodes.filter(z => z.trim()),
+            code: code.trim() || undefined
+          });
+        }
+        // Show success state and trigger confetti
+        setShowSuccess(true);
+        setTriggerConfetti(true);
+
+        // Reset form after success
+        setTimeout(() => {
+          resetForm();
+          if (onCancel) onCancel();
+        }, 2000);
+      } catch (error) {
+        console.error('Error submitting form:', error);
+      } finally {
+        setIsSubmitting(false);
+      }
+    } else {
+      console.log('❌ Form validation failed');
+    }
+  };
+
+  const handleConfettiComplete = () => {
+    setTriggerConfetti(false);
+  };
+
+  const handleRetailerFound = (retailer: Retailer) => {
+    setFoundRetailer(retailer);
+    setFormMode('create');
+    // Pre-fill form with found retailer data but NOT service areas
+    // Handle both legacy and new profile formats
+    const retailerName = retailer.profile ? retailer.profile.realName : retailer.name;
+    const retailerPhone = retailer.profile ? retailer.profile.phone : retailer.phone;
+    const retailerAddress = retailer.profile ? retailer.profile.address : retailer.address;
+
+    setName(retailerName || '');
+    setPhone(retailerPhone || '');
+    setAddress(retailerAddress || '');
+    // Clear area and zipcodes to let wholesaler assign their own
+    setAreaId('');
+    setZipcodes([]);
+  };
+
   const handleAddExistingRetailer = async () => {
     if (foundRetailer && onAddExistingRetailer) {
       setIsSubmitting(true);
