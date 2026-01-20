@@ -1473,8 +1473,9 @@ export function WholesalerAdminDashboard() {
       console.log('✅ Line worker updated, fetching fresh data...');
       await fetchDashboardData();
 
+
       // Show success dialog with area assignment details
-      const oldAreas = editingLineWorker.assignedAreas || [];
+      // (oldAreas, addedAreas, removedAreas already defined above)
       const addedAreasInfo = addedAreas.map(id => areas.find(a => a.id === id)?.name || id);
       const removedAreasInfo = removedAreas.map(id => areas.find(a => a.id === id)?.name || id);
 
