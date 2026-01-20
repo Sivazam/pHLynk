@@ -2059,8 +2059,8 @@ export class PaymentService extends FirestoreService<Payment> {
       // 2. Mark payment as verified and clear proof links
       await this.update(paymentId, {
         verified: true,
-        proofUrl: undefined, // Clear URL (undefined to remove field in some setups or deleteField() if generic update handles it)
-        proofPath: undefined, // Clear path
+        proofUrl: null as any, // null triggers deleteField() in update method
+        proofPath: null as any, // null triggers deleteField() in update method
         timeline: {
           ...payment.timeline,
           verifiedAt: Timestamp.now()

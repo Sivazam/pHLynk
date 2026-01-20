@@ -2534,6 +2534,51 @@ export function WholesalerAdminDashboard() {
                 <RefreshCw className="h-4 w-4" />
               )}
             </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                // Export filtered transactions as CSV
+                const filteredPayments = payments.filter(p => {
+                  let include = true;
+                  // Filter by payment method
+                  if (paymentMethodFilter !== 'all' && p.method !== paymentMethodFilter) include = false;
+                  // Filter by line worker
+                  if (selectedLineWorker !== 'all' && p.lineWorkerId !== selectedLineWorker) include = false;
+                  // Filter by retailer
+                  if (selectedRetailer !== 'all' && p.retailerId !== selectedRetailer) include = false;
+                  // Filter by date range
+                  const paymentDate = p.createdAt?.toDate?.() || new Date(0);
+                  if (paymentDate < dateRange.startDate || paymentDate > dateRange.endDate) include = false;
+                  return include;
+                });
+
+                // Generate CSV
+                const headers = ['Date', 'Retailer', 'Amount', 'Method', 'Line Worker', 'UTR', 'Status'];
+                const rows = filteredPayments.map(p => [
+                  formatTimestamp(p.createdAt),
+                  `"${p.retailerName || 'Unknown'}"`,
+                  p.totalPaid.toString(),
+                  p.method,
+                  `"${p.lineWorkerName || 'Unknown'}"`,
+                  p.utr || '',
+                  p.verified ? 'Verified' : (p.proofUrl ? 'Pending Verification' : 'N/A')
+                ]);
+
+                const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                const fileName = `Transactions_${formatTimestamp(dateRange.startDate)}_to_${formatTimestamp(dateRange.endDate)}.csv`;
+
+                // Trigger download
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.download = fileName;
+                link.click();
+              }}
+            >
+              <Download className="h-4 w-4 mr-1" />
+              CSV
+            </Button>
           </div>
         </div>
 
@@ -2830,7 +2875,11 @@ export function WholesalerAdminDashboard() {
 
       <WholesalerAnalytics
         retailers={retailers}
-        payments={payments}
+        payments={payments.filter(p => {
+          // Filter by selected date range
+          const paymentDate = p.createdAt?.toDate?.() || new Date(0);
+          return paymentDate >= dateRange.startDate && paymentDate <= dateRange.endDate;
+        })}
         lineWorkers={lineWorkers}
         areas={areas}
         onRefresh={handleManualRefresh}
