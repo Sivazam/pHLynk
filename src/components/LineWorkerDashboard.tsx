@@ -1798,10 +1798,10 @@ export function LineWorkerDashboard() {
               {activeNav === 'retailers' && (
                 <div className="space-y-6">
                   <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
-                    <div>
+                    {/* <div>
                       <h2 className="text-xl font-semibold">Your Assigned Retailers</h2>
                       <p className="text-gray-600 text-sm">Search and view your assigned retailers</p>
-                    </div>
+                    </div> */}
                     <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                       {/* <Button onClick={() => handleOpenPaymentDialog()}>
                         <Plus className="h-4 w-4 mr-2" />
