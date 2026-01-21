@@ -7,11 +7,25 @@ export class NotificationService {
   private static instance: NotificationService;
   private notifications: Map<string, NotificationItem[]> = new Map(); // tenantId -> notifications[]
   private listeners: Set<(notifications: NotificationItem[]) => void> = new Set();
+  private readNotificationIds: Set<string> = new Set(); // Track read IDs globally
   private currentUserRole: string = 'unknown';
 
   private constructor() {
     // Initialize empty notifications - no sample data
     this.notifications.clear();
+    // Load read notifications from localStorage
+    if (typeof window !== 'undefined') {
+      try {
+        const savedReadIds = localStorage.getItem('readNotificationIds');
+        if (savedReadIds) {
+          const parsedIds = JSON.parse(savedReadIds);
+          // Store these in a Set for O(1) lookup
+          this.readNotificationIds = new Set(parsedIds);
+        }
+      } catch (e) {
+        console.error('Failed to load read notifications from localStorage', e);
+      }
+    }
   }
 
   static getInstance(): NotificationService {
@@ -36,35 +50,27 @@ export class NotificationService {
   addNotification(notification: Omit<NotificationItem, 'id'>, tenantId: string = 'system'): string {
     // Check for duplicate notifications based on content and recent timestamp
     const tenantNotifications = this.notifications.get(tenantId) || [];
-    
+
     const isDuplicate = tenantNotifications.some(existingNotification => {
+      // 1. Check for Payment ID (most reliable for payments)
+      if (notification.paymentId && existingNotification.paymentId) {
+        return notification.paymentId === existingNotification.paymentId;
+      }
+
       const timeDiff = Math.abs(
-        new Date(notification.timestamp).getTime() - 
+        new Date(notification.timestamp).getTime() -
         new Date(existingNotification.timestamp).getTime()
       );
-      
-      // Consider it a duplicate if:
-      // 1. Same title and message
-      // 2. Same type
-      // 3. Within 10 seconds of each other (increased from 5 to catch more duplicates)
-      // 4. Same amount and worker combination for payment notifications
-      const hasSamePaymentDetails = (
-        notification.amount && 
-        existingNotification.amount && 
-        notification.amount === existingNotification.amount &&
-        notification.workerName && 
-        existingNotification.workerName && 
-        notification.workerName === existingNotification.workerName
-      );
-      
+
+      // 2. For non-payment notifications (or missing paymentId), check generic properties
       return (
-        (existingNotification.title === notification.title &&
+        existingNotification.title === notification.title &&
         existingNotification.message === notification.message &&
         existingNotification.type === notification.type &&
-        timeDiff < 10000) || // 10 seconds
-        hasSamePaymentDetails
+        timeDiff < 10000 // 10 seconds
       );
     });
+
 
     if (isDuplicate) {
       console.log('🔔 Duplicate notification detected, skipping:', notification.title);
@@ -76,15 +82,24 @@ export class NotificationService {
       id,
       ...notification
     };
-    
+
+    // Check if this notification/payment was previously read
+    // We use a composite key for payments to ensure uniqueness across sessions
+    const compositeId = notification.paymentId ? `read_payment_${notification.paymentId}` : id;
+
+    if (this.readNotificationIds.has(compositeId) || (notification.paymentId && this.readNotificationIds.has(notification.paymentId))) {
+      fullNotification.read = true;
+    }
+
+
     // Add to tenant-specific notifications
     if (!this.notifications.has(tenantId)) {
       this.notifications.set(tenantId, []);
     }
     this.notifications.get(tenantId)!.unshift(fullNotification); // Add to beginning (most recent first)
-    
+
     this.notifyListeners();
-    
+
     console.log(`New notification added for tenant ${tenantId}:`, fullNotification);
     return id;
   }
@@ -205,7 +220,7 @@ export class NotificationService {
   }
 
   // Line Worker Specific Notifications
-  
+
   // Add payment completion notification for line worker
   addLineWorkerPaymentCompletedNotification(
     retailerName: string,
@@ -386,14 +401,41 @@ export class NotificationService {
     const notification = tenantNotifications.find(n => n.id === id);
     if (notification) {
       notification.read = true;
+
+      // Persist read status
+      this.persistReadStatus(id);
+      if (notification.paymentId) {
+        this.persistReadStatus(`read_payment_${notification.paymentId}`);
+        this.persistReadStatus(notification.paymentId); // Also save raw payment ID
+      }
+
       this.notifyListeners();
+    }
+  }
+
+  // Persist read status to localStorage
+  private persistReadStatus(id: string): void {
+    if (typeof window !== 'undefined') {
+      try {
+        this.readNotificationIds.add(id);
+        localStorage.setItem('readNotificationIds', JSON.stringify(Array.from(this.readNotificationIds)));
+      } catch (e) {
+        console.error('Failed to save read status to localStorage', e);
+      }
     }
   }
 
   // Mark all notifications as read for a specific tenant
   markAllAsRead(tenantId: string = 'system'): void {
     const tenantNotifications = this.notifications.get(tenantId) || [];
-    tenantNotifications.forEach(n => n.read = true);
+    tenantNotifications.forEach(n => {
+      n.read = true;
+      this.persistReadStatus(n.id);
+      if (n.paymentId) {
+        this.persistReadStatus(`read_payment_${n.paymentId}`);
+        this.persistReadStatus(n.paymentId);
+      }
+    });
     this.notifyListeners();
   }
 
@@ -445,18 +487,18 @@ export class NotificationService {
     try {
       // Import the role-based notification service
       const { roleBasedNotificationService } = await import('@/services/role-based-notification-service');
-      
+
       // Check if service is available (client-side only)
       if (!roleBasedNotificationService) {
         console.warn('🖥️ Role-based notification service not available on server side');
         return false;
       }
-      
+
       // Set the role if not already set
       if (this.currentUserRole === 'unknown') {
         this.setRole(userRole);
       }
-      
+
       // Send the notification using role-based service
       return await roleBasedNotificationService.sendNotificationToRole(notificationData);
     } catch (error) {

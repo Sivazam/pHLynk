@@ -1783,7 +1783,7 @@ export function WholesalerAdminDashboard() {
   // Areas Component
   const Areas = () => (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
+      <div className="flex flex-col sm:pt-8 sm:flex-row sm:justify-between sm:items-start gap-4">
         <div>
           <h2 className="text-2xl font-bold text-gray-900">Areas Management</h2>
           <p className="text-gray-600">Manage your service areas and zip codes</p>
@@ -1931,7 +1931,7 @@ export function WholesalerAdminDashboard() {
   // Retailers Component
   const Retailers = () => (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
+      <div className="flex flex-col sm:pt-8 sm:flex-row sm:justify-between sm:items-start gap-4">
         <div>
           <h2 className="text-2xl font-bold text-gray-900">Retailers Management</h2>
           <p className="text-gray-600">Manage your retailer network</p>
@@ -2154,7 +2154,7 @@ export function WholesalerAdminDashboard() {
   // Line Workers Component
   const LineWorkers = () => (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
+      <div className="flex flex-col sm:pt-8 sm:flex-row sm:justify-between sm:items-start gap-4">
         <div>
           <h2 className="text-2xl font-bold text-gray-900">Line Workers Management</h2>
           <p className="text-gray-600">Manage your line workers and their assignments</p>
@@ -2488,7 +2488,7 @@ export function WholesalerAdminDashboard() {
 
     return (
       <div className="space-y-6">
-        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
+        <div className="flex flex-col sm:pt-8 sm:flex-row sm:justify-between sm:items-start gap-4">
           <div>
             <h2 className="text-2xl font-bold text-gray-900">Transactions</h2>
             <p className="text-gray-600">View and manage all payment transactions</p>
@@ -2686,19 +2686,26 @@ export function WholesalerAdminDashboard() {
                               <TableCell>{payment.lineWorkerName}</TableCell>
                               <TableCell className="font-semibold">{formatCurrency(payment.totalPaid)}</TableCell>
                               <TableCell>
-                                <div className="flex items-center gap-2">
-                                  <Badge variant="outline">{payment.method}</Badge>
-                                  {payment.method === 'UPI' && (
-                                    payment.verified ? (
-                                      <span className="flex items-center text-xs text-green-600 font-medium">
-                                        <CheckCircle className="w-3 h-3 mr-1" />
-                                        Verified
-                                      </span>
-                                    ) : (
-                                      <span className="flex items-center text-xs text-amber-600 font-medium bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
-                                        Needs Review
-                                      </span>
-                                    )
+                                <div className="flex flex-col gap-1">
+                                  <div className="flex items-center gap-2">
+                                    <Badge variant="outline">{payment.method}</Badge>
+                                    {payment.method === 'UPI' && (
+                                      payment.verified ? (
+                                        <span className="flex items-center text-xs text-green-600 font-medium">
+                                          <CheckCircle className="w-3 h-3 mr-1" />
+                                          Verified
+                                        </span>
+                                      ) : (
+                                        <span className="flex items-center text-xs text-amber-600 font-medium bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                                          Needs Review
+                                        </span>
+                                      )
+                                    )}
+                                  </div>
+                                  {payment.method === 'UPI' && payment.utr && (
+                                    <span className="text-xs text-gray-500 font-medium pl-1">
+                                      ({payment.utr})
+                                    </span>
                                   )}
                                 </div>
                               </TableCell>
@@ -2839,7 +2846,7 @@ export function WholesalerAdminDashboard() {
   const AnalyticsComponent = () => (
     <div className="space-y-6">
       {/* Row 1: Heading and Description */}
-      <div className="flex flex-col  pt-16 sm:flex-row sm:justify-between sm:items-start gap-4">
+      <div className="flex flex-col sm:pt-8 sm:flex-row sm:justify-between sm:items-start gap-4">
         <div>
           <h2 className="text-2xl font-bold text-gray-900">Analytics</h2>
           <p className="text-gray-600">Comprehensive analytics and insights</p>
@@ -3617,7 +3624,7 @@ export function WholesalerAdminDashboard() {
             {activeNav === 'transactions' && <Transactions />}
             {activeNav === 'analytics' && <AnalyticsComponent />}
             {activeNav === 'settings' && (
-              <div>
+              <div className="sm:pt-8">
                 <h2 className="text-2xl font-bold text-gray-900 mb-6">Settings</h2>
                 <WholesalerProfileSettings
                   tenantId={getCurrentTenantId() || ''}

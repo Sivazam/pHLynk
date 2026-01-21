@@ -79,7 +79,8 @@ export function LineWorkerDashboard() {
   const [retailers, setRetailers] = useState<Retailer[]>([]);
   const [filteredRetailers, setFilteredRetailers] = useState<Retailer[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
-  const [searchType, setSearchType] = useState<'name' | 'phone' | 'code'>('code');
+  // const [searchType, setSearchType] = useState<'name' | 'phone' | 'code'>('code'); // Unified search removes this
+  const [placeholderText, setPlaceholderText] = useState('Search by Name...');
   const [expandedRetailerId, setExpandedRetailerId] = useState<string | null>(null);
   const [showAllPaymentsRetailerId, setShowAllPaymentsRetailerId] = useState<string | null>(null);
   const [payments, setPayments] = useState<Payment[]>([]);
@@ -119,6 +120,7 @@ export function LineWorkerDashboard() {
   const [showOTPEnterDialog, setShowOTPEnterDialog] = useState(false);
   const [selectedPaymentForOTP, setSelectedPaymentForOTP] = useState<Payment | null>(null);
   const [selectedRetailerForOTP, setSelectedRetailerForOTP] = useState<Retailer | null>(null);
+  const [formVersion, setFormVersion] = useState(0);
 
   // Standardized loading state management
   const mainLoadingState = useLoadingState();
@@ -152,30 +154,69 @@ export function LineWorkerDashboard() {
     return retailer.profile?.address || retailer.address || 'N/A';
   };
 
-  // Search functionality
+  // Placeholder Animation Effect
+  useEffect(() => {
+    const suffixes = [
+      'Name...',
+      'Code...',
+      'Mobile Number...'
+    ];
+    let currentIndex = 0;
+    let charIndex = 0;
+    let isDeleting = false;
+    let timeoutId: NodeJS.Timeout;
+
+    const baseText = 'Search by ';
+
+    const type = () => {
+      const currentSuffix = suffixes[currentIndex];
+
+      if (isDeleting) {
+        setPlaceholderText(baseText + currentSuffix.substring(0, charIndex - 1));
+        charIndex--;
+        if (charIndex === 0) {
+          isDeleting = false;
+          currentIndex = (currentIndex + 1) % suffixes.length;
+          timeoutId = setTimeout(type, 500); // Pause before typing next
+        } else {
+          timeoutId = setTimeout(type, 50); // Deleting speed
+        }
+      } else {
+        setPlaceholderText(baseText + currentSuffix.substring(0, charIndex + 1));
+        charIndex++;
+        if (charIndex === currentSuffix.length) {
+          isDeleting = true;
+          timeoutId = setTimeout(type, 2000); // Pause before deleting
+        } else {
+          timeoutId = setTimeout(type, 100); // Typing speed
+        }
+      }
+    };
+
+    timeoutId = setTimeout(type, 100);
+
+    return () => clearTimeout(timeoutId);
+  }, []);
+
+  // Unified Search functionality
   useEffect(() => {
     if (!searchTerm.trim()) {
       setFilteredRetailers(retailers);
       return;
     }
 
-    const filtered = retailers.filter(retailer => {
-      const searchLower = searchTerm.toLowerCase();
+    const searchLower = searchTerm.toLowerCase();
 
-      switch (searchType) {
-        case 'name':
-          return getRetailerName(retailer).toLowerCase().includes(searchLower);
-        case 'phone':
-          return retailer.phone?.toLowerCase().includes(searchLower) || false;
-        case 'code':
-          return retailer.code?.toLowerCase().includes(searchLower) || false;
-        default:
-          return false;
-      }
+    const filtered = retailers.filter(retailer => {
+      const nameMatch = getRetailerName(retailer).toLowerCase().includes(searchLower);
+      const phoneMatch = retailer.phone?.toLowerCase().includes(searchLower) || false;
+      const codeMatch = retailer.code?.toLowerCase().includes(searchLower) || false;
+
+      return nameMatch || phoneMatch || codeMatch;
     });
 
     setFilteredRetailers(filtered);
-  }, [searchTerm, searchType, retailers]);
+  }, [searchTerm, retailers]);
 
   // Navigation items
   const navItems: NavItem[] = [
@@ -706,6 +747,7 @@ export function LineWorkerDashboard() {
     } else {
       setPreSelectedRetailerForPayment(null);
     }
+    setFormVersion(prev => prev + 1);
     setShowPaymentDialog(true);
   };
 
@@ -1797,7 +1839,7 @@ export function LineWorkerDashboard() {
               {/* Retailers View */}
               {activeNav === 'retailers' && (
                 <div className="space-y-6">
-                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
+                  <div className="flex flex-col sm:pt-8 sm:flex-row sm:justify-between sm:items-start gap-4">
                     {/* <div>
                       <h2 className="text-xl font-semibold">Your Assigned Retailers</h2>
                       <p className="text-gray-600 text-sm">Search and view your assigned retailers</p>
@@ -1831,65 +1873,52 @@ export function LineWorkerDashboard() {
                   </div>
 
                   {/* Search Section */}
-                  <Card>
-                    <CardContent className="p-4">
-                      <div className="flex flex-col sm:flex-row gap-4">
-                        <div className="flex-1">
-                          <div className="relative">
-                            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                            <Input
-                              placeholder="Search retailers..."
-                              value={searchTerm}
-                              onChange={(e) => setSearchTerm(e.target.value)}
-                              className="pl-10"
-                            />
-                            {searchTerm && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => setSearchTerm('')}
-                                className="absolute right-1 top-1/2 transform -translate-y-1/2 h-6 w-6 p-0"
-                              >
-                                <X className="h-4 w-4" />
-                              </Button>
-                            )}
-                          </div>
-                        </div>
-                        <div className="sm:w-48">
-                          <Select value={searchType} onValueChange={(value: 'name' | 'phone' | 'code') => setSearchType(value)}>
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="code">Search by Code</SelectItem>
-                              <SelectItem value="name">Search by Name</SelectItem>
-                              <SelectItem value="phone">Search by Phone</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
+                  <div className="relative h-11 mb-6">
+                    <div className="absolute left-3 inset-y-0 flex items-center justify-center pointer-events-none z-10">
+                      <Search className="h-4 w-4 text-gray-400" />
+                    </div>
+                    <Input
+                      placeholder={placeholderText}
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="pl-10 h-full w-full text-base shadow-sm border-gray-300 focus-visible:border-blue-500 focus-visible:ring-0 focus-visible:ring-offset-0 transition-all duration-300 bg-white rounded-lg"
+                    />
+                    {searchTerm && (
+                      <div className="absolute right-2 inset-y-0 flex items-center justify-center z-10">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setSearchTerm('')}
+                          className="h-8 w-8 p-0 hover:bg-gray-100 rounded-full"
+                        >
+                          <X className="h-4 w-4 text-gray-500" />
+                        </Button>
                       </div>
-                      {searchTerm && (
-                        <div className="mt-2 text-sm text-gray-600">
-                          Showing {sortedFilteredRetailers.length} of {retailers.length} retailers
-                          {sortedFilteredRetailers.length < filteredRetailers.length && (
-                            <span className="ml-2 text-blue-600">
-                              ({filteredRetailers.length - sortedFilteredRetailers.length} with completed payments moved to bottom)
-                            </span>
-                          )}
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
+                    )}
 
-                  {/* Retailers List */}
-                  <RetailerList />
+                    {searchTerm && (
+                      <div className="mt-2 px-1 text-sm text-gray-600">
+                        Showing {sortedFilteredRetailers.length} of {retailers.length} retailers
+                        {sortedFilteredRetailers.length < filteredRetailers.length && (
+                          <span className="ml-2 text-blue-600">
+                            ({filteredRetailers.length - sortedFilteredRetailers.length} with completed payments moved to bottom)
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Retailers List - Added pb-32 for mobile keyboard spacing */}
+                  <div className="pb-32">
+                    <RetailerList />
+                  </div>
                 </div>
               )}
 
               {/* Payments View */}
               {activeNav === 'payments' && (
                 <div className="space-y-6">
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between sm:pt-8">
                     <h2 className="text-xl font-semibold">Payment Collections</h2>
                     <div className="flex space-x-2">
                       {/* <Button onClick={() => handleOpenPaymentDialog()}>
@@ -1975,6 +2004,7 @@ export function LineWorkerDashboard() {
             }}
             collectingPayment={isCollectingPayment}
             wholesalerUpiInfo={wholesalerUpiInfo}
+            key={formVersion}
           />
         </DialogContent>
       </Dialog>

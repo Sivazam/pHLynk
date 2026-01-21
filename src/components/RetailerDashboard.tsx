@@ -1881,7 +1881,7 @@ export function RetailerDashboard() {
               {/* Payments View */}
               {activeNav === 'payments' && (
                 <div className="space-y-6">
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between sm:pt-8">
                     <h2 className="text-xl font-semibold">Payment Transactions</h2>
                   </div>
 
@@ -1957,7 +1957,7 @@ export function RetailerDashboard() {
               {/* Settings View */}
               {activeNav === 'settings' && (
                 <div className="space-y-6">
-                  <h2 className="text-xl font-semibold">Settings</h2>
+                  <h2 className="text-xl font-semibold sm:pt-8">Settings</h2>
 
                   {/* Profile Management */}
                   <Card>

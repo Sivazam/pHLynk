@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Payment } from '@/types';
 import { formatCurrency, formatTimestamp } from '@/lib/timestamp-utils';
@@ -49,6 +49,7 @@ export function PaymentVerificationModal({
     return (
         <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
             <DialogContent className="max-w-4xl h-[90vh] p-0 overflow-hidden flex flex-col bg-gray-900">
+                <DialogTitle className="sr-only">Payment Verification</DialogTitle>
 
                 {/* Image Viewer - Takes Full Space */}
                 <div className="flex-1 relative flex items-center justify-center overflow-auto">

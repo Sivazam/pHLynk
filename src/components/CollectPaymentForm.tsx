@@ -17,8 +17,25 @@ import {
   X,
   ChevronDown,
   ChevronUp,
-  ImageIcon
+  ImageIcon,
+  Check,
+  ChevronsUpDown,
+  Search
 } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
 
 interface PaymentForm {
   retailerId: string;
@@ -66,6 +83,9 @@ const CollectPaymentFormComponent = ({
   const [isUpiDetailsOpen, setIsUpiDetailsOpen] = useState(true); // Default open
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+
+  // Combobox state
+  const [open, setOpen] = useState(false);
 
   // Update form when preSelectedRetailer changes
   React.useEffect(() => {
@@ -169,22 +189,13 @@ const CollectPaymentFormComponent = ({
     return retailers.find(r => r.id === formData.retailerId);
   }, [retailers, formData.retailerId]);
 
-  // Memoized retailer options
-  const retailerOptions = useMemo(() => {
-    return retailers.map((retailer) => (
-      <SelectItem key={retailer.id} value={retailer.id}>
-        {retailer.profile ? retailer.profile.realName : retailer.name}
-      </SelectItem>
-    ));
-  }, [retailers]);
-
   return (
     <div className="space-y-4 max-h-[80vh] overflow-y-auto pr-2">
       {/* Header Section */}
-      <div className="space-y-2 pb-3 border-b">
+      {/* <div className="space-y-2 pb-3 border-b">
         <h2 className="text-lg font-semibold text-gray-900">Collect Payment</h2>
         <p className="text-sm text-gray-600">Enter payment details to initiate collection from retailer</p>
-      </div>
+      </div> */}
 
       {/* Error Display */}
       {error && (
@@ -202,24 +213,80 @@ const CollectPaymentFormComponent = ({
         <div className="grid grid-cols-1 gap-4 sm:gap-6">
 
           {/* Row 1: Retailer Selection - Full width on mobile */}
-          <div className="space-y-1">
+          <div className="space-y-1 flex flex-col">
             <Label className="text-sm font-medium text-gray-700">Retailer *</Label>
-            <Select
-              value={formData.retailerId}
-              onValueChange={(value) => updateField('retailerId', value)}
-            >
-              <SelectTrigger className="h-10">
-                <SelectValue placeholder="Select retailer" />
-              </SelectTrigger>
-              <SelectContent>
-                {retailerOptions}
-              </SelectContent>
-            </Select>
+            <Popover open={open} onOpenChange={setOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  aria-expanded={open}
+                  className="justify-between h-10 w-full"
+                >
+                  {selectedRetailer ? (
+                    <div className="flex flex-col items-start truncate overflow-hidden">
+                      <span className="truncate w-full text-left font-medium">
+                        {selectedRetailer.profile?.realName || selectedRetailer.name}
+                      </span>
+                    </div>
+                  ) : (
+                    <span className="text-gray-500">Search retailer name, code, mobile...</span>
+                  )}
+                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[calc(100vw-3rem)] sm:w-[460px] p-0" align="start">
+                <Command>
+                  <CommandInput placeholder="Search retailer name, code, or mobile..." />
+                  <CommandList>
+                    <CommandEmpty>No retailer found.</CommandEmpty>
+                    <CommandGroup>
+                      {retailers.map((retailer) => (
+                        <CommandItem
+                          key={retailer.id}
+                          value={`${retailer.profile?.realName || retailer.name} ${retailer.code || ''} ${retailer.profile?.phone || retailer.phone || ''} ${retailer.id}`}
+                          onSelect={() => {
+                            updateField('retailerId', retailer.id);
+                            setOpen(false);
+                          }}
+                        >
+                          <Check
+                            className={cn(
+                              "mr-2 h-4 w-4 flex-shrink-0",
+                              formData.retailerId === retailer.id ? "opacity-100" : "opacity-0"
+                            )}
+                          />
+                          <div className="flex flex-col w-full text-left">
+                            <span className="font-medium">{retailer.profile?.realName || retailer.name}</span>
+                            <div className="flex items-center text-xs text-gray-500 gap-2 flex-wrap">
+                              {retailer.code && (
+                                <span className="bg-gray-100 px-1.5 py-0.5 rounded text-gray-700 font-medium">
+                                  {retailer.code}
+                                </span>
+                              )}
+                              <span>{retailer.profile?.phone || retailer.phone}</span>
+                            </div>
+                          </div>
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
+
             {selectedRetailer && (
-              <p className="text-xs text-gray-500">
-                {selectedRetailer.profile?.address && `Address: ${selectedRetailer.profile.address}`}
-                {selectedRetailer.profile?.phone && ` • Phone: ${selectedRetailer.profile.phone}`}
-              </p>
+              <div className="mt-1 p-2 bg-gray-50 rounded border border-gray-100 text-xs text-gray-600">
+                {selectedRetailer.profile?.address && (
+                  <div className="mb-1">📍 {selectedRetailer.profile.address}</div>
+                )}
+                <div className="flex gap-3">
+                  {selectedRetailer.code && <span>🆔 {selectedRetailer.code}</span>}
+                  {(selectedRetailer.profile?.phone || selectedRetailer.phone) && (
+                    <span>📞 {selectedRetailer.profile?.phone || selectedRetailer.phone}</span>
+                  )}
+                </div>
+              </div>
             )}
           </div>
 
@@ -374,7 +441,10 @@ const CollectPaymentFormComponent = ({
                       type="button"
                       variant="outline"
                       className="w-full h-10 border-dashed border-gray-300 text-gray-600 hover:bg-gray-50 hover:border-gray-400 hover:text-gray-900"
-                      onClick={() => fileInputRef.current?.click()}
+                      onClick={() => {
+                        if (fileInputRef.current) fileInputRef.current.value = '';
+                        fileInputRef.current?.click();
+                      }}
                     >
                       <Camera className="h-4 w-4 mr-2" />
                       Capture / Upload
