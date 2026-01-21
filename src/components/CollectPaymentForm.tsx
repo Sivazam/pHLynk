@@ -152,13 +152,12 @@ const CollectPaymentFormComponent = ({
       return;
     }
 
-    // Validate UTR/Proof for UPI payments
+    // Validate UTR for UPI payments (Compulsory)
     if (formData.paymentMethod === 'UPI') {
       const hasUtr = formData.utr && formData.utr.length === 4;
-      const hasProof = !!formData.proofImage;
 
-      if (!hasUtr && !hasProof) {
-        setError('For UPI payments, please enter either the last 4 digits of UTR OR attach a payment screenshot');
+      if (!hasUtr) {
+        setError('For UPI payments, please enter the last 4 digits of UTR');
         return;
       }
     }
@@ -401,8 +400,8 @@ const CollectPaymentFormComponent = ({
                 {/* UTR Field */}
                 <div className="space-y-1">
                   <div className="flex justify-between">
-                    <Label className="text-sm font-medium text-gray-700">UTR (Last 4 Digits)</Label>
-                    <span className="text-xs text-gray-500 italic">Optional if proof attached</span>
+                    <Label className="text-sm font-medium text-gray-700">UTR (Last 4 Digits) *</Label>
+                    <span className="text-xs text-red-500 italic">Required</span>
                   </div>
                   <Input
                     type="text"
@@ -424,7 +423,7 @@ const CollectPaymentFormComponent = ({
                 <div className="space-y-1">
                   <div className="flex justify-between">
                     <Label className="text-sm font-medium text-gray-700">Payment Screenshot</Label>
-                    <span className="text-xs text-gray-500 italic">Optional if UTR entered</span>
+                    <span className="text-xs text-gray-500 italic">Optional</span>
                   </div>
 
                   <input

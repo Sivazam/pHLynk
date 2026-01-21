@@ -2910,7 +2910,7 @@ export function WholesalerAdminDashboard() {
       </div>
 
       {/* Row 2: Refresh Button */}
-      <div className="flex justify-start">
+      {/* <div className="flex justify-start">
         <Button
           variant="outline"
           onClick={handleManualRefresh}
@@ -2923,7 +2923,7 @@ export function WholesalerAdminDashboard() {
           )}
           Refresh
         </Button>
-      </div>
+      </div> */}
 
       {/* Row 3: Dropdown and Export */}
       <div className="flex flex-col sm:flex-row sm:justify-start sm:items-center gap-4">
@@ -2942,10 +2942,10 @@ export function WholesalerAdminDashboard() {
           </SelectContent>
         </Select>
 
-        <Button variant="outline" className="w-full sm:w-auto">
+        {/* <Button variant="outline" className="w-full sm:w-auto">
           <Download className="h-4 w-4 mr-2" />
           Export
-        </Button>
+        </Button> */}
       </div>
 
       <WholesalerAnalytics
@@ -3737,6 +3737,7 @@ export function WholesalerAdminDashboard() {
 
 
           {/* Payment Verification Modal */}
+          {/* Payment Verification Modal */}
           <PaymentVerificationModal
             payment={selectedPaymentForVerification}
             isOpen={isVerificationModalOpen}
@@ -3747,6 +3748,11 @@ export function WholesalerAdminDashboard() {
             onVerify={handleVerifyPayment}
             onSkip={handleSkipVerification}
             isVerifying={isMarkingVerified}
+            retailerCode={(() => {
+              if (!selectedPaymentForVerification) return undefined;
+              const retailer = retailers.find(r => r.id === selectedPaymentForVerification.retailerId);
+              return retailer?.code || retailer?.id?.slice(0, 6).toUpperCase() || 'N/A';
+            })()}
           />
 
           {/* Dialog Components */}

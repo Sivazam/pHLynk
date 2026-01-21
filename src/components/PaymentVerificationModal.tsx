@@ -12,6 +12,7 @@ interface PaymentVerificationModalProps {
     onVerify: (paymentId: string) => Promise<void>;
     onSkip: () => void;
     isVerifying: boolean;
+    retailerCode?: string;
 }
 
 export function PaymentVerificationModal({
@@ -20,7 +21,8 @@ export function PaymentVerificationModal({
     onClose,
     onVerify,
     onSkip,
-    isVerifying
+    isVerifying,
+    retailerCode
 }: PaymentVerificationModalProps) {
     const [zoomLevel, setZoomLevel] = useState(1);
     const [rotation, setRotation] = useState(0);
@@ -154,7 +156,10 @@ export function PaymentVerificationModal({
                             {/* Details Grid */}
                             <div className="grid grid-cols-2 gap-4 text-sm">
                                 <div>
-                                    <p className="text-gray-400 text-xs uppercase tracking-wider">Retailer</p>
+                                    <p className="text-gray-400 text-xs uppercase tracking-wider">
+                                        Retailer
+                                        {retailerCode && <span className="text-yellow-400 ml-1">({retailerCode})</span>}
+                                    </p>
                                     <p className="font-medium truncate">{payment.retailerName || 'Unknown'}</p>
                                 </div>
                                 <div>
