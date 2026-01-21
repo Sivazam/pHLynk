@@ -8,27 +8,27 @@ export function toMillis(timestamp: any): number {
   if (!timestamp) {
     return 0;
   }
-  
+
   // If it's already a Firestore Timestamp, use its toMillis method
   if (timestamp.toMillis && typeof timestamp.toMillis === 'function') {
     return timestamp.toMillis();
   }
-  
+
   // If it's a plain object with _seconds and _nanoseconds (Firestore serialization format)
   if (timestamp._seconds !== undefined && timestamp._nanoseconds !== undefined) {
     return timestamp._seconds * 1000 + Math.floor(timestamp._nanoseconds / 1000000);
   }
-  
+
   // If it's a Date object
   if (timestamp instanceof Date) {
     return timestamp.getTime();
   }
-  
+
   // If it's a number (already in milliseconds)
   if (typeof timestamp === 'number') {
     return timestamp;
   }
-  
+
   // Fallback: try to parse as date string
   if (typeof timestamp === 'string') {
     const date = new Date(timestamp);
@@ -36,7 +36,7 @@ export function toMillis(timestamp: any): number {
       return date.getTime();
     }
   }
-  
+
   console.warn('Unable to convert timestamp to milliseconds:', timestamp);
   return 0;
 }
@@ -56,20 +56,20 @@ export function toTimestamp(input: any): Timestamp {
   if (input instanceof Timestamp) {
     return input;
   }
-  
+
   if (input instanceof Date) {
     return Timestamp.fromDate(input);
   }
-  
+
   if (typeof input === 'number') {
     return Timestamp.fromMillis(input);
   }
-  
+
   // If it's a plain object with _seconds and _nanoseconds
   if (input && typeof input === 'object' && '_seconds' in input && '_nanoseconds' in input) {
     return new Timestamp(input._seconds, input._nanoseconds);
   }
-  
+
   // Fallback to current time
   console.warn('Unable to convert to Timestamp, using current time:', input);
   return Timestamp.now();
@@ -122,4 +122,25 @@ export function formatCurrency(amount: number): string {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0
   }).format(amount);
+}
+
+/**
+ * Formats timestamp for CSV/Excel export: DD/MM/YY, HH:MM AM/PM
+ * Example: 21/01/26, 3:52 PM
+ */
+export function formatDateForExport(timestamp: any): string {
+  const date = toDate(timestamp);
+
+  const day = date.getDate().toString().padStart(2, '0');
+  const month = (date.getMonth() + 1).toString().padStart(2, '0');
+  const year = date.getFullYear().toString().slice(-2);
+
+  let hours = date.getHours();
+  const minutes = date.getMinutes().toString().padStart(2, '0');
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+
+  hours = hours % 12;
+  hours = hours ? hours : 12; // the hour '0' should be '12'
+
+  return `${day}/${month}/${year}, ${hours}:${minutes} ${ampm}`;
 }

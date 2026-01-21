@@ -41,7 +41,7 @@ import { realtimeNotificationService } from '@/services/realtime-notifications';
 import { notificationService } from '@/services/notification-service';
 import { Area, Retailer, User, Payment, DashboardStats } from '@/types';
 import { Timestamp } from 'firebase/firestore';
-import { formatTimestamp, formatTimestampWithTime, formatCurrency, toDate } from '@/lib/timestamp-utils';
+import { formatTimestamp, formatTimestampWithTime, formatCurrency, toDate, formatDateForExport } from '@/lib/timestamp-utils';
 import { CompactDatePicker } from '@/components/ui/compact-date-picker';
 import { CreateAreaForm } from '@/components/ui/create-area-form';
 import { CreateRetailerForm } from '@/components/ui/create-retailer-form';
@@ -2563,21 +2563,75 @@ export function WholesalerAdminDashboard() {
                   const paymentDate = p.createdAt?.toDate?.() || new Date(0);
                   if (paymentDate < dateRange.startDate || paymentDate > dateRange.endDate) include = false;
                   return include;
+                })
+                  .sort((a, b) => a.createdAt.toMillis() - b.createdAt.toMillis());
+
+                // Generate CSV with standardized format matching DaySheet
+                const csvRows: string[] = [];
+
+                // 1. Report Title & Date Range
+                csvRows.push('Report: Transactions Report');
+                csvRows.push(`"Date Range: ${formatTimestamp(dateRange.startDate)} - ${formatTimestamp(dateRange.endDate)}"`);
+
+                // 2. Filter Details
+                if (paymentMethodFilter !== 'all') {
+                  csvRows.push(`"Payment Method: ${paymentMethodFilter}"`);
+                }
+                if (selectedLineWorker !== 'all') {
+                  // Find worker name
+                  const worker = lineWorkers.find(w => w.id === selectedLineWorker);
+                  csvRows.push(`"Line Worker: ${worker?.displayName || 'Unknown'}"`);
+                }
+                if (selectedRetailer !== 'all') {
+                  // Find retailer name
+                  const retailer = retailers.find(r => r.id === selectedRetailer);
+                  const retailerName = retailer?.profile?.realName || retailer?.name || 'Unknown';
+                  csvRows.push(`"Retailer: ${retailerName}"`);
+                }
+                csvRows.push(''); // Empty row for separation
+
+                // 3. Column Headers
+                // Combined set: DaySheet headers + Transaction specifics (Date, Status)
+                const headers = [
+                  'Date',
+                  'Retailer Code',
+                  'Retailer Name',
+                  'Amount Collected',
+                  'Payment Method',
+                  'UTR Number',
+                  'Line Worker',
+                  'Service Area',
+                  'Status'
+                ];
+                csvRows.push(headers.join(','));
+
+                // 4. Data Rows
+                filteredPayments.forEach(p => {
+                  // Look up details
+                  const retailer = retailers.find(r => r.id === p.retailerId);
+                  const retailerCode = retailer?.code || retailer?.id?.slice(0, 6).toUpperCase() || 'N/A';
+                  const retailerName = retailer?.profile?.realName || p.retailerName || 'Unknown';
+
+                  // Look up Area Name
+                  const areaId = retailer?.areaId;
+                  const area = areas.find(a => a.id === areaId);
+                  const areaName = area?.name || 'Unknown Area';
+
+                  const row = [
+                    `"${formatDateForExport(p.createdAt)}"`,
+                    `"${retailerCode}"`,
+                    `"${retailerName}"`,
+                    p.totalPaid.toString(),
+                    p.method,
+                    `"${p.utr || ''}"`,
+                    `"${p.lineWorkerName || 'Unknown'}"`,
+                    `"${areaName}"`,
+                    `"${p.verified ? 'Verified' : (p.proofUrl ? 'Pending Verification' : p.state)}"`
+                  ];
+                  csvRows.push(row.join(','));
                 });
 
-                // Generate CSV
-                const headers = ['Date', 'Retailer', 'Amount', 'Method', 'Line Worker', 'UTR', 'Status'];
-                const rows = filteredPayments.map(p => [
-                  formatTimestamp(p.createdAt),
-                  `"${p.retailerName || 'Unknown'}"`,
-                  p.totalPaid.toString(),
-                  p.method,
-                  `"${p.lineWorkerName || 'Unknown'}"`,
-                  p.utr || '',
-                  p.verified ? 'Verified' : (p.proofUrl ? 'Pending Verification' : 'N/A')
-                ]);
-
-                const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+                const csvContent = csvRows.join('\n');
                 const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
                 const fileName = `Transactions_${formatTimestamp(dateRange.startDate)}_to_${formatTimestamp(dateRange.endDate)}.csv`;
 
@@ -2595,32 +2649,34 @@ export function WholesalerAdminDashboard() {
         </div>
 
         {/* Verification Alert Banner */}
-        {pendingVerificationCount > 0 && (
-          <Alert className="bg-blue-50 border-blue-200 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="bg-blue-100 p-2 rounded-full">
-                <AlertCircle className="h-5 w-5 text-blue-600" />
+        {
+          pendingVerificationCount > 0 && (
+            <Alert className="bg-blue-50 border-blue-200 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="bg-blue-100 p-2 rounded-full">
+                  <AlertCircle className="h-5 w-5 text-blue-600" />
+                </div>
+                <div>
+                  <AlertTitle className="text-blue-800 font-semibold text-base">Payment Proofs Pending Review</AlertTitle>
+                  <AlertDescription className="text-blue-600">
+                    You have <strong>{pendingVerificationCount}</strong> unverified UPI payments waiting for approval.
+                  </AlertDescription>
+                </div>
               </div>
-              <div>
-                <AlertTitle className="text-blue-800 font-semibold text-base">Payment Proofs Pending Review</AlertTitle>
-                <AlertDescription className="text-blue-600">
-                  You have <strong>{pendingVerificationCount}</strong> unverified UPI payments waiting for approval.
-                </AlertDescription>
-              </div>
-            </div>
-            <Button
-              onClick={() => {
-                // Find first unverified UPI payment
-                const firstPending = payments.filter(p => !p.verified && p.method === 'UPI' && p.state === 'COMPLETED')
-                  .sort((a, b) => b.createdAt.toDate().getTime() - a.createdAt.toDate().getTime())[0];
-                if (firstPending) handleOpenVerification(firstPending);
-              }}
-              className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm whitespace-nowrap w-full md:w-auto"
-            >
-              Review Pending Proofs
-            </Button>
-          </Alert>
-        )}
+              <Button
+                onClick={() => {
+                  // Find first unverified UPI payment
+                  const firstPending = payments.filter(p => !p.verified && p.method === 'UPI' && p.state === 'COMPLETED')
+                    .sort((a, b) => b.createdAt.toDate().getTime() - a.createdAt.toDate().getTime())[0];
+                  if (firstPending) handleOpenVerification(firstPending);
+                }}
+                className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm whitespace-nowrap w-full md:w-auto"
+              >
+                Review Pending Proofs
+              </Button>
+            </Alert>
+          )
+        }
 
         <Card>
           <CardHeader>

@@ -22,7 +22,7 @@ import {
   X,
   Building2
 } from 'lucide-react';
-import { formatTimestamp, formatTimestampWithTime, formatCurrency, toDate } from '@/lib/timestamp-utils';
+import { formatTimestamp, formatTimestampWithTime, formatCurrency, toDate, formatDateForExport } from '@/lib/timestamp-utils';
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
 import { Payment, User, Area, Retailer } from '@/types';
@@ -49,6 +49,8 @@ interface DaySheetData {
   retailerArea: string;
   amount: number;
   paymentMethod: string;
+  utr?: string;
+  exportDate: string;
 }
 
 export function DaySheet({
@@ -143,6 +145,9 @@ export function DaySheet({
       filtered = filtered.filter(payment => payment.retailerId === selectedRetailer);
     }
 
+    // Sort chronologically (Morning -> Night)
+    filtered.sort((a, b) => a.createdAt.toMillis() - b.createdAt.toMillis());
+
     // Process data for display
     return filtered.map(payment => {
       const retailer = getRetailerDetails(payment.retailerId);
@@ -161,7 +166,9 @@ export function DaySheet({
         retailerAddress: retailer.address,
         retailerArea: getAreaName(retailer.areaId || ''),
         amount: payment.totalPaid,
-        paymentMethod: payment.method
+        paymentMethod: payment.method,
+        utr: payment.utr,
+        exportDate: formatDateForExport(payment.createdAt)
       } as DaySheetData;
     });
   }, [payments, selectedLineWorker, selectedArea, selectedRetailer, dateRange, lineWorkers, areas, retailers]);
@@ -193,17 +200,19 @@ export function DaySheet({
     }
 
     // Column Headers
-    const headers = ['Retailer Code', 'Retailer Name', 'Amount Collected', 'Payment Method'];
+    const headers = ['Date', 'Retailer Code', 'Retailer Name', 'Amount Collected', 'Payment Method', 'UTR Number'];
     if (showLineWorkerColumn) headers.push('Line Worker');
     if (showAreaColumn) headers.push('Service Area');
 
     // Data Rows
     const dataRows = filteredData.map(item => {
       const row = [
+        item.exportDate,
         item.retailerCode,
         item.retailerName,
         item.amount,
-        item.paymentMethod
+        item.paymentMethod,
+        item.utr || ''
       ];
       if (showLineWorkerColumn) row.push(item.lineWorkerName);
       if (showAreaColumn) row.push(item.retailerArea);
@@ -211,7 +220,7 @@ export function DaySheet({
     });
 
     // Grand Total Row
-    const grandTotalRow = ['Grand Total', '', totalAmount, ''];
+    const grandTotalRow = ['', 'Grand Total', '', totalAmount, '', '', ''];
     if (showLineWorkerColumn) grandTotalRow.push('');
     if (showAreaColumn) grandTotalRow.push('');
 
@@ -231,10 +240,12 @@ export function DaySheet({
 
     // Set column widths
     const colWidths = [
+      { wch: 20 }, // Date
       { wch: 15 }, // Code
       { wch: 30 }, // Name
       { wch: 15 }, // Amount
       { wch: 15 }, // Method
+      { wch: 20 }, // UTR
       ...(showLineWorkerColumn ? [{ wch: 20 }] : []),
       ...(showAreaColumn ? [{ wch: 20 }] : [])
     ];
@@ -281,7 +292,7 @@ export function DaySheet({
     const showAreaColumn = selectedArea === 'all';
 
     // Column headers
-    const headers = ['Retailer Code', 'Retailer Name', 'Amount Collected', 'Payment Method'];
+    const headers = ['Date', 'Retailer Code', 'Retailer Name', 'Amount Collected', 'Payment Method', 'UTR Number'];
     if (showLineWorkerColumn) headers.push('Line Worker');
     if (showAreaColumn) headers.push('Service Area');
     rows.push(headers.join(','));
@@ -289,10 +300,12 @@ export function DaySheet({
     // Data rows
     filteredData.forEach(item => {
       const rowData = [
+        `"${item.exportDate}"`,
         `"${item.retailerCode}"`,
         `"${item.retailerName}"`,
         item.amount.toString(),
-        item.paymentMethod
+        item.paymentMethod,
+        `"${item.utr || ''}"`
       ];
       if (showLineWorkerColumn) rowData.push(`"${item.lineWorkerName}"`);
       if (showAreaColumn) rowData.push(`"${item.retailerArea}"`);
@@ -303,7 +316,7 @@ export function DaySheet({
     rows.push('');
 
     // Grand Total row
-    const totalRow = ['Grand Total', '', totalAmount.toString(), ''];
+    const totalRow = ['', 'Grand Total', '', totalAmount.toString(), '', ''];
     if (showLineWorkerColumn) totalRow.push('');
     if (showAreaColumn) totalRow.push('');
     rows.push(totalRow.join(','));
@@ -533,7 +546,7 @@ export function DaySheet({
                           <TableHeader>
                             <TableRow>
                               <TableHead className="whitespace-nowrap">Date</TableHead>
-                              <TableHead className="whitespace-nowrap">Time</TableHead>
+                              <TableHead className="whitespace-nowrap">Retailer Code</TableHead>
                               <TableHead className="whitespace-nowrap">Line Worker</TableHead>
                               <TableHead className="whitespace-nowrap">Assigned Areas</TableHead>
                               <TableHead className="whitespace-nowrap">Retailer</TableHead>
@@ -553,7 +566,7 @@ export function DaySheet({
                               filteredData.map((item, index) => (
                                 <TableRow key={`${item.paymentId}-${index}`}>
                                   <TableCell>{formatTimestamp(item.date)}</TableCell>
-                                  <TableCell>{item.time}</TableCell>
+                                  <TableCell>{item.retailerCode}</TableCell>
                                   <TableCell className="font-medium">{item.lineWorkerName}</TableCell>
                                   <TableCell className="text-sm text-gray-600">{item.lineWorkerArea}</TableCell>
                                   <TableCell className="font-medium">{item.retailerName}</TableCell>
