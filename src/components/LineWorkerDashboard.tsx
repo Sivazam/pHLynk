@@ -1988,7 +1988,7 @@ export function LineWorkerDashboard() {
                   <div className="flex justify-end pb-0">
                     <DaySheet
                       payments={payments}
-                      lineWorkers={user ? [{ id: user.uid, displayName: user.displayName || 'Me', assignedAreas: [], assignedZips: [], tenantId: 'system', email: user.email || '', roles: ['line-worker'], createdAt: Timestamp.now(), updatedAt: Timestamp.now() }] : []}
+                      lineWorkers={user ? [{ id: user.uid, displayName: user.displayName || 'Me', assignedAreas: [], assignedZips: [], tenantId: 'system', email: user.email || '', roles: ['LINE_WORKER'], active: true, createdAt: Timestamp.now(), updatedAt: Timestamp.now() }] : []}
                       areas={areas}
                       retailers={retailers}
                       wholesalerBusinessName={wholesalerName || 'PharmaLync'}
