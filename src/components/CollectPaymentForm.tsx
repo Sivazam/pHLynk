@@ -20,7 +20,9 @@ import {
   ImageIcon,
   Check,
   ChevronsUpDown,
-  Search
+  Search,
+  MapPin,
+  Phone
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -82,6 +84,7 @@ const CollectPaymentFormComponent = ({
   const [error, setError] = useState<string | null>(null);
   const [isUpiDetailsOpen, setIsUpiDetailsOpen] = useState(true); // Default open
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   // Combobox state
@@ -189,389 +192,405 @@ const CollectPaymentFormComponent = ({
   }, [retailers, formData.retailerId]);
 
   return (
-    <div className="space-y-4 max-h-[80vh] overflow-y-auto pr-2">
-      {/* Header Section */}
-      {/* <div className="space-y-2 pb-3 border-b">
-        <h2 className="text-lg font-semibold text-gray-900">Collect Payment</h2>
-        <p className="text-sm text-gray-600">Enter payment details to initiate collection from retailer</p>
-      </div> */}
+    <div className="flex flex-col h-full min-h-0">
+      {/* Scrollable Content */}
+      <div className="flex-1 overflow-y-auto px-6 py-2 space-y-6">
+        {/* Error Display */}
+        {error && (
+          <Alert className="border-red-200 bg-red-50">
+            <AlertCircle className="h-4 w-4 text-red-600" />
+            <AlertDescription className="text-red-700">{error}</AlertDescription>
+          </Alert>
+        )}
 
-      {/* Error Display */}
-      {error && (
-        <Alert className="border-red-200 bg-red-50">
-          <AlertCircle className="h-4 w-4 text-red-600" />
-          <AlertDescription className="text-red-700">{error}</AlertDescription>
-        </Alert>
-      )}
+        {/* Payment Information - Mobile First Grid */}
+        <div className="space-y-6">
+          <h3 className="text-sm font-medium text-gray-900 border-b pb-2">Payment Information</h3>
 
-      {/* Payment Information - Mobile First Grid */}
-      <div className="space-y-4">
-        <h3 className="text-sm font-medium text-gray-900 border-b pb-1">Payment Information</h3>
+          {/* Grid Layout for Mobile First */}
+          <div className="grid grid-cols-1 gap-4 sm:gap-6">
 
-        {/* Grid Layout for Mobile First */}
-        <div className="grid grid-cols-1 gap-4 sm:gap-6">
-
-          {/* Row 1: Retailer Selection - Full width on mobile */}
-          <div className="space-y-1 flex flex-col">
-            <Label className="text-sm font-medium text-gray-700">Retailer *</Label>
-            <Popover open={open} onOpenChange={setOpen}>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  role="combobox"
-                  aria-expanded={open}
-                  className="justify-between h-10 w-full"
-                >
-                  {selectedRetailer ? (
-                    <div className="flex flex-col items-start truncate overflow-hidden">
-                      <span className="truncate w-full text-left font-medium">
-                        {selectedRetailer.profile?.realName || selectedRetailer.name}
-                      </span>
-                    </div>
-                  ) : (
-                    <span className="text-gray-500">Search retailer name, code, mobile...</span>
-                  )}
-                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-[calc(100vw-3rem)] sm:w-[460px] p-0" align="start">
-                <Command
-                  filter={(value, search) => {
-                    const searchLower = search.toLowerCase();
-                    const valueLower = value.toLowerCase();
-
-                    // Strict filtering
-                    // 1. If Code or Name STARTS with search term -> High Priority
-                    // 2. If Code or Name CONTAINS search term -> Medium Priority
-                    // 3. Otherwise -> Filter out (0)
-
-                    // Value format we set: "Name Code ID"
-                    // We can try to split or just regex, but simple includes is fine if we want strictness.
-                    // The user said "gives all possibilities", implying fuzzy was matching "ap20" to "AP421".
-                    // Standard includes() would NOT match "AP421" with "ap20".
-
-                    if (valueLower.includes(searchLower)) return 1;
-                    return 0;
-                  }}
-                >
-                  <CommandInput placeholder="Search retailer name or code..." />
-                  <CommandList>
-                    <CommandEmpty>No retailer found.</CommandEmpty>
-                    <CommandGroup>
-                      {retailers.map((retailer) => (
-                        <CommandItem
-                          key={retailer.id}
-                          value={`${retailer.profile?.realName || retailer.name} ${retailer.code || ''} ${retailer.id}`}
-                          onSelect={() => {
-                            updateField('retailerId', retailer.id);
-                            setOpen(false);
-                          }}
-                        >
-                          <Check
-                            className={cn(
-                              "mr-2 h-4 w-4 flex-shrink-0",
-                              formData.retailerId === retailer.id ? "opacity-100" : "opacity-0"
-                            )}
-                          />
-                          <div className="flex items-center gap-3 w-full overflow-hidden">
-                            {/* Code Badge */}
-                            {retailer.code && (
-                              <span className="flex-shrink-0 bg-yellow-100 text-yellow-800 text-xs font-mono font-bold px-2 py-0.5 rounded border border-yellow-200">
-                                {retailer.code}
-                              </span>
-                            )}
-                            {/* Name */}
-                            <span className="font-medium truncate text-gray-900">
-                              {retailer.profile?.realName || retailer.name}
-                            </span>
-                          </div>
-                        </CommandItem>
-                      ))}
-                    </CommandGroup>
-                  </CommandList>
-                </Command>
-              </PopoverContent>
-            </Popover>
-
-            {selectedRetailer && (
-              <div className="mt-1 p-2 bg-gray-50 rounded border border-gray-100 text-xs text-gray-600">
-                {selectedRetailer.profile?.address && (
-                  <div className="mb-1">📍 {selectedRetailer.profile.address}</div>
-                )}
-                <div className="flex gap-3">
-                  {selectedRetailer.code && <span>🆔 {selectedRetailer.code}</span>}
-                  {(selectedRetailer.profile?.phone || selectedRetailer.phone) && (
-                    <span>📞 {selectedRetailer.profile?.phone || selectedRetailer.phone}</span>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Row 2: Amount and Payment Method - Side by side on larger screens */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {/* Amount */}
-            <div className="space-y-1">
-              <Label className="text-sm font-medium text-gray-700">Amount *</Label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <span className="text-sm font-medium text-gray-400">₹</span>
-                </div>
-                <Input
-                  type="text"
-                  placeholder="0.00"
-                  value={formData.amount ? formData.amount.toString() : ''}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    // Allow only numbers and decimal point
-                    if (/^\d*\.?\d*$/.test(value) || value === '') {
-                      const numValue = parseFloat(value) || 0;
-                      updateField('amount', numValue);
-                    }
-                  }}
-                  className="h-10 pl-9"
-                />
-              </div>
-              <p className="text-xs text-gray-500">Enter amount</p>
-            </div>
-
-            {/* Payment Method */}
-            <div className="space-y-1">
-              <Label className="text-sm font-medium text-gray-700">Payment Method *</Label>
-              <Select
-                value={formData.paymentMethod}
-                onValueChange={(value) => updateField('paymentMethod', value)}
-              >
-                <SelectTrigger className="h-10">
-                  <SelectValue placeholder="Select method" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="CASH">Cash</SelectItem>
-                  <SelectItem value="UPI">UPI</SelectItem>
-                  <SelectItem value="BANK_TRANSFER">Bank Transfer</SelectItem>
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-gray-500">Select method</p>
-            </div>
-
-            {/* UPI Payment Details - Collapsible */}
-            {formData.paymentMethod === 'UPI' && wholesalerUpiInfo && (wholesalerUpiInfo.primaryUpiId || wholesalerUpiInfo.primaryQrCodeUrl) && (
-              <div className="col-span-2 space-y-2">
-                <div
-                  className="flex items-center justify-between p-3 bg-blue-50 rounded-lg border border-blue-200 cursor-pointer"
-                  onClick={() => setIsUpiDetailsOpen(!isUpiDetailsOpen)}
-                >
-                  <div className="flex items-center gap-2">
-                    <CreditCard className="h-5 w-5 text-blue-600" />
-                    <span className="font-medium text-blue-900">Wholesaler UPI Details</span>
-                  </div>
-                  {isUpiDetailsOpen ? (
-                    <ChevronUp className="h-5 w-5 text-blue-600" />
-                  ) : (
-                    <ChevronDown className="h-5 w-5 text-blue-600" />
-                  )}
-                </div>
-
-                {isUpiDetailsOpen && (
-                  <div className="p-4 bg-white rounded-lg border border-gray-200 shadow-sm animate-in fade-in slide-in-from-top-2">
-                    {wholesalerUpiInfo.primaryUpiId && (
-                      <div className="mb-4">
-                        <Label className="text-sm text-gray-600">UPI ID</Label>
-                        <div className="flex items-center gap-2 mt-1">
-                          <code className="bg-gray-50 px-3 py-2 rounded border text-sm font-mono flex-1 text-gray-800">
-                            {wholesalerUpiInfo.primaryUpiId}
-                          </code>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              navigator.clipboard.writeText(wholesalerUpiInfo.primaryUpiId || '');
+            {/* Row 1: Retailer Selection - Full width on mobile */}
+            <div className="space-y-1.5 flex flex-col">
+              <Label className="text-sm font-medium text-gray-700">Retailer *</Label>
+              <Popover open={open} onOpenChange={setOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={open}
+                    className="justify-between h-11 w-full bg-white"
+                  >
+                    {selectedRetailer ? (
+                      <div className="flex flex-col items-start truncate overflow-hidden">
+                        <span className="truncate w-full text-left font-medium text-gray-900">
+                          {selectedRetailer.profile?.realName || selectedRetailer.name}
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="text-gray-500">Search retailer name, code, mobile...</span>
+                    )}
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[calc(100vw-3rem)] sm:w-[500px] p-0 shadow-lg" align="start">
+                  <Command
+                    filter={(value, search) => {
+                      const searchLower = search.toLowerCase();
+                      const valueLower = value.toLowerCase();
+                      if (valueLower.includes(searchLower)) return 1;
+                      return 0;
+                    }}
+                  >
+                    <CommandInput placeholder="Search retailer name or code..." className="h-11" />
+                    <CommandList className="max-h-[300px]">
+                      <CommandEmpty>No retailer found.</CommandEmpty>
+                      <CommandGroup>
+                        {retailers.map((retailer) => (
+                          <CommandItem
+                            key={retailer.id}
+                            value={`${retailer.profile?.realName || retailer.name} ${retailer.code || ''} ${retailer.id}`}
+                            onSelect={() => {
+                              updateField('retailerId', retailer.id);
+                              setOpen(false);
                             }}
+                            className="cursor-pointer py-3"
                           >
-                            Copy
-                          </Button>
-                        </div>
-                      </div>
-                    )}
+                            <Check
+                              className={cn(
+                                "mr-2 h-4 w-4 flex-shrink-0",
+                                formData.retailerId === retailer.id ? "opacity-100" : "opacity-0"
+                              )}
+                            />
+                            <div className="flex items-center gap-3 w-full overflow-hidden">
+                              {/* Code Badge */}
+                              {retailer.code && (
+                                <span className="flex-shrink-0 bg-yellow-100 text-yellow-800 text-xs font-mono font-bold px-2 py-0.5 rounded border border-yellow-200">
+                                  {retailer.code}
+                                </span>
+                              )}
+                              {/* Name */}
+                              <div className="flex flex-col truncate">
+                                <span className="font-medium truncate text-gray-900">
+                                  {retailer.profile?.realName || retailer.name}
+                                </span>
+                                {retailer.profile?.address && (
+                                  <span className="text-xs text-gray-500 truncate">{retailer.profile.address}</span>
+                                )}
+                              </div>
+                            </div>
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
 
-                    {wholesalerUpiInfo.primaryQrCodeUrl && (
-                      <div>
-                        <Label className="text-sm text-gray-600">Scan QR Code</Label>
-                        <div className="mt-2 flex justify-center">
-                          <img
-                            src={wholesalerUpiInfo.primaryQrCodeUrl}
-                            alt="Payment QR Code"
-                            className="max-w-[180px] rounded-lg border shadow-sm"
-                          />
-                        </div>
-                      </div>
+              {selectedRetailer && (
+                <div className="mt-1 p-3 bg-gray-50 rounded-lg border border-gray-100 text-xs text-gray-600 space-y-1">
+                  {selectedRetailer.profile?.address && (
+                    <div className="flex items-start gap-2">
+                      <MapPin className="h-3.5 w-3.5 mt-0.5 text-gray-400" />
+                      <span className="leading-snug">{selectedRetailer.profile.address}</span>
+                    </div>
+                  )}
+                  <div className="flex gap-4 pt-1">
+                    {selectedRetailer.code && (
+                      <span className="flex items-center gap-1.5 font-mono">
+                        <div className="h-1.5 w-1.5 rounded-full bg-yellow-400"></div>
+                        {selectedRetailer.code}
+                      </span>
+                    )}
+                    {(selectedRetailer.profile?.phone || selectedRetailer.phone) && (
+                      <span className="flex items-center gap-1.5">
+                        <Phone className="h-3 w-3 text-gray-400" />
+                        {selectedRetailer.profile?.phone || selectedRetailer.phone}
+                      </span>
                     )}
                   </div>
-                )}
-              </div>
-            )}
+                </div>
+              )}
+            </div>
 
-            {/* UTR Field & Payment Proof - Only shown for UPI payments */}
-            {formData.paymentMethod === 'UPI' && (
-              <div className="col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t mt-2">
-                {/* UTR Field */}
-                <div className="space-y-1">
-                  <div className="flex justify-between">
-                    <Label className="text-sm font-medium text-gray-700">UTR (Last 4 Digits) *</Label>
-                    <span className="text-xs text-red-500 italic">Required</span>
+            {/* Row 2: Amount and Payment Method - Side by side on larger screens */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
+              {/* Amount */}
+              <div className="space-y-1.5">
+                <Label className="text-sm font-medium text-gray-700">Amount *</Label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <span className="text-sm font-medium text-gray-500">₹</span>
                   </div>
                   <Input
                     type="text"
-                    placeholder="1234"
-                    value={formData.utr || ''}
+                    placeholder="0.00"
+                    value={formData.amount ? formData.amount.toString() : ''}
                     onChange={(e) => {
                       const value = e.target.value;
-                      // Allow only numbers, max 4 digits
-                      if (/^\d{0,4}$/.test(value)) {
-                        updateField('utr', value);
+                      // Allow only numbers and decimal point
+                      if (/^\d*\.?\d*$/.test(value) || value === '') {
+                        const numValue = parseFloat(value) || 0;
+                        updateField('amount', numValue);
                       }
                     }}
-                    maxLength={4}
-                    className="h-10"
+                    className="h-11 pl-8 text-lg font-semibold text-gray-900"
                   />
                 </div>
+              </div>
 
-                {/* Payment Proof Upload */}
-                <div className="space-y-1">
-                  <div className="flex justify-between">
-                    <Label className="text-sm font-medium text-gray-700">Payment Screenshot</Label>
-                    <span className="text-xs text-gray-500 italic">Optional</span>
+              {/* Payment Method */}
+              <div className="space-y-1.5">
+                <Label className="text-sm font-medium text-gray-700">Payment Method *</Label>
+                <Select
+                  value={formData.paymentMethod}
+                  onValueChange={(value) => updateField('paymentMethod', value)}
+                >
+                  <SelectTrigger className="h-11 font-medium">
+                    <SelectValue placeholder="Select method" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="CASH">Cash</SelectItem>
+                    <SelectItem value="UPI">UPI</SelectItem>
+                    <SelectItem value="BANK_TRANSFER">Bank Transfer</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* UPI Payment Details - Collapsible */}
+              {formData.paymentMethod === 'UPI' && wholesalerUpiInfo && (wholesalerUpiInfo.primaryUpiId || wholesalerUpiInfo.primaryQrCodeUrl) && (
+                <div className="col-span-2 space-y-2">
+                  <div
+                    className="flex items-center justify-between p-3 bg-blue-50/50 rounded-lg border border-blue-100 cursor-pointer hover:bg-blue-50 transition-colors"
+                    onClick={() => setIsUpiDetailsOpen(!isUpiDetailsOpen)}
+                  >
+                    <div className="flex items-center gap-2">
+                      <CreditCard className="h-5 w-5 text-blue-600" />
+                      <span className="font-medium text-blue-900">Wholesaler UPI Details</span>
+                    </div>
+                    {isUpiDetailsOpen ? (
+                      <ChevronUp className="h-5 w-5 text-blue-600" />
+                    ) : (
+                      <ChevronDown className="h-5 w-5 text-blue-600" />
+                    )}
                   </div>
 
-                  <input
-                    type="file"
-                    ref={fileInputRef}
-                    className="hidden"
-                    accept="image/*"
-                    // capture="environment" - Removed to allow Gallery selection
-                    onChange={handleImageChange}
-                  />
-
-                  {!previewUrl ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="w-full h-10 border-dashed border-gray-300 text-gray-600 hover:bg-gray-50 hover:border-gray-400 hover:text-gray-900"
-                      onClick={() => {
-                        if (fileInputRef.current) fileInputRef.current.value = '';
-                        fileInputRef.current?.click();
-                      }}
-                    >
-                      <Camera className="h-4 w-4 mr-2" />
-                      Capture / Upload
-                    </Button>
-                  ) : (
-                    <div className="space-y-2">
-                      {/* Visible Image Preview */}
-                      <div className="relative rounded-lg overflow-hidden border border-green-200 bg-green-50 p-2">
-                        <div className="flex items-start gap-3">
-                          <img
-                            src={previewUrl}
-                            className="w-20 h-20 object-cover rounded-md border border-gray-200 shadow-sm"
-                            alt="Payment Proof Preview"
-                          />
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-1 text-green-700 text-sm font-medium">
-                              <CheckCircle className="h-4 w-4" />
-                              Image Attached
-                            </div>
-                            <p className="text-xs text-gray-500 truncate mt-1">
-                              {formData.proofImage?.name || 'proof_image.jpg'}
-                            </p>
+                  {isUpiDetailsOpen && (
+                    <div className="p-4 bg-white rounded-lg border border-gray-200 shadow-sm animate-in fade-in slide-in-from-top-2">
+                      {wholesalerUpiInfo.primaryUpiId && (
+                        <div className="mb-4">
+                          <Label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">UPI ID</Label>
+                          <div className="flex items-center gap-2 mt-1.5">
+                            <code className="bg-gray-50 px-3 py-2.5 rounded border border-gray-200 text-sm font-mono flex-1 text-gray-900 font-medium">
+                              {wholesalerUpiInfo.primaryUpiId}
+                            </code>
                             <Button
                               type="button"
                               variant="outline"
                               size="sm"
-                              className="mt-2 h-7 text-xs text-red-600 border-red-200 hover:bg-red-50 hover:border-red-300"
-                              onClick={removeImage}
+                              className="h-10"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigator.clipboard.writeText(wholesalerUpiInfo.primaryUpiId || '');
+                              }}
                             >
-                              <X className="h-3 w-3 mr-1" />
-                              Remove & Recapture
+                              Copy
                             </Button>
                           </div>
                         </div>
-                      </div>
+                      )}
+
+                      {wholesalerUpiInfo.primaryQrCodeUrl && (
+                        <div>
+                          <Label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Scan QR Code</Label>
+                          <div className="mt-3 flex justify-center bg-white p-2 rounded-xl border border-gray-100 shadow-sm w-fit mx-auto">
+                            <img
+                              src={wholesalerUpiInfo.primaryQrCodeUrl}
+                              alt="Payment QR Code"
+                              className="w-64 h-64 object-contain rounded-lg"
+                            />
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
-              </div>
-            )}
-          </div>
+              )}
 
-          {/* Row 3: Notes - Full width */}
-          <div className="space-y-1">
-            <Label className="text-sm font-medium text-gray-700">Notes (Optional)</Label>
-            <Input
-              placeholder="Add any notes about this payment..."
-              value={formData.notes || ''}
-              onChange={(e) => updateField('notes', e.target.value)}
-              className="h-10"
-            />
-            <p className="text-xs text-gray-500">Optional notes for reference</p>
+              {/* UTR Field & Payment Proof - Only shown for UPI payments */}
+              {formData.paymentMethod === 'UPI' && (
+                <div className="col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4 border-t mt-2">
+                  {/* UTR Field */}
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between">
+                      <Label className="text-sm font-medium text-gray-700">UTR (Last 4 Digits) *</Label>
+                    </div>
+                    <Input
+                      type="text"
+                      placeholder="e.g. 1234"
+                      value={formData.utr || ''}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        // Allow only numbers, max 4 digits
+                        if (/^\d{0,4}$/.test(value)) {
+                          updateField('utr', value);
+                        }
+                      }}
+                      maxLength={4}
+                      className="h-11 font-mono tracking-widest text-center text-lg"
+                    />
+                  </div>
+
+                  {/* Payment Proof Upload */}
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between">
+                      <Label className="text-sm font-medium text-gray-700">Screenshot</Label>
+                      <span className="text-xs text-gray-500 italic bg-gray-100 px-2 py-0.5 rounded-full">Optional</span>
+                    </div>
+
+                    {/* Hidden Inputs */}
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      className="hidden"
+                      accept="image/*"
+                      onChange={handleImageChange}
+                    />
+                    <input
+                      type="file"
+                      ref={cameraInputRef}
+                      className="hidden"
+                      accept="image/*"
+                      capture="environment"
+                      onChange={handleImageChange}
+                    />
+
+                    {!previewUrl ? (
+                      <div className="grid grid-cols-2 gap-3">
+                        {/* Camera Button */}
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="h-11 border-dashed border-blue-200 text-blue-700 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-800"
+                          onClick={async () => {
+                            try {
+                              // Optional: Check permission explicitly if supported
+                              if (navigator.permissions && navigator.permissions.query) {
+                                const result = await navigator.permissions.query({ name: 'camera' as any });
+                                if (result.state === 'denied') {
+                                  setError('Camera access is blocked. Please enable it in browser settings or use Gallery.');
+                                  return;
+                                }
+                              }
+                            } catch (e) {
+                              // Ignore permission check errors, fall back to input behavior
+                              console.warn('Permission check failed:', e);
+                            }
+
+                            if (cameraInputRef.current) {
+                              cameraInputRef.current.value = '';
+                              cameraInputRef.current.click();
+                            }
+                          }}
+                        >
+                          <Camera className="h-4 w-4 mr-2" />
+                          Camera
+                        </Button>
+
+                        {/* Gallery Button */}
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="h-11 border-dashed border-gray-300 text-gray-600 hover:bg-gray-50 hover:border-gray-400 hover:text-gray-900"
+                          onClick={() => {
+                            if (fileInputRef.current) {
+                              fileInputRef.current.value = '';
+                              fileInputRef.current.click();
+                            }
+                          }}
+                        >
+                          <ImageIcon className="h-4 w-4 mr-2" />
+                          Gallery
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {/* Visible Image Preview */}
+                        <div className="relative rounded-lg overflow-hidden border border-green-200 bg-green-50/50 p-2">
+                          <div className="flex items-start gap-3">
+                            <img
+                              src={previewUrl}
+                              className="w-16 h-16 object-cover rounded-md border border-gray-200 shadow-sm"
+                              alt="Payment Proof Preview"
+                            />
+                            <div className="flex-1 min-w-0 flex flex-col justify-between h-16 py-1">
+                              <div className="flex items-center gap-1.5 text-green-700 text-sm font-medium">
+                                <CheckCircle className="h-4 w-4" />
+                                Attached
+                              </div>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 px-2 text-xs text-red-600 hover:text-red-700 hover:bg-red-50 -ml-2 w-fit"
+                                onClick={removeImage}
+                              >
+                                <X className="h-3 w-3 mr-1" />
+                                Remove
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Row 3: Notes - Full width */}
+            <div className="space-y-1.5">
+              <Label className="text-sm font-medium text-gray-700">Notes</Label>
+              <Input
+                placeholder="Optional notes..."
+                value={formData.notes || ''}
+                onChange={(e) => updateField('notes', e.target.value)}
+                className="h-11"
+              />
+            </div>
           </div>
         </div>
 
-        {/* Payment Summary - Responsive Card */}
-        {formData.amount > 0 && (
-          <div className="space-y-3 p-4 bg-blue-50 rounded-lg border border-blue-200">
-            <div className="flex items-center space-x-2 mb-2">
-              <CreditCard className="h-4 w-4 text-blue-600" />
-              <h3 className="text-sm font-medium text-blue-900">Payment Summary</h3>
-            </div>
+        {/* Extra spacing at bottom of scrollable area ensures content isn't hidden by shadows */}
+        <div className="h-4"></div>
+      </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4">
-              <div className="flex justify-between sm:flex-col sm:space-y-1">
-                <span className="text-xs sm:text-sm text-blue-600">Retailer:</span>
-                <span className="text-sm sm:font-medium text-blue-900 truncate">
-                  {selectedRetailer?.profile?.realName || selectedRetailer?.name || 'Not selected'}
-                </span>
-              </div>
-              <div className="flex justify-between sm:flex-col sm:space-y-1">
-                <span className="text-xs sm:text-sm text-blue-600">Amount:</span>
-                <span className="text-sm sm:font-medium text-blue-900">{formatCurrency(formData.amount)}</span>
-              </div>
-              <div className="flex justify-between sm:flex-col sm:space-y-1">
-                <span className="text-xs sm:text-sm text-blue-600">Method:</span>
-                <span className="text-sm sm:font-medium text-blue-900">{formData.paymentMethod}</span>
-              </div>
+      {/* Footer / Action Buttons - Sticky to bottom */}
+      <div className="p-4 bg-gray-50 border-t flex items-center gap-3 mt-auto shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-20 flex-shrink-0">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={onCancel}
+          disabled={collectingPayment}
+          className="flex-1 h-12 text-base font-medium border-gray-300 hover:bg-white hover:text-gray-900"
+        >
+          Cancel
+        </Button>
+        <Button
+          type="button"
+          onClick={handleSubmit}
+          disabled={collectingPayment || !formData.retailerId || !formData.amount || formData.amount < 1 || (formData.paymentMethod === 'UPI' && !(formData.utr && formData.utr.length === 4) && !formData.proofImage)}
+          className="flex-1 h-12 text-base font-medium bg-green-600 hover:bg-green-700 text-white shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {collectingPayment ? (
+            <div className="flex items-center justify-center">
+              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+              Processing...
             </div>
-          </div>
-        )}
-
-        {/* Action Buttons - Responsive */}
-        <div className="flex flex-col sm:flex-row justify-end gap-2 pt-4 border-t">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={onCancel}
-            disabled={collectingPayment}
-            className="h-10 px-4 text-sm w-full sm:w-auto order-2 sm:order-1"
-          >
-            Cancel
-          </Button>
-          <Button
-            type="button"
-            onClick={handleSubmit}
-            disabled={collectingPayment || !formData.retailerId || !formData.amount || formData.amount < 1 || (formData.paymentMethod === 'UPI' && !(formData.utr && formData.utr.length === 4) && !formData.proofImage)}
-            className="h-10 px-4 text-sm min-w-[120px] w-full sm:w-auto order-1 sm:order-2"
-          >
-            {collectingPayment ? (
-              <div className="flex items-center justify-center">
-                <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                Processing...
-              </div>
-            ) : (
-              'Collect Payment'
-            )}
-          </Button>
-        </div>
+          ) : (
+            'Collect Payment'
+          )}
+        </Button>
       </div>
     </div>
   );

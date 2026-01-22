@@ -28,7 +28,7 @@ import { otpBridge } from '@/lib/otp-bridge';
 import { db } from '@/lib/firebase';
 import { doc, getDoc, getDocs, onSnapshot, collection, query, where } from 'firebase/firestore';
 import { logger } from '@/lib/logger';
-import { DateRangeFilter, DateRangeOption } from '@/components/ui/DateRangeFilter';
+import { ModernDateRangePicker } from '@/components/ui/ModernDateRangePicker';
 import { Skeleton } from '@/components/ui/skeleton';
 import { LoadingOverlay } from '@/components/ui/LoadingOverlay';
 import { LoadingButton } from '@/components/ui/LoadingButton';
@@ -122,7 +122,7 @@ export function RetailerDashboard() {
   const [notifications, setNotifications] = useState<any[]>([]);
   const [paymentTab, setPaymentTab] = useState('completed');
   const [selectedDateRangeOption, setSelectedDateRangeOption] = useState('today');
-  const [dateRange, setDateRange] = useState<{ startDate: Date; endDate: Date }>(() => {
+  const [paymentsDateRange, setPaymentsDateRange] = useState<{ startDate: Date; endDate: Date }>(() => {
     const today = new Date();
     const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
     const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
@@ -332,13 +332,13 @@ export function RetailerDashboard() {
   const filterPaymentsByDateRange = (paymentsData: Payment[]) => {
     return paymentsData.filter(payment => {
       const paymentDate = payment.createdAt.toDate();
-      return paymentDate >= dateRange.startDate && paymentDate <= dateRange.endDate;
+      return paymentDate >= paymentsDateRange.startDate && paymentDate <= paymentsDateRange.endDate;
     });
   };
 
   const handleDateRangeChange = (value: string, newDateRange: { startDate: Date; endDate: Date }) => {
     setSelectedDateRangeOption(value);
-    setDateRange(newDateRange);
+    setPaymentsDateRange(newDateRange);
   };
 
   // Handle profile updates
@@ -1693,13 +1693,19 @@ export function RetailerDashboard() {
   // Calculate statistics
   const completedPaymentsList = payments.filter(p => p.state === 'COMPLETED');
   const totalPaid = completedPaymentsList.reduce((sum, p) => sum + p.totalPaid, 0);
-  const todayPayments = filterPaymentsByDateRange(completedPaymentsList);
+  const todayPayments = completedPaymentsList.filter(payment => {
+    const paymentDate = payment.createdAt.toDate();
+    const today = new Date();
+    const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const endOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
+    return paymentDate >= startOfToday && paymentDate <= endOfToday;
+  });
   const todayPaid = todayPayments.reduce((sum, p) => sum + p.totalPaid, 0);
 
   // Filter payments based on selected tab
   const filteredPayments = payments.filter(payment => {
     const paymentDate = payment.createdAt.toDate();
-    const isInDateRange = paymentDate >= dateRange.startDate && paymentDate <= dateRange.endDate;
+    const isInDateRange = paymentDate >= paymentsDateRange.startDate && paymentDate <= paymentsDateRange.endDate;
 
     if (paymentTab === 'completed') {
       return payment.state === 'COMPLETED' && isInDateRange;
@@ -1893,10 +1899,13 @@ export function RetailerDashboard() {
                     </TabsList>
 
                     <TabsContent value={paymentTab} className="space-y-4">
-                      <DateRangeFilter
-                        value={selectedDateRangeOption}
-                        onValueChange={handleDateRangeChange}
-                      />
+                      <div className="flex justify-end">
+                        <ModernDateRangePicker
+                          startDate={paymentsDateRange.startDate}
+                          endDate={paymentsDateRange.endDate}
+                          onChange={(range) => setPaymentsDateRange(range)}
+                        />
+                      </div>
 
                       <div className="overflow-x-auto">
                         <Table>

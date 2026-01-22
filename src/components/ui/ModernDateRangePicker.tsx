@@ -27,44 +27,61 @@ export function ModernDateRangePicker({
     onChange,
     className,
 }: ModernDateRangePickerProps) {
-    // Convert separate dates to DateRange object
-    const date: DateRange | undefined = (startDate && endDate) ? {
-        from: startDate,
-        to: endDate,
-    } : startDate ? {
-        from: startDate,
-        to: startDate
-    } : undefined;
+    const [isOpen, setIsOpen] = React.useState(false);
 
-    const setDate = (newDate: DateRange | undefined) => {
-        if (newDate?.from) {
-            // Apply selection immediately, or wait for 'to'? 
-            // Usually we wait for 'to' but we can update start if 'to' is missing.
-            // If 'to' is missing, endDate defaults to fromDate (single day range) or kept as is?
-            // User wants "from and to". Standard behavior:
-            // 1. Click -> sets from
-            // 2. Click -> sets to
+    // Internal state to handle the selection process
+    const [date, setDate] = React.useState<DateRange | undefined>(() => {
+        return (startDate && endDate) ? { from: startDate, to: endDate } :
+            startDate ? { from: startDate, to: startDate } : undefined;
+    });
 
-            const newStart = newDate.from;
-            const newEnd = newDate.to || newDate.from; // Default to start if end not picked yet
+    // Sync internal state with props when props change (and we are not in the middle of picking?)
+    // To be safe, we sync whenever props change, assuming parent is source of truth.
+    React.useEffect(() => {
+        if (startDate && endDate) {
+            setDate({ from: startDate, to: endDate });
+        }
+    }, [startDate, endDate]);
 
-            // Ensure distinct dates or same dates are handled.
-            // Adjust time to start/end of day logic is usually handled by parent or here.
-            // Existing logic expected 00:00:00 and 23:59:59.
+    const handleSelect = (newDate: DateRange | undefined) => {
+        setDate(newDate);
 
-            const adjustedStart = new Date(newStart);
+        if (newDate?.from && newDate?.to) {
+            // Range is complete (or single day selected twice)
+            const adjustedStart = new Date(newDate.from);
             adjustedStart.setHours(0, 0, 0, 0);
 
-            const adjustedEnd = new Date(newEnd);
+            const adjustedEnd = new Date(newDate.to);
             adjustedEnd.setHours(23, 59, 59, 999);
 
             onChange({ startDate: adjustedStart, endDate: adjustedEnd });
+            setIsOpen(false);
+        }
+    };
+
+    const handleOpenChange = (open: boolean) => {
+        setIsOpen(open);
+        if (!open) {
+            // If closing and we have a partial selection (from but no to), commit it as single day
+            if (date?.from && !date.to) {
+                const adjustedStart = new Date(date.from);
+                adjustedStart.setHours(0, 0, 0, 0);
+                const adjustedEnd = new Date(date.from);
+                adjustedEnd.setHours(23, 59, 59, 999);
+
+                // Update internal state to match
+                setDate({ from: date.from, to: date.from });
+                onChange({ startDate: adjustedStart, endDate: adjustedEnd });
+            } else if (!date) {
+                // If cleared (though we don't allow clearing usually), maybe revert to props?
+                // For now, if undefined, we assume no change or let it be.
+            }
         }
     };
 
     return (
         <div className={cn("grid gap-2", className)}>
-            <Popover>
+            <Popover open={isOpen} onOpenChange={handleOpenChange}>
                 <PopoverTrigger asChild>
                     <Button
                         id="date"
@@ -95,8 +112,8 @@ export function ModernDateRangePicker({
                         mode="range"
                         defaultMonth={date?.from}
                         selected={date}
-                        onSelect={setDate}
-                        numberOfMonths={2}
+                        onSelect={handleSelect}
+                        numberOfMonths={1}
                         disabled={(date) => date > new Date()} // Prevent future dates
                     />
                 </PopoverContent>

@@ -16,7 +16,6 @@ import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { DatePicker } from '@/components/ui/date-picker';
 import { ModernDateRangePicker } from '@/components/ui/ModernDateRangePicker';
-import { DateRangeFilter, DateRangeOption } from '@/components/ui/DateRangeFilter';
 import { Skeleton } from '@/components/ui/skeleton';
 import { LoadingOverlay } from '@/components/ui/LoadingOverlay';
 import { LoadingButton } from '@/components/ui/LoadingButton';
@@ -195,7 +194,13 @@ export function WholesalerAdminDashboard() {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [paymentTab, setPaymentTab] = useState('completed');
   const [selectedDateRangeOption, setSelectedDateRangeOption] = useState('today');
-  const [dateRange, setDateRange] = useState<{ startDate: Date; endDate: Date }>(() => {
+  const [overviewDateRange, setOverviewDateRange] = useState<{ startDate: Date; endDate: Date }>(() => {
+    const today = new Date();
+    const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
+    return { startDate: startOfDay, endDate: endOfDay };
+  });
+  const [transactionsDateRange, setTransactionsDateRange] = useState<{ startDate: Date; endDate: Date }>(() => {
     const today = new Date();
     const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
     const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
@@ -242,13 +247,13 @@ export function WholesalerAdminDashboard() {
   const filterPaymentsByDateRange = (paymentsData: any[]) => {
     return paymentsData.filter(payment => {
       const paymentDate = payment.createdAt.toDate();
-      return paymentDate >= dateRange.startDate && paymentDate <= dateRange.endDate;
+      return paymentDate >= overviewDateRange.startDate && paymentDate <= overviewDateRange.endDate;
     });
   };
 
   const handleDateRangeChange = (value: string, newDateRange: { startDate: Date; endDate: Date }) => {
     setSelectedDateRangeOption(value);
-    setDateRange(newDateRange);
+    setOverviewDateRange(newDateRange);
   };
 
   // Payment Verification State
@@ -554,7 +559,7 @@ export function WholesalerAdminDashboard() {
     if (isWholesalerAdmin && user?.uid && currentTenantId) {
       fetchDashboardData();
     }
-  }, [activeNav === 'overview' ? dateRange : null, selectedLineWorker, selectedRetailer, selectedTenant]); // Only fetch when dateRange changes AND we're on overview tab
+  }, [activeNav === 'overview' ? overviewDateRange : null, selectedLineWorker, selectedRetailer, selectedTenant]); // Only fetch when dateRange changes AND we're on overview tab
 
   // Effect to reset date range to "Today" when switching to Overview tab
   useEffect(() => {
@@ -563,7 +568,7 @@ export function WholesalerAdminDashboard() {
       const today = new Date();
       const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
       const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
-      setDateRange({ startDate: startOfDay, endDate: endOfDay });
+      setOverviewDateRange({ startDate: startOfDay, endDate: endOfDay });
     }
   }, [activeNav]);
 
@@ -712,11 +717,13 @@ export function WholesalerAdminDashboard() {
 
       // If on Overview tab, use the filtered data for activity logs
       // If on other tabs, use all data for activity logs
-      if (activeNav === 'overview' && dateRange) {
+      // If on Overview tab, use the filtered data for activity logs
+      // If on other tabs, use all data for activity logs
+      if (activeNav === 'overview' && overviewDateRange) {
         // Apply date filter specifically for logs
         activityLogsData = paymentsQuery.filter(p => {
           const paymentDate = p.createdAt.toDate();
-          return paymentDate >= dateRange.startDate && paymentDate <= dateRange.endDate;
+          return paymentDate >= overviewDateRange.startDate && paymentDate <= overviewDateRange.endDate;
         });
       } else if (activeNav === 'overview') {
         activityLogsData = paymentsQuery;
@@ -980,7 +987,7 @@ export function WholesalerAdminDashboard() {
     const recentPayments = payments.filter(p => {
       if (activeNav === 'overview') {
         const paymentDate = toDate(p.createdAt);
-        return paymentDate >= dateRange.startDate && paymentDate <= dateRange.endDate;
+        return paymentDate >= overviewDateRange.startDate && paymentDate <= overviewDateRange.endDate;
       }
       return true; // For other tabs, show all payments
     });
@@ -1687,7 +1694,11 @@ export function WholesalerAdminDashboard() {
           <p className="text-gray-600">Welcome back! Here's what's happening with your business.</p>
         </div>
         <div className="flex space-x-2">
-          <DateRangeFilter value={selectedDateRangeOption} onValueChange={handleDateRangeChange} />
+          <ModernDateRangePicker
+            startDate={overviewDateRange.startDate}
+            endDate={overviewDateRange.endDate}
+            onChange={(range) => setOverviewDateRange(range)}
+          />
           <DaySheet
             payments={payments}
             lineWorkers={lineWorkers}
@@ -2466,7 +2477,7 @@ export function WholesalerAdminDashboard() {
 
         // Apply date range filter
         const paymentDate = payment.createdAt.toDate();
-        if (paymentDate < dateRange.startDate || paymentDate > dateRange.endDate) {
+        if (paymentDate < transactionsDateRange.startDate || paymentDate > transactionsDateRange.endDate) {
           return false;
         }
 
@@ -2531,9 +2542,10 @@ export function WholesalerAdminDashboard() {
                 ))}
               </SelectContent>
             </Select>
-            <DateRangeFilter
-              value={selectedDateRangeOption}
-              onValueChange={handleDateRangeChange}
+            <ModernDateRangePicker
+              startDate={transactionsDateRange.startDate}
+              endDate={transactionsDateRange.endDate}
+              onChange={(range) => setTransactionsDateRange(range)}
             />
             <Button
               onClick={handleManualRefresh}
@@ -2561,7 +2573,7 @@ export function WholesalerAdminDashboard() {
                   if (selectedRetailer !== 'all' && p.retailerId !== selectedRetailer) include = false;
                   // Filter by date range
                   const paymentDate = p.createdAt?.toDate?.() || new Date(0);
-                  if (paymentDate < dateRange.startDate || paymentDate > dateRange.endDate) include = false;
+                  if (paymentDate < transactionsDateRange.startDate || paymentDate > transactionsDateRange.endDate) include = false;
                   return include;
                 })
                   .sort((a, b) => a.createdAt.toMillis() - b.createdAt.toMillis());

@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DashboardNavigation, NavItem, NotificationItem } from '@/components/DashboardNavigation';
-import { DateRangeFilter, DateRangeOption } from '@/components/ui/DateRangeFilter';
+import { ModernDateRangePicker } from '@/components/ui/ModernDateRangePicker';
 import { PWANotificationManager } from '@/components/PWANotificationManager';
 import { Skeleton } from '@/components/ui/skeleton';
 import { LoadingOverlay } from '@/components/ui/LoadingOverlay';
@@ -41,6 +41,7 @@ import { cleanPhoneNumber } from '@/lib/utils';
 import { LogoutConfirmation } from '@/components/LogoutConfirmation';
 import {
   Store,
+  Calendar,
   DollarSign,
   Phone,
   MapPin,
@@ -58,11 +59,16 @@ import {
   RefreshCw,
   Share,
   Download,
+  FileText,
+  FileSpreadsheet,
   Search,
   X,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
+import { saveAs } from 'file-saver';
+import { DaySheet } from '@/components/DaySheet';
 import jsPDF from 'jspdf';
 import { LOGO_BASE64 } from '@/constants/assets';
 import { StatusBarColor } from './ui/StatusBarColor';
@@ -107,13 +113,22 @@ export function LineWorkerDashboard() {
   const [wholesalerName, setWholesalerName] = useState<string>('PharmaLync Wholesaler');
   const [paymentTab, setPaymentTab] = useState('completed');
   const [selectedDateRangeOption, setSelectedDateRangeOption] = useState('today');
-  const [dateRange, setDateRange] = useState<{ startDate: Date; endDate: Date }>(() => {
+  const [paymentsDateRange, setPaymentsDateRange] = useState<{ startDate: Date; endDate: Date }>(() => {
     const today = new Date();
     const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
     const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
     return { startDate: startOfDay, endDate: endOfDay };
   });
   const [paymentUnsubscribe, setPaymentUnsubscribe] = useState<(() => void) | null>(null);
+
+  // Collection Analytics State
+  const [analyticsDateRange, setAnalyticsDateRange] = useState<{ startDate: Date; endDate: Date }>(() => {
+    const today = new Date();
+    const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
+    return { startDate: startOfDay, endDate: endOfDay };
+  });
+  const [analyticsMethods, setAnalyticsMethods] = useState<string[]>(['CASH', 'UPI']);
 
   // NOTE: OTP functionality removed - payments are now created directly in COMPLETED state
   // These state variables are kept for backward compatibility but are no longer used
@@ -130,13 +145,13 @@ export function LineWorkerDashboard() {
   const filterPaymentsByDateRange = (paymentsData: Payment[]) => {
     return paymentsData.filter(payment => {
       const paymentDate = payment.createdAt.toDate();
-      return paymentDate >= dateRange.startDate && paymentDate <= dateRange.endDate;
+      return paymentDate >= paymentsDateRange.startDate && paymentDate <= paymentsDateRange.endDate;
     });
   };
 
   const handleDateRangeChange = (value: string, newDateRange: { startDate: Date; endDate: Date }) => {
     setSelectedDateRangeOption(value);
-    setDateRange(newDateRange);
+    setPaymentsDateRange(newDateRange);
   };
 
   // Helper function to get retailer name (handles both legacy and new profile formats)
@@ -898,44 +913,272 @@ export function LineWorkerDashboard() {
 
   // Old receipt functions removed in favor of PDF generation logic below
 
-  // Export payments data
-  const exportPayments = (format: 'csv' | 'json') => {
-    const exportData = {
-      headers: [
-        'Payment ID',
-        'Date',
-        'Retailer',
-        'Amount',
-        'Method',
-        'Status',
-        'Completed Date'
-      ],
-      rows: filteredPayments.map(payment => [
+  // Export to Excel
+  const generateExcel = () => {
+    // Sort logic: Group by Payment Method, then by Date
+    const sortedData = [...filteredPayments].sort((a, b) => {
+      if (a.method !== b.method) {
+        return a.method.localeCompare(b.method);
+      }
+      return a.createdAt.toMillis() - b.createdAt.toMillis();
+    });
+
+    // Create workbook
+    const wb = XLSX.utils.book_new();
+
+    // Prepare content
+    const reportTitle = [['Report: Payment Collections']];
+    const dateInfo = [[`Date Range: ${formatTimestamp(paymentsDateRange.startDate)} - ${formatTimestamp(paymentsDateRange.endDate)}`]];
+
+    // Headers
+    const headers = ['Payment ID', 'Date', 'Code', 'Retailer', 'Area', 'Amount', 'Method', 'Status'];
+
+    // Data Rows
+    const dataRows = sortedData.map(payment => {
+      const retailer = retailers.find(r => r.id === payment.retailerId);
+      const area = retailer ? areas.find(a => a.id === retailer.areaId) : null;
+
+      return [
         payment.id,
         formatTimestampWithTime(payment.createdAt),
+        retailer?.code || '',
         payment.retailerName || 'Unknown',
-        formatCurrency(payment.totalPaid),
+        area?.name || '',
+        payment.totalPaid,
         payment.method,
-        payment.state,
-        payment.timeline?.completedAt ? formatTimestampWithTime(payment.timeline.completedAt) : ''
-      ]),
-      filename: `payments-${selectedDateRangeOption}-${new Date().toISOString().split('T')[0]}`
-    };
+        payment.state
+      ];
+    });
 
-    if (format === 'csv') {
-      exportToCSV(exportData);
-    } else {
-      const jsonData = filteredPayments.map(payment => ({
-        id: payment.id,
-        date: payment.createdAt.toDate(),
-        retailerName: payment.retailerName,
-        amount: payment.totalPaid,
-        method: payment.method,
-        state: payment.state,
-        timeline: payment.timeline
-      }));
-      exportToJSON(jsonData, exportData.filename);
+    // Calculate Totals
+    const totalAmount = sortedData.reduce((sum, p) => sum + p.totalPaid, 0);
+    const cashTotal = sortedData.filter(p => p.method === 'CASH').reduce((sum, p) => sum + p.totalPaid, 0);
+    const upiTotal = sortedData.filter(p => p.method === 'UPI').reduce((sum, p) => sum + p.totalPaid, 0);
+
+    // Total Rows
+    const cashTotalRow = ['', 'Total Cash', '', '', '', cashTotal, 'CASH', ''];
+    const upiTotalRow = ['', 'Total UPI', '', '', '', upiTotal, 'UPI', ''];
+    const grandTotalRow = ['', 'Grand Total', '', '', '', totalAmount, '', ''];
+
+    // Combine data
+    const wsData = [
+      ...reportTitle,
+      ...dateInfo,
+      [],
+      headers,
+      ...dataRows,
+      [],
+      cashTotalRow,
+      upiTotalRow,
+      grandTotalRow
+    ];
+
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+    // Styling (width)
+    const colWidths = [
+      { wch: 20 }, // ID
+      { wch: 20 }, // Date
+      { wch: 10 }, // Code (New)
+      { wch: 30 }, // Retailer
+      { wch: 15 }, // Area (New)
+      { wch: 15 }, // Amount
+      { wch: 10 }, // Method
+      { wch: 15 }  // Status
+    ];
+    ws['!cols'] = colWidths;
+
+    // Bold A1
+    if (ws['A1']) ws['A1'].s = { font: { bold: true, sz: 14 } };
+
+    XLSX.utils.book_append_sheet(wb, ws, 'Collections');
+
+    // Filename
+    const formatDateForFn = (d: Date) => {
+      const day = d.getDate();
+      const month = d.getMonth() + 1;
+      const year = d.getFullYear().toString().slice(-2);
+      return `${day}-${month}-${year}`;
+    };
+    let dateStr = formatDateForFn(paymentsDateRange.startDate);
+    if (formatDateForFn(paymentsDateRange.startDate) !== formatDateForFn(paymentsDateRange.endDate)) {
+      dateStr += `_${formatDateForFn(paymentsDateRange.endDate)}`;
     }
+    const fileName = `collections_${dateStr}.xlsx`.toLowerCase();
+
+    // Save
+    const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    const data = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    saveAs(data, fileName);
+  };
+
+  // Export to CSV
+  const generateCSV = () => {
+    // Sort logic: Group by Payment Method, then by Date
+    const sortedData = [...filteredPayments].sort((a, b) => {
+      if (a.method !== b.method) {
+        return a.method.localeCompare(b.method);
+      }
+      return a.createdAt.toMillis() - b.createdAt.toMillis();
+    });
+
+    const rows: string[] = [];
+
+    // Header section
+    rows.push('Report: Payment Collections');
+    rows.push(`"Date Range: ${formatTimestamp(paymentsDateRange.startDate)} - ${formatTimestamp(paymentsDateRange.endDate)}"`);
+    rows.push('');
+
+    // Headers
+    const headers = ['Payment ID', 'Date', 'Code', 'Retailer', 'Area', 'Amount', 'Method', 'Status'];
+    rows.push(headers.join(','));
+
+    // Data
+    sortedData.forEach(payment => {
+      const retailer = retailers.find(r => r.id === payment.retailerId);
+      const area = retailer ? areas.find(a => a.id === retailer.areaId) : null;
+
+      const rowData = [
+        `"${payment.id}"`,
+        `"${formatTimestampWithTime(payment.createdAt)}"`,
+        `"${retailer?.code || ''}"`,
+        `"${payment.retailerName || 'Unknown'}"`,
+        `"${area?.name || ''}"`,
+        payment.totalPaid.toString(),
+        payment.method,
+        payment.state
+      ];
+      rows.push(rowData.join(','));
+    });
+
+    // Totals
+    const totalAmount = sortedData.reduce((sum, p) => sum + p.totalPaid, 0);
+    const cashTotal = sortedData.filter(p => p.method === 'CASH').reduce((sum, p) => sum + p.totalPaid, 0);
+    const upiTotal = sortedData.filter(p => p.method === 'UPI').reduce((sum, p) => sum + p.totalPaid, 0);
+
+    rows.push('');
+    rows.push([, 'Total Cash', '', '', '', cashTotal.toString(), 'CASH', ''].join(','));
+    rows.push([, 'Total UPI', '', '', '', upiTotal.toString(), 'UPI', ''].join(','));
+    rows.push([, 'Grand Total', '', '', '', totalAmount.toString(), '', ''].join(','));
+
+    // Download
+    const csvContent = rows.join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+
+    const formatDateForFn = (d: Date) => {
+      const day = d.getDate();
+      const month = d.getMonth() + 1;
+      const year = d.getFullYear().toString().slice(-2);
+      return `${day}-${month}-${year}`;
+    };
+    let dateStr = formatDateForFn(paymentsDateRange.startDate);
+    if (formatDateForFn(paymentsDateRange.startDate) !== formatDateForFn(paymentsDateRange.endDate)) {
+      dateStr += `_${formatDateForFn(paymentsDateRange.endDate)}`;
+    }
+    const fileName = `collections_${dateStr}.csv`.toLowerCase();
+
+    saveAs(blob, fileName);
+  };
+
+  // Export for Analytics Section
+  const generateAnalyticsExcel = () => {
+    // Sort logic: Group by Payment Method, then by Date
+    const sortedData = [...analyticsFilteredPayments].sort((a, b) => {
+      if (a.method !== b.method) {
+        return a.method.localeCompare(b.method);
+      }
+      return a.createdAt.toMillis() - b.createdAt.toMillis();
+    });
+
+    // Create workbook
+    const wb = XLSX.utils.book_new();
+
+    // Prepare content
+    const reportTitle = [['Report: Collection Analytics']];
+    const dateInfo = [[`Date Range: ${formatTimestamp(analyticsDateRange.startDate)} - ${formatTimestamp(analyticsDateRange.endDate)}`]];
+    const methodInfo = [[`Methods: ${analyticsMethods.join(', ')}`]];
+
+    // Headers
+    const headers = ['Payment ID', 'Date', 'Code', 'Retailer', 'Area', 'Amount', 'Method', 'Status'];
+
+    // Data Rows
+    const dataRows = sortedData.map(payment => {
+      const retailer = retailers.find(r => r.id === payment.retailerId);
+      const area = retailer ? areas.find(a => a.id === retailer.areaId) : null;
+
+      return [
+        payment.id,
+        formatTimestampWithTime(payment.createdAt),
+        retailer?.code || '',
+        payment.retailerName || 'Unknown',
+        area?.name || '',
+        payment.totalPaid,
+        payment.method,
+        payment.state
+      ];
+    });
+
+    // Calculate Totals
+    const totalAmount = sortedData.reduce((sum, p) => sum + p.totalPaid, 0);
+    const cashTotal = sortedData.filter(p => p.method === 'CASH').reduce((sum, p) => sum + p.totalPaid, 0);
+    const upiTotal = sortedData.filter(p => p.method === 'UPI').reduce((sum, p) => sum + p.totalPaid, 0);
+
+    // Total Rows
+    const cashTotalRow = ['', 'Total Cash', '', '', '', cashTotal, 'CASH', ''];
+    const upiTotalRow = ['', 'Total UPI', '', '', '', upiTotal, 'UPI', ''];
+    const grandTotalRow = ['', 'Grand Total', '', '', '', totalAmount, '', ''];
+
+    // Combine data
+    const wsData = [
+      ...reportTitle,
+      ...dateInfo,
+      ...methodInfo,
+      [],
+      headers,
+      ...dataRows,
+      [],
+      cashTotalRow,
+      upiTotalRow,
+      grandTotalRow
+    ];
+
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+    // Styling (width)
+    const colWidths = [
+      { wch: 20 }, // ID
+      { wch: 20 }, // Date
+      { wch: 10 }, // Code
+      { wch: 30 }, // Retailer
+      { wch: 15 }, // Area
+      { wch: 15 }, // Amount
+      { wch: 10 }, // Method
+      { wch: 15 }  // Status
+    ];
+    ws['!cols'] = colWidths;
+
+    // Bold A1
+    if (ws['A1']) ws['A1'].s = { font: { bold: true, sz: 14 } };
+
+    XLSX.utils.book_append_sheet(wb, ws, 'Analytics');
+
+    // Filename
+    const formatDateForFn = (d: Date) => {
+      const day = d.getDate();
+      const month = d.getMonth() + 1;
+      const year = d.getFullYear().toString().slice(-2);
+      return `${day}-${month}-${year}`;
+    };
+    let dateStr = formatDateForFn(analyticsDateRange.startDate);
+    if (formatDateForFn(analyticsDateRange.startDate) !== formatDateForFn(analyticsDateRange.endDate)) {
+      dateStr += `_${formatDateForFn(analyticsDateRange.endDate)}`;
+    }
+    const fileName = `analytics_${dateStr}.xlsx`.toLowerCase();
+
+    // Save
+    const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    const data = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    saveAs(data, fileName);
   };
 
   // Export retailers data
@@ -979,13 +1222,20 @@ export function LineWorkerDashboard() {
   // Calculate statistics
   const completedPayments = payments.filter(p => p.state === 'COMPLETED');
   const totalCollected = completedPayments.reduce((sum, p) => sum + p.totalPaid, 0);
-  const todayPayments = filterPaymentsByDateRange(completedPayments);
+  // Independent Today calculation for Overview stats
+  const todayPayments = completedPayments.filter(payment => {
+    const paymentDate = payment.createdAt.toDate();
+    const today = new Date();
+    const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const endOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
+    return paymentDate >= startOfToday && paymentDate <= endOfToday;
+  });
   const todayCollected = todayPayments.reduce((sum, p) => sum + p.totalPaid, 0);
 
   // Filter payments based on selected tab
   const filteredPayments = payments.filter(payment => {
     const paymentDate = payment.createdAt.toDate();
-    const isInDateRange = paymentDate >= dateRange.startDate && paymentDate <= dateRange.endDate;
+    const isInDateRange = paymentDate >= paymentsDateRange.startDate && paymentDate <= paymentsDateRange.endDate;
 
     if (paymentTab === 'completed') {
       return payment.state === 'COMPLETED' && isInDateRange;
@@ -994,6 +1244,17 @@ export function LineWorkerDashboard() {
     }
     return isInDateRange;
   });
+
+  // Analytics Calculation
+  const analyticsFilteredPayments = payments.filter(payment => {
+    const paymentDate = payment.createdAt.toDate();
+    const isInDateRange = paymentDate >= analyticsDateRange.startDate && paymentDate <= analyticsDateRange.endDate;
+    const isCompleted = payment.state === 'COMPLETED';
+    const isSelectedMethod = analyticsMethods.includes(payment.method);
+    return isCompleted && isInDateRange && isSelectedMethod;
+  });
+
+  const analyticsTotal = analyticsFilteredPayments.reduce((sum, p) => sum + p.totalPaid, 0);
 
   // Check if retailer has completed payments today
   const hasCompletedPaymentToday = (retailerId: string) => {
@@ -1552,7 +1813,9 @@ export function LineWorkerDashboard() {
           <TableHeader>
             <TableRow>
               <TableHead>Date</TableHead>
+              <TableHead>Code</TableHead>
               <TableHead>Retailer</TableHead>
+              <TableHead>Area</TableHead>
               <TableHead>Amount</TableHead>
               <TableHead>Method</TableHead>
               <TableHead>Status</TableHead>
@@ -1560,62 +1823,60 @@ export function LineWorkerDashboard() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredPayments.map((payment) => (
-              <TableRow key={payment.id}>
-                <TableCell>{formatTimestampWithTime(payment.createdAt)}</TableCell>
-                <TableCell className="font-medium">{payment.retailerName}</TableCell>
-                <TableCell>{formatCurrency(payment.totalPaid)}</TableCell>
-                <TableCell>{payment.method}</TableCell>
-                <TableCell>
-                  <Badge className={
-                    payment.state === 'COMPLETED'
-                      ? 'bg-green-100 text-green-800'
-                      : payment.state === 'INITIATED'
-                        ? 'bg-yellow-100 text-yellow-800'
-                        : 'bg-red-100 text-red-800'
-                  }>
-                    {payment.state}
-                  </Badge>
-                </TableCell>
-                <TableCell>
-                  <div className="flex space-x-1">
-                    {(payment.state === 'INITIATED' || payment.state === 'OTP_SENT') && (
-                      <>
-                        {isOTPExpired(payment) ? (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            disabled
-                            className="h-7 px-2 text-xs bg-gray-100 border-gray-300 text-gray-500 cursor-not-allowed"
-                          >
-                            Expired
-                          </Button>
-                        ) : (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleEnterOTP(payment)}
-                            className="h-7 px-2 text-xs bg-yellow-50 border-yellow-200 text-yellow-800 hover:bg-yellow-100"
-                          >
-                            Enter OTP
-                          </Button>
-                        )}
-                      </>
+            {filteredPayments.map((payment) => {
+              const retailer = retailers.find(r => r.id === payment.retailerId);
+              const area = retailer ? areas.find(a => a.id === retailer.areaId) : null;
+
+              return (
+                <TableRow key={payment.id}>
+                  <TableCell>{formatTimestampWithTime(payment.createdAt)}</TableCell>
+                  <TableCell>
+                    {retailer?.code && (
+                      <Badge variant="outline" className="text-xs font-mono font-normal text-gray-500">
+                        {retailer.code}
+                      </Badge>
                     )}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setLastPaymentId(payment.id);
-                        setLastPaymentAmount(payment.totalPaid);
-                        setShowReceiptInSuccess(true);
-                        setShowPaymentSuccess(true);
-                      }}
-                      className="h-7 px-2 text-xs"
-                    >
-                      View
-                    </Button>
-                    {payment.state === 'COMPLETED' && (
+                  </TableCell>
+                  <TableCell className="font-medium">{payment.retailerName}</TableCell>
+                  <TableCell className="text-gray-500 text-sm">{area?.name || '-'}</TableCell>
+                  <TableCell>{formatCurrency(payment.totalPaid)}</TableCell>
+                  <TableCell>{payment.method}</TableCell>
+                  <TableCell>
+                    <Badge className={
+                      payment.state === 'COMPLETED'
+                        ? 'bg-green-100 text-green-800'
+                        : payment.state === 'INITIATED'
+                          ? 'bg-yellow-100 text-yellow-800'
+                          : 'bg-red-100 text-red-800'
+                    }>
+                      {payment.state}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex space-x-1">
+                      {(payment.state === 'INITIATED' || payment.state === 'OTP_SENT') && (
+                        <>
+                          {isOTPExpired(payment) ? (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled
+                              className="h-7 px-2 text-xs bg-gray-100 border-gray-300 text-gray-500 cursor-not-allowed"
+                            >
+                              Expired
+                            </Button>
+                          ) : (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleEnterOTP(payment)}
+                              className="h-7 px-2 text-xs bg-yellow-50 border-yellow-200 text-yellow-800 hover:bg-yellow-100"
+                            >
+                              Enter OTP
+                            </Button>
+                          )}
+                        </>
+                      )}
                       <Button
                         variant="outline"
                         size="sm"
@@ -1627,14 +1888,29 @@ export function LineWorkerDashboard() {
                         }}
                         className="h-7 px-2 text-xs"
                       >
-                        <Share className="h-3 w-3 mr-1" />
-                        Receipt
+                        View
                       </Button>
-                    )}
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
+                      {payment.state === 'COMPLETED' && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setLastPaymentId(payment.id);
+                            setLastPaymentAmount(payment.totalPaid);
+                            setShowReceiptInSuccess(true);
+                            setShowPaymentSuccess(true);
+                          }}
+                          className="h-7 px-2 text-xs"
+                        >
+                          <Share className="h-3 w-3 mr-1" />
+                          Receipt
+                        </Button>
+                      )}
+                    </div>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
             {filteredPayments.length === 0 && (
               <TableRow>
                 <TableCell colSpan={6} className="text-center py-8 text-gray-500">
@@ -1700,10 +1976,31 @@ export function LineWorkerDashboard() {
           {/* Dashboard Content */}
           {!mainLoadingState.loadingState.isLoading && (
             <>
+
+
+
               {/* Overview Stats */}
+
               {activeNav === 'overview' && (
                 <div className="space-y-6">
+
+                  {/* Day Sheet Helper (New) */}
+                  <div className="flex justify-end pb-0">
+                    <DaySheet
+                      payments={payments}
+                      lineWorkers={user ? [{ id: user.uid, displayName: user.displayName || 'Me', assignedAreas: [], assignedZips: [], tenantId: 'system', email: user.email || '', phoneNumber: '', role: 'line-worker', createdAt: Timestamp.now(), updatedAt: Timestamp.now() }] : []}
+                      areas={areas}
+                      retailers={retailers}
+                      wholesalerBusinessName={wholesalerName || 'PharmaLync'}
+                      wholesalerAddress=""
+                      tenantId={getCurrentTenantId() || ''}
+                      hideLineWorkerFilter={true}
+                    />
+                  </div>
+
                   {/* Stats Cards - Bento style 2-column on mobile */}
+
+
                   <div className="grid grid-cols-2 gap-4">
                     <Card
                       onClick={() => setActiveNav('retailers')}
@@ -1741,6 +2038,115 @@ export function LineWorkerDashboard() {
                       </CardContent>
                     </Card>
                   </div>
+
+                  {/* Collection Analytics Section */}
+                  <Card className="border-0 shadow-lg rounded-xl overflow-hidden bg-white ring-1 ring-black/5">
+                    <div className="flex flex-col md:flex-row">
+                      {/* Left Side: Hero Stats */}
+                      <div className="flex-1 p-6 sm:p-8 flex flex-col justify-center relative overflow-hidden">
+                        {/* Background Decor */}
+                        <div className="absolute top-0 right-0 p-8 opacity-[0.02] pointer-events-none">
+                          <TrendingUp className="h-64 w-64 text-black transform translate-x-10 -translate-y-10" />
+                        </div>
+
+                        <div className="relative z-10 space-y-6">
+                          <div>
+                            <div className="flex items-center gap-2 mb-3">
+                              <div className="p-1.5 bg-emerald-100/50 rounded-md">
+                                <TrendingUp className="h-4 w-4 text-emerald-600" />
+                              </div>
+                              <h3 className="text-sm font-semibold text-gray-900 tracking-wide uppercase">Collection Performance</h3>
+                            </div>
+
+                            <div className="space-y-1">
+                              <div className="text-4xl sm:text-5xl md:text-6xl font-bold text-gray-900 tracking-tight">
+                                {formatCurrency(analyticsTotal)}
+                              </div>
+                              <div className="flex items-center gap-2 text-gray-500 text-sm font-medium">
+                                <span>Across {analyticsFilteredPayments.length} transactions</span>
+                                <span className="h-1 w-1 rounded-full bg-gray-300"></span>
+                                <span className={analyticsTotal > 0 ? "text-emerald-600" : "text-gray-400"}>
+                                  {analyticsFilteredPayments.length > 0 ? 'Active' : 'No activity'}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-3 pt-2">
+                            <Button
+                              variant="outline"
+                              onClick={generateAnalyticsExcel}
+                              disabled={analyticsFilteredPayments.length === 0}
+                              className="bg-white hover:bg-gray-50 text-gray-900 border-gray-200 shadow-sm"
+                            >
+                              <FileSpreadsheet className="h-4 w-4 mr-2 text-emerald-600" />
+                              Export Excel Report
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Right Side: Controls Sidebar */}
+                      <div className="w-full md:w-[360px] bg-gray-50/80 border-t md:border-t-0 md:border-l border-gray-100 p-6 sm:p-8 flex flex-col justify-center space-y-8">
+
+                        {/* Date Filter */}
+                        <div className="space-y-3">
+                          <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
+                            <Calendar className="h-3.5 w-3.5" />
+                            Period
+                          </label>
+                          <ModernDateRangePicker
+                            startDate={analyticsDateRange.startDate}
+                            endDate={analyticsDateRange.endDate}
+                            onChange={setAnalyticsDateRange}
+                          />
+                        </div>
+
+                        {/* Method Filter */}
+                        <div className="space-y-3">
+                          <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
+                            <DollarSign className="h-3.5 w-3.5" />
+                            Filter Source
+                          </label>
+
+                          {/* Custom Toggle Switch Style */}
+                          <div className="bg-white p-1 rounded-lg border border-gray-200 shadow-sm flex">
+                            {['CASH', 'UPI'].map(method => {
+                              const isSelected = analyticsMethods.includes(method);
+                              return (
+                                <button
+                                  key={method}
+                                  onClick={() => {
+                                    if (isSelected) {
+                                      if (analyticsMethods.length > 1) {
+                                        setAnalyticsMethods(prev => prev.filter(m => m !== method));
+                                      }
+                                    } else {
+                                      setAnalyticsMethods(prev => [...prev, method]);
+                                    }
+                                  }}
+                                  className={`flex-1 flex items-center justify-center gap-2 py-2 text-sm font-medium rounded-md transition-all duration-200 ${isSelected
+                                    ? method === 'CASH'
+                                      ? 'bg-emerald-50 text-emerald-700 shadow-sm ring-1 ring-emerald-200'
+                                      : 'bg-blue-50 text-blue-700 shadow-sm ring-1 ring-blue-200'
+                                    : 'text-gray-500 hover:bg-gray-50'
+                                    }`}
+                                >
+                                  {isSelected && <CheckCircle className={`h-3.5 w-3.5 ${method === 'CASH' ? 'text-emerald-500' : 'text-blue-500'}`} />}
+                                  {method}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          <p className="text-[10px] text-gray-400 leading-snug text-center">
+                            Select multiple to see combined total
+                          </p>
+                        </div>
+
+                      </div>
+                    </div>
+                  </Card>
+
 
                   {/* Quick Actions card removed - replaced by floating FAB button */}
                   {/* Test Notifications */}
@@ -1928,20 +2334,20 @@ export function LineWorkerDashboard() {
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => exportPayments('csv')}
+                          onClick={generateCSV}
                           disabled={filteredPayments.length === 0}
                         >
-                          <Download className="h-4 w-4 mr-1" />
+                          <FileText className="h-4 w-4 mr-1" />
                           Export CSV
                         </Button>
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => exportPayments('json')}
+                          onClick={generateExcel}
                           disabled={filteredPayments.length === 0}
                         >
-                          <Download className="h-4 w-4 mr-1" />
-                          Export JSON
+                          <FileSpreadsheet className="h-4 w-4 mr-1" />
+                          Export Excel
                         </Button>
                       </div>
                     </div>
@@ -1955,10 +2361,13 @@ export function LineWorkerDashboard() {
                     </TabsList>
 
                     <TabsContent value={paymentTab} className="space-y-4">
-                      <DateRangeFilter
-                        value={selectedDateRangeOption}
-                        onValueChange={handleDateRangeChange}
-                      />
+                      <div className="flex justify-end">
+                        <ModernDateRangePicker
+                          startDate={paymentsDateRange.startDate}
+                          endDate={paymentsDateRange.endDate}
+                          onChange={(range) => setPaymentsDateRange(range)}
+                        />
+                      </div>
                       <PaymentHistoryTable />
                     </TabsContent>
                   </Tabs>
@@ -1986,8 +2395,8 @@ export function LineWorkerDashboard() {
           setPreSelectedRetailerForPayment(null); // Reset pre-selected retailer when dialog closes
         }
       }}>
-        <DialogContent className="max-w-2xl" onInteractOutside={(e) => e.preventDefault()}>
-          <DialogHeader>
+        <DialogContent className="max-w-2xl max-h-[90vh] p-0 flex flex-col overflow-hidden gap-0" onInteractOutside={(e) => e.preventDefault()}>
+          <DialogHeader className="p-6 pb-4 flex-shrink-0">
             <DialogTitle>Collect Payment</DialogTitle>
             <DialogDescription>
               Enter payment details to initiate collection from retailer
