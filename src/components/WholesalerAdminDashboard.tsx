@@ -2583,7 +2583,7 @@ export function WholesalerAdminDashboard() {
 
                 // 1. Report Title & Date Range
                 csvRows.push('Report: Transactions Report');
-                csvRows.push(`"Date Range: ${formatTimestamp(dateRange.startDate)} - ${formatTimestamp(dateRange.endDate)}"`);
+                csvRows.push(`"Date Range: ${formatTimestamp(transactionsDateRange.startDate)} - ${formatTimestamp(transactionsDateRange.endDate)}"`);
 
                 // 2. Filter Details
                 if (paymentMethodFilter !== 'all') {
@@ -2645,7 +2645,7 @@ export function WholesalerAdminDashboard() {
 
                 const csvContent = csvRows.join('\n');
                 const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-                const fileName = `Transactions_${formatTimestamp(dateRange.startDate)}_to_${formatTimestamp(dateRange.endDate)}.csv`;
+                const fileName = `Transactions_${formatTimestamp(transactionsDateRange.startDate)}_to_${formatTimestamp(transactionsDateRange.endDate)}.csv`;
 
                 // Trigger download
                 const link = document.createElement('a');
@@ -2965,7 +2965,7 @@ export function WholesalerAdminDashboard() {
         payments={payments.filter(p => {
           // Filter by selected date range
           const paymentDate = p.createdAt?.toDate?.() || new Date(0);
-          return paymentDate >= dateRange.startDate && paymentDate <= dateRange.endDate;
+          return paymentDate >= overviewDateRange.startDate && paymentDate <= overviewDateRange.endDate;
         })}
         lineWorkers={lineWorkers}
         areas={areas}
@@ -3248,9 +3248,9 @@ export function WholesalerAdminDashboard() {
       }
 
       // Date range filter - only apply for Overview tab
-      if (activeNav === 'overview' && dateRange) {
+      if (activeNav === 'overview' && transactionsDateRange) {
         const paymentDate = toDate(payment.createdAt);
-        if (paymentDate < dateRange.startDate || paymentDate > dateRange.endDate) {
+        if (paymentDate < transactionsDateRange.startDate || paymentDate > transactionsDateRange.endDate) {
           return false;
         }
       }
@@ -3604,7 +3604,7 @@ export function WholesalerAdminDashboard() {
               const today = new Date();
               const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
               const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
-              setDateRange({ startDate: startOfDay, endDate: endOfDay });
+              setTransactionsDateRange({ startDate: startOfDay, endDate: endOfDay });
               setSelectedDateRangeOption('today');
             }}
           >
