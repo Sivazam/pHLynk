@@ -209,10 +209,9 @@ export function LineWorkerDashboard() {
 
     const filtered = retailers.filter(retailer => {
       const nameMatch = getRetailerName(retailer).toLowerCase().includes(searchLower);
-      const phoneMatch = retailer.phone?.toLowerCase().includes(searchLower) || false;
       const codeMatch = retailer.code?.toLowerCase().includes(searchLower) || false;
 
-      return nameMatch || phoneMatch || codeMatch;
+      return nameMatch || codeMatch;
     });
 
     setFilteredRetailers(filtered);

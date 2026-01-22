@@ -235,15 +235,33 @@ const CollectPaymentFormComponent = ({
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-[calc(100vw-3rem)] sm:w-[460px] p-0" align="start">
-                <Command>
-                  <CommandInput placeholder="Search retailer name, code, or mobile..." />
+                <Command
+                  filter={(value, search) => {
+                    const searchLower = search.toLowerCase();
+                    const valueLower = value.toLowerCase();
+
+                    // Strict filtering
+                    // 1. If Code or Name STARTS with search term -> High Priority
+                    // 2. If Code or Name CONTAINS search term -> Medium Priority
+                    // 3. Otherwise -> Filter out (0)
+
+                    // Value format we set: "Name Code ID"
+                    // We can try to split or just regex, but simple includes is fine if we want strictness.
+                    // The user said "gives all possibilities", implying fuzzy was matching "ap20" to "AP421".
+                    // Standard includes() would NOT match "AP421" with "ap20".
+
+                    if (valueLower.includes(searchLower)) return 1;
+                    return 0;
+                  }}
+                >
+                  <CommandInput placeholder="Search retailer name or code..." />
                   <CommandList>
                     <CommandEmpty>No retailer found.</CommandEmpty>
                     <CommandGroup>
                       {retailers.map((retailer) => (
                         <CommandItem
                           key={retailer.id}
-                          value={`${retailer.profile?.realName || retailer.name} ${retailer.code || ''} ${retailer.profile?.phone || retailer.phone || ''} ${retailer.id}`}
+                          value={`${retailer.profile?.realName || retailer.name} ${retailer.code || ''} ${retailer.id}`}
                           onSelect={() => {
                             updateField('retailerId', retailer.id);
                             setOpen(false);
@@ -255,16 +273,17 @@ const CollectPaymentFormComponent = ({
                               formData.retailerId === retailer.id ? "opacity-100" : "opacity-0"
                             )}
                           />
-                          <div className="flex flex-col w-full text-left">
-                            <span className="font-medium">{retailer.profile?.realName || retailer.name}</span>
-                            <div className="flex items-center text-xs text-gray-500 gap-2 flex-wrap">
-                              {retailer.code && (
-                                <span className="bg-gray-100 px-1.5 py-0.5 rounded text-gray-700 font-medium">
-                                  {retailer.code}
-                                </span>
-                              )}
-                              <span>{retailer.profile?.phone || retailer.phone}</span>
-                            </div>
+                          <div className="flex items-center gap-3 w-full overflow-hidden">
+                            {/* Code Badge */}
+                            {retailer.code && (
+                              <span className="flex-shrink-0 bg-yellow-100 text-yellow-800 text-xs font-mono font-bold px-2 py-0.5 rounded border border-yellow-200">
+                                {retailer.code}
+                              </span>
+                            )}
+                            {/* Name */}
+                            <span className="font-medium truncate text-gray-900">
+                              {retailer.profile?.realName || retailer.name}
+                            </span>
                           </div>
                         </CommandItem>
                       ))}

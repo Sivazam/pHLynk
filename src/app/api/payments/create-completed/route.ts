@@ -1,7 +1,7 @@
 // Force dynamic rendering
 export const dynamic = "force-dynamic";
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import { doc, getDoc, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { RetailerAuthService } from '@/services/retailer-auth';
@@ -236,77 +236,80 @@ export async function POST(request: NextRequest) {
     const collectionDate = completionTime.toLocaleDateString('en-IN');
     const wholesalerTenantId = lineWorkerData?.tenantId || tenantId;
 
-    // 4. PARALLEL EXECUTION: Retailer Update + SMS + FCMs
-    // These specific operations don't need to block each other
-    const parallelTasks: Promise<any>[] = [];
+    // 4. PARALLEL EXECUTION: Separate Critical (DB) and Background (Notifications)
 
-    // Task A: Update Retailer Data (Firestore)
-    parallelTasks.push((async () => {
-      try {
-        await retailerService.updateForPayment(retailerId, tenantId, {
-          id: paymentId,
-          totalPaid,
-          method,
-          createdAt: Timestamp.fromDate(completionTime),
-          state: 'COMPLETED'
-        });
-        console.log('✅ Retailer data updated');
-      } catch (e) {
-        console.error('❌ Failed to update retailer data', e);
-      }
-    })());
-
-    // Task B: Send SMS (Retailer only)
-    if (retailerUser) {
-      parallelTasks.push(sendSMSNotificationsOptimized({
-        payment,
-        retailerUser,
-        lineWorkerData,
-        wholesalerData,
-        lineWorkerName,
-        retailerArea,
-        wholesalerName,
-        collectionDate
-      }));
+    // Task A: Update Retailer Data (Critical - DB Consistency)
+    // We await this to ensure the retailer's balance/history is consistent before returning success
+    try {
+      await retailerService.updateForPayment(retailerId, tenantId, {
+        id: paymentId,
+        totalPaid,
+        method,
+        createdAt: Timestamp.fromDate(completionTime),
+        state: 'COMPLETED'
+      });
+      console.log('✅ Retailer data updated (Critical Step Complete)');
+    } catch (e) {
+      console.error('❌ Failed to update retailer data', e);
+      // We log but don't fail the request because the Payment itself was created.
+      // This is a data consistency issue to be resolved by background reconciliation if needed.
     }
 
-    // Task C: Send Retailer FCM
-    parallelTasks.push(sendPaymentCompletionNotificationViaCloudFunction({
-      retailerId: payment.retailerId,
-      amount: payment.totalPaid,
-      paymentId: paymentId,
-      recipientType: 'retailer',
-      retailerName: payment.retailerName,
-      lineWorkerName: payment.lineWorkerName,
-      wholesalerId: wholesalerTenantId,
-      title: '🎉 Payment Successful',
-      body: `Congratulations - you successfully paid ₹${payment.totalPaid.toLocaleString()} to ${payment.retailerName} via Line Man ${payment.lineWorkerName}.`,
-      clickAction: '/retailer/payment-history'
-    }));
+    // BACKGROUND TASKS (Safe Fire-and-forget using Next.js 'after')
+    after(async () => {
+      console.log('🕒 Starting background tasks after response...');
+      const backgroundTasks: Promise<any>[] = [];
 
-    // Task D: Send Wholesaler FCM
-    if (wholesalerTenantId) {
-      parallelTasks.push(sendPaymentCompletionNotificationViaCloudFunction({
-        retailerId: wholesalerTenantId, // Wholesaler ID as recipient
+      // Task B: Send SMS (Retailer only)
+      if (retailerUser) {
+        backgroundTasks.push(sendSMSNotificationsOptimized({
+          payment,
+          retailerUser,
+          lineWorkerData,
+          wholesalerData,
+          lineWorkerName,
+          retailerArea,
+          wholesalerName,
+          collectionDate
+        }).then(res => console.log('📨 Background SMS Result:', res)));
+      }
+
+      // Task C: Send Retailer FCM
+      backgroundTasks.push(sendPaymentCompletionNotificationViaCloudFunction({
+        retailerId: payment.retailerId,
         amount: payment.totalPaid,
         paymentId: paymentId,
-        recipientType: 'wholesaler',
+        recipientType: 'retailer',
         retailerName: payment.retailerName,
         lineWorkerName: payment.lineWorkerName,
         wholesalerId: wholesalerTenantId,
-        title: '💰 Collection Update',
-        body: `Line Man ${payment.lineWorkerName} collected ₹${payment.totalPaid.toLocaleString()} from ${payment.retailerName} on ${new Date().toLocaleDateString()} at ${new Date().toLocaleTimeString()}.`,
-        clickAction: '/wholesaler/dashboard'
-      }));
-    }
+        title: '🎉 Payment Successful',
+        body: `Congratulations - you successfully paid ₹${payment.totalPaid.toLocaleString()} to ${payment.retailerName} via Line Man ${payment.lineWorkerName}.`,
+        clickAction: '/retailer/payment-history'
+      }).then(() => console.log('🔔 Background Retailer FCM Sent')));
 
-    // Await all background tasks
-    // Note: We await here because standard Serverless functions might kill the process early if we don't.
-    // However, they run in parallel now, reducing total wait time to the slowest single operation.
-    await Promise.allSettled(parallelTasks);
+      // Task D: Send Wholesaler FCM
+      if (wholesalerTenantId) {
+        backgroundTasks.push(sendPaymentCompletionNotificationViaCloudFunction({
+          retailerId: wholesalerTenantId,
+          amount: payment.totalPaid,
+          paymentId: paymentId,
+          recipientType: 'wholesaler',
+          retailerName: payment.retailerName,
+          lineWorkerName: payment.lineWorkerName,
+          wholesalerId: wholesalerTenantId,
+          title: '💰 Collection Update',
+          body: `Line Man ${payment.lineWorkerName} collected ₹${payment.totalPaid.toLocaleString()} from ${payment.retailerName} on ${new Date().toLocaleDateString()} at ${new Date().toLocaleTimeString()}.`,
+          clickAction: '/wholesaler/dashboard'
+        }).then(() => console.log('🔔 Background Wholesaler FCM Sent')));
+      }
+
+      await Promise.allSettled(backgroundTasks);
+      console.log('✅ All background tasks completed');
+    });
 
     const processingTime = Date.now() - startTime;
-    console.log(`🚀 CREATE COMPLETED PAYMENT FINISHED in ${processingTime}ms`);
+    console.log(`🚀 CREATE COMPLETED PAYMENT FINISHED (UI Unblocked) in ${processingTime}ms`);
 
     return NextResponse.json({
       success: true,
