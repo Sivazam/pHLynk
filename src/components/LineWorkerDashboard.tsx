@@ -74,6 +74,9 @@ import { LOGO_BASE64 } from '@/constants/assets';
 import { StatusBarColor } from './ui/StatusBarColor';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { OfflineBlockingScreen } from '@/components/ui/OfflineBlockingScreen';
+import { PaymentCorrectionModal } from '@/components/PaymentCorrectionModal';
+import { PaymentService } from '@/services/firestore';
+import { storageService } from '@/services/storage-service';
 
 export function LineWorkerDashboard() {
   const isOnline = useOnlineStatus();
@@ -113,6 +116,12 @@ export function LineWorkerDashboard() {
   const [wholesalerName, setWholesalerName] = useState<string>('PharmaLync Wholesaler');
   const [paymentTab, setPaymentTab] = useState('completed');
   const [selectedDateRangeOption, setSelectedDateRangeOption] = useState('today');
+
+  // Payment Correction State
+  const [showCorrectionModal, setShowCorrectionModal] = useState(false);
+  const [selectedPaymentForCorrection, setSelectedPaymentForCorrection] = useState<Payment | null>(null);
+  const [isUpdatingPayment, setIsUpdatingPayment] = useState(false);
+
   const [paymentsDateRange, setPaymentsDateRange] = useState<{ startDate: Date; endDate: Date }>(() => {
     const today = new Date();
     const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
@@ -1720,6 +1729,70 @@ export function LineWorkerDashboard() {
     }
   };
 
+  const handlePaymentUpdate = async (paymentId: string, updates: { utr?: string; proofImage?: File | null; isProofRemoved?: boolean }) => {
+    const tenantId = getCurrentTenantId();
+    if (!tenantId) return;
+
+    setIsUpdatingPayment(true);
+    try {
+      const paymentServiceInstance = new PaymentService();
+      const updateData: Partial<Payment> = {};
+
+      if (updates.utr !== undefined) {
+        updateData.utr = updates.utr;
+      }
+
+      // Handle Image Updates
+      if (updates.isProofRemoved) {
+        // If explicitly removed, clear proof fields
+        updateData.proofUrl = null as any;
+        updateData.proofPath = null as any;
+        // Note: If previous proof was transient (not verified), we should delete it from storage
+        const payment = payments.find(p => p.id === paymentId);
+        if (payment?.proofPath) {
+          await storageService.deleteFile(payment.proofPath);
+        }
+      } else if (updates.proofImage) {
+        // If new image uploaded
+        const payment = payments.find(p => p.id === paymentId);
+        // Delete old one if exists
+        if (payment?.proofPath) {
+          try {
+            await storageService.deleteFile(payment.proofPath);
+          } catch (e) {
+            console.warn("Failed to delete old proof", e);
+          }
+        }
+
+        // Construct path: payments/{tenantId}/{paymentId}/{filename}
+        const timestamp = Date.now();
+        // Sanitize filename
+        const sanitizedName = updates.proofImage.name.replace(/[^a-zA-Z0-9.]/g, '_');
+        const filename = `proof_${timestamp}_${sanitizedName}`;
+        const storagePath = `payments/${tenantId}/${paymentId}/${filename}`;
+
+        const { url, fullPath } = await storageService.uploadPaymentProof(updates.proofImage, storagePath);
+
+        updateData.proofPath = fullPath;
+        updateData.proofUrl = url;
+      }
+
+      await paymentServiceInstance.update(paymentId, updateData, tenantId);
+
+      // Refresh payments happens automatically via onSnapshot listener in fetchLineWorkerData?
+      // No, fetchLineWorkerData uses onSnapshot. So it should be automatic.
+
+      setShowCorrectionModal(false);
+      setSelectedPaymentForCorrection(null);
+
+    } catch (error) {
+      console.error("Error updating payment", error);
+      alert("Failed to update payment details");
+    } finally {
+      setIsUpdatingPayment(false);
+    }
+  };
+
   // Payment history table component
   const PaymentHistoryTable = () => (
     <div className="space-y-4">
@@ -1782,20 +1855,34 @@ export function LineWorkerDashboard() {
               </Button> */}
 
               {payment.state === 'COMPLETED' && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setLastPaymentId(payment.id);
-                    setLastPaymentAmount(payment.totalPaid);
-                    setShowReceiptInSuccess(true);
-                    setShowPaymentSuccess(true);
-                  }}
-                  className="w-full col-span-2"
-                >
-                  <Share className="h-3 w-3 mr-2" />
-                  View & Share Receipt
-                </Button>
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setSelectedPaymentForCorrection(payment);
+                      setShowCorrectionModal(true);
+                    }}
+                    className="w-full"
+                    disabled={payment.verified === true}
+                  >
+                    Edit
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setLastPaymentId(payment.id);
+                      setLastPaymentAmount(payment.totalPaid);
+                      setShowReceiptInSuccess(true);
+                      setShowPaymentSuccess(true);
+                    }}
+                    className="w-full"
+                  >
+                    <Share className="h-3 w-3 mr-2" />
+                    Receipt
+                  </Button>
+                </>
               )}
             </div>
           </div>
@@ -1881,14 +1968,13 @@ export function LineWorkerDashboard() {
                         variant="outline"
                         size="sm"
                         onClick={() => {
-                          setLastPaymentId(payment.id);
-                          setLastPaymentAmount(payment.totalPaid);
-                          setShowReceiptInSuccess(true);
-                          setShowPaymentSuccess(true);
+                          setSelectedPaymentForCorrection(payment);
+                          setShowCorrectionModal(true);
                         }}
                         className="h-7 px-2 text-xs"
+                        disabled={payment.verified === true}
                       >
-                        View
+                        Edit
                       </Button>
                       {payment.state === 'COMPLETED' && (
                         <Button
@@ -2648,6 +2734,17 @@ export function LineWorkerDashboard() {
           </div>
         </DialogContent>
       </Dialog>
+      {/* Payment Correction Modal */}
+      <PaymentCorrectionModal
+        payment={selectedPaymentForCorrection}
+        isOpen={showCorrectionModal}
+        onClose={() => {
+          setShowCorrectionModal(false);
+          setSelectedPaymentForCorrection(null);
+        }}
+        onUpdate={handlePaymentUpdate}
+        isUpdating={isUpdatingPayment}
+      />
     </div>
   );
 }

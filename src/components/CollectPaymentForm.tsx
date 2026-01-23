@@ -17,7 +17,7 @@ import {
   X,
   ChevronDown,
   ChevronUp,
-  ImageIcon,
+
   Check,
   ChevronsUpDown,
   Search,
@@ -84,7 +84,7 @@ const CollectPaymentFormComponent = ({
   const [error, setError] = useState<string | null>(null);
   const [isUpiDetailsOpen, setIsUpiDetailsOpen] = useState(true); // Default open
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const cameraInputRef = useRef<HTMLInputElement>(null);
+
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   // Combobox state
@@ -456,63 +456,20 @@ const CollectPaymentFormComponent = ({
                       accept="image/*"
                       onChange={handleImageChange}
                     />
-                    <input
-                      type="file"
-                      ref={cameraInputRef}
-                      className="hidden"
-                      accept="image/*"
-                      capture="environment"
-                      onChange={handleImageChange}
-                    />
 
                     {!previewUrl ? (
-                      <div className="grid grid-cols-2 gap-3">
-                        {/* Camera Button */}
-                        <Button
-                          type="button"
-                          variant="outline"
-                          className="h-11 border-dashed border-blue-200 text-blue-700 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-800"
-                          onClick={async () => {
-                            try {
-                              // Optional: Check permission explicitly if supported
-                              if (navigator.permissions && navigator.permissions.query) {
-                                const result = await navigator.permissions.query({ name: 'camera' as any });
-                                if (result.state === 'denied') {
-                                  setError('Camera access is blocked. Please enable it in browser settings or use Gallery.');
-                                  return;
-                                }
-                              }
-                            } catch (e) {
-                              // Ignore permission check errors, fall back to input behavior
-                              console.warn('Permission check failed:', e);
-                            }
-
-                            if (cameraInputRef.current) {
-                              cameraInputRef.current.value = '';
-                              cameraInputRef.current.click();
-                            }
-                          }}
-                        >
-                          <Camera className="h-4 w-4 mr-2" />
-                          Camera
-                        </Button>
-
-                        {/* Gallery Button */}
-                        <Button
-                          type="button"
-                          variant="outline"
-                          className="h-11 border-dashed border-gray-300 text-gray-600 hover:bg-gray-50 hover:border-gray-400 hover:text-gray-900"
-                          onClick={() => {
-                            if (fileInputRef.current) {
-                              fileInputRef.current.value = '';
-                              fileInputRef.current.click();
-                            }
-                          }}
-                        >
-                          <ImageIcon className="h-4 w-4 mr-2" />
-                          Gallery
-                        </Button>
-                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="w-full h-11 border-dashed border-gray-300 text-gray-600 hover:bg-gray-50 hover:border-gray-400 hover:text-gray-900"
+                        onClick={() => {
+                          if (fileInputRef.current) fileInputRef.current.value = '';
+                          fileInputRef.current?.click();
+                        }}
+                      >
+                        <Camera className="h-4 w-4 mr-2" />
+                        Capture / Upload
+                      </Button>
                     ) : (
                       <div className="space-y-2">
                         {/* Visible Image Preview */}
@@ -579,7 +536,7 @@ const CollectPaymentFormComponent = ({
         <Button
           type="button"
           onClick={handleSubmit}
-          disabled={collectingPayment || !formData.retailerId || !formData.amount || formData.amount < 1 || (formData.paymentMethod === 'UPI' && !(formData.utr && formData.utr.length === 4) && !formData.proofImage)}
+          disabled={collectingPayment || !formData.retailerId || !formData.amount || formData.amount < 1 || (formData.paymentMethod === 'UPI' && !(formData.utr && formData.utr.length === 4))}
           className="flex-1 h-12 text-base font-medium bg-green-600 hover:bg-green-700 text-white shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {collectingPayment ? (
