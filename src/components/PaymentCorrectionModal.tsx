@@ -11,6 +11,7 @@ import { Payment } from '@/types';
 import { formatCurrency, formatTimestampWithTime } from '@/lib/timestamp-utils';
 import { Camera, X, Upload, CheckCircle, AlertCircle, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { compressImage } from '@/lib/image-compression';
 
 interface PaymentCorrectionModalProps {
     payment: Payment | null;
@@ -98,9 +99,22 @@ export const PaymentCorrectionModal = ({
         if (!isValid || !payment) return;
 
         try {
+            let processedImage = proofImage;
+
+            // Compress if new image is selected
+            if (proofImage) {
+                try {
+                    console.log('🖼️ Compressing payment correction proof...');
+                    processedImage = await compressImage(proofImage);
+                } catch (cErr) {
+                    console.error('Compression failed, using original', cErr);
+                    // Fallback to original
+                }
+            }
+
             await onUpdate(payment.id, {
                 utr: utr !== (payment.utr || '') ? utr : undefined,
-                proofImage: proofImage,
+                proofImage: processedImage,
                 isProofRemoved: isProofRemoved
             });
             onClose();
