@@ -67,6 +67,7 @@ import {
   LogOut,
   Bell,
   Settings,
+  Table as TableIcon,
 
   // Actions
   Plus,
@@ -2640,6 +2641,21 @@ export function WholesalerAdminDashboard() {
 
     const handleDownloadReport = (format: 'csv' | 'excel') => {
       const data = getExportData();
+
+      // Sort by payment method first, then by date
+      const sortedData = [...data].sort((a, b) => {
+        if (a.method !== b.method) {
+          return a.method.localeCompare(b.method);
+        }
+        return new Date(a.date).getTime() - new Date(b.date).getTime();
+      });
+
+      // Calculate totals
+      const totalAmount = sortedData.reduce((sum, row) => sum + row.amount, 0);
+      const cashTotal = sortedData.filter(row => row.method === 'CASH').reduce((sum, row) => sum + row.amount, 0);
+      const upiTotal = sortedData.filter(row => row.method === 'UPI').reduce((sum, row) => sum + row.amount, 0);
+      const bankTotal = sortedData.filter(row => row.method === 'BANK_TRANSFER').reduce((sum, row) => sum + row.amount, 0);
+
       const fileName = `Transactions_${formatTimestamp(transactionsDateRange.startDate)}_to_${formatTimestamp(transactionsDateRange.endDate)}`;
 
       if (format === 'csv') {
@@ -2675,7 +2691,7 @@ export function WholesalerAdminDashboard() {
         csvRows.push(headers.join(','));
 
         // 4. Rows
-        data.forEach(row => {
+        sortedData.forEach(row => {
           const csvRow = [
             `"${row.date}"`,
             `"${row.retailerCode}"`,
@@ -2689,6 +2705,13 @@ export function WholesalerAdminDashboard() {
           ];
           csvRows.push(csvRow.join(','));
         });
+
+        // 5. Totals
+        csvRows.push(''); // Empty row
+        csvRows.push(['', 'Total Cash', '', cashTotal.toString(), 'CASH', '', '', '', ''].join(','));
+        csvRows.push(['', 'Total UPI', '', upiTotal.toString(), 'UPI', '', '', '', ''].join(','));
+        csvRows.push(['', 'Total Bank Transfer', '', bankTotal.toString(), 'BANK_TRANSFER', '', '', '', ''].join(','));
+        csvRows.push(['', 'Grand Total', '', totalAmount.toString(), '', '', '', '', ''].join(','));
 
         const blob = new Blob([csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement('a');
@@ -2722,21 +2745,32 @@ export function WholesalerAdminDashboard() {
           'Payment Method', 'UTR Number', 'Line Worker', 'Service Area', 'Status'
         ];
 
-        const mainDataRows = data.map(row => [
+        const mainDataRows = sortedData.map(row => [
           row.date, row.retailerCode, row.retailerName, row.amount,
           row.method, row.utr, row.lineWorker, row.serviceArea, row.status
         ]);
+
+        // Total rows
+        const cashTotalRow = ['', 'Total Cash', '', cashTotal, 'CASH', '', '', '', ''];
+        const upiTotalRow = ['', 'Total UPI', '', upiTotal, 'UPI', '', '', '', ''];
+        const bankTotalRow = ['', 'Total Bank Transfer', '', bankTotal, 'BANK_TRANSFER', '', '', '', ''];
+        const grandTotalRow = ['', 'Grand Total', '', totalAmount, '', '', '', '', ''];
 
         // Create workbook
         const wb = XLSX.utils.book_new();
 
         // Add Main Data Sheet
-        // We can combine summary + empty row + headers + data
+        // We can combine summary + empty row + headers + data + totals
         const wsData = [
           ...summaryData,
           [], // Empty row
           mainDataHeader,
-          ...mainDataRows
+          ...mainDataRows,
+          [], // Empty row before totals
+          cashTotalRow,
+          upiTotalRow,
+          bankTotalRow,
+          grandTotalRow
         ];
 
         const ws = XLSX.utils.aoa_to_sheet(wsData);
@@ -2862,7 +2896,7 @@ export function WholesalerAdminDashboard() {
                 onClick={() => handleDownloadReport('excel')}
               >
                 <div className="bg-green-100 p-2 rounded-full">
-                  <Table className="h-6 w-6 text-green-600" />
+                  <TableIcon className="h-6 w-6 text-green-600" />
                 </div>
                 <span className="font-medium">Excel (.xlsx)</span>
               </Button>
