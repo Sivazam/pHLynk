@@ -2444,7 +2444,7 @@ export function LineWorkerDashboard() {
                           disabled={filteredPayments.length === 0}
                         >
                           <FileText className="h-4 w-4 mr-1" />
-                          Export CSV
+                          CSV
                         </Button>
                         <Button
                           variant="outline"
@@ -2453,7 +2453,7 @@ export function LineWorkerDashboard() {
                           disabled={filteredPayments.length === 0}
                         >
                           <FileSpreadsheet className="h-4 w-4 mr-1" />
-                          Export Excel
+                          Excel
                         </Button>
                       </div>
                     </div>
