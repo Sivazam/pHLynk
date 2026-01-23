@@ -137,7 +137,7 @@ export function LineWorkerDashboard() {
     const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
     return { startDate: startOfDay, endDate: endOfDay };
   });
-  const [analyticsMethods, setAnalyticsMethods] = useState<string[]>(['CASH', 'UPI']);
+  const [analyticsMethods, setAnalyticsMethods] = useState<string[]>(['CASH', 'UPI', 'BANK_TRANSFER']);
 
   // NOTE: OTP functionality removed - payments are now created directly in COMPLETED state
   // These state variables are kept for backward compatibility but are no longer used
@@ -963,10 +963,12 @@ export function LineWorkerDashboard() {
     const totalAmount = sortedData.reduce((sum, p) => sum + p.totalPaid, 0);
     const cashTotal = sortedData.filter(p => p.method === 'CASH').reduce((sum, p) => sum + p.totalPaid, 0);
     const upiTotal = sortedData.filter(p => p.method === 'UPI').reduce((sum, p) => sum + p.totalPaid, 0);
+    const bankTotal = sortedData.filter(p => p.method === 'BANK_TRANSFER').reduce((sum, p) => sum + p.totalPaid, 0);
 
     // Total Rows
     const cashTotalRow = ['', 'Total Cash', '', '', '', cashTotal, 'CASH', ''];
     const upiTotalRow = ['', 'Total UPI', '', '', '', upiTotal, 'UPI', ''];
+    const bankTotalRow = ['', 'Total Bank Transfer', '', '', '', bankTotal, 'BANK_TRANSFER', ''];
     const grandTotalRow = ['', 'Grand Total', '', '', '', totalAmount, '', ''];
 
     // Combine data
@@ -979,6 +981,7 @@ export function LineWorkerDashboard() {
       [],
       cashTotalRow,
       upiTotalRow,
+      bankTotalRow,
       grandTotalRow
     ];
 
@@ -1131,10 +1134,12 @@ export function LineWorkerDashboard() {
     const totalAmount = sortedData.reduce((sum, p) => sum + p.totalPaid, 0);
     const cashTotal = sortedData.filter(p => p.method === 'CASH').reduce((sum, p) => sum + p.totalPaid, 0);
     const upiTotal = sortedData.filter(p => p.method === 'UPI').reduce((sum, p) => sum + p.totalPaid, 0);
+    const bankTotal = sortedData.filter(p => p.method === 'BANK_TRANSFER').reduce((sum, p) => sum + p.totalPaid, 0);
 
     // Total Rows
     const cashTotalRow = ['', 'Total Cash', '', '', '', cashTotal, 'CASH', ''];
     const upiTotalRow = ['', 'Total UPI', '', '', '', upiTotal, 'UPI', ''];
+    const bankTotalRow = ['', 'Total Bank Transfer', '', '', '', bankTotal, 'BANK_TRANSFER', ''];
     const grandTotalRow = ['', 'Grand Total', '', '', '', totalAmount, '', ''];
 
     // Combine data
@@ -1148,6 +1153,7 @@ export function LineWorkerDashboard() {
       [],
       cashTotalRow,
       upiTotalRow,
+      bankTotalRow,
       grandTotalRow
     ];
 
@@ -2162,7 +2168,7 @@ export function LineWorkerDashboard() {
                             <Button
                               variant="outline"
                               onClick={generateAnalyticsExcel}
-                              disabled={analyticsFilteredPayments.length === 0}
+                              disabled={analyticsFilteredPayments.length === 0 || analyticsMethods.length === 0}
                               className="bg-white hover:bg-gray-50 text-gray-900 border-gray-200 shadow-sm"
                             >
                               <FileSpreadsheet className="h-4 w-4 mr-2 text-emerald-600" />
@@ -2196,30 +2202,44 @@ export function LineWorkerDashboard() {
                           </label>
 
                           {/* Custom Toggle Switch Style */}
-                          <div className="bg-white p-1 rounded-lg border border-gray-200 shadow-sm flex">
-                            {['CASH', 'UPI'].map(method => {
+                          <div className="bg-white p-1 rounded-lg border border-gray-200 shadow-sm flex flex-wrap sm:flex-nowrap gap-1">
+                            {['CASH', 'UPI', 'BANK_TRANSFER'].map(method => {
                               const isSelected = analyticsMethods.includes(method);
+                              const label = method === 'BANK_TRANSFER' ? 'BANK' : method;
+
+                              let activeClass = '';
+                              let iconColor = '';
+
+                              if (method === 'CASH') {
+                                activeClass = 'bg-emerald-50 text-emerald-700 shadow-sm ring-1 ring-emerald-200';
+                                iconColor = 'text-emerald-500';
+                              } else if (method === 'UPI') {
+                                activeClass = 'bg-blue-50 text-blue-700 shadow-sm ring-1 ring-blue-200';
+                                iconColor = 'text-blue-500';
+                              } else {
+                                // BANK_TRANSFER
+                                activeClass = 'bg-purple-50 text-purple-700 shadow-sm ring-1 ring-purple-200';
+                                iconColor = 'text-purple-500';
+                              }
+
                               return (
                                 <button
                                   key={method}
                                   onClick={() => {
                                     if (isSelected) {
-                                      if (analyticsMethods.length > 1) {
-                                        setAnalyticsMethods(prev => prev.filter(m => m !== method));
-                                      }
+                                      // Allow deselecting even if it's the last one
+                                      setAnalyticsMethods(prev => prev.filter(m => m !== method));
                                     } else {
                                       setAnalyticsMethods(prev => [...prev, method]);
                                     }
                                   }}
-                                  className={`flex-1 flex items-center justify-center gap-2 py-2 text-sm font-medium rounded-md transition-all duration-200 ${isSelected
-                                    ? method === 'CASH'
-                                      ? 'bg-emerald-50 text-emerald-700 shadow-sm ring-1 ring-emerald-200'
-                                      : 'bg-blue-50 text-blue-700 shadow-sm ring-1 ring-blue-200'
+                                  className={`flex-1 flex items-center justify-center gap-2 py-2 px-2 text-xs sm:text-sm font-medium rounded-md transition-all duration-200 ${isSelected
+                                    ? activeClass
                                     : 'text-gray-500 hover:bg-gray-50'
                                     }`}
                                 >
-                                  {isSelected && <CheckCircle className={`h-3.5 w-3.5 ${method === 'CASH' ? 'text-emerald-500' : 'text-blue-500'}`} />}
-                                  {method}
+                                  {isSelected && <CheckCircle className={`h-3.5 w-3.5 ${iconColor}`} />}
+                                  {label}
                                 </button>
                               );
                             })}

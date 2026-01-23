@@ -158,7 +158,13 @@ export function DaySheet({
     // Process data for display
     return filtered.map(payment => {
       const retailer = getRetailerDetails(payment.retailerId);
-      const lineWorkerName = getLineWorkerName(payment.lineWorkerId);
+
+      // Get line worker name: Try lookup -> Try payment record -> Default
+      const mappedWorkerName = getLineWorkerName(payment.lineWorkerId);
+      const lineWorkerName = mappedWorkerName !== 'Unknown Line Worker'
+        ? mappedWorkerName
+        : (payment.lineWorkerName || 'Unknown Line Worker');
+
       const lineWorkerAreas = getLineWorkerAreas(payment.lineWorkerId);
       const lineWorkerAreaNames = lineWorkerAreas.map(areaId => getAreaName(areaId || '')).join(', ');
 
@@ -187,6 +193,7 @@ export function DaySheet({
   // Method-wise totals
   const cashTotal = filteredData.filter(i => i.paymentMethod === 'CASH').reduce((sum, i) => sum + i.amount, 0);
   const upiTotal = filteredData.filter(i => i.paymentMethod === 'UPI').reduce((sum, i) => sum + i.amount, 0);
+  const bankTotal = filteredData.filter(i => i.paymentMethod === 'BANK_TRANSFER').reduce((sum, i) => sum + i.amount, 0);
 
   // Generate Excel file
   const generateExcel = () => {
@@ -205,7 +212,11 @@ export function DaySheet({
     // Filter info
     const filterInfo: string[][] = [];
     if (!showLineWorkerColumn) {
-      filterInfo.push([`Line Worker: ${getLineWorkerName(selectedLineWorker)}`]);
+      let workerName = getLineWorkerName(selectedLineWorker);
+      if (selectedLineWorker === 'all' && hideLineWorkerFilter && lineWorkers.length > 0) {
+        workerName = lineWorkers[0].displayName || 'Line Worker';
+      }
+      filterInfo.push([`Line Worker: ${workerName}`]);
     }
     if (!showAreaColumn) {
       filterInfo.push([`Service Area: ${getAreaName(selectedArea)}`]);
@@ -234,15 +245,18 @@ export function DaySheet({
     // Grand Total Row
     const cashTotalRow = ['', 'Total Cash', '', cashTotal, 'CASH', '', ''];
     const upiTotalRow = ['', 'Total UPI', '', upiTotal, 'UPI', '', ''];
+    const bankTotalRow = ['', 'Total Bank Transfer', '', bankTotal, 'BANK_TRANSFER', '', ''];
     const grandTotalRow = ['', 'Grand Total', '', totalAmount, '', '', ''];
     if (showLineWorkerColumn) {
       cashTotalRow.push('');
       upiTotalRow.push('');
+      bankTotalRow.push('');
       grandTotalRow.push('');
     }
     if (showAreaColumn) {
       cashTotalRow.push('');
       upiTotalRow.push('');
+      bankTotalRow.push('');
       grandTotalRow.push('');
     }
 
@@ -257,6 +271,7 @@ export function DaySheet({
       [], // Empty row
       cashTotalRow,
       upiTotalRow,
+      bankTotalRow,
       grandTotalRow
     ];
 
@@ -330,6 +345,8 @@ export function DaySheet({
     // Filter details
     if (selectedLineWorker !== 'all') {
       rows.push(`"Line Worker: ${getLineWorkerName(selectedLineWorker)}"`);
+    } else if (hideLineWorkerFilter && lineWorkers.length > 0) {
+      rows.push(`"Line Worker: ${lineWorkers[0].displayName || 'Line Worker'}"`);
     }
     if (selectedArea !== 'all') {
       rows.push(`"Service Area: ${getAreaName(selectedArea)}"`);
@@ -374,6 +391,11 @@ export function DaySheet({
     if (showLineWorkerColumn) upiRow.push('');
     if (showAreaColumn) upiRow.push('');
     rows.push(upiRow.join(','));
+
+    let bankRow = ['', 'Total Bank Transfer', '', bankTotal.toString(), 'BANK_TRANSFER', '', ''];
+    if (showLineWorkerColumn) bankRow.push('');
+    if (showAreaColumn) bankRow.push('');
+    rows.push(bankRow.join(','));
 
     const totalRow = ['', 'Grand Total', '', totalAmount.toString(), '', ''];
     if (showLineWorkerColumn) totalRow.push('');

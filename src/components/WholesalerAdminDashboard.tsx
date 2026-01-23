@@ -18,6 +18,7 @@ import { DatePicker } from '@/components/ui/date-picker';
 import { ModernDateRangePicker } from '@/components/ui/ModernDateRangePicker';
 import { Skeleton } from '@/components/ui/skeleton';
 import { LoadingOverlay } from '@/components/ui/LoadingOverlay';
+import * as XLSX from 'xlsx';
 import { LoadingButton } from '@/components/ui/LoadingButton';
 import { cleanPhoneNumber } from '@/lib/utils';
 import { LoadingText } from '@/components/ui/LoadingText';
@@ -258,9 +259,11 @@ export function WholesalerAdminDashboard() {
 
   // Payment Verification State
   const [isVerificationModalOpen, setIsVerificationModalOpen] = useState(false);
+  const [showDownloadModal, setShowDownloadModal] = useState(false);
   const [selectedPaymentForVerification, setSelectedPaymentForVerification] = useState<Payment | null>(null);
   const [isMarkingVerified, setIsMarkingVerified] = useState(false);
   const [paymentMethodFilter, setPaymentMethodFilter] = useState<'all' | 'UPI' | 'CASH' | 'BANK_TRANSFER'>('all');
+  const [retailerSearchQuery, setRetailerSearchQuery] = useState('');
 
   const handleOpenVerification = (payment: Payment) => {
     setSelectedPaymentForVerification(payment);
@@ -280,17 +283,28 @@ export function WholesalerAdminDashboard() {
         p.id === paymentId ? { ...p, verified: true, proofUrl: undefined, proofPath: undefined } : p
       ));
 
-      // Find next pending payment if we are in review mode
-      const pendingPayments = payments.filter(p =>
-        p.id !== paymentId && // Exclude current
+      // Get ALL pending payments (old state, so current is still here)
+      const allPendingIncludingCurrent = payments.filter(p =>
         !p.verified &&
         p.method === 'UPI' &&
         p.state !== 'CANCELLED'
       ).sort((a, b) => b.createdAt.toDate().getTime() - a.createdAt.toDate().getTime());
 
-      if (pendingPayments.length > 0) {
-        // Auto-advance to next
-        setSelectedPaymentForVerification(pendingPayments[0]);
+      // Find current index
+      const currentIndex = allPendingIncludingCurrent.findIndex(p => p.id === paymentId);
+
+      // Filter out the verified one to get the target list
+      const remainingPending = allPendingIncludingCurrent.filter(p => p.id !== paymentId);
+
+      if (remainingPending.length > 0) {
+        // Try to pick the payment at the same index (which would be the "next" one after removal)
+        // If index is at end, wrap to 0.
+        let nextIndex = currentIndex;
+        if (nextIndex >= remainingPending.length) {
+          nextIndex = 0;
+        }
+
+        setSelectedPaymentForVerification(remainingPending[nextIndex]);
       } else {
         // No more pending, close modal
         setIsVerificationModalOpen(false);
@@ -310,20 +324,36 @@ export function WholesalerAdminDashboard() {
   const handleSkipVerification = () => {
     if (!selectedPaymentForVerification) return;
 
-    // Find next pending payment
+    // Get ALL pending payments (including current one)
     const pendingPayments = payments.filter(p =>
       !p.verified &&
       p.method === 'UPI' &&
-      p.state !== 'CANCELLED' &&
-      p.id !== selectedPaymentForVerification.id
+      p.state !== 'CANCELLED'
     ).sort((a, b) => b.createdAt.toDate().getTime() - a.createdAt.toDate().getTime());
 
-    if (pendingPayments.length > 0) {
-      setSelectedPaymentForVerification(pendingPayments[0]);
-    } else {
+    if (pendingPayments.length === 0) {
       setIsVerificationModalOpen(false);
       setSelectedPaymentForVerification(null);
+      return;
     }
+
+    // Find index of current payment
+    const currentIndex = pendingPayments.findIndex(p => p.id === selectedPaymentForVerification.id);
+
+    // Calculate next index (circular)
+    let nextIndex = 0;
+    if (currentIndex !== -1) {
+      nextIndex = (currentIndex + 1) % pendingPayments.length;
+    }
+
+    const nextPayment = pendingPayments[nextIndex];
+
+    // If we only have 1 payment and we skip, we just stay on it? 
+    // Or users might expect it to close if they keep skipping?
+    // User requirement: "keep going to next transaction proofs". 
+    // If we land on the same one, it's fine, provided we tried to move.
+
+    setSelectedPaymentForVerification(nextPayment);
   };
 
   // Wrapper function for Select component that only takes the value parameter
@@ -741,25 +771,38 @@ export function WholesalerAdminDashboard() {
         });
       }
 
-      // Recompute retailer data for accuracy
-      setDataFetchProgress(80);
-      try {
-        console.log('🔄 Recomputing retailer data for accuracy...');
-        await Promise.all(retailersData.map(retailer =>
-          retailerService.recomputeRetailerData(retailer.id, currentTenantId)
-        ));
-        // Refresh retailers after recomputation
-        const updatedRetailers = await retailerService.getAll(currentTenantId);
-        setRetailers(updatedRetailers);
-        console.log('✅ Retailer data recomputed and updated');
+      // Recompute retailer data for accuracy (BACKGROUND PROCESS)
+      // This is moved to background to prevent dashboard loading from getting stuck at 80%
+      console.log('🔄 Starting background retailer recomputation...');
 
-        // Regenerate activity logs with updated retailer data to fix "Unknown" retailer names
-        const refreshedLogs = generateActivityLogs(activityLogsData, updatedRetailers, lineWorkersData);
-        setActivityLogs(refreshedLogs);
-        console.log('✅ Activity logs regenerated with updated retailer names');
-      } catch (error) {
-        console.warn('Warning: Could not recompute retailer data:', error);
-      }
+      // Promise chain for background processing - non-blocking
+      Promise.all(retailersData.map(retailer =>
+        retailerService.recomputeRetailerData(retailer.id, currentTenantId)
+      )).then(async () => {
+        // Only proceed if component is still mounted/valid (implicit in React state updates usually, but good to be safe)
+        // Note: In functional components, state updates on unmounted components log a warning but don't crash.
+
+        console.log('✅ Background recomputation complete - fetching updates');
+        try {
+          const updatedRetailers = await retailerService.getAll(currentTenantId);
+          setRetailers(updatedRetailers);
+          console.log('✅ Retailer data recomputed and updated silently');
+
+          // Regenerate activity logs with updated retailer data to fix "Unknown" retailer names
+          // We use the functional update form of setActivityLogs if we needed previous state, 
+          // but here we are regenerating from source data + new retailers.
+          // Note: We need the *latest* activityLogsData. 
+          // Accessing 'activityLogsData' from this closure is safe as it captures the data from this render cycle's fetch.
+          const refreshedLogs = generateActivityLogs(activityLogsData, updatedRetailers, lineWorkersData);
+          setActivityLogs(refreshedLogs);
+          console.log('✅ Activity logs regenerated with updated retailer names');
+        } catch (err) {
+          console.error('❌ Failed to fetch updated retailers after background recompute:', err);
+        }
+      }).catch(error => {
+        console.warn('⚠️ Background recompute warning (non-fatal):', error);
+      });
+
 
       // Generate initial activity logs (will be refreshed after retailer data update)
       const logs = generateActivityLogs(activityLogsData, retailersData, lineWorkersData);
@@ -1940,227 +1983,261 @@ export function WholesalerAdminDashboard() {
   );
 
   // Retailers Component
-  const Retailers = () => (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:pt-8 sm:flex-row sm:justify-between sm:items-start gap-4">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">Retailers Management</h2>
-          <p className="text-gray-600">Manage your retailer network</p>
+  // Retailers Component (Render Function to avoid re-mounting)
+  const renderRetailers = () => {
+    // Filter retailers based on search query
+    const filteredRetailers = retailers.filter(retailer => {
+      if (!retailerSearchQuery) return true;
+      const query = retailerSearchQuery.toLowerCase();
+      const name = (retailer.profile?.realName || retailer.name || '').toLowerCase();
+      const code = String(retailer.code || retailer.id.slice(0, 6)).toLowerCase();
+      return name.includes(query) || code.includes(query);
+    });
+
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-col sm:pt-8 sm:flex-row sm:justify-between sm:items-start gap-4">
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900">Retailers Management</h2>
+            <p className="text-gray-600">Manage your retailer network</p>
+          </div>
+          <div className="flex gap-2">
+            <LoadingButton
+              isLoading={mainLoadingState.loadingState.isRefreshing}
+              loadingText="Refreshing..."
+              onClick={handleManualRefresh}
+            >
+              <RefreshCw className="h-4 w-4 mr-2" />
+            </LoadingButton>
+            <Button variant="outline" onClick={() => setShowBulkCreate(true)}>
+              <Upload className="h-4 w-4 mr-2" />
+              Bulk Create
+            </Button>
+            <Dialog key="retailer-dialog" open={showCreateRetailer} onOpenChange={handleRetailerDialogChange}>
+              <DialogTrigger asChild>
+                <Button>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Create Retailer
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-md">
+                <DialogHeader>
+                  <DialogTitle>Create New Retailer</DialogTitle>
+                  <DialogDescription>
+                    Add a new retailer to your network
+                  </DialogDescription>
+                </DialogHeader>
+                <CreateRetailerForm
+                  key="retailer-form"
+                  onSubmit={handleCreateRetailer}
+                  onAddExistingRetailer={handleAddExistingRetailer}
+                  areas={areas}
+                  existingRetailers={retailers}
+                  onCancel={() => setShowCreateRetailer(false)}
+                />
+              </DialogContent>
+            </Dialog>
+
+            <BulkCreateRetailerModal
+              isOpen={showBulkCreate}
+              onClose={() => setShowBulkCreate(false)}
+              onSuccess={() => {
+                setShowBulkCreate(false);
+                fetchDashboardData();
+                showSuccess('Bulk creation completed successfully');
+              }}
+              areas={areas}
+              tenantId={getCurrentTenantId() || ''}
+            />
+          </div>
         </div>
-        <div className="flex gap-2">
-          <LoadingButton
-            isLoading={mainLoadingState.loadingState.isRefreshing}
-            loadingText="Refreshing..."
-            onClick={handleManualRefresh}
-          >
-            <RefreshCw className="h-4 w-4 mr-2" />
-          </LoadingButton>
-          <Button variant="outline" onClick={() => setShowBulkCreate(true)}>
-            <Upload className="h-4 w-4 mr-2" />
-            Bulk Create
-          </Button>
-          <Dialog key="retailer-dialog" open={showCreateRetailer} onOpenChange={handleRetailerDialogChange}>
-            <DialogTrigger asChild>
-              <Button>
-                <Plus className="h-4 w-4 mr-2" />
-                Create Retailer
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-md">
+
+        <Card>
+          <CardHeader>
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+              <div>
+                <CardTitle>All Retailers</CardTitle>
+                <CardDescription>Manage your retailer network</CardDescription>
+              </div>
+              <div className="relative w-full sm:w-64">
+                <Search className="absolute left-2 top-2.5 h-4 w-4 text-gray-500" />
+                <Input
+                  placeholder="Search by name or code..."
+                  value={retailerSearchQuery}
+                  onChange={(e) => setRetailerSearchQuery(e.target.value)}
+                  className="pl-8"
+                />
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {mainLoadingState.loadingState.isRefreshing ? (
+              <div className="space-y-4">
+                {[...Array(5)].map((_, index) => (
+                  <div key={index} className="flex items-center space-x-4">
+                    <div className="space-y-2 flex-1">
+                      <Skeleton className="h-4 w-48 animate-pulse" />
+                      <Skeleton className="h-3 w-32 animate-pulse" />
+                    </div>
+                    <Skeleton className="h-4 w-24 animate-pulse" />
+                    <Skeleton className="h-4 w-20 animate-pulse" />
+                    <Skeleton className="h-4 w-16 animate-pulse" />
+                    <div className="flex space-x-2">
+                      <Skeleton className="h-8 w-16 animate-pulse" />
+                      <Skeleton className="h-8 w-16 animate-pulse" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : filteredRetailers.length === 0 ? (
+              <div className="text-center py-8 text-gray-500">
+                No retailers found matching "{retailerSearchQuery}"
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Code</TableHead>
+                      <TableHead>Retailer</TableHead>
+                      <TableHead>Area</TableHead>
+                      <TableHead>Phone</TableHead>
+                      <TableHead>Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredRetailers.map((retailer) => (
+                      <TableRow key={retailer.id}>
+                        <TableCell className="font-mono text-sm">
+                          {retailer.code || retailer.id.substring(0, 6).toUpperCase()}
+                        </TableCell>
+                        <TableCell>
+                          <div className="font-medium">
+                            {retailer.profile?.realName || retailer.name}
+                          </div>
+                          <div className="text-sm text-gray-500">
+                            {retailer.profile?.address || retailer.address}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          {areas.find(a => a.id === retailer.areaId)?.name || 'Unassigned'}
+                        </TableCell>
+                        <TableCell>
+                          {retailer.profile?.phone || retailer.phone}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center space-x-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setEditingRetailer(retailer)}
+                            >
+                              <Edit className="h-4 w-4 mr-1" />
+                              Edit
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleDeleteRetailer(retailer.id)}
+                            >
+                              <Trash2 className="h-4 w-4 mr-1" />
+                              Delete
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+
+        {/* Edit Retailer Dialog */}
+        {editingRetailer && (
+          <Dialog open={!!editingRetailer} onOpenChange={(open) => !open && setEditingRetailer(null)}>
+            <DialogContent className="max-w-lg">
               <DialogHeader>
-                <DialogTitle>Create New Retailer</DialogTitle>
+                <DialogTitle>Edit Retailer Service Area</DialogTitle>
                 <DialogDescription>
-                  Add a new retailer to your network
+                  Update the service area for this retailer
                 </DialogDescription>
               </DialogHeader>
-              <CreateRetailerForm
-                key="retailer-form"
-                onSubmit={handleCreateRetailer}
-                onAddExistingRetailer={handleAddExistingRetailer}
-                areas={areas}
-                existingRetailers={retailers}
-                onCancel={() => setShowCreateRetailer(false)}
-              />
-            </DialogContent>
-          </Dialog>
+              {editingRetailer && (
+                <RetailerServiceAreaEdit
+                  retailer={editingRetailer}
+                  onSubmit={async (data) => {
+                    const currentTenantId = getCurrentTenantId();
+                    if (!currentTenantId) return;
 
-          <BulkCreateRetailerModal
-            isOpen={showBulkCreate}
-            onClose={() => setShowBulkCreate(false)}
-            onSuccess={() => {
-              setShowBulkCreate(false);
-              fetchDashboardData();
-              showSuccess('Bulk creation completed successfully');
-            }}
-            areas={areas}
-            tenantId={getCurrentTenantId() || ''}
-          />
-        </div>
-      </div>
+                    try {
+                      console.log('🔧 Starting retailer update...');
 
-      <Card>
-        <CardHeader>
-          <CardTitle>All Retailers</CardTitle>
-          <CardDescription>Manage your retailer network</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {mainLoadingState.loadingState.isRefreshing ? (
-            <div className="space-y-4">
-              {[...Array(5)].map((_, index) => (
-                <div key={index} className="flex items-center space-x-4">
-                  <div className="space-y-2 flex-1">
-                    <Skeleton className="h-4 w-48 animate-pulse" />
-                    <Skeleton className="h-3 w-32 animate-pulse" />
-                  </div>
-                  <Skeleton className="h-4 w-24 animate-pulse" />
-                  <Skeleton className="h-4 w-20 animate-pulse" />
-                  <Skeleton className="h-4 w-16 animate-pulse" />
-                  <div className="flex space-x-2">
-                    <Skeleton className="h-8 w-16 animate-pulse" />
-                    <Skeleton className="h-8 w-16 animate-pulse" />
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Retailer</TableHead>
-                    <TableHead>Area</TableHead>
-                    <TableHead>Phone</TableHead>
-                    <TableHead>Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {retailers.map((retailer) => (
-                    <TableRow key={retailer.id}>
-                      <TableCell>
-                        <div className="font-medium">
-                          {retailer.profile?.realName || retailer.name}
-                        </div>
-                        <div className="text-sm text-gray-500">
-                          {retailer.profile?.address || retailer.address}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        {areas.find(a => a.id === retailer.areaId)?.name || 'Unassigned'}
-                      </TableCell>
-                      <TableCell>
-                        {retailer.profile?.phone || retailer.phone}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center space-x-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setEditingRetailer(retailer)}
-                          >
-                            <Edit className="h-4 w-4 mr-1" />
-                            Edit
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleDeleteRetailer(retailer.id)}
-                          >
-                            <Trash2 className="h-4 w-4 mr-1" />
-                            Delete
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Edit Retailer Dialog */}
-      {editingRetailer && (
-        <Dialog open={!!editingRetailer} onOpenChange={(open) => !open && setEditingRetailer(null)}>
-          <DialogContent className="max-w-lg">
-            <DialogHeader>
-              <DialogTitle>Edit Retailer Service Area</DialogTitle>
-              <DialogDescription>
-                Update the service area for this retailer
-              </DialogDescription>
-            </DialogHeader>
-            {editingRetailer && (
-              <RetailerServiceAreaEdit
-                retailer={editingRetailer}
-                onSubmit={async (data) => {
-                  const currentTenantId = getCurrentTenantId();
-                  if (!currentTenantId) return;
-
-                  try {
-                    console.log('🔧 Starting retailer update...');
-
-                    // Update wholesaler assignment (area/zipcodes)
-                    await retailerService.updateWholesalerAssignment(
-                      editingRetailer.id,
-                      currentTenantId,
-                      data.areaId,
-                      data.zipcodes
-                    );
-                    console.log('✅ Wholesaler assignment updated successfully');
-
-                    // Update code if provided
-                    // Update code if provided using upsertWholesalerData to ensure isolation
-                    if (data.code !== undefined) {
-                      await retailerService.upsertWholesalerData(
+                      // Update wholesaler assignment (area/zipcodes)
+                      await retailerService.updateWholesalerAssignment(
                         editingRetailer.id,
                         currentTenantId,
-                        { code: data.code || '' } // Pass empty string if undefined/null to clear it
+                        data.areaId,
+                        data.zipcodes
                       );
-                      console.log('✅ Retailer code updated successfully (Wholesaler-Specific)');
+                      console.log('✅ Wholesaler assignment updated successfully');
+
+                      // Update code if provided
+                      // Update code if provided using upsertWholesalerData to ensure isolation
+                      if (data.code !== undefined) {
+                        await retailerService.upsertWholesalerData(
+                          editingRetailer.id,
+                          currentTenantId,
+                          { code: data.code || '' } // Pass empty string if undefined/null to clear it
+                        );
+                        console.log('✅ Retailer code updated successfully (Wholesaler-Specific)');
+                      }
+
+                      // Add a small delay to ensure Firestore cache is updated
+                      await new Promise(resolve => setTimeout(resolve, 500));
+
+                      // Fetch the updated retailer with proper data merging
+                      const updatedRetailer = await retailerService.getRetailerForTenant(editingRetailer.id, currentTenantId);
+
+                      if (updatedRetailer) {
+                        // Update only the specific retailer in the existing retailers array
+                        setRetailers(prevRetailers =>
+                          prevRetailers.map(r =>
+                            r.id === editingRetailer.id ? updatedRetailer : r
+                          )
+                        );
+                        console.log('🔄 Updated retailer in state with new area/zipcodes');
+
+                        // Show success feedback with confetti
+                        const areaName = areas.find(a => a.id === data.areaId)?.name || 'Updated area';
+                        showSuccess(`Service area for "${editingRetailer.name}" updated to "${areaName}" successfully!`);
+                        setTriggerLineWorkerConfetti(true);
+
+                        // Close dialog after showing success
+                        setTimeout(() => {
+                          setEditingRetailer(null);
+                          setTriggerLineWorkerConfetti(false);
+                        }, 1500);
+                      } else {
+                        console.error('❌ Could not fetch updated retailer data');
+                      }
+                    } catch (err: any) {
+                      console.error('❌ Error updating retailer service area:', err);
+                      setError(err.message || 'Failed to update retailer service area');
                     }
-
-                    // Add a small delay to ensure Firestore cache is updated
-                    await new Promise(resolve => setTimeout(resolve, 500));
-
-                    // Fetch the updated retailer with proper data merging
-                    const updatedRetailer = await retailerService.getRetailerForTenant(editingRetailer.id, currentTenantId);
-
-                    if (updatedRetailer) {
-                      // Update only the specific retailer in the existing retailers array
-                      setRetailers(prevRetailers =>
-                        prevRetailers.map(r =>
-                          r.id === editingRetailer.id ? updatedRetailer : r
-                        )
-                      );
-                      console.log('🔄 Updated retailer in state with new area/zipcodes');
-
-                      // Show success feedback with confetti
-                      const areaName = areas.find(a => a.id === data.areaId)?.name || 'Updated area';
-                      showSuccess(`Service area for "${editingRetailer.name}" updated to "${areaName}" successfully!`);
-                      setTriggerLineWorkerConfetti(true);
-
-                      // Close dialog after showing success
-                      setTimeout(() => {
-                        setEditingRetailer(null);
-                        setTriggerLineWorkerConfetti(false);
-                      }, 1500);
-                    } else {
-                      console.error('❌ Could not fetch updated retailer data');
-                    }
-                  } catch (err: any) {
-                    console.error('❌ Error updating retailer service area:', err);
-                    setError(err.message || 'Failed to update retailer service area');
-                  }
-                }}
-                onCancel={() => setEditingRetailer(null)}
-                areas={areas}
-              />
-            )}
-          </DialogContent>
-        </Dialog>
-      )}
-    </div>
-  );
+                  }}
+                  onCancel={() => setEditingRetailer(null)}
+                  areas={areas}
+                />
+              )}
+            </DialogContent>
+          </Dialog>
+        )}
+      </div>
+    );
+  };
 
   // Line Workers Component
   const LineWorkers = () => (
@@ -2455,8 +2532,8 @@ export function WholesalerAdminDashboard() {
     </div>
   );
 
-  // Transactions Component
-  const Transactions = () => {
+  // Transactions Component (Render Function to avoid re-mounting)
+  const renderTransactions = () => {
     // Filter payments based on selected criteria and sort by most recent first
     const filteredPayments = payments
       .filter(payment => {
@@ -2468,6 +2545,14 @@ export function WholesalerAdminDashboard() {
         // Apply retailer filter
         if (selectedRetailer !== "all" && payment.retailerId !== selectedRetailer) {
           return false;
+        }
+
+        // Apply area filter
+        if (selectedArea !== "all") {
+          const retailer = retailers.find(r => r.id === payment.retailerId);
+          if (retailer?.areaId !== selectedArea) {
+            return false;
+          }
         }
 
         // Apply payment method filter
@@ -2497,6 +2582,186 @@ export function WholesalerAdminDashboard() {
       p.state === 'COMPLETED'
     ).length;
 
+    // Helper to prepare data for export
+    const getExportData = () => {
+      return payments.filter(p => {
+        let include = true;
+        // Filter by payment method
+        if (paymentMethodFilter !== 'all' && p.method !== paymentMethodFilter) include = false;
+        // Filter by line worker
+        if (selectedLineWorker !== 'all' && p.lineWorkerId !== selectedLineWorker) include = false;
+        // Filter by retailer
+        if (selectedRetailer !== 'all' && p.retailerId !== selectedRetailer) include = false;
+        // Filter by area
+        if (selectedArea !== 'all') {
+          const retailer = retailers.find(r => r.id === p.retailerId);
+          if (retailer?.areaId !== selectedArea) include = false;
+        }
+        // Filter by date range
+        const paymentDate = p.createdAt?.toDate?.() || new Date(0);
+        if (paymentDate < transactionsDateRange.startDate || paymentDate > transactionsDateRange.endDate) include = false;
+        return include;
+      })
+        .sort((a, b) => a.createdAt.toMillis() - b.createdAt.toMillis())
+        .map(p => {
+          // Look up details
+          const retailer = retailers.find(r => r.id === p.retailerId);
+          const retailerCode = retailer?.code || retailer?.id?.slice(0, 6).toUpperCase() || 'N/A';
+          const retailerName = retailer?.profile?.realName || p.retailerName || 'Unknown';
+
+          // Look up Area Name
+          const areaId = retailer?.areaId;
+          const area = areas.find(a => a.id === areaId);
+          const areaName = area?.name || 'Unknown Area';
+
+          // Calculate Status
+          let status: string = p.state;
+          if (p.method === 'CASH' || p.method === 'BANK_TRANSFER') {
+            status = 'Verified';
+          } else if (p.method === 'UPI') {
+            status = p.verified ? 'Verified' : 'Pending Verification';
+          } else if (p.verified) {
+            status = 'Verified';
+          }
+
+          return {
+            date: formatDateForExport(p.createdAt),
+            retailerCode,
+            retailerName,
+            amount: p.totalPaid,
+            method: p.method,
+            utr: p.utr || '',
+            lineWorker: p.lineWorkerName || 'Unknown',
+            serviceArea: areaName,
+            status: status
+          };
+        });
+    };
+
+    const handleDownloadReport = (format: 'csv' | 'excel') => {
+      const data = getExportData();
+      const fileName = `Transactions_${formatTimestamp(transactionsDateRange.startDate)}_to_${formatTimestamp(transactionsDateRange.endDate)}`;
+
+      if (format === 'csv') {
+        // Generate CSV content
+        const csvRows: string[] = [];
+
+        // 1. Report Title & Date Range
+        csvRows.push('Report: PharmaLync Transactions Report');
+        csvRows.push(`"Date Range: ${formatTimestamp(transactionsDateRange.startDate)} - ${formatTimestamp(transactionsDateRange.endDate)}"`);
+
+        // 2. Filter Details
+        if (paymentMethodFilter !== 'all') csvRows.push(`"Payment Method: ${paymentMethodFilter}"`);
+        if (selectedArea !== 'all') {
+          const area = areas.find(a => a.id === selectedArea);
+          csvRows.push(`"Service Area: ${area?.name || 'Unknown'}"`);
+        }
+        if (selectedLineWorker !== 'all') {
+          const worker = lineWorkers.find(w => w.id === selectedLineWorker);
+          csvRows.push(`"Line Worker: ${worker?.displayName || 'Unknown'}"`);
+        }
+        if (selectedRetailer !== 'all') {
+          const retailer = retailers.find(r => r.id === selectedRetailer);
+          const retailerName = retailer?.profile?.realName || retailer?.name || 'Unknown';
+          csvRows.push(`"Retailer: ${retailerName}"`);
+        }
+        csvRows.push(''); // Separator
+
+        // 3. Headers
+        const headers = [
+          'Date', 'Retailer Code', 'Retailer Name', 'Amount Collected',
+          'Payment Method', 'UTR Number', 'Line Worker', 'Service Area', 'Status'
+        ];
+        csvRows.push(headers.join(','));
+
+        // 4. Rows
+        data.forEach(row => {
+          const csvRow = [
+            `"${row.date}"`,
+            `"${row.retailerCode}"`,
+            `"${row.retailerName}"`,
+            row.amount.toString(),
+            row.method,
+            `"${row.utr}"`,
+            `"${row.lineWorker}"`,
+            `"${row.serviceArea}"`,
+            `"${row.status}"`
+          ];
+          csvRows.push(csvRow.join(','));
+        });
+
+        const blob = new Blob([csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `${fileName}.csv`;
+        link.click();
+
+      } else {
+        // Excel Export
+        // Create summary sheet data
+        const summaryData = [
+          ['Report', 'PharmaLync Transactions Report'],
+          ['Date Range', `${formatTimestamp(transactionsDateRange.startDate)} - ${formatTimestamp(transactionsDateRange.endDate)}`],
+          ['Generated At', new Date().toLocaleString()]
+        ];
+
+        // Add filter info to summary
+        if (paymentMethodFilter !== 'all') summaryData.push(['Payment Method', paymentMethodFilter]);
+        if (selectedArea !== 'all') {
+          const area = areas.find(a => a.id === selectedArea);
+          summaryData.push(['Service Area', area?.name || 'Unknown']);
+        }
+        if (selectedLineWorker !== 'all') {
+          const worker = lineWorkers.find(w => w.id === selectedLineWorker);
+          summaryData.push(['Line Worker', worker?.displayName || 'Unknown']);
+        }
+
+        // Prepare main data
+        const mainDataHeader = [
+          'Date', 'Retailer Code', 'Retailer Name', 'Amount Collected',
+          'Payment Method', 'UTR Number', 'Line Worker', 'Service Area', 'Status'
+        ];
+
+        const mainDataRows = data.map(row => [
+          row.date, row.retailerCode, row.retailerName, row.amount,
+          row.method, row.utr, row.lineWorker, row.serviceArea, row.status
+        ]);
+
+        // Create workbook
+        const wb = XLSX.utils.book_new();
+
+        // Add Main Data Sheet
+        // We can combine summary + empty row + headers + data
+        const wsData = [
+          ...summaryData,
+          [], // Empty row
+          mainDataHeader,
+          ...mainDataRows
+        ];
+
+        const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+        // Adjust column widths
+        const wscols = [
+          { wch: 20 }, // Date
+          { wch: 15 }, // Code
+          { wch: 30 }, // Name
+          { wch: 15 }, // Amount
+          { wch: 15 }, // Method
+          { wch: 20 }, // UTR
+          { wch: 20 }, // Worker
+          { wch: 20 }, // Area
+          { wch: 20 }  // Status
+        ];
+        ws['!cols'] = wscols;
+
+        XLSX.utils.book_append_sheet(wb, ws, "Transactions");
+        XLSX.writeFile(wb, `${fileName}.xlsx`);
+      }
+
+      setShowDownloadModal(false);
+    };
+
     return (
       <div className="space-y-6">
         <div className="flex flex-col sm:pt-8 sm:flex-row sm:justify-between sm:items-start gap-4">
@@ -2515,6 +2780,18 @@ export function WholesalerAdminDashboard() {
                 <SelectItem value="CASH">Cash</SelectItem>
                 <SelectItem value="UPI">UPI</SelectItem>
                 <SelectItem value="BANK_TRANSFER">Bank Transfer</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Select value={selectedArea} onValueChange={setSelectedArea}>
+              <SelectTrigger className="w-36">
+                <SelectValue placeholder="Area" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Areas</SelectItem>
+                {areas.map(area => (
+                  <SelectItem key={area.id} value={area.id}>{area.name}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
 
@@ -2547,7 +2824,7 @@ export function WholesalerAdminDashboard() {
               endDate={transactionsDateRange.endDate}
               onChange={(range) => setTransactionsDateRange(range)}
             />
-            <Button
+            {/* <Button
               onClick={handleManualRefresh}
               disabled={mainLoadingState.loadingState.isRefreshing}
               size="sm"
@@ -2557,132 +2834,74 @@ export function WholesalerAdminDashboard() {
               ) : (
                 <RefreshCw className="h-4 w-4" />
               )}
-            </Button>
+            </Button> */}
             <Button
               variant="outline"
               size="sm"
-              onClick={() => {
-                // Export filtered transactions as CSV
-                const filteredPayments = payments.filter(p => {
-                  let include = true;
-                  // Filter by payment method
-                  if (paymentMethodFilter !== 'all' && p.method !== paymentMethodFilter) include = false;
-                  // Filter by line worker
-                  if (selectedLineWorker !== 'all' && p.lineWorkerId !== selectedLineWorker) include = false;
-                  // Filter by retailer
-                  if (selectedRetailer !== 'all' && p.retailerId !== selectedRetailer) include = false;
-                  // Filter by date range
-                  const paymentDate = p.createdAt?.toDate?.() || new Date(0);
-                  if (paymentDate < transactionsDateRange.startDate || paymentDate > transactionsDateRange.endDate) include = false;
-                  return include;
-                })
-                  .sort((a, b) => a.createdAt.toMillis() - b.createdAt.toMillis());
-
-                // Generate CSV with standardized format matching DaySheet
-                const csvRows: string[] = [];
-
-                // 1. Report Title & Date Range
-                csvRows.push('Report: Transactions Report');
-                csvRows.push(`"Date Range: ${formatTimestamp(transactionsDateRange.startDate)} - ${formatTimestamp(transactionsDateRange.endDate)}"`);
-
-                // 2. Filter Details
-                if (paymentMethodFilter !== 'all') {
-                  csvRows.push(`"Payment Method: ${paymentMethodFilter}"`);
-                }
-                if (selectedLineWorker !== 'all') {
-                  // Find worker name
-                  const worker = lineWorkers.find(w => w.id === selectedLineWorker);
-                  csvRows.push(`"Line Worker: ${worker?.displayName || 'Unknown'}"`);
-                }
-                if (selectedRetailer !== 'all') {
-                  // Find retailer name
-                  const retailer = retailers.find(r => r.id === selectedRetailer);
-                  const retailerName = retailer?.profile?.realName || retailer?.name || 'Unknown';
-                  csvRows.push(`"Retailer: ${retailerName}"`);
-                }
-                csvRows.push(''); // Empty row for separation
-
-                // 3. Column Headers
-                // Combined set: DaySheet headers + Transaction specifics (Date, Status)
-                const headers = [
-                  'Date',
-                  'Retailer Code',
-                  'Retailer Name',
-                  'Amount Collected',
-                  'Payment Method',
-                  'UTR Number',
-                  'Line Worker',
-                  'Service Area',
-                  'Status'
-                ];
-                csvRows.push(headers.join(','));
-
-                // 4. Data Rows
-                filteredPayments.forEach(p => {
-                  // Look up details
-                  const retailer = retailers.find(r => r.id === p.retailerId);
-                  const retailerCode = retailer?.code || retailer?.id?.slice(0, 6).toUpperCase() || 'N/A';
-                  const retailerName = retailer?.profile?.realName || p.retailerName || 'Unknown';
-
-                  // Look up Area Name
-                  const areaId = retailer?.areaId;
-                  const area = areas.find(a => a.id === areaId);
-                  const areaName = area?.name || 'Unknown Area';
-
-                  const row = [
-                    `"${formatDateForExport(p.createdAt)}"`,
-                    `"${retailerCode}"`,
-                    `"${retailerName}"`,
-                    p.totalPaid.toString(),
-                    p.method,
-                    `"${p.utr || ''}"`,
-                    `"${p.lineWorkerName || 'Unknown'}"`,
-                    `"${areaName}"`,
-                    `"${p.verified ? 'Verified' : (p.proofUrl ? 'Pending Verification' : p.state)}"`
-                  ];
-                  csvRows.push(row.join(','));
-                });
-
-                const csvContent = csvRows.join('\n');
-                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-                const fileName = `Transactions_${formatTimestamp(transactionsDateRange.startDate)}_to_${formatTimestamp(transactionsDateRange.endDate)}.csv`;
-
-                // Trigger download
-                const link = document.createElement('a');
-                link.href = URL.createObjectURL(blob);
-                link.download = fileName;
-                link.click();
-              }}
+              onClick={() => setShowDownloadModal(true)}
             >
               <Download className="h-4 w-4 mr-1" />
-              CSV
+              Report
             </Button>
           </div>
         </div>
 
+        {/* Download Modal - defined inline here for access to handler */}
+        <Dialog open={showDownloadModal} onOpenChange={setShowDownloadModal}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Download Report</DialogTitle>
+              <DialogDescription>
+                Select a format to download the transactions report.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid grid-cols-2 gap-4 py-4">
+              <Button
+                variant="outline"
+                className="h-24 flex flex-col items-center justify-center gap-2 hover:bg-green-50 hover:border-green-200 hover:text-green-700"
+                onClick={() => handleDownloadReport('excel')}
+              >
+                <div className="bg-green-100 p-2 rounded-full">
+                  <Table className="h-6 w-6 text-green-600" />
+                </div>
+                <span className="font-medium">Excel (.xlsx)</span>
+              </Button>
+              <Button
+                variant="outline"
+                className="h-24 flex flex-col items-center justify-center gap-2 hover:bg-blue-50 hover:border-blue-200 hover:text-blue-700"
+                onClick={() => handleDownloadReport('csv')}
+              >
+                <div className="bg-blue-100 p-2 rounded-full">
+                  <Download className="h-6 w-6 text-blue-600" />
+                </div>
+                <span className="font-medium">CSV (.csv)</span>
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
         {/* Verification Alert Banner */}
         {
           pendingVerificationCount > 0 && (
-            <Alert className="bg-blue-50 border-blue-200 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <Alert className="bg-blue-50 border-blue-200 py-2 flex flex-col md:flex-row items-center justify-between gap-3">
               <div className="flex items-center gap-3">
-                <div className="bg-blue-100 p-2 rounded-full">
-                  <AlertCircle className="h-5 w-5 text-blue-600" />
-                </div>
-                <div>
-                  <AlertTitle className="text-blue-800 font-semibold text-base">Payment Proofs Pending Review</AlertTitle>
-                  <AlertDescription className="text-blue-600">
-                    You have <strong>{pendingVerificationCount}</strong> unverified UPI payments waiting for approval.
-                  </AlertDescription>
+                <AlertCircle className="h-5 w-5 text-blue-600" />
+                <div className="flex items-center gap-2">
+                  <span className="text-blue-800 font-semibold text-sm">Payment Proofs Pending:</span>
+                  <span className="text-blue-600 text-sm">
+                    <strong>{pendingVerificationCount}</strong> unverified UPI payments.
+                  </span>
                 </div>
               </div>
               <Button
+                size="sm"
                 onClick={() => {
                   // Find first unverified UPI payment
                   const firstPending = payments.filter(p => !p.verified && p.method === 'UPI' && p.state === 'COMPLETED')
                     .sort((a, b) => b.createdAt.toDate().getTime() - a.createdAt.toDate().getTime())[0];
                   if (firstPending) handleOpenVerification(firstPending);
                 }}
-                className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm whitespace-nowrap w-full md:w-auto"
+                className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm whitespace-nowrap w-full md:w-auto h-8 text-xs"
               >
                 Review Pending Proofs
               </Button>
@@ -2696,6 +2915,40 @@ export function WholesalerAdminDashboard() {
             <CardDescription>All payment records in your system</CardDescription>
           </CardHeader>
           <CardContent>
+            {/* Transaction Summary Header */}
+            <div className="mb-6 border-b pb-6">
+              {/* <h3 className="text-sm font-medium text-gray-500 mb-4 uppercase tracking-wider">Filtered Collection Summary</h3> */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="p-4 bg-gray-50 rounded-lg border border-gray-100">
+                  <div className="text-sm text-gray-500 mb-1">Total Collection</div>
+                  <div className="text-2xl font-bold text-gray-900">
+                    {formatCurrency(completedPayments.reduce((sum, p) => sum + p.totalPaid, 0))}
+                  </div>
+                  <div className="text-xs text-blue-600 mt-1 font-medium">
+                    {completedPayments.length} transactions
+                  </div>
+                </div>
+                <div className="p-4 bg-green-50 rounded-lg border border-green-100">
+                  <div className="text-sm text-green-700 mb-1">Cash Collection</div>
+                  <div className="text-2xl font-bold text-gray-900">
+                    {formatCurrency(completedPayments.filter(p => p.method === 'CASH').reduce((sum, p) => sum + p.totalPaid, 0))}
+                  </div>
+                  <div className="text-xs text-green-600 mt-1 font-medium">
+                    {completedPayments.filter(p => p.method === 'CASH').length} transactions
+                  </div>
+                </div>
+                <div className="p-4 bg-purple-50 rounded-lg border border-purple-100">
+                  <div className="text-sm text-purple-700 mb-1">UPI Collection</div>
+                  <div className="text-2xl font-bold text-gray-900">
+                    {formatCurrency(completedPayments.filter(p => p.method === 'UPI').reduce((sum, p) => sum + p.totalPaid, 0))}
+                  </div>
+                  <div className="text-xs text-purple-600 mt-1 font-medium">
+                    {completedPayments.filter(p => p.method === 'UPI').length} transactions
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <Tabs value={paymentTab} onValueChange={setPaymentTab} className="w-full">
               <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="completed" className="flex items-center space-x-2">
@@ -2731,6 +2984,7 @@ export function WholesalerAdminDashboard() {
                           <TableHead>Date</TableHead>
                           <TableHead>Retailer</TableHead>
                           <TableHead>Line Worker</TableHead>
+                          <TableHead>Area</TableHead>
                           <TableHead>Amount</TableHead>
                           <TableHead>Method</TableHead>
                           <TableHead>Status</TableHead>
@@ -2740,18 +2994,29 @@ export function WholesalerAdminDashboard() {
                       <TableBody>
                         {completedPayments.map((payment) => {
                           const retailerExists = retailers.some(r => r.id === payment.retailerId);
+                          const retailer = retailers.find(r => r.id === payment.retailerId);
+                          const area = retailer?.areaId ? areas.find(a => a.id === retailer.areaId) : null;
+
                           return (
                             <TableRow key={payment.id} className={!payment.verified && payment.method === 'UPI' ? "bg-blue-50/50" : ""}>
                               <TableCell>{formatTimestampWithTime(payment.createdAt)}</TableCell>
                               <TableCell>
                                 <div className="flex flex-col">
-                                  <span>{payment.retailerName}</span>
+                                  <div className="flex items-center gap-2">
+                                    {retailer?.code && (
+                                      <Badge variant="outline" className="text-xs font-mono font-normal text-gray-500 border-gray-300">
+                                        {retailer.code}
+                                      </Badge>
+                                    )}
+                                    <span>{payment.retailerName}</span>
+                                  </div>
                                   {!retailerExists && (
-                                    <Badge variant="destructive" className="mt-1 text-xs">Deleted</Badge>
+                                    <Badge variant="destructive" className="mt-1 text-xs w-fit">Deleted</Badge>
                                   )}
                                 </div>
                               </TableCell>
                               <TableCell>{payment.lineWorkerName}</TableCell>
+                              <TableCell className="text-gray-500 text-sm">{area?.name || '-'}</TableCell>
                               <TableCell className="font-semibold">{formatCurrency(payment.totalPaid)}</TableCell>
                               <TableCell>
                                 <div className="flex flex-col gap-1">
@@ -2904,6 +3169,8 @@ export function WholesalerAdminDashboard() {
                 </div>
               </TabsContent>
             </Tabs >
+
+
           </CardContent >
         </Card >
       </div >
@@ -3686,10 +3953,10 @@ export function WholesalerAdminDashboard() {
           <div className="max-w-7xl mx-auto space-y-4 sm:space-y-6">
             {activeNav === 'overview' && renderOverview()}
             {activeNav === 'areas' && <Areas />}
-            {activeNav === 'retailers' && <Retailers />}
+            {activeNav === 'retailers' && renderRetailers()}
             {activeNav === 'retailer-details' && <RetailerDetails />}
             {activeNav === 'workers' && <LineWorkers />}
-            {activeNav === 'transactions' && <Transactions />}
+            {activeNav === 'transactions' && renderTransactions()}
             {activeNav === 'analytics' && <AnalyticsComponent />}
             {activeNav === 'settings' && (
               <div className="sm:pt-8">
