@@ -1913,7 +1913,12 @@ export function WholesalerAdminDashboard() {
                       <MapPin className="h-5 w-5 text-blue-600" />
                     </div>
                     <div>
-                      <div className="font-medium">{area.name}</div>
+                      <div className="font-medium">
+                        {area.name}
+                        <span className="text-gray-500 font-normal ml-2 text-sm">
+                          ({retailers.filter(r => r.areaId === area.id).length} retailers)
+                        </span>
+                      </div>
                       <div className="text-sm text-gray-500">
                         {area.zipcodes.length} zip codes
                       </div>

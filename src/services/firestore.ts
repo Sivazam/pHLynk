@@ -89,8 +89,12 @@ export class FirestoreService<T extends BaseDocument> {
         // Check if tenant has access to this document
         let hasAccess = false;
 
+        // System admin has access to everything
+        if (tenantId === 'system') {
+          hasAccess = true;
+        }
         // New way: check tenantIds array
-        if (data.tenantIds && Array.isArray(data.tenantIds)) {
+        else if (data.tenantIds && Array.isArray(data.tenantIds)) {
           hasAccess = data.tenantIds.includes(tenantId);
         }
         // Backward compatibility: check single tenantId
@@ -279,6 +283,28 @@ export class TenantService extends FirestoreService<Tenant> {
 export class UserService extends FirestoreService<User> {
   constructor() {
     super(COLLECTIONS.USERS);
+  }
+
+  async getAll(tenantId: string, constraints: QueryConstraint[] = []): Promise<User[]> {
+    try {
+      // Users use 'tenantId' string field, not 'tenantIds' array
+      const q = query(
+        collection(db, this.collectionName),
+        where('tenantId', '==', tenantId),
+        ...constraints
+      );
+      const querySnapshot = await getDocs(q);
+
+      const documents: User[] = [];
+      querySnapshot.forEach((doc: QueryDocumentSnapshot) => {
+        documents.push({ ...doc.data(), id: doc.id } as User);
+      });
+
+      return documents;
+    } catch (error) {
+      logger.error(`Error getting documents from ${this.collectionName}`, error, { context: 'FirestoreService' });
+      throw error;
+    }
   }
 
   async createUserWithAuth(tenantId: string, data: {

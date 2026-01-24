@@ -58,6 +58,7 @@ import {
   Calendar,
   Search,
   Filter,
+  RefreshCw,
   Download,
   BarChart3,
   Clock,
@@ -67,7 +68,6 @@ import {
   Bell,
   Menu,
   X,
-  RefreshCw,
   Loader2,
   Heart
 } from 'lucide-react';
@@ -86,6 +86,7 @@ interface TenantDetails {
     activeAreas: number;
     totalRetailers: number;
     activeRetailers: number;
+    totalLineWorkers: number;
     totalPayments: number;
     totalRevenue: number;
   };
@@ -133,6 +134,18 @@ export function SuperAdminDashboard() {
   const [recentActivities, setRecentActivities] = useState<any[]>([]);
   const [selectedTenantForAnalytics, setSelectedTenantForAnalytics] = useState<string>('ALL');
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
+
+  // Subscription Management
+  const [subscriptionModalOpen, setSubscriptionModalOpen] = useState(false);
+  const [subscriptionModalOpenWithRenewal, setSubscriptionModalOpenWithRenewal] = useState(false);
+  const [selectedTenantForSubscription, setSelectedTenantForSubscription] = useState<Tenant | null>(null);
+
+  // Reset renewal state when modal closes
+  useEffect(() => {
+    if (!subscriptionModalOpen) {
+      setSubscriptionModalOpenWithRenewal(false);
+    }
+  }, [subscriptionModalOpen]);
 
   // Logout confirmation state
   const [showLogoutConfirmation, setShowLogoutConfirmation] = useState(false);
@@ -532,6 +545,7 @@ export function SuperAdminDashboard() {
   };
 
   const fetchTenantDetails = async (tenantId: string) => {
+    setTenantDetails(null); // Clear previous details
     tenantDetailsLoadingState.setLoading(true);
     try {
       const [tenant, users, areas, retailers, payments] = await Promise.all([
@@ -551,6 +565,7 @@ export function SuperAdminDashboard() {
         activeAreas: areas.filter(a => a.active).length,
         totalRetailers: retailers.length,
         activeRetailers: retailers.length,
+        totalLineWorkers: users.filter(u => u.roles.includes('LINE_WORKER')).length,
         totalPayments: payments.filter(p => p.state === 'COMPLETED').length,
         totalRevenue: payments.filter(p => p.state === 'COMPLETED').reduce((sum, p) => sum + p.totalPaid, 0)
       };
@@ -626,6 +641,76 @@ export function SuperAdminDashboard() {
       }
     } catch (err: any) {
       setError(err.message || 'Failed to update tenant status');
+    }
+  };
+
+  const handleOpenSubscriptionModal = (tenant: Tenant) => {
+    setSelectedTenantForSubscription(tenant);
+    setSubscriptionModalOpen(true);
+  };
+
+  const handleConfirmSubscription = async (planType: '6_MONTHS' | '1_YEAR') => {
+    if (!selectedTenantForSubscription) return;
+
+    try {
+      const now = Timestamp.now();
+      let startDate = now.toDate();
+      const currentEndDate = selectedTenantForSubscription.subscriptionDetails?.endDate?.toDate();
+
+      // If renewing an active subscription that hasn't expired yet, start from the current end date
+      if (currentEndDate && currentEndDate > startDate) {
+        startDate = currentEndDate;
+      }
+
+      const endDate = new Date(startDate);
+
+      if (planType === '6_MONTHS') {
+        endDate.setMonth(endDate.getMonth() + 6);
+      } else {
+        endDate.setFullYear(endDate.getFullYear() + 1);
+      }
+
+      const subscriptionDetails = {
+        planType,
+        startDate: Timestamp.fromDate(selectedTenantForSubscription.subscriptionDetails?.startDate?.toDate() || now.toDate()), // Keep original start date if renewing
+        endDate: Timestamp.fromDate(endDate),
+        assignedAt: now,
+        assignedBy: 'SUPER_ADMIN',
+        status: 'ACTIVE' as const
+      };
+
+      const newPlan = planType === '6_MONTHS' ? 'STANDARD' : 'PREMIUM';
+
+      // If activating from PENDING or ACTIVE, ensure status is ACTIVE
+      await tenantService.update(selectedTenantForSubscription.id, {
+        status: 'ACTIVE',
+        plan: newPlan,
+        subscriptionDetails
+      }, 'system');
+
+      // Update local state immediately to reflect changes in UI
+      setTenants(prev => prev.map(t =>
+        t.id === selectedTenantForSubscription.id
+          ? { ...t, status: 'ACTIVE', plan: newPlan, subscriptionDetails }
+          : t
+      ));
+
+      // Ensure admin user is active
+      const users = await userService.getAll(selectedTenantForSubscription.id);
+      await Promise.all(
+        users.map(user =>
+          userService.update(user.id, { active: true }, selectedTenantForSubscription.id)
+        )
+      );
+
+      await fetchTenants();
+      await fetchAnalytics();
+      setSubscriptionModalOpen(false);
+      setSelectedTenantForSubscription(null);
+      showSuccess(`Subscription assigned successfully for ${selectedTenantForSubscription.name} (${planType.replace('_', ' ')})`);
+    } catch (error: any) {
+      console.error('Failed to assign subscription:', error);
+      setError('Failed to assign subscription');
     }
   };
 
@@ -936,7 +1021,7 @@ export function SuperAdminDashboard() {
                   <TableHead>Tenant</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Plan</TableHead>
-                  <TableHead>Created</TableHead>
+                  <TableHead>End Date</TableHead>
                   <TableHead>Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -960,10 +1045,14 @@ export function SuperAdminDashboard() {
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      <Badge variant="outline">{tenant.plan}</Badge>
+                      <Badge variant="outline">
+                        {tenant.subscriptionDetails?.planType === '6_MONTHS' ? 'Standard' :
+                          tenant.subscriptionDetails?.planType === '1_YEAR' ? 'Premium' :
+                            tenant.plan}
+                      </Badge>
                     </TableCell>
                     <TableCell>
-                      {formatTimestamp(tenant.createdAt)}
+                      {tenant.subscriptionDetails?.endDate ? formatTimestamp(tenant.subscriptionDetails.endDate) : '-'}
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center space-x-2">
@@ -981,7 +1070,13 @@ export function SuperAdminDashboard() {
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => handleToggleTenantStatus(tenant.id, tenant.status)}
+                          onClick={() => {
+                            if (tenant.status === 'PENDING') {
+                              handleOpenSubscriptionModal(tenant);
+                            } else {
+                              handleToggleTenantStatus(tenant.id, tenant.status);
+                            }
+                          }}
                         >
                           {tenant.status === 'ACTIVE' ? (
                             <>
@@ -995,6 +1090,14 @@ export function SuperAdminDashboard() {
                             </>
                           )}
                         </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleOpenSubscriptionModal(tenant)}
+                          title="Manage Subscription"
+                        >
+                          <CreditCard className="h-4 w-4" />
+                        </Button>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -1006,9 +1109,9 @@ export function SuperAdminDashboard() {
       </Card>
 
       {/* Tenant Details Modal */}
-      {selectedTenant && tenantDetails && (
+      {selectedTenant && (
         <Dialog open={!!selectedTenant} onOpenChange={() => setSelectedTenant(null)}>
-          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogContent className="max-w-[95vw] w-full max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Tenant Details - {selectedTenant.name}</DialogTitle>
               <DialogDescription>
@@ -1020,32 +1123,98 @@ export function SuperAdminDashboard() {
               <div className="flex items-center justify-center py-8">
                 <LoadingSpinner size="lg" />
               </div>
+            ) : !tenantDetails ? (
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <AlertCircle className="h-12 w-12 text-red-500 mb-4" />
+                <h3 className="text-lg font-medium text-gray-900">Failed to load details</h3>
+                <p className="text-sm text-gray-500 mt-2">Could not fetch information for this tenant.</p>
+              </div>
             ) : (
               <div className="space-y-6">
-                {/* Stats Overview */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {/* Profile & Subscription Overview */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <Card>
-                    <CardContent className="pt-4">
-                      <div className="text-2xl font-bold">{tenantDetails.stats.totalUsers}</div>
-                      <p className="text-xs text-gray-500">Total Users</p>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium text-gray-500">Tenant Profile</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-3">
+                        <div className="flex justify-between">
+                          <span className="text-sm font-medium text-gray-500">Business Name</span>
+                          <span className="text-sm font-medium text-gray-900">{tenantDetails.tenant.name}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-sm font-medium text-gray-500">Admin Email</span>
+                          <span className="text-sm font-medium text-gray-900">{tenantDetails.users.find(u => u.roles.includes('WHOLESALER_ADMIN'))?.email || 'N/A'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-sm font-medium text-gray-500">Phone</span>
+                          <span className="text-sm font-medium text-gray-900">{tenantDetails.users.find(u => u.roles.includes('WHOLESALER_ADMIN'))?.phone || 'N/A'}</span>
+                        </div>
+                      </div>
                     </CardContent>
                   </Card>
+
                   <Card>
-                    <CardContent className="pt-4">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium text-gray-500">Subscription Status</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-3">
+                        <div className="flex justify-between items-center">
+                          <span className="text-sm font-medium text-gray-500">Current Plan</span>
+                          <Badge variant="outline">
+                            {tenantDetails.tenant.subscriptionDetails?.planType === '6_MONTHS' ? 'Standard' :
+                              tenantDetails.tenant.subscriptionDetails?.planType === '1_YEAR' ? 'Premium' :
+                                tenantDetails.tenant.plan}
+                          </Badge>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-sm font-medium text-gray-500">Status</span>
+                          <Badge className={tenantDetails.tenant.status === 'ACTIVE' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}>
+                            {tenantDetails.tenant.status}
+                          </Badge>
+                        </div>
+                        <div className="flex justify-between text-sm">
+                          <span className="text-gray-500">Expires On</span>
+                          <span className="font-medium text-gray-900">
+                            {tenantDetails.tenant.subscriptionDetails?.endDate
+                              ? formatTimestamp(tenantDetails.tenant.subscriptionDetails.endDate)
+                              : 'N/A'}
+                          </span>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Updated Stats Overview */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <Card>
+                    <CardContent className="pt-4 flex flex-col items-center">
+                      <div className="bg-blue-100 p-3 rounded-full mb-3">
+                        <Store className="h-6 w-6 text-blue-600" />
+                      </div>
                       <div className="text-2xl font-bold">{tenantDetails.stats.totalRetailers}</div>
-                      <p className="text-xs text-gray-500">Retailers</p>
+                      <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Total Retailers</p>
                     </CardContent>
                   </Card>
                   <Card>
-                    <CardContent className="pt-4">
-                      <div className="text-2xl font-bold">{formatCurrency(tenantDetails.stats.totalRevenue)}</div>
-                      <p className="text-xs text-gray-500">Total Revenue</p>
+                    <CardContent className="pt-4 flex flex-col items-center">
+                      <div className="bg-green-100 p-3 rounded-full mb-3">
+                        <UserCheck className="h-6 w-6 text-green-600" />
+                      </div>
+                      <div className="text-2xl font-bold">{tenantDetails.stats.totalLineWorkers}</div>
+                      <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Line Workers</p>
                     </CardContent>
                   </Card>
                   <Card>
-                    <CardContent className="pt-4">
+                    <CardContent className="pt-4 flex flex-col items-center">
+                      <div className="bg-purple-100 p-3 rounded-full mb-3">
+                        <TrendingUp className="h-6 w-6 text-purple-600" />
+                      </div>
                       <div className="text-2xl font-bold">{tenantDetails.stats.totalPayments}</div>
-                      <p className="text-xs text-gray-500">Total Payments</p>
+                      <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Total Transactions</p>
                     </CardContent>
                   </Card>
                 </div>
@@ -1106,7 +1275,101 @@ export function SuperAdminDashboard() {
           </DialogContent>
         </Dialog>
       )}
-    </div>
+
+      {/* Subscription Assignment Modal */}
+      <Dialog open={subscriptionModalOpen} onOpenChange={setSubscriptionModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Assign Subscription Plan</DialogTitle>
+            <DialogDescription>
+              Select a subscription period for <strong>{selectedTenantForSubscription?.name}</strong>.
+              This will activate the tenant and start their subscription immediately.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            {selectedTenantForSubscription?.subscriptionDetails && !subscriptionModalOpenWithRenewal ? (
+              <div className="space-y-6">
+                <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 space-y-3">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm font-medium text-gray-500">Current Plan</span>
+                    <Badge variant="outline">{selectedTenantForSubscription.plan}</Badge>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm font-medium text-gray-500">Status</span>
+                    <Badge className={selectedTenantForSubscription.subscriptionDetails.status === 'ACTIVE' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}>
+                      {selectedTenantForSubscription.subscriptionDetails.status}
+                    </Badge>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4 pt-2 border-t text-sm">
+                    <div>
+                      <span className="block text-gray-500 mb-1">Start Date</span>
+                      <span className="font-medium">
+                        {new Date(selectedTenantForSubscription.subscriptionDetails.startDate.seconds * 1000).toLocaleDateString()}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="block text-gray-500 mb-1">End Date</span>
+                      <span className="font-medium">
+                        {new Date(selectedTenantForSubscription.subscriptionDetails.endDate.seconds * 1000).toLocaleDateString()}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <Button
+                  className="w-full"
+                  onClick={() => setSubscriptionModalOpenWithRenewal(true)}
+                  disabled={(() => {
+                    if (!selectedTenantForSubscription.subscriptionDetails?.endDate) return false;
+                    const endDate = selectedTenantForSubscription.subscriptionDetails.endDate.toDate();
+                    const threeMonthsFromNow = new Date();
+                    threeMonthsFromNow.setMonth(threeMonthsFromNow.getMonth() + 3);
+                    return endDate > threeMonthsFromNow;
+                  })()}
+                >
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Renew / Modify Subscription
+                </Button>
+                {(() => {
+                  if (!selectedTenantForSubscription.subscriptionDetails?.endDate) return null;
+                  const endDate = selectedTenantForSubscription.subscriptionDetails.endDate.toDate();
+                  const threeMonthsFromNow = new Date();
+                  threeMonthsFromNow.setMonth(threeMonthsFromNow.getMonth() + 3);
+                  if (endDate > threeMonthsFromNow) {
+                    return <p className="text-xs text-amber-600 text-center">Renewal available only 3 months before expiry.</p>;
+                  }
+                  return null;
+                })()}
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 gap-4">
+                  <Button
+                    className="h-24 flex flex-col items-center justify-center space-y-2 border-2 border-blue-100 hover:border-blue-500 hover:bg-blue-50 bg-white text-gray-900"
+                    variant="outline"
+                    onClick={() => handleConfirmSubscription('6_MONTHS')}
+                  >
+                    <span className="text-xl font-bold text-blue-600">6 Months</span>
+                    <span className="text-xs text-gray-500">Standard Plan</span>
+                  </Button>
+                  <Button
+                    className="h-24 flex flex-col items-center justify-center space-y-2 border-2 border-purple-100 hover:border-purple-500 hover:bg-purple-50 bg-white text-gray-900"
+                    variant="outline"
+                    onClick={() => handleConfirmSubscription('1_YEAR')}
+                  >
+                    <span className="text-xl font-bold text-purple-600">1 Year</span>
+                    <span className="text-xs text-gray-500">Premium Plan</span>
+                  </Button>
+                </div>
+                <div className="text-xs text-gray-500 text-center mt-4">
+                  Subscription starts today: {new Date().toLocaleDateString()}
+                </div>
+              </>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div >
   );
 
   // Users Overview Component
@@ -1607,12 +1870,12 @@ export function SuperAdminDashboard() {
                 return (
                   <div key={activity.id} className="flex items-center space-x-4 p-4 border rounded-lg">
                     <div className={`w-10 h-10 rounded-full flex items-center justify-center ${activity.type === 'success' ? 'bg-green-100' :
-                        activity.type === 'warning' ? 'bg-yellow-100' :
-                          activity.type === 'info' ? 'bg-blue-100' : 'bg-gray-100'
+                      activity.type === 'warning' ? 'bg-yellow-100' :
+                        activity.type === 'info' ? 'bg-blue-100' : 'bg-gray-100'
                       }`}>
                       <Icon className={`h-5 w-5 ${activity.type === 'success' ? 'text-green-600' :
-                          activity.type === 'warning' ? 'text-yellow-600' :
-                            activity.type === 'info' ? 'text-blue-600' : 'text-gray-600'
+                        activity.type === 'warning' ? 'text-yellow-600' :
+                          activity.type === 'info' ? 'text-blue-600' : 'text-gray-600'
                         }`} />
                     </div>
                     <div className="flex-1">

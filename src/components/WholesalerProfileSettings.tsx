@@ -29,8 +29,11 @@ import {
     AlertTriangle,
     Lock,
     Eye,
-    EyeOff
+    EyeOff,
+    Calendar,
+    Crown
 } from 'lucide-react';
+import { formatTimestamp } from '@/lib/timestamp-utils';
 import { doc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { EmailAuthProvider, reauthenticateWithCredential, updatePassword } from 'firebase/auth';
@@ -60,6 +63,12 @@ interface TenantProfile {
     gstNumber?: string;
     upiIds: UpiEntry[];
     qrCodes: QrCodeEntry[];
+    subscriptionDetails?: {
+        planType: '6_MONTHS' | '1_YEAR';
+        startDate: { seconds: number; nanoseconds: number };
+        endDate: { seconds: number; nanoseconds: number };
+        status: 'ACTIVE' | 'EXPIRED';
+    };
 }
 
 interface WholesalerProfileSettingsProps {
@@ -164,7 +173,8 @@ export function WholesalerProfileSettings({ tenantId, onProfileUpdated }: Wholes
                     contactPhone: data.contactPhone || '',
                     gstNumber: data.gstNumber || '',
                     upiIds: data.upiIds || [],
-                    qrCodes: (data.qrCodes || []).map((qr: any) => ({ ...qr, isLocal: false }))
+                    qrCodes: (data.qrCodes || []).map((qr: any) => ({ ...qr, isLocal: false })),
+                    subscriptionDetails: data.subscriptionDetails
                 };
                 setProfile(loadedProfile);
                 setOriginalProfile(JSON.parse(JSON.stringify(loadedProfile)));
@@ -475,6 +485,52 @@ export function WholesalerProfileSettings({ tenantId, onProfileUpdated }: Wholes
                     <CheckCircle className="h-4 w-4 text-green-600" />
                     <AlertDescription className="text-green-800">{success}</AlertDescription>
                 </Alert>
+            )}
+
+            {/* Subscription Details Card */}
+            {profile.subscriptionDetails && (
+                <Card className="bg-gradient-to-br from-indigo-50 to-white border-indigo-100">
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2 text-indigo-900">
+                            <Crown className="h-5 w-5 text-indigo-600" />
+                            Subscription Details
+                        </CardTitle>
+                        <CardDescription className="text-indigo-700">
+                            Your current active subscription plan
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="space-y-1">
+                                <span className="text-sm font-medium text-indigo-600 uppercase tracking-wider">Plan Type</span>
+                                <div className="text-2xl font-bold text-gray-900">
+                                    {profile.subscriptionDetails.planType === '6_MONTHS' ? '6 Months' : '1 Year'}
+                                </div>
+                                <Badge className="bg-indigo-100 text-indigo-700 border-indigo-200">
+                                    {profile.subscriptionDetails.status}
+                                </Badge>
+                            </div>
+                            <div className="space-y-4">
+                                <div>
+                                    <span className="text-sm font-medium text-gray-500 flex items-center gap-1">
+                                        <Calendar className="h-4 w-4" /> Start Date
+                                    </span>
+                                    <div className="font-medium">
+                                        {new Date(profile.subscriptionDetails.startDate.seconds * 1000).toLocaleDateString(undefined, { dateStyle: 'long' })}
+                                    </div>
+                                </div>
+                                <div>
+                                    <span className="text-sm font-medium text-gray-500 flex items-center gap-1">
+                                        <Calendar className="h-4 w-4" /> End Date
+                                    </span>
+                                    <div className="font-medium">
+                                        {new Date(profile.subscriptionDetails.endDate.seconds * 1000).toLocaleDateString(undefined, { dateStyle: 'long' })}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
             )}
 
             {/* Business Profile Card */}

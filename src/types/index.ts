@@ -27,6 +27,14 @@ export interface Tenant extends BaseDocument {
   status: keyof typeof TENANT_STATUSES;
   subscriptionStatus: string;
   plan: string;
+  subscriptionDetails?: {
+    planType: '6_MONTHS' | '1_YEAR'; // The specific duration plan
+    startDate: Timestamp;
+    endDate: Timestamp;
+    assignedAt: Timestamp;
+    assignedBy: string; // 'SUPER_ADMIN'
+    status: 'ACTIVE' | 'EXPIRED';
+  };
 }
 
 // User
