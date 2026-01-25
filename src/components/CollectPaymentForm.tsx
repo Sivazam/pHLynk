@@ -229,52 +229,7 @@ const CollectPaymentFormComponent = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [cameraPermission, setCameraPermission] = useState<'prompt' | 'granted' | 'denied' | 'unknown'>('unknown');
-  const [isPermissionChecking, setIsPermissionChecking] = useState(false);
-
-  // Check camera permission on mount and when modal opens
-  const checkPermission = useCallback(async () => {
-    // @ts-ignore - navigator.permissions might not be in all TS environments
-    if (typeof navigator !== 'undefined' && navigator.permissions && navigator.permissions.query) {
-      try {
-        // @ts-ignore
-        const result = await navigator.permissions.query({ name: 'camera' });
-        setCameraPermission(result.state as any);
-
-        result.onchange = () => {
-          setCameraPermission(result.state as any);
-        };
-      } catch (e) {
-        console.warn('Permissions API does not support camera query:', e);
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    checkPermission();
-  }, [isOpen, checkPermission]);
-
-  // Force re-trigger permission prompt
-  const retriggerCameraPermission = async () => {
-    setIsPermissionChecking(true);
-    try {
-      // Attempting to access camera is the only way to force-trigger the actual prompt if state is 'prompt'
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-      // If successful, stop the stream immediately
-      stream.getTracks().forEach(track => track.stop());
-      setCameraPermission('granted');
-    } catch (err: any) {
-      console.warn('Camera re-trigger failed:', err);
-      // Update state based on error
-      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-        setCameraPermission('denied');
-      }
-    } finally {
-      setIsPermissionChecking(false);
-      checkPermission();
-    }
-  };
+  // Removed unnecessary camera permission checks as we use standard file input
 
 
 
@@ -562,66 +517,7 @@ const CollectPaymentFormComponent = ({
                       <span className="text-xs text-gray-500 italic bg-gray-100 px-2 py-0.5 rounded-full">Optional</span>
                     </div>
 
-                    {/* Camera Permission Alert */}
-                    {(cameraPermission === 'denied' || cameraPermission === 'prompt') && (
-                      <div className={`p-3 rounded-xl border space-y-3 transition-all ${cameraPermission === 'denied' ? 'bg-amber-50 border-amber-200' : 'bg-blue-50 border-blue-200'}`}>
-                        <div className="flex items-start gap-2">
-                          <div className={`p-1.5 rounded-lg ${cameraPermission === 'denied' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>
-                            {cameraPermission === 'denied' ? <Lock className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
-                          </div>
-                          <div className="flex-1 pt-0.5">
-                            <div className={`text-xs font-bold ${cameraPermission === 'denied' ? 'text-amber-900' : 'text-blue-900'}`}>
-                              {cameraPermission === 'denied' ? 'Camera Access Blocked' : 'Camera Permission Required'}
-                            </div>
-                            <div className={`text-[10px] mt-0.5 leading-relaxed ${cameraPermission === 'denied' ? 'text-amber-700' : 'text-blue-700'}`}>
-                              {cameraPermission === 'denied'
-                                ? "You've previously denied camera access. You must manually enable it to use the capture feature."
-                                : "The app needs camera access to capture screenshots. Please allow it when the prompt appears."
-                              }
-                            </div>
-                          </div>
-                        </div>
-
-                        {cameraPermission === 'denied' ? (
-                          <div className="bg-white/60 p-2.5 rounded-lg border border-amber-100 space-y-2">
-                            <p className="text-[10px] font-semibold text-amber-900 flex items-center gap-1.5">
-                              <Info className="w-3 h-3" /> Mobile Instructions:
-                            </p>
-                            <ol className="text-[10px] text-amber-800 space-y-1 pl-1">
-                              <li>1. Tap the <b>lock icon (🔒)</b> or <b>three dots (⋮/⋯)</b> at the top or bottom of your browser.</li>
-                              <li>2. Tap <b>Site Settings</b> or <b>Permissions</b>.</li>
-                              <li>3. Change <b>Camera</b> to <b>Allow</b>.</li>
-                            </ol>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              className="w-full h-8 text-[10px] font-bold bg-white border-amber-200 text-amber-700 hover:bg-amber-50"
-                              onClick={checkPermission}
-                            >
-                              <RefreshCw className="w-3 h-3 mr-1.5" />
-                              Refresh Permission Status
-                            </Button>
-                          </div>
-                        ) : (
-                          <Button
-                            type="button"
-                            variant="default"
-                            size="sm"
-                            className="w-full h-9 text-[11px] font-bold bg-blue-600 hover:bg-blue-700 text-white"
-                            onClick={retriggerCameraPermission}
-                            disabled={isPermissionChecking}
-                          >
-                            {isPermissionChecking ? (
-                              <RefreshCw className="w-3 h-3 mr-2 animate-spin" />
-                            ) : (
-                              <Camera className="w-3 h-3 mr-2" />
-                            )}
-                            Click to Grant Camera Permission
-                          </Button>
-                        )}
-                      </div>
-                    )}
+                    {/* Native File Input for Camera/Gallery */}
 
                     {/* Hidden Native File Input */}
                     <input

@@ -37,7 +37,7 @@ export default function PWALoadingPage() {
         } else {
           // Redirect to main app after loading completes
           setTimeout(() => {
-            router.replace('/');
+            window.location.replace('/');
           }, 500);
         }
       }
