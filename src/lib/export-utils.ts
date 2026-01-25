@@ -13,24 +13,24 @@ export interface ExportData {
  */
 export const exportToCSV = (data: ExportData) => {
   const { headers, rows, filename } = data;
-  
+
   // Create CSV content
   const csvContent = [
     headers.join(','),
-    ...rows.map(row => 
-      row.map(cell => 
+    ...rows.map(row =>
+      row.map(cell =>
         // Escape commas and quotes in cell content
-        typeof cell === 'string' && (cell.includes(',') || cell.includes('"')) 
-          ? `"${cell.replace(/"/g, '""')}"` 
+        typeof cell === 'string' && (cell.includes(',') || cell.includes('"'))
+          ? `"${cell.replace(/"/g, '""')}"`
           : cell
       ).join(',')
     )
   ].join('\n');
-  
+
   // Create blob and download
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
   const link = document.createElement('a');
-  
+
   if (link.download !== undefined) {
     const url = URL.createObjectURL(blob);
     link.setAttribute('href', url);
@@ -49,7 +49,7 @@ export const exportToJSON = (data: any, filename: string) => {
   const jsonContent = JSON.stringify(data, null, 2);
   const blob = new Blob([jsonContent], { type: 'application/json;charset=utf-8;' });
   const link = document.createElement('a');
-  
+
   if (link.download !== undefined) {
     const url = URL.createObjectURL(blob);
     link.setAttribute('href', url);
@@ -66,17 +66,17 @@ export const exportToJSON = (data: any, filename: string) => {
  */
 export const formatDateForExport = (date: Date | any): string => {
   if (!date) return '';
-  
+
   // Handle Firestore Timestamp
   if (date.toDate) {
     return date.toDate().toISOString().split('T')[0];
   }
-  
+
   // Handle regular Date
   if (date instanceof Date) {
     return date.toISOString().split('T')[0];
   }
-  
+
   // Handle string date
   return new Date(date).toISOString().split('T')[0];
 };
@@ -95,7 +95,7 @@ export const preparePaymentDataForExport = (payments: any[], retailers: any[], l
   return payments.map(payment => {
     const retailer = retailers.find(r => r.id === payment.retailerId);
     const lineWorker = lineWorkers.find(lw => lw.uid === payment.lineWorkerId);
-    
+
     return [
       payment.id,
       formatDateForExport(payment.createdAt),
@@ -104,6 +104,8 @@ export const preparePaymentDataForExport = (payments: any[], retailers: any[], l
       formatCurrencyForExport(payment.totalPaid),
       payment.method,
       payment.state,
+      payment.utr || payment.chequeNumber || '',
+      payment.bankName ? `${payment.bankName} (${payment.chequeDate ? formatDateForExport(payment.chequeDate) : ''})` : '',
       payment.timeline?.completedAt ? formatDateForExport(payment.timeline.completedAt) : '',
       payment.timeline?.otpVerifiedAt ? formatDateForExport(payment.timeline.otpVerifiedAt) : ''
     ];
@@ -117,7 +119,7 @@ export const prepareRetailerDataForExport = (retailers: any[], areas: any[], lin
   return retailers.map(retailer => {
     const area = areas.find(a => a.id === retailer.areaId);
     const assignedLineWorker = lineWorkers.find(lw => lw.uid === retailer.assignedLineWorkerId);
-    
+
     return [
       retailer.id,
       retailer.name,
@@ -139,14 +141,14 @@ export const prepareLineWorkerDataForExport = (lineWorkers: any[], areas: any[],
   return lineWorkers.map(worker => {
     const workerAreas = areas.filter(area => worker.assignedAreas?.includes(area.id));
     const workerRetailers = retailers.filter(r => r.assignedLineWorkerId === worker.uid);
-    const workerPayments = workerRetailers.flatMap(r => 
+    const workerPayments = workerRetailers.flatMap(r =>
       retailers.filter(ret => ret.id === r.id)
     ).map(r => r.payments || []).flat();
-    
+
     const totalCollected = workerPayments
       .filter(p => p.state === 'COMPLETED')
       .reduce((sum, p) => sum + (p.totalPaid || 0), 0);
-    
+
     return [
       worker.uid,
       worker.name,

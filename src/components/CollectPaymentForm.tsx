@@ -26,7 +26,8 @@ import {
   Info,
   Lock,
   RefreshCw,
-  AlertTriangle
+  AlertTriangle,
+  Calendar as CalendarIcon
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -43,6 +44,10 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 
+import { format } from 'date-fns';
+import { Calendar as CalendarComponent } from '@/components/ui/calendar';
+import { INDIAN_BANKS } from '@/constants/banks';
+
 // --- EXTRACTED COMPONENT FOR SELECTION PERFORMANCE ---
 const RetailerSelector = React.memo(({
   retailers,
@@ -56,15 +61,15 @@ const RetailerSelector = React.memo(({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
 
-  // Performance Optimization: Stop early once we have 50 matches
+  // Performance Optimization: Show max 3 matches as per requirement
   const visibleRetailers = useMemo(() => {
     if (!retailers) return [];
-    if (!query) return retailers.slice(0, 50);
+    if (!query) return retailers.slice(0, 3); // Show top 3 by default
 
     const q = query.toLowerCase();
     const filtered: Retailer[] = [];
     for (const r of retailers) {
-      if (filtered.length >= 50) break;
+      if (filtered.length >= 3) break; // Limit search results to 3
       const name = (r.profile?.realName || r.name || '').toLowerCase();
       const code = (r.code || '').toLowerCase();
       const phone = (r.profile?.phone || r.phone || '').toLowerCase();
@@ -163,11 +168,105 @@ const RetailerSelector = React.memo(({
 });
 RetailerSelector.displayName = "RetailerSelector";
 
+// --- BANK SELECTOR COMPONENT ---
+const BankSelector = React.memo(({
+  value,
+  onChange
+}: {
+  value: string;
+  onChange: (value: string) => void;
+}) => {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+
+  // Handle free text input in query
+  const handleQueryChange = (val: string) => {
+    setQuery(val);
+    // If user is typing, we can optimistically set the value to what they typed
+    // This supports the "directly type bank name" requirement
+    if (!open) {
+      if (val !== value) onChange(val);
+    }
+  };
+
+  // Logic: Show max 2 matching banks
+  const filteredBanks = useMemo(() => {
+    if (!query) return INDIAN_BANKS.slice(0, 2); // Show top 2 by default
+    const q = query.toLowerCase();
+    const matches = INDIAN_BANKS.filter(bank => bank.toLowerCase().includes(q));
+    return matches.slice(0, 2); // Only show 2 matching
+  }, [query]);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          className="justify-between h-11 w-full bg-white text-left font-normal"
+        >
+          <span className={cn("truncate", !value && "text-gray-500")}>
+            {value || "Select or type bank name..."}
+          </span>
+          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[300px] p-0" align="start">
+        <Command shouldFilter={false}>
+          <CommandInput
+            placeholder="Search bank..."
+            value={query}
+            onValueChange={handleQueryChange}
+          />
+          <CommandList>
+            <CommandEmpty className="py-2 px-2 text-sm text-gray-500">
+              <div
+                className="cursor-pointer p-2 hover:bg-gray-100 rounded text-blue-600 font-medium"
+                onClick={() => {
+                  onChange(query);
+                  setOpen(false);
+                }}
+              >
+                Use "{query}"
+              </div>
+            </CommandEmpty>
+            <CommandGroup heading="Suggestions">
+              {filteredBanks.map((bank) => (
+                <CommandItem
+                  key={bank}
+                  value={bank}
+                  onSelect={(currentValue) => {
+                    onChange(currentValue === value ? "" : currentValue);
+                    setOpen(false);
+                  }}
+                >
+                  <Check
+                    className={cn(
+                      "mr-2 h-4 w-4",
+                      value === bank ? "opacity-100" : "opacity-0"
+                    )}
+                  />
+                  {bank}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+});
+BankSelector.displayName = "BankSelector";
+
 interface PaymentForm {
   retailerId: string;
   amount: number;
-  paymentMethod: 'CASH' | 'UPI' | 'BANK_TRANSFER';
+  paymentMethod: 'CASH' | 'UPI' | 'BANK_TRANSFER' | 'CHEQUE';
   utr?: string; // UTR for UPI payments (last 4 digits)
+  chequeNumber?: string;
+  chequeDate?: Date;
+  bankName?: string;
   notes?: string;
   proofImage?: File | null; // Optional payment screenshot
 }
@@ -184,7 +283,10 @@ interface CollectPaymentFormProps {
   onCancel: () => void;
   collectingPayment: boolean;
   wholesalerUpiInfo?: WholesalerUpiInfo;
+  // collectingPayment: boolean;
+  // wholesalerUpiInfo?: WholesalerUpiInfo;
   isOpen?: boolean;
+  initialPaymentData?: PaymentForm | null;
 }
 
 const CollectPaymentFormComponent = ({
@@ -192,9 +294,12 @@ const CollectPaymentFormComponent = ({
   preSelectedRetailer,
   onCollectPayment,
   onCancel,
+  // collectingPayment,
+  // wholesalerUpiInfo,
   collectingPayment,
   wholesalerUpiInfo,
-  isOpen
+  isOpen,
+  initialPaymentData
 }: CollectPaymentFormProps) => {
   // ✅ Removed success/confetti state - now it's a pure data collection form
 
@@ -203,6 +308,9 @@ const CollectPaymentFormComponent = ({
     amount: 0,
     paymentMethod: 'CASH',
     utr: '',
+    chequeNumber: '',
+    chequeDate: undefined,
+    bankName: '',
     notes: '',
     proofImage: null
   }));
@@ -210,23 +318,29 @@ const CollectPaymentFormComponent = ({
   // Reset form when modal opens
   React.useEffect(() => {
     if (isOpen) {
-      setFormData({
-        retailerId: preSelectedRetailer?.id || '',
-        amount: 0,
-        paymentMethod: 'CASH',
-        utr: '',
-        notes: '',
-        proofImage: null
-      });
-      setError(null);
-      setPreviewUrl(null);
+      if (initialPaymentData) {
+        setFormData(initialPaymentData);
+      } else {
+        setFormData({
+          retailerId: preSelectedRetailer?.id || '',
+          amount: 0,
+          paymentMethod: 'CASH',
+          utr: '',
+          chequeNumber: '',
+          chequeDate: undefined,
+          bankName: '',
+          notes: '',
+          proofImage: null
+        });
+      }
       setError(null);
       setPreviewUrl(null);
     }
-  }, [isOpen, preSelectedRetailer]);
+  }, [isOpen, preSelectedRetailer, initialPaymentData]);
 
   const [error, setError] = useState<string | null>(null);
   const [isUpiDetailsOpen, setIsUpiDetailsOpen] = useState(false); // Default collapsed
+  const [isChequeDateOpen, setIsChequeDateOpen] = useState(false);
 
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   // Removed unnecessary camera permission checks as we use standard file input
@@ -296,6 +410,22 @@ const CollectPaymentFormComponent = ({
       }
     }
 
+    // Validate Cheque Details
+    if (formData.paymentMethod === 'CHEQUE') {
+      if (!formData.bankName) {
+        setError('Please select or enter the Bank Name');
+        return;
+      }
+      if (!formData.chequeNumber || formData.chequeNumber.length !== 6) {
+        setError('Please enter a valid 6-digit Cheque Number');
+        return;
+      }
+      if (!formData.chequeDate) {
+        setError('Please select the Cheque Date');
+        return;
+      }
+    }
+
     try {
       setError(null);
       console.log('🚀 Submitting payment data...', formData);
@@ -304,7 +434,7 @@ const CollectPaymentFormComponent = ({
       await onCollectPayment(formData);
 
       // Close form after successful submission
-      onCancel();
+      // onCancel(); // REMOVED: Parent handles closing via state update in onCollectPayment
     } catch (error: any) {
       console.error('❌ Error collecting payment:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to collect payment. Please try again.';
@@ -417,6 +547,7 @@ const CollectPaymentFormComponent = ({
                     <SelectItem value="CASH">Cash</SelectItem>
                     <SelectItem value="UPI">UPI</SelectItem>
                     <SelectItem value="BANK_TRANSFER">Bank Transfer</SelectItem>
+                    <SelectItem value="CHEQUE">Cheque</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -478,6 +609,73 @@ const CollectPaymentFormComponent = ({
                       )}
                     </div>
                   )}
+                </div>
+              )}
+
+              {/* Cheque Payment Details */}
+              {formData.paymentMethod === 'CHEQUE' && (
+                <div className="col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4 border-t mt-2">
+                  {/* Bank Name - Full Width */}
+                  <div className="space-y-1.5 sm:col-span-2">
+                    <Label className="text-sm font-medium text-gray-700">Bank Name *</Label>
+                    <BankSelector
+                      value={formData.bankName || ''}
+                      onChange={(val) => updateField('bankName', val)}
+                    />
+                  </div>
+
+                  {/* Cheque Number */}
+                  <div className="space-y-1.5">
+                    <Label className="text-sm font-medium text-gray-700">Cheque Number (6-digits) *</Label>
+                    <Input
+                      type="text"
+                      placeholder="e.g. 123456"
+                      value={formData.chequeNumber || ''}
+                      inputMode="numeric"
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        // Allow only numbers, max 6 digits
+                        if (/^\d{0,6}$/.test(value)) {
+                          updateField('chequeNumber', value);
+                        }
+                      }}
+                      maxLength={6}
+                      className="h-11 font-mono tracking-widest text-center text-lg"
+                    />
+                  </div>
+
+                  {/* Cheque Date */}
+                  <div className="space-y-1.5">
+                    <Label className="text-sm font-medium text-gray-700">Cheque Date *</Label>
+                    <Popover open={isChequeDateOpen} onOpenChange={setIsChequeDateOpen}>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant={"outline"}
+                          className={cn(
+                            "w-full h-11 justify-start text-left font-normal",
+                            !formData.chequeDate && "text-muted-foreground"
+                          )}
+                        >
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {formData.chequeDate ? format(formData.chequeDate, "PPP") : <span>Pick a date</span>}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <CalendarComponent
+                          mode="single"
+                          selected={formData.chequeDate}
+                          onSelect={(date) => {
+                            updateField('chequeDate', date);
+                            setIsChequeDateOpen(false);
+                          }}
+                          initialFocus
+                          disabled={(date) =>
+                            date < new Date("1900-01-01")
+                          }
+                        />
+                      </PopoverContent>
+                    </Popover>
+                  </div>
                 </div>
               )}
 
@@ -618,7 +816,10 @@ const CollectPaymentFormComponent = ({
         <Button
           type="button"
           onClick={handleSubmit}
-          disabled={collectingPayment || !formData.retailerId || !formData.amount || formData.amount < 1 || (formData.paymentMethod === 'UPI' && !(formData.utr && formData.utr.length === 4))}
+          disabled={collectingPayment || !formData.retailerId || !formData.amount || formData.amount < 1 ||
+            (formData.paymentMethod === 'UPI' && !(formData.utr && formData.utr.length === 4)) ||
+            (formData.paymentMethod === 'CHEQUE' && (!formData.bankName || !formData.chequeNumber || formData.chequeNumber.length !== 6 || !formData.chequeDate))
+          }
           className="flex-1 h-12 text-base font-medium bg-green-600 hover:bg-green-700 text-white shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {collectingPayment ? (
@@ -631,7 +832,7 @@ const CollectPaymentFormComponent = ({
           )}
         </Button>
       </div>
-    </div>
+    </div >
   );
 };
 

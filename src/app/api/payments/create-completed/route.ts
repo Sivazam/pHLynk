@@ -148,8 +148,11 @@ interface CreateCompletedPaymentRequest {
   retailerName: string;
   lineWorkerId: string;
   totalPaid: number;
-  method: 'CASH' | 'UPI' | 'BANK_TRANSFER';
+  method: 'CASH' | 'UPI' | 'BANK_TRANSFER' | 'CHEQUE';
   utr?: string;
+  chequeNumber?: string;
+  chequeDate?: string;
+  bankName?: string;
   notes?: string;
   lineWorkerName: string;
   proofUrl?: string; // Optional URL for payment screenshot
@@ -170,6 +173,9 @@ export async function POST(request: NextRequest) {
       totalPaid,
       method,
       utr,
+      chequeNumber,
+      chequeDate,
+      bankName,
       notes,
       lineWorkerName,
       proofUrl,
@@ -181,7 +187,8 @@ export async function POST(request: NextRequest) {
       retailerName,
       amount: totalPaid,
       method,
-      utr
+      utr,
+      chequeNumber
     });
 
     if (!tenantId || !retailerId || !lineWorkerId || !totalPaid || !method) {
@@ -191,6 +198,13 @@ export async function POST(request: NextRequest) {
     // Validate: Require either UTR or Proof URL for UPI
     if (method === 'UPI' && (!utr || utr.length !== 4) && !proofUrl) {
       return NextResponse.json({ error: 'For UPI payments, provide either UTR (4 digits) or a payment screenshot' }, { status: 400 });
+    }
+
+    // Validate: Require Cheque fields
+    if (method === 'CHEQUE') {
+      if (!chequeNumber || !chequeDate || !bankName) {
+        return NextResponse.json({ error: 'For Cheque payments, please provide Bank Name, Cheque Number, and Date' }, { status: 400 });
+      }
     }
 
     const completionTime = new Date();
@@ -212,6 +226,9 @@ export async function POST(request: NextRequest) {
       },
       tenantId, // Explicitly save tenantId (singular) for easier querying/display
       ...(utr && { utr }),
+      ...(chequeNumber && { chequeNumber }),
+      ...(chequeDate && { chequeDate }),
+      ...(bankName && { bankName }),
       ...(proofUrl && { proofUrl }),
       ...(proofPath && { proofPath }),
       ...(notes && notes.trim().length > 0 && { notes })

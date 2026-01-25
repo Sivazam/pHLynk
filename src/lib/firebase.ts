@@ -183,7 +183,8 @@ export const PAYMENT_STATES = {
 export const PAYMENT_METHODS = {
   CASH: 'CASH',
   UPI: 'UPI',
-  BANK_TRANSFER: 'BANK_TRANSFER'
+  BANK_TRANSFER: 'BANK_TRANSFER',
+  CHEQUE: 'CHEQUE'
 } as const;
 
 // Tenant statuses

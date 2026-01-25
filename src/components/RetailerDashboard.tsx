@@ -2001,7 +2001,23 @@ export function RetailerDashboard() {
                               <TableRow key={payment.id}>
                                 <TableCell>{formatTimestampWithTime(payment.createdAt)}</TableCell>
                                 <TableCell>{formatCurrency(payment.totalPaid)}</TableCell>
-                                <TableCell>{payment.method}</TableCell>
+                                <TableCell>
+                                  <div className="flex flex-col gap-0.5">
+                                    <span>{payment.method}</span>
+                                    {payment.method === 'CHEQUE' && (
+                                      <div className="text-[10px] text-gray-500 font-mono">
+                                        <div className="font-bold">#{payment.chequeNumber}</div>
+                                        <div>{payment.bankName}</div>
+                                        {payment.chequeDate && <div>{new Date(payment.chequeDate).toLocaleDateString()}</div>}
+                                      </div>
+                                    )}
+                                    {payment.method === 'UPI' && payment.utr && (
+                                      <span className="text-[10px] text-gray-500 font-mono">
+                                        UTR: {payment.utr}
+                                      </span>
+                                    )}
+                                  </div>
+                                </TableCell>
                                 <TableCell>
                                   <WholesalerNameCell tenantId={payment.tenantId || payment.tenantIds?.[0] || ''} />
                                 </TableCell>

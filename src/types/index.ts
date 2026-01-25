@@ -207,6 +207,9 @@ export interface Payment extends BaseDocument {
   timeline: PaymentTimeline;
   notes?: string;   // Optional notes from line worker
   utr?: string;     // Optional UTR for UPI payments (shorthand)
+  chequeNumber?: string; // Optional Cheque Number
+  chequeDate?: string;   // Optional Cheque Date (ISO string or similar)
+  bankName?: string;     // Optional Bank Name for Cheque
   proofUrl?: string; // Optional URL for payment screenshot/proof
   proofPath?: string; // Storage path for easier deletion (transient proof)
   verified?: boolean; // Whether the payment proof has been verified by wholesaler

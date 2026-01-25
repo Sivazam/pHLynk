@@ -53,6 +53,9 @@ interface DaySheetData {
   amount: number;
   paymentMethod: string;
   utr?: string;
+  chequeNumber?: string;
+  bankName?: string;
+  chequeDate?: string;
   exportDate: string;
 }
 
@@ -78,66 +81,24 @@ export function DaySheet({
   });
   const [viewMode, setViewMode] = useState<'table' | 'list'>('table');
 
-  // Helper functions to filter data by date range
-  const filterPaymentsByDateRange = (paymentsData: Payment[]) => {
-    return paymentsData.filter(payment => {
+  // Filter and process data
+  const filteredData = useMemo(() => {
+    // 1. Filter by Date Range (INLINED to fix Reference issues)
+    let filtered = payments.filter(payment => {
+      if (!payment.createdAt) return false;
       const paymentDate = payment.createdAt.toDate();
       return paymentDate >= dateRange.startDate && paymentDate <= dateRange.endDate;
     });
-  };
 
-  // Get area name by ID
-  const getAreaName = (areaId: string): string => {
-    const area = areas.find(a => a.id === areaId);
-    return area?.name || 'Unknown Area';
-  };
-
-  // Get line worker name by ID
-  const getLineWorkerName = (lineWorkerId: string): string => {
-    const worker = lineWorkers.find(w => w.id === lineWorkerId);
-    return worker?.displayName || 'Unknown Line Worker';
-  };
-
-  // Get line worker assigned areas
-  const getLineWorkerAreas = (lineWorkerId: string): string[] => {
-    const worker = lineWorkers.find(w => w.id === lineWorkerId);
-    return worker?.assignedAreas || [];
-  };
-
-  // Get retailer name by ID (handles both legacy and new profile formats)
-  const getRetailerName = (retailerId: string): string => {
-    const retailer = retailers.find(r => r.id === retailerId);
-    if (retailer?.profile?.realName) {
-      return retailer.profile.realName;
-    }
-    return retailer?.name || 'Unknown Retailer';
-  };
-
-  // Get retailer details by ID (handles both legacy and new profile formats)
-  const getRetailerDetails = (retailerId: string) => {
-    const retailer = retailers.find(r => r.id === retailerId);
-    if (retailer) {
-      const name = retailer.profile?.realName || retailer.name || 'Unknown Retailer';
-      const address = retailer.profile?.address || retailer.address || 'Not provided';
-      const code = retailer.code || retailer.id.slice(0, 6).toUpperCase();
-      return { name, address, areaId: retailer.areaId || '', code };
-    }
-    return { name: 'Unknown Retailer', address: 'Not provided', areaId: '', code: 'N/A' };
-  };
-
-  // Filter and process data
-  const filteredData = useMemo(() => {
-    let filtered = filterPaymentsByDateRange(payments);
-
-    // Only include completed payments (exclude initiated but not completed)
+    // 2. Only include completed payments
     filtered = filtered.filter(payment => payment.state === 'COMPLETED');
 
-    // Filter by line worker
+    // 3. Filter by line worker
     if (selectedLineWorker !== 'all') {
       filtered = filtered.filter(payment => payment.lineWorkerId === selectedLineWorker);
     }
 
-    // Filter by area
+    // 4. Filter by area
     if (selectedArea !== 'all') {
       filtered = filtered.filter(payment => {
         const retailer = retailers.find(r => r.id === payment.retailerId);
@@ -145,12 +106,12 @@ export function DaySheet({
       });
     }
 
-    // Filter by retailer
+    // 5. Filter by retailer
     if (selectedRetailer !== 'all') {
       filtered = filtered.filter(payment => payment.retailerId === selectedRetailer);
     }
 
-    // Sort: Group by Payment Method (Cash first usually preferred), then by Time
+    // 6. Sort: Method then Time
     filtered.sort((a, b) => {
       if (a.method !== b.method) {
         return a.method.localeCompare(b.method);
@@ -158,25 +119,43 @@ export function DaySheet({
       return a.createdAt.toMillis() - b.createdAt.toMillis();
     });
 
-    // Process data for display
+    // Helper functions (Defined inside useMemo to avoid scope/dep issues)
+    const getRetailerDetails = (retailerId: string) => {
+      const retailer = retailers.find(r => r.id === retailerId);
+      if (retailer) {
+        const name = retailer.profile?.realName || retailer.name || 'Unknown Retailer';
+        const address = retailer.profile?.address || retailer.address || 'Not provided';
+        const code = retailer.code || retailer.id.slice(0, 6).toUpperCase();
+        return { name, address, areaId: retailer.areaId || '', code };
+      }
+      return { name: 'Unknown Retailer', address: 'Not provided', areaId: '', code: 'N/A' };
+    };
+
+    const getAreaName = (areaId: string): string => {
+      const area = areas.find(a => a.id === areaId);
+      return area?.name || 'Unknown Area';
+    };
+
+    const getLineWorkerName = (lineWorkerId: string): string => {
+      const worker = lineWorkers.find(w => w.id === lineWorkerId);
+      return worker?.displayName || 'Unknown Line Worker';
+    };
+
+    // 7. Map to Display Data
     return filtered.map(payment => {
       const retailer = getRetailerDetails(payment.retailerId);
 
-      // Get line worker name: Try lookup -> Try payment record -> Default
       const mappedWorkerName = getLineWorkerName(payment.lineWorkerId);
       const lineWorkerName = mappedWorkerName !== 'Unknown Line Worker'
         ? mappedWorkerName
         : (payment.lineWorkerName || 'Unknown Line Worker');
-
-      const lineWorkerAreas = getLineWorkerAreas(payment.lineWorkerId);
-      const lineWorkerAreaNames = lineWorkerAreas.map(areaId => getAreaName(areaId || '')).join(', ');
 
       return {
         paymentId: payment.id,
         date: payment.createdAt.toDate(),
         time: formatTimestampWithTime(payment.createdAt),
         lineWorkerName,
-        lineWorkerArea: '', // Removing from UI as requested
+        lineWorkerArea: '',
         retailerName: retailer.name,
         retailerCode: retailer.code,
         retailerAddress: retailer.address,
@@ -184,6 +163,17 @@ export function DaySheet({
         amount: payment.totalPaid,
         paymentMethod: payment.method,
         utr: payment.utr,
+        chequeNumber: payment.chequeNumber,
+        chequeDate: payment.chequeDate
+          ? (() => {
+            const d = toDate(payment.chequeDate);
+            const day = d.getDate().toString().padStart(2, '0');
+            const month = (d.getMonth() + 1).toString().padStart(2, '0');
+            const year = d.getFullYear().toString().slice(-2);
+            return `${day}/${month}/${year}`;
+          })()
+          : '',
+        bankName: payment.bankName,
         exportDate: formatDateForExport(payment.createdAt)
       } as DaySheetData;
     });
@@ -198,21 +188,29 @@ export function DaySheet({
   const upiTotal = filteredData.filter(i => i.paymentMethod === 'UPI').reduce((sum, i) => sum + i.amount, 0);
   const bankTotal = filteredData.filter(i => i.paymentMethod === 'BANK_TRANSFER').reduce((sum, i) => sum + i.amount, 0);
 
+  // Helper needed for Export (re-defined outside useMemo or used from inside?) 
+  // We need these helpers for the Export function too. 
+  // To keep it DRY, we should define them outside, but to be SAFE, I'll copy simplest ones or define a robust lookup map.
+  // Actually, for Export, let's just re-find. It's an event handler, performance is less critical.
+
+  const getExportHelpers = () => {
+    return {
+      getAreaName: (areaId: string) => areas.find(a => a.id === areaId)?.name || 'Unknown Area',
+      getLineWorkerName: (id: string) => lineWorkers.find(w => w.id === id)?.displayName || 'Line Worker'
+    };
+  };
+
   // Generate Excel file
   const generateExcel = () => {
-    // Determine which columns to include
-    // Determine which columns to include
+    const { getAreaName, getLineWorkerName } = getExportHelpers();
     const showLineWorkerColumn = !hideLineWorkerFilter && selectedLineWorker === 'all';
     const showAreaColumn = selectedArea === 'all';
 
-    // Create workbook
     const wb = XLSX.utils.book_new();
 
-    // Prepare content (match CSV structure)
     const reportTitle = [['Report: Day Sheet']];
     const dateInfo = [[`Date Range: ${formatTimestamp(dateRange.startDate)} - ${formatTimestamp(dateRange.endDate)}`]];
 
-    // Filter info
     const filterInfo: string[][] = [];
     if (!showLineWorkerColumn) {
       let workerName = getLineWorkerName(selectedLineWorker);
@@ -225,85 +223,90 @@ export function DaySheet({
       filterInfo.push([`Service Area: ${getAreaName(selectedArea)}`]);
     }
 
-    // Column Headers
-    const headers = ['Date', 'Retailer Code', 'Retailer Name', 'Amount Collected', 'Payment Method', 'UTR Number'];
+    const headers = ['Date', 'Retailer Code', 'Retailer Name', 'Amount Collected', 'Payment Method', 'UTR / Cheque No.', 'Bank / Cheque Date'];
     if (showLineWorkerColumn) headers.push('Line Worker');
     if (showAreaColumn) headers.push('Service Area');
 
-    // Data Rows
     const dataRows = filteredData.map(item => {
+      let refNo = item.utr || '';
+      let details = '';
+
+      if (item.paymentMethod === 'CHEQUE') {
+        refNo = item.chequeNumber || '';
+        details = `${item.bankName || ''} (${item.chequeDate || ''})`;
+      } else if (item.paymentMethod === 'UPI') {
+        refNo = item.utr || 'UPI';
+      }
+
       const row = [
         item.exportDate,
         item.retailerCode,
         item.retailerName,
         item.amount,
         item.paymentMethod,
-        item.utr || ''
+        refNo,
+        details
       ];
       if (showLineWorkerColumn) row.push(item.lineWorkerName);
       if (showAreaColumn) row.push(item.retailerArea);
       return row;
     });
 
-    // Grand Total Row
-    const cashTotalRow = ['', 'Total Cash', '', cashTotal, 'CASH', '', ''];
-    const upiTotalRow = ['', 'Total UPI', '', upiTotal, 'UPI', '', ''];
-    const bankTotalRow = ['', 'Total Bank Transfer', '', bankTotal, 'BANK_TRANSFER', '', ''];
-    const grandTotalRow = ['', 'Grand Total', '', totalAmount, '', '', ''];
+    const cashTotalRow = ['', 'Total Cash', '', cashTotal, 'CASH', '', '', ''];
+    const upiTotalRow = ['', 'Total UPI', '', upiTotal, 'UPI', '', '', ''];
+    const chequeTotalRow = ['', 'Total Cheque', '', filteredData.filter(i => i.paymentMethod === 'CHEQUE').reduce((sum, i) => sum + i.amount, 0), 'CHEQUE', '', '', ''];
+    const bankTotalRow = ['', 'Total Bank Transfer', '', bankTotal, 'BANK_TRANSFER', '', '', ''];
+    const grandTotalRow = ['', 'Grand Total', '', totalAmount, '', '', '', ''];
+
     if (showLineWorkerColumn) {
       cashTotalRow.push('');
       upiTotalRow.push('');
+      chequeTotalRow.push('');
       bankTotalRow.push('');
       grandTotalRow.push('');
     }
     if (showAreaColumn) {
       cashTotalRow.push('');
       upiTotalRow.push('');
+      chequeTotalRow.push('');
       bankTotalRow.push('');
       grandTotalRow.push('');
     }
 
-    // Combine all data
     const wsData = [
       ...reportTitle,
       ...dateInfo,
       ...filterInfo,
-      [], // Empty row
+      [],
       headers,
       ...dataRows,
-      [], // Empty row
+      [],
       cashTotalRow,
       upiTotalRow,
+      chequeTotalRow,
       bankTotalRow,
       grandTotalRow
     ];
 
     const ws = XLSX.utils.aoa_to_sheet(wsData);
 
-    // Set column widths
     const colWidths = [
       { wch: 20 }, // Date
       { wch: 15 }, // Code
       { wch: 30 }, // Name
       { wch: 15 }, // Amount
       { wch: 15 }, // Method
-      { wch: 20 }, // UTR
+      { wch: 20 }, // UTR / Cheque No
+      { wch: 30 }, // Bank Details
       ...(showLineWorkerColumn ? [{ wch: 20 }] : []),
       ...(showAreaColumn ? [{ wch: 20 }] : [])
     ];
     ws['!cols'] = colWidths;
 
-    // Styling
-    // Title Bold
     if (ws['A1']) ws['A1'].s = { font: { bold: true, sz: 14 } };
-
-    // Headers Bold (row index depends on filter info length)
-    const headerRowIdx = reportTitle.length + dateInfo.length + filterInfo.length + 1; // +1 for empty row
-    // Note: This styling logic is simplified; basic bolding for A1 is good enough for now
 
     XLSX.utils.book_append_sheet(wb, ws, 'Day Sheet');
 
-    // Generate file name logic
     const formatDateForFn = (d: Date) => {
       const day = d.getDate();
       const month = d.getMonth() + 1;
@@ -325,13 +328,11 @@ export function DaySheet({
     if (selectedLineWorker !== 'all') {
       workerStr = getLineWorkerName(selectedLineWorker).replace(/\s+/g, '_');
     } else if (hideLineWorkerFilter && lineWorkers.length > 0) {
-      // If filter is hidden, usually implies filtered to a single worker (the current user)
       workerStr = lineWorkers[0].displayName?.replace(/\s+/g, '_') || 'Worker';
     }
 
     const fileName = `${dateStr}_${areaStr}_${workerStr}.xlsx`.toLowerCase();
 
-    // Save file
     const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
     const data = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     saveAs(data, fileName);
@@ -339,6 +340,7 @@ export function DaySheet({
 
   // Generate CSV file with custom format
   const generateCSV = () => {
+    const { getAreaName, getLineWorkerName } = getExportHelpers();
     const rows: string[] = [];
 
     // Header section
@@ -361,20 +363,31 @@ export function DaySheet({
     const showAreaColumn = selectedArea === 'all';
 
     // Column headers
-    const headers = ['Date', 'Retailer Code', 'Retailer Name', 'Amount Collected', 'Payment Method', 'UTR Number'];
+    const headers = ['Date', 'Retailer Code', 'Retailer Name', 'Amount Collected', 'Payment Method', 'Ref No / Cheque No', 'Bank / Details'];
     if (showLineWorkerColumn) headers.push('Line Worker');
     if (showAreaColumn) headers.push('Service Area');
     rows.push(headers.join(','));
 
     // Data rows
     filteredData.forEach(item => {
+      let refNo = item.utr || '';
+      let details = '';
+
+      if (item.paymentMethod === 'CHEQUE') {
+        refNo = item.chequeNumber || '';
+        details = `${item.bankName || ''} (${item.chequeDate || ''})`;
+      } else if (item.paymentMethod === 'UPI') {
+        refNo = item.utr || '';
+      }
+
       const rowData = [
         `"${item.exportDate}"`,
         `"${item.retailerCode}"`,
         `"${item.retailerName}"`,
         item.amount.toString(),
         item.paymentMethod,
-        `"${item.utr || ''}"`
+        `"${refNo}"`,
+        `"${details}"`
       ];
       if (showLineWorkerColumn) rowData.push(`"${item.lineWorkerName}"`);
       if (showAreaColumn) rowData.push(`"${item.retailerArea}"`);
@@ -385,22 +398,29 @@ export function DaySheet({
     rows.push('');
 
     // Grand Total row
-    let cashRow = ['', 'Total Cash', '', cashTotal.toString(), 'CASH', '', ''];
+    const chequeTotal = filteredData.filter(i => i.paymentMethod === 'CHEQUE').reduce((sum, i) => sum + i.amount, 0);
+
+    let cashRow = ['', 'Total Cash', '', cashTotal.toString(), 'CASH', '', '', ''];
     if (showLineWorkerColumn) cashRow.push('');
     if (showAreaColumn) cashRow.push('');
     rows.push(cashRow.join(','));
 
-    let upiRow = ['', 'Total UPI', '', upiTotal.toString(), 'UPI', '', ''];
+    let upiRow = ['', 'Total UPI', '', upiTotal.toString(), 'UPI', '', '', ''];
     if (showLineWorkerColumn) upiRow.push('');
     if (showAreaColumn) upiRow.push('');
     rows.push(upiRow.join(','));
 
-    let bankRow = ['', 'Total Bank Transfer', '', bankTotal.toString(), 'BANK_TRANSFER', '', ''];
+    let chequeRow = ['', 'Total Cheque', '', chequeTotal.toString(), 'CHEQUE', '', '', ''];
+    if (showLineWorkerColumn) chequeRow.push('');
+    if (showAreaColumn) chequeRow.push('');
+    rows.push(chequeRow.join(','));
+
+    let bankRow = ['', 'Total Bank Transfer', '', bankTotal.toString(), 'BANK_TRANSFER', '', '', ''];
     if (showLineWorkerColumn) bankRow.push('');
     if (showAreaColumn) bankRow.push('');
     rows.push(bankRow.join(','));
 
-    const totalRow = ['', 'Grand Total', '', totalAmount.toString(), '', ''];
+    const totalRow = ['', 'Grand Total', '', totalAmount.toString(), '', '', '', ''];
     if (showLineWorkerColumn) totalRow.push('');
     if (showAreaColumn) totalRow.push('');
     rows.push(totalRow.join(','));
@@ -439,10 +459,10 @@ export function DaySheet({
     saveAs(blob, fileName);
   };
 
-
   // Get unique line workers for filter
   const uniqueLineWorkers = useMemo(() => {
     const workerIds = [...new Set(payments.map(p => p.lineWorkerId))];
+    const { getLineWorkerName } = getExportHelpers();
     return workerIds.map(id => ({
       id,
       name: getLineWorkerName(id)
@@ -451,6 +471,7 @@ export function DaySheet({
 
   // Get unique areas for filter
   const uniqueAreas = useMemo(() => {
+    const { getAreaName } = getExportHelpers();
     const areaIds = [...new Set(payments.map(p => {
       const retailer = retailers.find(r => r.id === p.retailerId);
       return retailer?.areaId;
@@ -464,10 +485,13 @@ export function DaySheet({
   // Get unique retailers for filter
   const uniqueRetailers = useMemo(() => {
     const retailerIds = [...new Set(payments.map(p => p.retailerId))];
-    return retailerIds.map(id => ({
-      id,
-      name: getRetailerName(id)
-    }));
+    return retailerIds.map(id => {
+      const r = retailers.find(rt => rt.id === id);
+      return {
+        id,
+        name: r ? (r.profile?.realName || r.name || 'Unknown') : 'Unknown'
+      };
+    });
   }, [payments, retailers]);
 
   return (
@@ -569,10 +593,6 @@ export function DaySheet({
                   </div>
 
                   <div className="space-y-2">
-                    {/* <label className="text-sm font-medium flex items-center space-x-1">
-                      <Calendar className="h-4 w-4" />
-                      <span>Date Range</span>
-                    </label> */}
                     <div className="space-y-2">
                       <label className="text-sm font-medium flex items-center space-x-1">
                         <Calendar className="h-4 w-4" />
@@ -713,7 +733,19 @@ export function DaySheet({
                                   <TableCell className="font-medium">{item.retailerName}</TableCell>
                                   <TableCell className="text-right font-bold text-green-600">{formatCurrency(item.amount)}</TableCell>
                                   <TableCell>
-                                    <Badge variant="outline">{item.paymentMethod}</Badge>
+                                    <div className="flex flex-col gap-0.5">
+                                      <Badge variant="outline" className="w-fit">{item.paymentMethod}</Badge>
+                                      {item.paymentMethod === 'CHEQUE' && (
+                                        <span className="text-[10px] text-gray-500 font-mono">
+                                          #{item.chequeNumber}
+                                        </span>
+                                      )}
+                                      {item.paymentMethod === 'UPI' && item.utr && (
+                                        <span className="text-[10px] text-gray-500 font-mono">
+                                          UTR: {item.utr}
+                                        </span>
+                                      )}
+                                    </div>
                                   </TableCell>
                                   <TableCell className="text-sm text-gray-600">{item.retailerArea}</TableCell>
                                   <TableCell className="font-medium text-gray-700 text-xs">{item.lineWorkerName}</TableCell>
@@ -757,7 +789,6 @@ export function DaySheet({
                                     <span className="text-sm">{item.retailerName}</span>
                                   </div>
                                   <div className="text-xs text-gray-500 space-y-1">
-                                    {/* <div><strong>Worker Areas:</strong> {item.lineWorkerArea}</div> */}
                                     <div><strong>Retailer Area:</strong> {item.retailerArea}</div>
                                     {item.retailerAddress && (
                                       <div><strong>Address:</strong> {item.retailerAddress}</div>

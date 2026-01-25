@@ -229,6 +229,37 @@ export class FirestoreService<T extends BaseDocument> {
       throw error;
     }
   }
+
+  async batchUpdate(ids: string[], data: Partial<T>, tenantId: string): Promise<void> {
+    try {
+      if (ids.length === 0) return;
+
+      const batch = writeBatch(db);
+
+      // Process data once
+      const processedData: any = {};
+      Object.keys(data).forEach(key => {
+        const value = (data as any)[key];
+        if (value === null) {
+          processedData[key] = deleteField();
+        } else if (value !== undefined) {
+          processedData[key] = value;
+        }
+      });
+      processedData.updatedAt = Timestamp.now();
+
+      ids.forEach(id => {
+        const docRef = doc(db, this.collectionName, id);
+        batch.update(docRef, processedData);
+      });
+
+      await batch.commit();
+      logger.success(`Batch updated ${ids.length} documents in ${this.collectionName}`, { context: 'FirestoreService' });
+    } catch (error) {
+      logger.error(`Error batch updating in ${this.collectionName}`, error, { context: 'FirestoreService' });
+      throw error;
+    }
+  }
 }
 
 // Service classes for each entity

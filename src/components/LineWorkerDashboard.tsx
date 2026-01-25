@@ -66,6 +66,7 @@ import {
   X,
   ChevronDown,
   ChevronUp,
+  Edit,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
@@ -138,7 +139,7 @@ export function LineWorkerDashboard() {
     const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
     return { startDate: startOfDay, endDate: endOfDay };
   });
-  const [analyticsMethods, setAnalyticsMethods] = useState<string[]>(['CASH', 'UPI', 'BANK_TRANSFER']);
+  const [analyticsMethods, setAnalyticsMethods] = useState<string[]>(['CASH', 'UPI', 'BANK_TRANSFER', 'CHEQUE']);
 
   // Data Pagination State (Optimization)
   const [visibleRetailers, setVisibleRetailers] = useState(24);
@@ -157,6 +158,15 @@ export function LineWorkerDashboard() {
   // Helper function to get retailer address (handles both legacy and new profile formats)
   const getRetailerAddress = (retailer: any) => {
     return retailer.profile?.address || retailer.address || 'N/A';
+  };
+
+  // Helper to check if payment is editable
+  // 1. Cheque: Editable only within 48 hours of creation per business rule.
+  //    NOTE: We now run an "Auto-Lock" effect that sets verified=true after 48h.
+  //    So we can simply rely on !verified for all types to avoid re-computing date diff on every render.
+  // 2. Others: Editable only if NOT verified
+  const isPaymentEditable = (payment: Payment) => {
+    return payment.verified !== true;
   };
 
   // Performance Optimization: Create a lean retailer list for the selection modal
@@ -773,6 +783,9 @@ export function LineWorkerDashboard() {
           totalPaid: pendingPaymentData.amount,
           method: pendingPaymentData.paymentMethod,
           utr: pendingPaymentData.utr,
+          chequeNumber: pendingPaymentData.chequeNumber,
+          chequeDate: pendingPaymentData.chequeDate ? new Date(pendingPaymentData.chequeDate).toISOString() : undefined,
+          bankName: pendingPaymentData.bankName,
           proofUrl,
           proofPath, // Pass the path for deletion later
           notes: pendingPaymentData.notes
@@ -829,8 +842,11 @@ export function LineWorkerDashboard() {
       });
       console.log('⚡ Optimistic update complete');
 
-      setPendingPaymentData(null);
+      // Close dialogs
       setShowConfirmationDialog(false);
+      setShowPaymentDialog(false); // Explicitly close the background form
+      setPendingPaymentData(null);
+      setPreSelectedRetailerForPayment(null);
 
       setTimeout(() => {
         setShowPaymentSuccess(true);
@@ -1045,13 +1061,15 @@ export function LineWorkerDashboard() {
     const totalAmount = sortedData.reduce((sum, p) => sum + p.totalPaid, 0);
     const cashTotal = sortedData.filter(p => p.method === 'CASH').reduce((sum, p) => sum + p.totalPaid, 0);
     const upiTotal = sortedData.filter(p => p.method === 'UPI').reduce((sum, p) => sum + p.totalPaid, 0);
+    const chequeTotal = sortedData.filter(p => p.method === 'CHEQUE').reduce((sum, p) => sum + p.totalPaid, 0);
     const bankTotal = sortedData.filter(p => p.method === 'BANK_TRANSFER').reduce((sum, p) => sum + p.totalPaid, 0);
 
     // Total Rows
-    const cashTotalRow = ['', 'Total Cash', '', '', '', cashTotal, 'CASH', ''];
-    const upiTotalRow = ['', 'Total UPI', '', '', '', upiTotal, 'UPI', ''];
-    const bankTotalRow = ['', 'Total Bank Transfer', '', '', '', bankTotal, 'BANK_TRANSFER', ''];
-    const grandTotalRow = ['', 'Grand Total', '', '', '', totalAmount, '', ''];
+    const cashTotalRow = ['', 'Total Cash', '', '', '', cashTotal, 'CASH', '', '', ''];
+    const upiTotalRow = ['', 'Total UPI', '', '', '', upiTotal, 'UPI', '', '', ''];
+    const chequeTotalRow = ['', 'Total Cheque', '', '', '', chequeTotal, 'CHEQUE', '', '', ''];
+    const bankTotalRow = ['', 'Total Bank Transfer', '', '', '', bankTotal, 'BANK_TRANSFER', '', '', ''];
+    const grandTotalRow = ['', 'Grand Total', '', '', '', totalAmount, '', '', '', ''];
 
     // Combine data
     const wsData = [
@@ -1063,6 +1081,7 @@ export function LineWorkerDashboard() {
       [],
       cashTotalRow,
       upiTotalRow,
+      chequeTotalRow,
       bankTotalRow,
       grandTotalRow
     ];
@@ -1078,6 +1097,8 @@ export function LineWorkerDashboard() {
       { wch: 15 }, // Area (New)
       { wch: 15 }, // Amount
       { wch: 10 }, // Method
+      { wch: 20 }, // Ref No
+      { wch: 25 }, // Details
       { wch: 15 }  // Status
     ];
     ws['!cols'] = colWidths;
@@ -1124,13 +1145,35 @@ export function LineWorkerDashboard() {
     rows.push('');
 
     // Headers
-    const headers = ['Payment ID', 'Date', 'Code', 'Retailer', 'Area', 'Amount', 'Method', 'Status'];
+    const headers = ['Payment ID', 'Date', 'Code', 'Retailer', 'Area', 'Amount', 'Method', 'Ref No / Cheque No', 'Bank / Details', 'Status'];
     rows.push(headers.join(','));
 
     // Data
     sortedData.forEach(payment => {
       const retailer = retailers.find(r => r.id === payment.retailerId);
       const area = retailer ? areas.find(a => a.id === retailer.areaId) : null;
+
+      let refNo = payment.utr || '';
+      let details = '';
+
+      if (payment.method === 'CHEQUE') {
+        refNo = payment.chequeNumber || '';
+        if (payment.chequeDate) {
+          try {
+            const date = new Date(payment.chequeDate);
+            const day = date.getDate().toString().padStart(2, '0');
+            const month = (date.getMonth() + 1).toString().padStart(2, '0');
+            const year = date.getFullYear().toString().slice(-2);
+            details = `${payment.bankName || ''} (${day}/${month}/${year})`;
+          } catch (e) {
+            details = `${payment.bankName || ''} (Invalid Date)`;
+          }
+        } else {
+          details = `${payment.bankName || ''}`;
+        }
+      } else if (payment.method === 'UPI') {
+        refNo = payment.utr || '';
+      }
 
       const rowData = [
         `"${payment.id}"`,
@@ -1140,6 +1183,8 @@ export function LineWorkerDashboard() {
         `"${area?.name || ''}"`,
         payment.totalPaid.toString(),
         payment.method,
+        `"${refNo}"`,
+        `"${details}"`,
         payment.state
       ];
       rows.push(rowData.join(','));
@@ -1149,11 +1194,13 @@ export function LineWorkerDashboard() {
     const totalAmount = sortedData.reduce((sum, p) => sum + p.totalPaid, 0);
     const cashTotal = sortedData.filter(p => p.method === 'CASH').reduce((sum, p) => sum + p.totalPaid, 0);
     const upiTotal = sortedData.filter(p => p.method === 'UPI').reduce((sum, p) => sum + p.totalPaid, 0);
+    const chequeTotal = sortedData.filter(p => p.method === 'CHEQUE').reduce((sum, p) => sum + p.totalPaid, 0);
 
     rows.push('');
-    rows.push([, 'Total Cash', '', '', '', cashTotal.toString(), 'CASH', ''].join(','));
-    rows.push([, 'Total UPI', '', '', '', upiTotal.toString(), 'UPI', ''].join(','));
-    rows.push([, 'Grand Total', '', '', '', totalAmount.toString(), '', ''].join(','));
+    rows.push([, 'Total Cash', '', '', '', cashTotal.toString(), 'CASH', '', '', ''].join(','));
+    rows.push([, 'Total UPI', '', '', '', upiTotal.toString(), 'UPI', '', '', ''].join(','));
+    rows.push([, 'Total Cheque', '', '', '', chequeTotal.toString(), 'CHEQUE', '', '', ''].join(','));
+    rows.push([, 'Grand Total', '', '', '', totalAmount.toString(), '', '', ''].join(','));
 
     // Download
     const csvContent = rows.join('\n');
@@ -1193,12 +1240,34 @@ export function LineWorkerDashboard() {
     const methodInfo = [[`Methods: ${analyticsMethods.join(', ')}`]];
 
     // Headers
-    const headers = ['Payment ID', 'Date', 'Code', 'Retailer', 'Area', 'Amount', 'Method', 'Status'];
+    const headers = ['Payment ID', 'Date', 'Code', 'Retailer', 'Area', 'Amount', 'Method', 'Ref No / Cheque No', 'Bank / Details', 'Status'];
 
     // Data Rows
     const dataRows = sortedData.map(payment => {
       const retailer = retailers.find(r => r.id === payment.retailerId);
       const area = retailer ? areas.find(a => a.id === retailer.areaId) : null;
+
+      let refNo = payment.utr || '';
+      let details = '';
+
+      if (payment.method === 'CHEQUE') {
+        refNo = payment.chequeNumber || '';
+        if (payment.chequeDate) {
+          try {
+            const date = new Date(payment.chequeDate);
+            const day = date.getDate().toString().padStart(2, '0');
+            const month = (date.getMonth() + 1).toString().padStart(2, '0');
+            const year = date.getFullYear().toString().slice(-2);
+            details = `${payment.bankName || ''} (${day}/${month}/${year})`;
+          } catch (e) {
+            details = `${payment.bankName || ''} (Invalid Date)`;
+          }
+        } else {
+          details = `${payment.bankName || ''}`;
+        }
+      } else if (payment.method === 'UPI') {
+        refNo = payment.utr || '';
+      }
 
       return [
         payment.id,
@@ -1208,6 +1277,8 @@ export function LineWorkerDashboard() {
         area?.name || '',
         payment.totalPaid,
         payment.method,
+        refNo,
+        details,
         payment.state
       ];
     });
@@ -1216,13 +1287,15 @@ export function LineWorkerDashboard() {
     const totalAmount = sortedData.reduce((sum, p) => sum + p.totalPaid, 0);
     const cashTotal = sortedData.filter(p => p.method === 'CASH').reduce((sum, p) => sum + p.totalPaid, 0);
     const upiTotal = sortedData.filter(p => p.method === 'UPI').reduce((sum, p) => sum + p.totalPaid, 0);
+    const chequeTotal = sortedData.filter(p => p.method === 'CHEQUE').reduce((sum, p) => sum + p.totalPaid, 0);
     const bankTotal = sortedData.filter(p => p.method === 'BANK_TRANSFER').reduce((sum, p) => sum + p.totalPaid, 0);
 
     // Total Rows
-    const cashTotalRow = ['', 'Total Cash', '', '', '', cashTotal, 'CASH', ''];
-    const upiTotalRow = ['', 'Total UPI', '', '', '', upiTotal, 'UPI', ''];
-    const bankTotalRow = ['', 'Total Bank Transfer', '', '', '', bankTotal, 'BANK_TRANSFER', ''];
-    const grandTotalRow = ['', 'Grand Total', '', '', '', totalAmount, '', ''];
+    const cashTotalRow = ['', 'Total Cash', '', '', '', cashTotal, 'CASH', '', '', ''];
+    const upiTotalRow = ['', 'Total UPI', '', '', '', upiTotal, 'UPI', '', '', ''];
+    const chequeTotalRow = ['', 'Total Cheque', '', '', '', chequeTotal, 'CHEQUE', '', '', ''];
+    const bankTotalRow = ['', 'Total Bank Transfer', '', '', '', bankTotal, 'BANK_TRANSFER', '', '', ''];
+    const grandTotalRow = ['', 'Grand Total', '', '', '', totalAmount, '', '', '', ''];
 
     // Combine data
     const wsData = [
@@ -1235,6 +1308,7 @@ export function LineWorkerDashboard() {
       [],
       cashTotalRow,
       upiTotalRow,
+      chequeTotalRow,
       bankTotalRow,
       grandTotalRow
     ];
@@ -1250,6 +1324,8 @@ export function LineWorkerDashboard() {
       { wch: 15 }, // Area
       { wch: 15 }, // Amount
       { wch: 10 }, // Method
+      { wch: 20 }, // Ref No
+      { wch: 25 }, // Details
       { wch: 15 }  // Status
     ];
     ws['!cols'] = colWidths;
@@ -1341,6 +1417,37 @@ export function LineWorkerDashboard() {
     }
     return isInDateRange;
   });
+
+  // Auto-Lock Effect: Check for expired Cheque payments (>48h) and auto-lock them
+  useEffect(() => {
+    if (payments.length === 0) return;
+
+    const now = Date.now();
+    const expiredChequeIds: string[] = [];
+
+    payments.forEach(p => {
+      // Only check non-verified CHEQUE payments
+      if (p.method === 'CHEQUE' && !p.verified) {
+        const createdTime = p.createdAt.toMillis ? p.createdAt.toMillis() : (p.createdAt.seconds * 1000);
+        const diffHours = (now - createdTime) / (1000 * 60 * 60);
+        if (diffHours >= 48) {
+          expiredChequeIds.push(p.id);
+        }
+      }
+    });
+
+    if (expiredChequeIds.length > 0) {
+      console.log(`🔒 Auto-locking ${expiredChequeIds.length} expired cheque payments...`);
+      const paymentService = new PaymentService();
+      const tenantId = user?.tenantIds?.[0];
+
+      if (tenantId) {
+        paymentService.batchUpdate(expiredChequeIds, { verified: true }, tenantId)
+          .then(() => console.log("✅ Cheques locked successfully"))
+          .catch(err => console.error("❌ Failed to lock cheques", err));
+      }
+    }
+  }, [payments, user]);
 
   // Analytics Calculation
   const analyticsFilteredPayments = payments.filter(payment => {
@@ -1766,7 +1873,7 @@ export function LineWorkerDashboard() {
     }
   };
 
-  const handlePaymentUpdate = async (paymentId: string, updates: { utr?: string; proofImage?: File | null; isProofRemoved?: boolean }) => {
+  const handlePaymentUpdate = async (paymentId: string, updates: { utr?: string; proofImage?: File | null; isProofRemoved?: boolean; chequeNumber?: string; bankName?: string; chequeDate?: string }) => {
     const tenantId = getCurrentTenantId();
     if (!tenantId) return;
 
@@ -1777,6 +1884,16 @@ export function LineWorkerDashboard() {
 
       if (updates.utr !== undefined) {
         updateData.utr = updates.utr;
+      }
+      if (updates.chequeNumber !== undefined) updateData.chequeNumber = updates.chequeNumber;
+      if (updates.bankName !== undefined) updateData.bankName = updates.bankName;
+      if (updates.chequeDate !== undefined) {
+        // Ensure it is saved as an ISO string or Timestamp as per your DB schema. 
+        // Based on existing code (TimeStamps), usually backend handles conversions or we save as string if that's the established pattern for this field.
+        // Looking at DaySheet, it expects chequeDate to be compatible with toDate() or string. 
+        // Let's save as string for now if it comes from date input, or ISO. 
+        // The input type="date" returns YYYY-MM-DD.
+        updateData.chequeDate = updates.chequeDate;
       }
 
       // Handle Image Updates
@@ -1894,7 +2011,7 @@ export function LineWorkerDashboard() {
                         setShowCorrectionModal(true);
                       }}
                       className="w-full"
-                      disabled={payment.verified === true}
+                      disabled={!isPaymentEditable(payment)}
                     >
                       Edit
                     </Button>
@@ -1979,7 +2096,7 @@ export function LineWorkerDashboard() {
                               setSelectedPaymentForCorrection(payment);
                               setShowCorrectionModal(true);
                             }}
-                            disabled={payment.verified === true}
+                            disabled={!isPaymentEditable(payment)}
                           >
                             Edit
                           </Button>
@@ -2232,7 +2349,7 @@ export function LineWorkerDashboard() {
 
                           {/* Custom Toggle Switch Style */}
                           <div className="bg-white p-1 rounded-lg border border-gray-200 shadow-sm flex flex-wrap sm:flex-nowrap gap-1">
-                            {['CASH', 'UPI', 'BANK_TRANSFER'].map(method => {
+                            {['CASH', 'UPI', 'CHEQUE', 'BANK_TRANSFER'].map(method => {
                               const isSelected = analyticsMethods.includes(method);
                               const label = method === 'BANK_TRANSFER' ? 'BANK' : method;
 
@@ -2245,6 +2362,9 @@ export function LineWorkerDashboard() {
                               } else if (method === 'UPI') {
                                 activeClass = 'bg-blue-50 text-blue-700 shadow-sm ring-1 ring-blue-200';
                                 iconColor = 'text-blue-500';
+                              } else if (method === 'CHEQUE') {
+                                activeClass = 'bg-amber-50 text-amber-700 shadow-sm ring-1 ring-amber-200';
+                                iconColor = 'text-amber-500';
                               } else {
                                 // BANK_TRANSFER
                                 activeClass = 'bg-purple-50 text-purple-700 shadow-sm ring-1 ring-purple-200';
@@ -2489,14 +2609,14 @@ export function LineWorkerDashboard() {
                   </div>
 
                   <Tabs value={paymentTab} onValueChange={setPaymentTab}>
-                    <TabsList>
+                    {/* <TabsList>
                       <TabsTrigger value="completed">Completed ({completedPayments.length})</TabsTrigger>
                       <TabsTrigger value="pending">Pending ({payments.filter(p => p.state === 'INITIATED' || p.state === 'OTP_SENT').length})</TabsTrigger>
                       <TabsTrigger value="all">All ({payments.length})</TabsTrigger>
-                    </TabsList>
+                    </TabsList> */}
 
                     <TabsContent value={paymentTab} className="space-y-4">
-                      <div className="flex justify-end">
+                      <div className="flex justify-start">
                         <ModernDateRangePicker
                           startDate={paymentsDateRange.startDate}
                           endDate={paymentsDateRange.endDate}
@@ -2544,10 +2664,15 @@ export function LineWorkerDashboard() {
             onCancel={() => {
               setShowPaymentDialog(false);
               setPreSelectedRetailerForPayment(null);
+              // Only clear pending data if we are genuinely cancelling, not editing.
+              // But for simplicity, we can clear it here, as 'initialPaymentData' logic might rely on it being present only during edit.
+              // Actually, if we cancel, we should probably clear pending data.
+              setPendingPaymentData(null);
             }}
             collectingPayment={isCollectingPayment}
             wholesalerUpiInfo={wholesalerUpiInfo}
             isOpen={showPaymentDialog}
+            initialPaymentData={pendingPaymentData as any}
           />
         </DialogContent>
       </Dialog>
@@ -2584,15 +2709,39 @@ export function LineWorkerDashboard() {
                     <span className="text-sm font-semibold text-gray-900">****{pendingPaymentData.utr}</span>
                   </div>
                 )}
+                {pendingPaymentData.paymentMethod === 'CHEQUE' && (
+                  <>
+                    <div className="flex justify-between">
+                      <span className="text-sm font-medium text-gray-700">Bank:</span>
+                      <span className="text-sm font-semibold text-gray-900">{pendingPaymentData.bankName}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm font-medium text-gray-700">Cheque No:</span>
+                      <span className="text-sm font-semibold text-gray-900 font-mono">#{pendingPaymentData.chequeNumber}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm font-medium text-gray-700">Cheque Date:</span>
+                      <span className="text-sm font-semibold text-gray-900">
+                        {pendingPaymentData.chequeDate ? new Date(pendingPaymentData.chequeDate).toLocaleDateString() : 'N/A'}
+                      </span>
+                    </div>
+                  </>
+                )}
               </div>
               <div className="flex gap-3 justify-end pt-4 border-t">
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={handleCancelPayment}
+                  onClick={() => {
+                    // Edit Flow: Close confirmation, Open Payment Dialog again with data prefilled
+                    setShowConfirmationDialog(false);
+                    setShowPaymentDialog(true);
+                    // Do NOT clear pendingPaymentData here, it will be passed as initialPaymentData
+                  }}
                   disabled={isCollectingPayment}
                 >
-                  Cancel
+                  <Edit className="h-4 w-4 mr-2" />
+                  Edit
                 </Button>
                 <Button
                   type="button"
@@ -2794,6 +2943,6 @@ export function LineWorkerDashboard() {
         onUpdate={handlePaymentUpdate}
         isUpdating={isUpdatingPayment}
       />
-    </div>
+    </div >
   );
 }

@@ -2751,6 +2751,9 @@ export function WholesalerAdminDashboard() {
             amount: p.totalPaid,
             method: p.method,
             utr: p.utr || '',
+            chequeNumber: p.chequeNumber || '',
+            bankName: p.bankName || '',
+            chequeDate: p.chequeDate ? new Date(p.chequeDate).toLocaleDateString() : '',
             lineWorker: p.lineWorkerName || 'Unknown',
             serviceArea: areaName,
             status: status
@@ -2805,25 +2808,37 @@ export function WholesalerAdminDashboard() {
         // 3. Headers
         const headers = [
           'Date', 'Retailer Code', 'Retailer Name', 'Amount Collected',
-          'Payment Method', 'UTR Number', 'Line Worker', 'Service Area', 'Status'
+          'Payment Method', 'Ref No / Cheque No', 'Bank / Details', 'Line Worker', 'Service Area', 'Status'
         ];
         csvRows.push(headers.join(','));
 
         // 4. Rows
         sortedData.forEach(row => {
+          let refNo = row.utr || '';
+          let details = '';
+
+          if (row.method === 'CHEQUE') {
+            refNo = row.chequeNumber || '';
+            details = `${row.bankName || ''} (${row.chequeDate || ''})`;
+          } else if (row.method === 'UPI') {
+            refNo = row.utr || '';
+          }
+
           const csvRow = [
             `"${row.date}"`,
             `"${row.retailerCode}"`,
             `"${row.retailerName}"`,
             row.amount.toString(),
             row.method,
-            `"${row.utr}"`,
+            `"${refNo}"`,
+            `"${details}"`,
             `"${row.lineWorker}"`,
             `"${row.serviceArea}"`,
             `"${row.status}"`
           ];
           csvRows.push(csvRow.join(','));
         });
+        // I'll pause this replacement chunk to verify sortedData creation first.
 
         // 5. Totals
         csvRows.push(''); // Empty row
@@ -2861,19 +2876,33 @@ export function WholesalerAdminDashboard() {
         // Prepare main data
         const mainDataHeader = [
           'Date', 'Retailer Code', 'Retailer Name', 'Amount Collected',
-          'Payment Method', 'UTR Number', 'Line Worker', 'Service Area', 'Status'
+          'Payment Method', 'Ref No / Cheque No', 'Bank / Details', 'Line Worker', 'Service Area', 'Status'
         ];
 
-        const mainDataRows = sortedData.map(row => [
-          row.date, row.retailerCode, row.retailerName, row.amount,
-          row.method, row.utr, row.lineWorker, row.serviceArea, row.status
-        ]);
+        const mainDataRows = sortedData.map(row => {
+          let refNo = row.utr || '';
+          let details = '';
+
+          if (row.method === 'CHEQUE') {
+            refNo = row.chequeNumber || '';
+            details = `${row.bankName || ''} (${row.chequeDate || ''})`;
+          } else if (row.method === 'UPI') {
+            refNo = row.utr || 'UPI';
+          }
+
+          return [
+            row.date, row.retailerCode, row.retailerName, row.amount,
+            row.method, refNo, details, row.lineWorker, row.serviceArea, row.status
+          ];
+        });
 
         // Total rows
-        const cashTotalRow = ['', 'Total Cash', '', cashTotal, 'CASH', '', '', '', ''];
-        const upiTotalRow = ['', 'Total UPI', '', upiTotal, 'UPI', '', '', '', ''];
-        const bankTotalRow = ['', 'Total Bank Transfer', '', bankTotal, 'BANK_TRANSFER', '', '', '', ''];
-        const grandTotalRow = ['', 'Grand Total', '', totalAmount, '', '', '', '', ''];
+        const cashTotalRow = ['', 'Total Cash', '', cashTotal, 'CASH', '', '', '', '', ''];
+        const upiTotalRow = ['', 'Total UPI', '', upiTotal, 'UPI', '', '', '', '', ''];
+        const bankTotalRow = ['', 'Total Bank Transfer', '', bankTotal, 'BANK_TRANSFER', '', '', '', '', ''];
+        const chequeTotal = sortedData.filter(row => row.method === 'CHEQUE').reduce((sum, row) => sum + row.amount, 0);
+        const chequeTotalRow = ['', 'Total Cheque', '', chequeTotal, 'CHEQUE', '', '', '', '', ''];
+        const grandTotalRow = ['', 'Grand Total', '', totalAmount, '', '', '', '', '', ''];
 
         // Create workbook
         const wb = XLSX.utils.book_new();
@@ -2888,6 +2917,7 @@ export function WholesalerAdminDashboard() {
           [], // Empty row before totals
           cashTotalRow,
           upiTotalRow,
+          chequeTotalRow,
           bankTotalRow,
           grandTotalRow
         ];
@@ -2901,7 +2931,8 @@ export function WholesalerAdminDashboard() {
           { wch: 30 }, // Name
           { wch: 15 }, // Amount
           { wch: 15 }, // Method
-          { wch: 20 }, // UTR
+          { wch: 20 }, // Ref No
+          { wch: 30 }, // Bank Details
           { wch: 20 }, // Worker
           { wch: 20 }, // Area
           { wch: 20 }  // Status
@@ -3201,6 +3232,13 @@ export function WholesalerAdminDashboard() {
                                     <span className="text-xs text-gray-500 font-medium pl-1">
                                       ({payment.utr})
                                     </span>
+                                  )}
+                                  {payment.method === 'CHEQUE' && (
+                                    <div className="text-[10px] text-gray-500 font-mono pl-1">
+                                      <div className="font-bold">#{payment.chequeNumber}</div>
+                                      <div>{payment.bankName}</div>
+                                      {payment.chequeDate && <div>{new Date(payment.chequeDate).toLocaleDateString()}</div>}
+                                    </div>
                                   )}
                                 </div>
                               </TableCell>
