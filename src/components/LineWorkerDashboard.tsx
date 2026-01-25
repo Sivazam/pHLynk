@@ -1439,7 +1439,7 @@ export function LineWorkerDashboard() {
     if (expiredChequeIds.length > 0) {
       console.log(`🔒 Auto-locking ${expiredChequeIds.length} expired cheque payments...`);
       const paymentService = new PaymentService();
-      const tenantId = user?.tenantIds?.[0];
+      const tenantId = getCurrentTenantId();
 
       if (tenantId) {
         paymentService.batchUpdate(expiredChequeIds, { verified: true }, tenantId)
