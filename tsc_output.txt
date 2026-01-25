@@ -1,0 +1,8 @@
+src/components/LineWorkerDashboard.tsx(1422,164): error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+src/components/WholesalerAdminDashboard.tsx(631,83): error TS2769: No overload matches this call.
+  Overload 1 of 4, '(value: string | number | Date): Date', gave the following error.
+    Argument of type 'Timestamp' is not assignable to parameter of type 'string | number | Date'.
+      Type 'Timestamp' is missing the following properties from type 'Date': toDateString, toTimeString, toLocaleDateString, toLocaleTimeString, and 36 more.
+  Overload 2 of 4, '(value: string | number): Date', gave the following error.
+    Argument of type 'Timestamp' is not assignable to parameter of type 'string | number'.

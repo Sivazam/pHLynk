@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -17,12 +17,16 @@ import {
   X,
   ChevronDown,
   ChevronUp,
-
   Check,
   ChevronsUpDown,
   Search,
   MapPin,
-  Phone
+  Phone,
+  Settings,
+  Info,
+  Lock,
+  RefreshCw,
+  AlertTriangle
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -38,6 +42,126 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover"
+
+// --- EXTRACTED COMPONENT FOR SELECTION PERFORMANCE ---
+const RetailerSelector = React.memo(({
+  retailers,
+  onSelect,
+  selectedId
+}: {
+  retailers: Retailer[],
+  onSelect: (id: string) => void,
+  selectedId: string
+}) => {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+
+  // Performance Optimization: Stop early once we have 50 matches
+  const visibleRetailers = useMemo(() => {
+    if (!retailers) return [];
+    if (!query) return retailers.slice(0, 50);
+
+    const q = query.toLowerCase();
+    const filtered: Retailer[] = [];
+    for (const r of retailers) {
+      if (filtered.length >= 50) break;
+      const name = (r.profile?.realName || r.name || '').toLowerCase();
+      const code = (r.code || '').toLowerCase();
+      const phone = (r.profile?.phone || r.phone || '').toLowerCase();
+      if (name.includes(q) || code.includes(q) || phone.includes(q)) {
+        filtered.push(r);
+      }
+    }
+    return filtered;
+  }, [retailers, query]);
+
+  const selectedRetailer = useMemo(() =>
+    retailers.find(r => r.id === selectedId)
+    , [retailers, selectedId]);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          className="justify-between h-11 w-full bg-white"
+        >
+          {selectedRetailer ? (
+            <div className="flex flex-col items-start truncate overflow-hidden">
+              <span className="truncate w-full text-left font-medium text-gray-900">
+                {selectedRetailer.profile?.realName || selectedRetailer.name}
+              </span>
+            </div>
+          ) : (
+            <span className="text-gray-500 text-sm">Search retailer name, code...</span>
+          )}
+          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        className="w-[calc(100vw-3rem)] sm:w-[500px] p-0 shadow-2xl border-gray-200 z-[100]"
+        align="start"
+        side="bottom"
+        sideOffset={4}
+        avoidCollisions={true}
+        collisionPadding={10}
+      >
+        <Command shouldFilter={false} className="overflow-hidden">
+          <CommandInput
+            placeholder="Type name or code to search..."
+            className="h-11 border-none focus:ring-0"
+            value={query}
+            onValueChange={setQuery}
+          />
+          <CommandList className="max-h-[250px] sm:max-h-[300px] overflow-y-auto overscroll-contain">
+            <CommandEmpty className="py-6 text-center text-sm text-gray-500">No retailer found.</CommandEmpty>
+            <CommandGroup>
+              {visibleRetailers.map((retailer) => (
+                <CommandItem
+                  key={retailer.id}
+                  value={retailer.id}
+                  onSelect={() => {
+                    onSelect(retailer.id);
+                    setOpen(false);
+                    setQuery(''); // Reset query on selection
+                  }}
+                  className="cursor-pointer py-3 hover:bg-gray-50 border-b border-gray-50 last:border-0"
+                >
+                  <Check
+                    className={cn(
+                      "mr-2 h-4 w-4 flex-shrink-0 text-green-600",
+                      selectedId === retailer.id ? "opacity-100" : "opacity-0"
+                    )}
+                  />
+                  <div className="flex items-center gap-3 w-full overflow-hidden">
+                    {retailer.code && (
+                      <span className="flex-shrink-0 bg-yellow-100 text-yellow-800 text-[10px] font-mono font-bold px-1.5 py-0.5 rounded border border-yellow-200">
+                        {retailer.code}
+                      </span>
+                    )}
+                    <div className="flex flex-col truncate">
+                      <span className="font-medium truncate text-gray-900 text-sm">
+                        {retailer.profile?.realName || retailer.name}
+                      </span>
+                      {(retailer.profile?.phone || retailer.phone) && (
+                        <span className="text-[10px] text-gray-500 truncate">
+                          {retailer.profile?.phone || retailer.phone}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+});
+RetailerSelector.displayName = "RetailerSelector";
 
 interface PaymentForm {
   retailerId: string;
@@ -60,6 +184,7 @@ interface CollectPaymentFormProps {
   onCancel: () => void;
   collectingPayment: boolean;
   wholesalerUpiInfo?: WholesalerUpiInfo;
+  isOpen?: boolean;
 }
 
 const CollectPaymentFormComponent = ({
@@ -68,7 +193,8 @@ const CollectPaymentFormComponent = ({
   onCollectPayment,
   onCancel,
   collectingPayment,
-  wholesalerUpiInfo
+  wholesalerUpiInfo,
+  isOpen
 }: CollectPaymentFormProps) => {
   // ✅ Removed success/confetti state - now it's a pure data collection form
 
@@ -81,24 +207,78 @@ const CollectPaymentFormComponent = ({
     proofImage: null
   }));
 
+  // Reset form when modal opens
+  React.useEffect(() => {
+    if (isOpen) {
+      setFormData({
+        retailerId: preSelectedRetailer?.id || '',
+        amount: 0,
+        paymentMethod: 'CASH',
+        utr: '',
+        notes: '',
+        proofImage: null
+      });
+      setError(null);
+      setPreviewUrl(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  }, [isOpen, preSelectedRetailer]);
+
   const [error, setError] = useState<string | null>(null);
-  const [isUpiDetailsOpen, setIsUpiDetailsOpen] = useState(true); // Default open
+  const [isUpiDetailsOpen, setIsUpiDetailsOpen] = useState(false); // Default collapsed
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [cameraPermission, setCameraPermission] = useState<'prompt' | 'granted' | 'denied' | 'unknown'>('unknown');
+  const [isPermissionChecking, setIsPermissionChecking] = useState(false);
 
-  // Combobox state
-  const [open, setOpen] = useState(false);
+  // Check camera permission on mount and when modal opens
+  const checkPermission = useCallback(async () => {
+    // @ts-ignore - navigator.permissions might not be in all TS environments
+    if (typeof navigator !== 'undefined' && navigator.permissions && navigator.permissions.query) {
+      try {
+        // @ts-ignore
+        const result = await navigator.permissions.query({ name: 'camera' });
+        setCameraPermission(result.state as any);
 
-  // Update form when preSelectedRetailer changes
-  React.useEffect(() => {
-    if (preSelectedRetailer) {
-      setFormData(prev => ({
-        ...prev,
-        retailerId: preSelectedRetailer.id
-      }));
+        result.onchange = () => {
+          setCameraPermission(result.state as any);
+        };
+      } catch (e) {
+        console.warn('Permissions API does not support camera query:', e);
+      }
     }
-  }, [preSelectedRetailer]);
+  }, []);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    checkPermission();
+  }, [isOpen, checkPermission]);
+
+  // Force re-trigger permission prompt
+  const retriggerCameraPermission = async () => {
+    setIsPermissionChecking(true);
+    try {
+      // Attempting to access camera is the only way to force-trigger the actual prompt if state is 'prompt'
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      // If successful, stop the stream immediately
+      stream.getTracks().forEach(track => track.stop());
+      setCameraPermission('granted');
+    } catch (err: any) {
+      console.warn('Camera re-trigger failed:', err);
+      // Update state based on error
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        setCameraPermission('denied');
+      }
+    } finally {
+      setIsPermissionChecking(false);
+      checkPermission();
+    }
+  };
+
+
+
+
 
   // Optimized update functions
   const updateField = useCallback((field: keyof PaymentForm, value: any) => {
@@ -213,79 +393,11 @@ const CollectPaymentFormComponent = ({
             {/* Row 1: Retailer Selection - Full width on mobile */}
             <div className="space-y-1.5 flex flex-col">
               <Label className="text-sm font-medium text-gray-700">Retailer *</Label>
-              <Popover open={open} onOpenChange={setOpen}>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    role="combobox"
-                    aria-expanded={open}
-                    className="justify-between h-11 w-full bg-white"
-                  >
-                    {selectedRetailer ? (
-                      <div className="flex flex-col items-start truncate overflow-hidden">
-                        <span className="truncate w-full text-left font-medium text-gray-900">
-                          {selectedRetailer.profile?.realName || selectedRetailer.name}
-                        </span>
-                      </div>
-                    ) : (
-                      <span className="text-gray-500">Search retailer name, code, mobile...</span>
-                    )}
-                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-[calc(100vw-3rem)] sm:w-[500px] p-0 shadow-lg" align="start">
-                  <Command
-                    filter={(value, search) => {
-                      const searchLower = search.toLowerCase();
-                      const valueLower = value.toLowerCase();
-                      if (valueLower.includes(searchLower)) return 1;
-                      return 0;
-                    }}
-                  >
-                    <CommandInput placeholder="Search retailer name or code..." className="h-11" />
-                    <CommandList className="max-h-[300px]">
-                      <CommandEmpty>No retailer found.</CommandEmpty>
-                      <CommandGroup>
-                        {retailers.map((retailer) => (
-                          <CommandItem
-                            key={retailer.id}
-                            value={`${retailer.profile?.realName || retailer.name} ${retailer.code || ''} ${retailer.id}`}
-                            onSelect={() => {
-                              updateField('retailerId', retailer.id);
-                              setOpen(false);
-                            }}
-                            className="cursor-pointer py-3"
-                          >
-                            <Check
-                              className={cn(
-                                "mr-2 h-4 w-4 flex-shrink-0",
-                                formData.retailerId === retailer.id ? "opacity-100" : "opacity-0"
-                              )}
-                            />
-                            <div className="flex items-center gap-3 w-full overflow-hidden">
-                              {/* Code Badge */}
-                              {retailer.code && (
-                                <span className="flex-shrink-0 bg-yellow-100 text-yellow-800 text-xs font-mono font-bold px-2 py-0.5 rounded border border-yellow-200">
-                                  {retailer.code}
-                                </span>
-                              )}
-                              {/* Name */}
-                              <div className="flex flex-col truncate">
-                                <span className="font-medium truncate text-gray-900">
-                                  {retailer.profile?.realName || retailer.name}
-                                </span>
-                                {retailer.profile?.address && (
-                                  <span className="text-xs text-gray-500 truncate">{retailer.profile.address}</span>
-                                )}
-                              </div>
-                            </div>
-                          </CommandItem>
-                        ))}
-                      </CommandGroup>
-                    </CommandList>
-                  </Command>
-                </PopoverContent>
-              </Popover>
+              <RetailerSelector
+                retailers={retailers}
+                selectedId={formData.retailerId}
+                onSelect={(id) => updateField('retailerId', id)}
+              />
 
               {selectedRetailer && (
                 <div className="mt-1 p-3 bg-gray-50 rounded-lg border border-gray-100 text-xs text-gray-600 space-y-1">
@@ -326,6 +438,7 @@ const CollectPaymentFormComponent = ({
                     type="text"
                     placeholder="0.00"
                     value={formData.amount ? formData.amount.toString() : ''}
+                    inputMode="decimal"
                     onChange={(e) => {
                       const value = e.target.value;
                       // Allow only numbers and decimal point
@@ -429,6 +542,7 @@ const CollectPaymentFormComponent = ({
                       type="text"
                       placeholder="e.g. 1234"
                       value={formData.utr || ''}
+                      inputMode="numeric"
                       onChange={(e) => {
                         const value = e.target.value;
                         // Allow only numbers, max 4 digits
@@ -448,28 +562,88 @@ const CollectPaymentFormComponent = ({
                       <span className="text-xs text-gray-500 italic bg-gray-100 px-2 py-0.5 rounded-full">Optional</span>
                     </div>
 
-                    {/* Hidden Inputs */}
+                    {/* Camera Permission Alert */}
+                    {(cameraPermission === 'denied' || cameraPermission === 'prompt') && (
+                      <div className={`p-3 rounded-xl border space-y-3 transition-all ${cameraPermission === 'denied' ? 'bg-amber-50 border-amber-200' : 'bg-blue-50 border-blue-200'}`}>
+                        <div className="flex items-start gap-2">
+                          <div className={`p-1.5 rounded-lg ${cameraPermission === 'denied' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>
+                            {cameraPermission === 'denied' ? <Lock className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
+                          </div>
+                          <div className="flex-1 pt-0.5">
+                            <div className={`text-xs font-bold ${cameraPermission === 'denied' ? 'text-amber-900' : 'text-blue-900'}`}>
+                              {cameraPermission === 'denied' ? 'Camera Access Blocked' : 'Camera Permission Required'}
+                            </div>
+                            <div className={`text-[10px] mt-0.5 leading-relaxed ${cameraPermission === 'denied' ? 'text-amber-700' : 'text-blue-700'}`}>
+                              {cameraPermission === 'denied'
+                                ? "You've previously denied camera access. You must manually enable it to use the capture feature."
+                                : "The app needs camera access to capture screenshots. Please allow it when the prompt appears."
+                              }
+                            </div>
+                          </div>
+                        </div>
+
+                        {cameraPermission === 'denied' ? (
+                          <div className="bg-white/60 p-2.5 rounded-lg border border-amber-100 space-y-2">
+                            <p className="text-[10px] font-semibold text-amber-900 flex items-center gap-1.5">
+                              <Info className="w-3 h-3" /> Mobile Instructions:
+                            </p>
+                            <ol className="text-[10px] text-amber-800 space-y-1 pl-1">
+                              <li>1. Tap the <b>lock icon (🔒)</b> or <b>three dots (⋮/⋯)</b> at the top or bottom of your browser.</li>
+                              <li>2. Tap <b>Site Settings</b> or <b>Permissions</b>.</li>
+                              <li>3. Change <b>Camera</b> to <b>Allow</b>.</li>
+                            </ol>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="w-full h-8 text-[10px] font-bold bg-white border-amber-200 text-amber-700 hover:bg-amber-50"
+                              onClick={checkPermission}
+                            >
+                              <RefreshCw className="w-3 h-3 mr-1.5" />
+                              Refresh Permission Status
+                            </Button>
+                          </div>
+                        ) : (
+                          <Button
+                            type="button"
+                            variant="default"
+                            size="sm"
+                            className="w-full h-9 text-[11px] font-bold bg-blue-600 hover:bg-blue-700 text-white"
+                            onClick={retriggerCameraPermission}
+                            disabled={isPermissionChecking}
+                          >
+                            {isPermissionChecking ? (
+                              <RefreshCw className="w-3 h-3 mr-2 animate-spin" />
+                            ) : (
+                              <Camera className="w-3 h-3 mr-2" />
+                            )}
+                            Click to Grant Camera Permission
+                          </Button>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Hidden Native File Input */}
                     <input
                       type="file"
+                      id="proof-upload-input"
                       ref={fileInputRef}
-                      className="hidden"
+                      className="sr-only"
                       accept="image/*"
                       onChange={handleImageChange}
+                      onClick={(e) => {
+                        (e.target as HTMLInputElement).value = '';
+                      }}
                     />
 
                     {!previewUrl ? (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="w-full h-11 border-dashed border-gray-300 text-gray-600 hover:bg-gray-50 hover:border-gray-400 hover:text-gray-900"
-                        onClick={() => {
-                          if (fileInputRef.current) fileInputRef.current.value = '';
-                          fileInputRef.current?.click();
-                        }}
+                      <label
+                        htmlFor="proof-upload-input"
+                        className="flex items-center justify-center w-full h-11 rounded-lg border-2 border-dashed border-gray-200 bg-white text-sm font-medium text-gray-600 cursor-pointer hover:bg-gray-50 hover:border-blue-400 hover:text-blue-600 transition-all duration-200 active:scale-[0.98]"
                       >
                         <Camera className="h-4 w-4 mr-2" />
-                        Capture / Upload
-                      </Button>
+                        Capture / Upload Screenshot
+                      </label>
                     ) : (
                       <div className="space-y-2">
                         {/* Visible Image Preview */}

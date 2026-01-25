@@ -180,7 +180,7 @@ export function RetailerPhoneLookup({
   return (
     <div className="space-y-4">
       <Card>
-        <CardHeader>
+        {/* <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Search className="w-5 h-5" />
             Search Retailer
@@ -188,7 +188,7 @@ export function RetailerPhoneLookup({
           <CardDescription>
             Enter the retailer's mobile number to check if they already exist in the system
           </CardDescription>
-        </CardHeader>
+        </CardHeader> */}
         <CardContent className="space-y-4">
           {/* Phone Input */}
           <div className="space-y-2">

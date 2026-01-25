@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -21,6 +21,214 @@ import {
 } from 'lucide-react';
 import { Area, Retailer, User, Payment } from '@/types';
 import { formatCurrency, formatTimestampWithTime, toDate } from '@/lib/timestamp-utils';
+
+// --- Internal Component: RetailerDetailCard ---
+// Extracting this allows each card to manage its own "visible payments" state independently
+interface RetailerDetailCardProps {
+    retailer: Retailer;
+    retailerPayments: Payment[]; // PRE-FILTERED payments for this retailer
+    areas: Area[];
+    lineWorkers: User[];
+    onAssignRetailer: (retailer: Retailer, currentWorkerId: string) => void;
+}
+
+const RetailerDetailCard = ({
+    retailer,
+    retailerPayments,
+    areas,
+    lineWorkers,
+    onAssignRetailer
+}: RetailerDetailCardProps) => {
+    // State for payment pagination within this card
+    const [visiblePaymentsCount, setVisiblePaymentsCount] = useState(10);
+
+    const visiblePayments = retailerPayments.slice(0, visiblePaymentsCount);
+
+    // Helpers
+    const getLineWorkerName = (id: string | null | undefined) => {
+        if (!id) return 'Unassigned';
+        const worker = lineWorkers.find(w => w.id === id);
+        return worker ? worker.displayName || worker.email : 'Unknown';
+    };
+
+    const getAssignedWorkersForArea = (areaId: string) => {
+        return lineWorkers.filter(worker =>
+            worker.active !== false &&
+            worker.assignedAreas?.includes(areaId)
+        );
+    };
+
+    // Assignments
+    const directlyAssignedWorker = retailer.assignedLineWorkerId
+        ? lineWorkers.find(worker => worker.id === retailer.assignedLineWorkerId)
+        : null;
+
+    const areaAssignedWorkers = !directlyAssignedWorker && retailer.areaId
+        ? getAssignedWorkersForArea(retailer.areaId)
+        : [];
+
+    const isDirectAssignment = !!directlyAssignedWorker;
+
+    return (
+        <Card className="overflow-hidden">
+            <CardHeader className="bg-gray-50">
+                <div className="flex justify-between items-start">
+                    <div>
+                        <CardTitle className="text-lg flex items-center gap-2">
+                            {retailer.profile?.realName || retailer.name}
+                            {isDirectAssignment && (
+                                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                    <UserIcon className="h-3 w-3 mr-1" />
+                                    Directly Assigned
+                                </span>
+                            )}
+                            {areaAssignedWorkers.length > 0 && !isDirectAssignment && (
+                                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                    <MapPin className="h-3 w-3 mr-1" />
+                                    Via Area {areaAssignedWorkers.length > 1 ? '(Shared)' : ''}
+                                </span>
+                            )}
+                        </CardTitle>
+                        <CardDescription className="mt-1">
+                            <div className="flex flex-wrap gap-4 text-sm">
+                                <span>
+                                    <a href={`tel:${retailer.profile?.phone || retailer.phone}`} className="text-blue-600 hover:underline">📞 {retailer.profile?.phone || retailer.phone}</a>
+                                </span>
+                                <span>📍 {areas.find(a => a.id === retailer.areaId)?.name || 'Unassigned'}</span>
+                                <span>🏷️ {retailer.zipcodes.join(', ')}</span>
+                                <span className="flex items-center gap-1">
+                                    👤
+                                    <span className={directlyAssignedWorker || areaAssignedWorkers.length > 0 ? "font-medium text-green-700" : ""}>
+                                        {directlyAssignedWorker
+                                            ? directlyAssignedWorker.displayName || 'Unknown'
+                                            : areaAssignedWorkers.length > 0
+                                                ? areaAssignedWorkers.map(w => w.displayName || 'Unknown').join(', ')
+                                                : 'Unassigned'
+                                        }
+                                    </span>
+                                </span>
+                            </div>
+                        </CardDescription>
+                    </div>
+                    <div className="text-right">
+                        <div className="mt-2">
+                            <Button
+                                variant={retailer.assignedLineWorkerId ? "default" : "outline"}
+                                size="sm"
+                                onClick={() => onAssignRetailer(retailer, retailer.assignedLineWorkerId || '')}
+                                className="text-xs"
+                            >
+                                <UserIcon className="h-3 w-3 mr-1" />
+                                {retailer.assignedLineWorkerId ? 'Reassign' : 'Assign'}
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            </CardHeader>
+            <CardContent className="p-4">
+                {/* Quick Stats */}
+                <div className="grid grid-cols-2 md:grid-cols-2 gap-3 mb-4">
+                    <div className="text-center p-2 bg-green-50 rounded-lg border border-green-100">
+                        <div className="text-xl font-bold text-green-600">{retailerPayments.length}</div>
+                        <div className="text-xs text-gray-600">Payments</div>
+                    </div>
+                    <div className="text-center p-2 bg-orange-50 rounded-lg border border-orange-100">
+                        <div className="text-lg font-bold text-orange-600">
+                            {formatCurrency(retailerPayments.filter(p => p.state === 'COMPLETED').reduce((sum, pay) => sum + pay.totalPaid, 0))}
+                        </div>
+                        <div className="text-xs text-gray-600">Paid</div>
+                    </div>
+                </div>
+
+                {/* Payment Status Breakdown */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4 text-xs">
+                    <div className="text-center p-1 bg-green-50 rounded">
+                        <div className="font-medium text-green-700">
+                            {retailerPayments.filter(p => p.state === 'COMPLETED').length}
+                        </div>
+                        <div className="text-green-600">Completed</div>
+                    </div>
+                    <div className="text-center p-1 bg-yellow-50 rounded">
+                        <div className="font-medium text-yellow-700">
+                            {retailerPayments.filter(p => p.state === 'INITIATED').length}
+                        </div>
+                        <div className="text-yellow-600">Initiated</div>
+                    </div>
+                    <div className="text-center p-1 bg-red-50 rounded">
+                        <div className="font-medium text-red-700">
+                            {retailerPayments.filter(p => p.state === 'CANCELLED').length}
+                        </div>
+                        <div className="text-red-600">Failed</div>
+                    </div>
+                </div>
+
+                {/* Payments Tab */}
+                <Tabs defaultValue="payments" className="w-full">
+                    <TabsList className="grid w-full grid-cols-1 h-8">
+                        <TabsTrigger value="payments" className="text-xs">Payments ({retailerPayments.length})</TabsTrigger>
+                    </TabsList>
+
+                    <TabsContent value="payments" className="space-y-4 mt-4">
+                        {retailerPayments.length > 0 ? (
+                            <div className="overflow-x-auto border rounded-lg">
+                                <Table>
+                                    <TableHeader className="bg-gray-50">
+                                        <TableRow>
+                                            <TableHead className="text-xs font-medium text-gray-700 uppercase tracking-wider">Payment ID</TableHead>
+                                            <TableHead className="text-xs font-medium text-gray-700 uppercase tracking-wider">Date</TableHead>
+                                            <TableHead className="text-xs font-medium text-gray-700 uppercase tracking-wider">Amount</TableHead>
+                                            <TableHead className="text-xs font-medium text-gray-700 uppercase tracking-wider">Method</TableHead>
+                                            <TableHead className="text-xs font-medium text-gray-700 uppercase tracking-wider">Status</TableHead>
+                                            <TableHead className="text-xs font-medium text-gray-700 uppercase tracking-wider">Line Worker</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody className="divide-y divide-gray-200">
+                                        {visiblePayments.map(payment => (
+                                            <TableRow key={payment.id} className="hover:bg-gray-50">
+                                                <TableCell className="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-900">{payment.id.substring(0, 8)}</TableCell>
+                                                <TableCell className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{formatTimestampWithTime(payment.createdAt)}</TableCell>
+                                                <TableCell className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{formatCurrency(payment.totalPaid)}</TableCell>
+                                                <TableCell className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{payment.method}</TableCell>
+                                                <TableCell className="px-4 py-2 whitespace-nowrap">
+                                                    <Badge className={
+                                                        payment.state === 'COMPLETED' ? 'bg-green-100 text-green-800' :
+                                                            payment.state === 'INITIATED' ? 'bg-yellow-100 text-yellow-800' :
+                                                                'bg-red-100 text-red-800'
+                                                    }>
+                                                        {payment.state}
+                                                    </Badge>
+                                                </TableCell>
+                                                <TableCell className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{getLineWorkerName(payment.lineWorkerId)}</TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                                {visiblePayments.length < retailerPayments.length && (
+                                    <div className="flex justify-center p-3">
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => setVisiblePaymentsCount(prev => prev + 10)}
+                                            className="text-blue-600 hover:text-blue-800 hover:bg-blue-50"
+                                        >
+                                            Load More ({retailerPayments.length - visiblePayments.length} remaining)
+                                        </Button>
+                                    </div>
+                                )}
+                            </div>
+                        ) : (
+                            <div className="text-center py-6 text-gray-500 bg-gray-50 rounded-lg">
+                                <CreditCard className="h-8 w-8 mx-auto mb-2 text-gray-400" />
+                                No payments found for this retailer
+                            </div>
+                        )}
+                    </TabsContent>
+                </Tabs>
+            </CardContent>
+        </Card>
+    );
+};
+
 
 interface RetailerDetailsTabProps {
     // Data
@@ -68,6 +276,14 @@ export function RetailerDetailsTab({
     onClearFilters
 }: RetailerDetailsTabProps) {
 
+    // Pagination for Retailers List
+    const [visibleRetailersCount, setVisibleRetailersCount] = useState(10);
+
+    // Reset pagination when filters change
+    useEffect(() => {
+        setVisibleRetailersCount(10);
+    }, [selectedArea, selectedRetailer, filterDate]);
+
     // Memoize filtered retailers
     const filteredRetailers = useMemo(() => {
         return retailers.filter(retailer => {
@@ -103,20 +319,8 @@ export function RetailerDetailsTab({
         });
     }, [payments, filteredRetailers, filterDate]);
 
-    // Helper functions
-    const getLineWorkerName = (id: string | null | undefined) => {
-        if (!id) return 'Unassigned';
-        const worker = lineWorkers.find(w => w.id === id);
-        return worker ? worker.displayName || worker.email : 'Unknown';
-    };
-
-    const getAssignedWorkerForArea = (areaId: string) => {
-        // Find active worker with this area assigned
-        return lineWorkers.find(worker =>
-            worker.active !== false &&
-            worker.assignedAreas?.includes(areaId)
-        );
-    };
+    // Get visible retailers for rendering
+    const visibleRetailers = filteredRetailers.slice(0, visibleRetailersCount);
 
     return (
         <div className="space-y-6">
@@ -268,165 +472,33 @@ export function RetailerDetailsTab({
 
                     {/* Retailers with Detailed Logs */}
                     <div className="space-y-6">
-                        {filteredRetailers.map(retailer => {
+                        {visibleRetailers.map(retailer => {
                             const retailerPayments = filteredPayments.filter(pay => pay.retailerId === retailer.id);
 
-                            // Determine effective line worker assignment:
-                            // 1. Direct assignment takes priority
-                            // 2. If no direct assignment, check area-based assignment
-                            const directlyAssignedWorker = retailer.assignedLineWorkerId
-                                ? lineWorkers.find(worker => worker.id === retailer.assignedLineWorkerId)
-                                : null;
-
-                            const areaAssignedWorker = !directlyAssignedWorker && retailer.areaId
-                                ? getAssignedWorkerForArea(retailer.areaId)
-                                : null;
-
-                            const assignedLineWorker = directlyAssignedWorker || areaAssignedWorker;
-                            const isDirectAssignment = !!directlyAssignedWorker;
-
                             return (
-                                <Card key={retailer.id} className="overflow-hidden">
-                                    <CardHeader className="bg-gray-50">
-                                        <div className="flex justify-between items-start">
-                                            <div>
-                                                <CardTitle className="text-lg flex items-center gap-2">
-                                                    {retailer.profile?.realName || retailer.name}
-                                                    {isDirectAssignment && (
-                                                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                                                            <UserIcon className="h-3 w-3 mr-1" />
-                                                            Directly Assigned
-                                                        </span>
-                                                    )}
-                                                    {areaAssignedWorker && !isDirectAssignment && (
-                                                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                                                            <MapPin className="h-3 w-3 mr-1" />
-                                                            Via Area
-                                                        </span>
-                                                    )}
-                                                </CardTitle>
-                                                <CardDescription className="mt-1">
-                                                    <div className="flex flex-wrap gap-4 text-sm">
-                                                        <span>
-                                                            <a href={`tel:${retailer.profile?.phone || retailer.phone}`} className="text-blue-600 hover:underline">📞 {retailer.profile?.phone || retailer.phone}</a>
-                                                        </span>
-                                                        <span>📍 {areas.find(a => a.id === retailer.areaId)?.name || 'Unassigned'}</span>
-                                                        <span>🏷️ {retailer.zipcodes.join(', ')}</span>
-                                                        <span className="flex items-center gap-1">
-                                                            👤
-                                                            <span className={assignedLineWorker ? "font-medium text-green-700" : ""}>
-                                                                {assignedLineWorker?.displayName || 'Unassigned'}
-                                                            </span>
-                                                        </span>
-                                                    </div>
-                                                </CardDescription>
-                                            </div>
-                                            <div className="text-right">
-                                                <div className="mt-2">
-                                                    <Button
-                                                        variant={retailer.assignedLineWorkerId ? "default" : "outline"}
-                                                        size="sm"
-                                                        onClick={() => onAssignRetailer(retailer, retailer.assignedLineWorkerId || '')}
-                                                        className="text-xs"
-                                                    >
-                                                        <UserIcon className="h-3 w-3 mr-1" />
-                                                        {retailer.assignedLineWorkerId ? 'Reassign' : 'Assign'}
-                                                    </Button>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </CardHeader>
-                                    <CardContent className="p-4">
-                                        {/* Quick Stats */}
-                                        <div className="grid grid-cols-2 md:grid-cols-2 gap-3 mb-4">
-                                            <div className="text-center p-2 bg-green-50 rounded-lg border border-green-100">
-                                                <div className="text-xl font-bold text-green-600">{retailerPayments.length}</div>
-                                                <div className="text-xs text-gray-600">Payments</div>
-                                            </div>
-                                            <div className="text-center p-2 bg-orange-50 rounded-lg border border-orange-100">
-                                                <div className="text-lg font-bold text-orange-600">
-                                                    {formatCurrency(retailerPayments.filter(p => p.state === 'COMPLETED').reduce((sum, pay) => sum + pay.totalPaid, 0))}
-                                                </div>
-                                                <div className="text-xs text-gray-600">Paid</div>
-                                            </div>
-                                        </div>
-
-                                        {/* Payment Status Breakdown */}
-                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4 text-xs">
-                                            <div className="text-center p-1 bg-green-50 rounded">
-                                                <div className="font-medium text-green-700">
-                                                    {retailerPayments.filter(p => p.state === 'COMPLETED').length}
-                                                </div>
-                                                <div className="text-green-600">Completed</div>
-                                            </div>
-                                            <div className="text-center p-1 bg-yellow-50 rounded">
-                                                <div className="font-medium text-yellow-700">
-                                                    {retailerPayments.filter(p => p.state === 'INITIATED').length}
-                                                </div>
-                                                <div className="text-yellow-600">Initiated</div>
-                                            </div>
-                                            <div className="text-center p-1 bg-red-50 rounded">
-                                                <div className="font-medium text-red-700">
-                                                    {retailerPayments.filter(p => p.state === 'CANCELLED').length}
-                                                </div>
-                                                <div className="text-red-600">Failed</div>
-                                            </div>
-                                        </div>
-
-                                        {/* Payments Tab */}
-                                        <Tabs defaultValue="payments" className="w-full">
-                                            <TabsList className="grid w-full grid-cols-1 h-8">
-                                                <TabsTrigger value="payments" className="text-xs">Payments ({retailerPayments.length})</TabsTrigger>
-                                            </TabsList>
-
-                                            <TabsContent value="payments" className="space-y-4 mt-4">
-                                                {retailerPayments.length > 0 ? (
-                                                    <div className="overflow-x-auto border rounded-lg">
-                                                        <Table>
-                                                            <TableHeader className="bg-gray-50">
-                                                                <TableRow>
-                                                                    <TableHead className="text-xs font-medium text-gray-700 uppercase tracking-wider">Payment ID</TableHead>
-                                                                    <TableHead className="text-xs font-medium text-gray-700 uppercase tracking-wider">Date</TableHead>
-                                                                    <TableHead className="text-xs font-medium text-gray-700 uppercase tracking-wider">Amount</TableHead>
-                                                                    <TableHead className="text-xs font-medium text-gray-700 uppercase tracking-wider">Method</TableHead>
-                                                                    <TableHead className="text-xs font-medium text-gray-700 uppercase tracking-wider">Status</TableHead>
-                                                                    <TableHead className="text-xs font-medium text-gray-700 uppercase tracking-wider">Line Worker</TableHead>
-                                                                </TableRow>
-                                                            </TableHeader>
-                                                            <TableBody className="divide-y divide-gray-200">
-                                                                {retailerPayments.map(payment => (
-                                                                    <TableRow key={payment.id} className="hover:bg-gray-50">
-                                                                        <TableCell className="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-900">{payment.id.substring(0, 8)}</TableCell>
-                                                                        <TableCell className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{formatTimestampWithTime(payment.createdAt)}</TableCell>
-                                                                        <TableCell className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{formatCurrency(payment.totalPaid)}</TableCell>
-                                                                        <TableCell className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{payment.method}</TableCell>
-                                                                        <TableCell className="px-4 py-2 whitespace-nowrap">
-                                                                            <Badge className={
-                                                                                payment.state === 'COMPLETED' ? 'bg-green-100 text-green-800' :
-                                                                                    payment.state === 'INITIATED' ? 'bg-yellow-100 text-yellow-800' :
-                                                                                        'bg-red-100 text-red-800'
-                                                                            }>
-                                                                                {payment.state}
-                                                                            </Badge>
-                                                                        </TableCell>
-                                                                        <TableCell className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{getLineWorkerName(payment.lineWorkerId)}</TableCell>
-                                                                    </TableRow>
-                                                                ))}
-                                                            </TableBody>
-                                                        </Table>
-                                                    </div>
-                                                ) : (
-                                                    <div className="text-center py-6 text-gray-500 bg-gray-50 rounded-lg">
-                                                        <CreditCard className="h-8 w-8 mx-auto mb-2 text-gray-400" />
-                                                        No payments found for this retailer
-                                                    </div>
-                                                )}
-                                            </TabsContent>
-                                        </Tabs>
-                                    </CardContent>
-                                </Card>
+                                <RetailerDetailCard
+                                    key={retailer.id}
+                                    retailer={retailer}
+                                    retailerPayments={retailerPayments}
+                                    areas={areas}
+                                    lineWorkers={lineWorkers}
+                                    onAssignRetailer={onAssignRetailer}
+                                />
                             );
                         })}
+
+                        {/* Load More Button for Retailers List */}
+                        {visibleRetailers.length < filteredRetailers.length && (
+                            <div className="flex justify-center pt-4">
+                                <Button
+                                    variant="outline"
+                                    onClick={() => setVisibleRetailersCount(prev => prev + 10)}
+                                    className="min-w-[200px]"
+                                >
+                                    Load More ({filteredRetailers.length - visibleRetailers.length} remaining)
+                                </Button>
+                            </div>
+                        )}
                     </div>
                 </>
             )}

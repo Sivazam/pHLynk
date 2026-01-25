@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -39,6 +39,7 @@ import { CollectPaymentForm } from './CollectPaymentForm';
 import { cleanPhoneNumber } from '@/lib/utils';
 // NOTE: OTP functionality removed - payments are now created directly in COMPLETED state
 import { LogoutConfirmation } from '@/components/LogoutConfirmation';
+import { ExitAppConfirmation } from '@/components/ExitAppConfirmation';
 import {
   Store,
   Calendar,
@@ -139,6 +140,40 @@ export function LineWorkerDashboard() {
   });
   const [analyticsMethods, setAnalyticsMethods] = useState<string[]>(['CASH', 'UPI', 'BANK_TRANSFER']);
 
+  // Data Pagination State (Optimization)
+  const [visibleRetailers, setVisibleRetailers] = useState(24);
+  const [visiblePayments, setVisiblePayments] = useState(20);
+
+  // Helper function to get retailer name (handles both legacy and new profile formats)
+  const getRetailerName = (retailer: any) => {
+    return retailer.profile?.realName || retailer.name || 'Unknown Retailer';
+  };
+
+  // Helper function to get retailer phone (handles both legacy and new profile formats)
+  const getRetailerPhone = (retailer: any) => {
+    return cleanPhoneNumber(retailer.profile?.phone || retailer.phone) || 'N/A';
+  };
+
+  // Helper function to get retailer address (handles both legacy and new profile formats)
+  const getRetailerAddress = (retailer: any) => {
+    return retailer.profile?.address || retailer.address || 'N/A';
+  };
+
+  // Performance Optimization: Create a lean retailer list for the selection modal
+  // This avoids passing massive objects with full history/metadata to the modal
+  const leanRetailers = useMemo(() => {
+    return retailers.map(r => ({
+      id: r.id,
+      name: getRetailerName(r),
+      code: r.code || '',
+      profile: {
+        realName: r.profile?.realName || r.name || '',
+        phone: r.profile?.phone || r.phone || '',
+        address: r.profile?.address || r.address || ''
+      }
+    }));
+  }, [retailers]);
+
   // NOTE: OTP functionality removed - payments are now created directly in COMPLETED state
   // These state variables are kept for backward compatibility but are no longer used
   const [showOTPEnterDialog, setShowOTPEnterDialog] = useState(false);
@@ -163,20 +198,7 @@ export function LineWorkerDashboard() {
     setPaymentsDateRange(newDateRange);
   };
 
-  // Helper function to get retailer name (handles both legacy and new profile formats)
-  const getRetailerName = (retailer: any) => {
-    return retailer.profile?.realName || retailer.name || 'Unknown Retailer';
-  };
 
-  // Helper function to get retailer phone (handles both legacy and new profile formats)
-  const getRetailerPhone = (retailer: any) => {
-    return cleanPhoneNumber(retailer.profile?.phone || retailer.phone) || 'N/A';
-  };
-
-  // Helper function to get retailer address (handles both legacy and new profile formats)
-  const getRetailerAddress = (retailer: any) => {
-    return retailer.profile?.address || retailer.address || 'N/A';
-  };
 
   // Placeholder Animation Effect
   useEffect(() => {
@@ -249,6 +271,57 @@ export function LineWorkerDashboard() {
   ];
 
   const [activeNav, setActiveNav] = useState('overview');
+  const [showExitConfirmation, setShowExitConfirmation] = useState(false);
+
+  // Custom navigation handler for physical back button support
+  const handleNavChange = useCallback((id: string) => {
+    if (id === activeNav) return;
+
+    // Push new tab to history stack
+    window.history.pushState({ id }, '');
+    setActiveNav(id);
+
+    // Scroll to top on tab change
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [activeNav]);
+
+  useEffect(() => {
+    // Initial history state setup
+    // Use replaceState to ensure the first entry is 'overview'
+    window.history.replaceState({ id: 'overview' }, '');
+
+    const handlePopState = (event: PopStateEvent) => {
+      if (event.state && event.state.id) {
+        // Navigate to the tab stored in history
+        setActiveNav(event.state.id);
+      } else {
+        // We reached the beginning of the app history
+        // Use a ref-like check for activeNav because the listener is stable
+        const currentActive = activeNav;
+
+        if (currentActive === 'overview') {
+          setShowExitConfirmation(true);
+          // Push state back so they don't leave the app immediately
+          window.history.pushState({ id: 'overview' }, '');
+        } else {
+          setActiveNav('overview');
+          window.history.replaceState({ id: 'overview' }, '');
+        }
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [activeNav]); // Re-bind listener when activeNav changes to capture latest state
+
+  const handleExitApp = async () => {
+    // Attempt standard window close
+    window.close();
+    // For mobile PWA where window.close is restricted, navigate away
+    setTimeout(() => {
+      window.location.href = 'about:blank';
+    }, 200);
+  };
 
   // Helper function to get the current tenant ID
   const getCurrentTenantId = (): string | null => {
@@ -423,20 +496,20 @@ export function LineWorkerDashboard() {
 
       setDataFetchProgress(30);
 
-      // Clean up any stuck payments first
-      setDataFetchProgress(40);
-      try {
-        await paymentService.cleanupStuckPayments(currentTenantId);
-        console.log('✅ Cleaned up stuck payments');
-      } catch (cleanupError) {
-        console.warn('Warning: Could not clean up stuck payments:', cleanupError);
-      }
+      setDataFetchProgress(30);
 
-      // Get all retailers first
-      setDataFetchProgress(60);
-      const allRetailers = await retailerService.getAll(currentTenantId);
-      const allAreas = await areaService.getAll(currentTenantId);
-      const paymentsData = await paymentService.getPaymentsByLineWorker(currentTenantId, user!.uid);
+      // Clean up any stuck payments - BACKGROUND (Non-blocking)
+      paymentService.cleanupStuckPayments(currentTenantId)
+        .then(() => console.log('✅ Cleaned up stuck payments (Background)'))
+        .catch(err => console.warn('Warning: Could not clean up stuck payments:', err));
+
+      // Fetch ALL data in parallel for maximum speed
+      setDataFetchProgress(50);
+      const [allRetailers, allAreas, paymentsData] = await Promise.all([
+        retailerService.getAll(currentTenantId),
+        areaService.getAll(currentTenantId),
+        paymentService.getPaymentsByLineWorker(currentTenantId, user!.uid)
+      ]);
 
       // Fetch tenant UPI info and Name for payment collection & receipts
       try {
@@ -465,53 +538,39 @@ export function LineWorkerDashboard() {
       console.log('Total retailers found:', allRetailers.length);
       console.log('Payments found:', paymentsData.length);
 
-      // Log each retailer's assignment details for debugging
-      allRetailers.forEach(retailer => {
-        console.log(`Retailer "${getRetailerName(retailer)}" - assignedLineWorkerId: ${retailer.assignedLineWorkerId}, areaId: ${retailer.areaId}`);
-      });
+
 
       // Filter retailers by assigned areas OR direct assignments
       setDataFetchProgress(80);
       const assignedRetailers = allRetailers.filter(retailer => {
         // First check if retailer is directly assigned to this line worker
         if (retailer.assignedLineWorkerId === user?.uid) {
-          console.log(`✅ Retailer "${getRetailerName(retailer)}" matched by direct assignment to line worker ${user!.uid}`);
           return true;
         }
 
         // If retailer is directly assigned to someone else, exclude it from area-based assignments
         if (retailer.assignedLineWorkerId && retailer.assignedLineWorkerId !== user?.uid) {
-          console.log(`❌ Retailer "${getRetailerName(retailer)}" excluded - directly assigned to another line worker: ${retailer.assignedLineWorkerId}`);
           return false;
         }
 
         // If no areas assigned, can't see any area-based retailers
         if (freshAssignedAreas.length === 0) {
-          console.log(`❌ Retailer "${getRetailerName(retailer)}" excluded - no assigned areas for user and no direct assignment`);
           return false;
         }
 
         // Check if retailer is in assigned areas (by areaId)
-        // Area-based visibility works for:
-        //   - retailer was never assigned (undefined)
-        //   - retailer was explicitly unassigned (null) - allowing area reassignment
-        // It does NOT work for retailers directly assigned to someone else (handled above)
         if (retailer.areaId && freshAssignedAreas.includes(retailer.areaId)) {
-          console.log(`✅ Retailer "${getRetailerName(retailer)}" matched by areaId: ${retailer.areaId}`);
           return true;
         }
 
         // Check if retailer has zipcodes that match assigned zips
-        // Same logic as area-based: works for undefined or null assignedLineWorkerId
         if (retailer.zipcodes && retailer.zipcodes.length > 0 && freshAssignedZips.length > 0) {
           const matchingZips = retailer.zipcodes.filter(zip => freshAssignedZips.includes(zip));
           if (matchingZips.length > 0) {
-            console.log(`✅ Retailer "${getRetailerName(retailer)}" matched by zips: ${matchingZips.join(', ')}`);
             return true;
           }
         }
 
-        console.log(`❌ Retailer "${getRetailerName(retailer)}" not matched - areaId: ${retailer.areaId}, zips: ${retailer.zipcodes?.join(', ') || 'none'}, directAssignment: ${retailer.assignedLineWorkerId}`);
         return false;
       });
 
@@ -1328,8 +1387,8 @@ export function LineWorkerDashboard() {
     return -1;
   });
 
-  // Retailer cards component
-  const RetailerList = () => {
+  // Retailer cards component - Render function to avoid unmounts
+  const renderRetailerList = () => {
     const handleToggleExpand = (retailerId: string) => {
       if (expandedRetailerId === retailerId) {
         setExpandedRetailerId(null);
@@ -1337,19 +1396,7 @@ export function LineWorkerDashboard() {
       } else {
         setExpandedRetailerId(retailerId);
         setShowAllPaymentsRetailerId(null); // Reset show all payments when expanding a different retailer
-        // Load payment history for this retailer
         handleViewRetailerDetails(retailers.find(r => r.id === retailerId)!);
-
-        // Scroll to the expanded retailer card after a short delay to allow DOM update
-        setTimeout(() => {
-          const element = document.getElementById(`retailer-card-${retailerId}`);
-          if (element) {
-            element.scrollIntoView({
-              behavior: 'smooth',
-              block: 'nearest'
-            });
-          }
-        }, 100);
       }
     };
 
@@ -1359,15 +1406,12 @@ export function LineWorkerDashboard() {
     };
 
     const getRecentPayments = (retailerId: string) => {
-      // If we have loaded detailed payment history for this retailer, use it
       if (expandedRetailerId === retailerId && retailerPaymentHistory.length > 0) {
         return retailerPaymentHistory
           .filter(p => p.state === 'COMPLETED')
           .sort((a, b) => b.createdAt.toDate().getTime() - a.createdAt.toDate().getTime())
           .slice(0, 3);
       }
-
-      // Otherwise, fall back to the general payments array
       return payments
         .filter(p => p.retailerId === retailerId && p.state === 'COMPLETED')
         .sort((a, b) => b.createdAt.toDate().getTime() - a.createdAt.toDate().getTime())
@@ -1390,156 +1434,120 @@ export function LineWorkerDashboard() {
     }
 
     return (
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-        {sortedFilteredRetailers.map((retailer) => {
-          const isExpanded = expandedRetailerId === retailer.id;
-          const recentPayments = getRecentPayments(retailer.id);
-          const hasCompletedToday = hasCompletedPaymentToday(retailer.id);
-          const lastPaymentDate = getLastCompletedPaymentDate(retailer.id);
-          const lastPaymentAmount = getLastCompletedPaymentAmount(retailer.id);
+      <div className="space-y-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {sortedFilteredRetailers.slice(0, visibleRetailers).map((retailer) => {
+            const isExpanded = expandedRetailerId === retailer.id;
+            const recentPayments = getRecentPayments(retailer.id);
+            const hasCompletedToday = hasCompletedPaymentToday(retailer.id);
+            const lastPaymentDate = getLastCompletedPaymentDate(retailer.id);
+            const lastPaymentAmount = getLastCompletedPaymentAmount(retailer.id);
 
-          return (
-            <div key={retailer.id} id={`retailer-card-${retailer.id}`} className="border border-gray-200 rounded-lg overflow-hidden">
-              {/* Retailer Card - Always Visible */}
-              <Card className="border-0 rounded-none shadow-none h-full">
-                <CardContent className="p-4 h-full flex flex-col">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 flex-1">
-                    {/* Left Column - Retailer Info */}
-                    <div className="space-y-3">
-                      <div className="flex flex-col gap-2">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <h3 className="text-base font-semibold text-gray-900 truncate">{getRetailerName(retailer)}</h3>
-                          <div className="flex items-center gap-2">
-                            <Badge variant="secondary" className="bg-green-100 text-green-800 text-xs">
-                              Active
-                            </Badge>
-                            {retailer.code && (
-                              <Badge variant="outline" className="text-xs border-gray-300 text-gray-500 font-mono">
-                                {retailer.code}
-                              </Badge>
-                            )}
-                          </div>
-                        </div>
-                        {hasCompletedToday && lastPaymentDate && (
-                          <div className="flex flex-col gap-1">
-                            <Badge variant="secondary" className="bg-blue-100 text-blue-800 border-blue-200 text-xs w-fit">
-                              <CheckCircle className="h-3 w-3 mr-1" />
-                              Collected {formatCurrency(lastPaymentAmount)}
-                            </Badge>
-                            <div className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded w-fit">
-                              {lastPaymentDate}
+            return (
+              <div key={retailer.id} id={`retailer-card-${retailer.id}`} className="border border-gray-200 rounded-lg overflow-hidden">
+                <Card className="border-0 rounded-none shadow-none h-full">
+                  <CardContent className="p-4 h-full flex flex-col">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 flex-1">
+                      <div className="space-y-3">
+                        <div className="flex flex-col gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h3 className="text-base font-semibold text-gray-900 truncate">{getRetailerName(retailer)}</h3>
+                            <div className="flex items-center gap-2">
+                              <Badge variant="secondary" className="bg-green-100 text-green-800 text-xs">Active</Badge>
+                              {retailer.code && <Badge variant="outline" className="text-xs border-gray-300 text-gray-500 font-mono">{retailer.code}</Badge>}
                             </div>
                           </div>
-                        )}
+                          {hasCompletedToday && lastPaymentDate && (
+                            <div className="flex flex-col gap-1">
+                              <Badge variant="secondary" className="bg-blue-100 text-blue-800 border-blue-200 text-xs w-fit">
+                                <CheckCircle className="h-3 w-3 mr-1" />
+                                Collected {formatCurrency(lastPaymentAmount)}
+                              </Badge>
+                              <div className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded w-fit">{lastPaymentDate}</div>
+                            </div>
+                          )}
+                        </div>
+                        <div className="space-y-2 text-sm text-gray-600">
+                          {getRetailerAddress(retailer) && getRetailerAddress(retailer) !== 'N/A' && (
+                            <div className="flex items-center gap-2"><MapPin className="h-4 w-4 text-gray-400 flex-shrink-0" /><span className="truncate text-xs">{getRetailerAddress(retailer)}</span></div>
+                          )}
+                          {getRetailerPhone(retailer) && getRetailerPhone(retailer) !== 'N/A' && (
+                            <div className="flex items-center gap-2"><Phone className="h-4 w-4 text-gray-400 flex-shrink-0" /><span className="text-xs">{getRetailerPhone(retailer)}</span></div>
+                          )}
+                          <div className="flex items-center gap-2"><Store className="h-4 w-4 text-gray-400 flex-shrink-0" /><span className="text-xs">{getAreaName(retailer.areaId || '')}</span></div>
+                        </div>
                       </div>
-
-                      <div className="space-y-2 text-sm text-gray-600">
-                        {getRetailerAddress(retailer) && getRetailerAddress(retailer) !== 'N/A' && (
-                          <div className="flex items-center gap-2">
-                            <MapPin className="h-4 w-4 text-gray-400 flex-shrink-0" />
-                            <span className="truncate text-xs">{getRetailerAddress(retailer)}</span>
-                          </div>
-                        )}
-                        {getRetailerPhone(retailer) && getRetailerPhone(retailer) !== 'N/A' && (
-                          <div className="flex items-center gap-2">
-                            <Phone className="h-4 w-4 text-gray-400 flex-shrink-0" />
-                            <span className="text-xs">{getRetailerPhone(retailer)}</span>
-                          </div>
-                        )}
-                        <div className="flex items-center gap-2">
-                          <Store className="h-4 w-4 text-gray-400 flex-shrink-0" />
-                          <span className="text-xs">{getAreaName(retailer.areaId || '')}</span>
+                      <div className="flex flex-col justify-between gap-4">
+                        <div className="flex items-start justify-end">
+                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => handleToggleExpand(retailer.id)}>
+                            {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                          </Button>
+                        </div>
+                        <div className="grid grid-cols-1 gap-2 mt-auto">
+                          <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white shadow-sm" onClick={() => handleOpenPaymentDialog(retailer)}>
+                            <Plus className="h-4 w-4 mr-2" /> Collect
+                          </Button>
                         </div>
                       </div>
                     </div>
-
-                    {/* Right Column - Actions & Recent Payments */}
-                    <div className="space-y-3">
-                      {/* Collect Payment Button */}
-                      <Button
-                        size="sm"
-                        onClick={() => handleOpenPaymentDialog(retailer)}
-                        className="w-full h-9 px-4 bg-blue-600 hover:bg-blue-700 text-white font-medium shadow-sm whitespace-nowrap text-xs"
-                      >
-                        <Plus className="h-4 w-4 mr-1" />
-                        Collect Payment
+                    {recentPayments.length > 0 && !isExpanded && (
+                      <div className="mt-4 pt-3 border-t border-gray-100">
+                        <div className="flex items-center justify-between text-xs text-gray-500 mb-2"><span>Last Collection</span><span>{formatTimestamp(recentPayments[0].createdAt)}</span></div>
+                        <div className="bg-gray-50 rounded-md p-2 flex items-center justify-between">
+                          <div className="flex items-center gap-2"><CheckCircle className="h-3 w-3 text-green-500" /><span className="text-sm font-medium text-gray-900">{formatCurrency(recentPayments[0].totalPaid)}</span></div>
+                          <span className="text-xs text-gray-500">{recentPayments[0].method}</span>
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+                {isExpanded && (
+                  <div className="border-t border-gray-200 bg-gray-50 p-4 animate-accordion-down">
+                    <div className="flex items-center justify-between mb-4">
+                      <h4 className="font-semibold text-gray-900 flex items-center gap-2"><History className="h-4 w-4 text-gray-500" /> Recent History</h4>
+                      <Button variant="ghost" size="sm" className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 h-auto py-1 px-2 text-xs" onClick={() => setShowAllPaymentsRetailerId(showAllPaymentsRetailerId === retailer.id ? null : retailer.id)}>
+                        {showAllPaymentsRetailerId === retailer.id ? 'Show Less' : 'View All'}
                       </Button>
-
-                      {/* Recent Payments Collapsible Section */}
-                      <div className="space-y-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            if (expandedRetailerId === retailer.id) {
-                              setExpandedRetailerId(null);
-                              setShowAllPaymentsRetailerId(null);
-                            } else {
-                              setExpandedRetailerId(retailer.id);
-                              setShowAllPaymentsRetailerId(null);
-                              handleViewRetailerDetails(retailers.find(r => r.id === retailer.id)!);
-                            }
-                          }}
-                          className="w-full justify-between h-9 px-4 border-gray-300 text-gray-700 hover:bg-gray-50 font-medium text-xs"
-                        >
-                          <span className="flex items-center gap-2">
-                            <CreditCard className="h-4 w-4" />
-                            Recent Payments
-                          </span>
-                          {expandedRetailerId === retailer.id ? (
-                            <ChevronUp className="h-4 w-4" />
-                          ) : (
-                            <ChevronDown className="h-4 w-4" />
-                          )}
-                        </Button>
-
-                        {expandedRetailerId === retailer.id && (
-                          <div className="mt-2 p-3 bg-gray-50 rounded border max-h-48 overflow-y-auto">
-                            {recentPayments.length > 0 ? (
-                              <div className="space-y-2">
-                                {(showAllPaymentsRetailerId === retailer.id ? retailerPaymentHistory : recentPayments).map((payment) => (
-                                  <div key={payment.id} className="bg-white p-2 rounded border border-gray-200">
-                                    <div className="flex justify-between items-center">
-                                      <div>
-                                        <p className="font-medium text-sm text-gray-900">{formatCurrency(payment.totalPaid)}</p>
-                                        <p className="text-xs text-gray-500">{formatTimestampWithTime(payment.createdAt)}</p>
-                                      </div>
-                                      <Badge className="bg-green-100 text-green-800 text-xs">
-                                        {payment.method}
-                                      </Badge>
-                                    </div>
-                                  </div>
-                                ))}
-                                {/* Always show the toggle button if there are more than 3 payments total */}
-                                {retailerPaymentHistory.length > 3 && (
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => {
-                                      setShowAllPaymentsRetailerId(showAllPaymentsRetailerId === retailer.id ? null : retailer.id);
-                                    }}
-                                    className="w-full text-xs"
-                                  >
-                                    {showAllPaymentsRetailerId === retailer.id ? 'Show Recent' : 'View All'}
-                                  </Button>
-                                )}
-                              </div>
-                            ) : (
-                              <div className="text-center py-3 text-muted-foreground">
-                                <CreditCard className="h-6 w-6 mx-auto mb-1 text-gray-400" />
-                                <p className="text-xs">No payments yet</p>
+                    </div>
+                    <div className="space-y-3">
+                      {(showAllPaymentsRetailerId === retailer.id ? retailerPaymentHistory : recentPayments).map(payment => (
+                        <div key={payment.id} className="bg-white p-3 rounded-lg border border-gray-200 shadow-sm flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className={`p-2 rounded-full ${payment.state === 'COMPLETED' ? 'bg-green-100' : 'bg-yellow-100'}`}>
+                              {payment.state === 'COMPLETED' ? <CheckCircle className="h-4 w-4 text-green-600" /> : <Loader2 className="h-4 w-4 text-yellow-600" />}
+                            </div>
+                            <div>
+                              <div className="font-medium text-gray-900">{formatCurrency(payment.totalPaid)}</div>
+                              <div className="text-xs text-gray-500">{formatTimestampWithTime(payment.createdAt)}</div>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <Badge variant="outline" className="mb-1">{payment.method}</Badge>
+                            {payment.state === 'COMPLETED' && (
+                              <div className="flex justify-end mt-1">
+                                <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => { setLastPaymentId(payment.id); setLastPaymentAmount(payment.totalPaid); setShowReceiptInSuccess(true); setShowPaymentSuccess(true); }}>
+                                  <Share className="h-3 w-3 text-gray-400 hover:text-gray-600" />
+                                </Button>
                               </div>
                             )}
                           </div>
-                        )}
-                      </div>
+                        </div>
+                      ))}
+                      {recentPayments.length === 0 && <div className="text-center py-4 text-gray-500 text-sm">No recent payment history found.</div>}
                     </div>
                   </div>
-                </CardContent>
-              </Card>
-            </div>
-          );
-        })}
+                )}
+              </div>
+            );
+          })}
+        </div>
+        {visibleRetailers < sortedFilteredRetailers.length && (
+          <div className="flex justify-center pt-4">
+            <Button variant="outline" onClick={() => setVisibleRetailers(prev => prev + 24)} className="min-w-[200px]">
+              Load More ({sortedFilteredRetailers.length - visibleRetailers} remaining)
+            </Button>
+          </div>
+        )}
       </div>
     );
   };
@@ -1799,222 +1807,213 @@ export function LineWorkerDashboard() {
     }
   };
 
-  // Payment history table component
-  const PaymentHistoryTable = () => (
-    <div className="space-y-4">
-      {/* Mobile View - Cards */}
-      <div className="md:hidden space-y-4">
-        {filteredPayments.map((payment) => (
-          <div key={payment.id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 space-y-3">
-            <div className="flex justify-between items-start">
-              <div>
-                <h3 className="font-semibold text-gray-900">{payment.retailerName}</h3>
-                <p className="text-xs text-gray-500">{formatTimestampWithTime(payment.createdAt)}</p>
+  // Payment history table component - Render function to avoid unmounts
+  const renderPaymentHistoryTable = () => {
+    // Assuming `visiblePayments` and `setVisiblePayments` are defined in the parent scope,
+    // similar to how `RetailerList` handles pagination.
+    // For example:
+    // const [visiblePayments, setVisiblePayments] = useState(20);
+    // useEffect(() => { setVisiblePayments(20); }, [filteredPayments]); // Reset when filters change
+
+    return (
+      <div className="space-y-4">
+        {/* Mobile View - Cards */}
+        <div className="md:hidden space-y-4">
+          {filteredPayments.slice(0, visiblePayments).map((payment) => (
+            <div key={payment.id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 space-y-3">
+              <div className="flex justify-between items-start">
+                <div>
+                  <h3 className="font-semibold text-gray-900">{payment.retailerName}</h3>
+                  <p className="text-xs text-gray-500">{formatTimestampWithTime(payment.createdAt)}</p>
+                </div>
+                <div className="text-right">
+                  <div className="font-bold text-green-600">{formatCurrency(payment.totalPaid)}</div>
+                  <Badge className={
+                    payment.state === 'COMPLETED'
+                      ? 'bg-green-100 text-green-800 border-green-200 mt-1'
+                      : payment.state === 'INITIATED'
+                        ? 'bg-yellow-100 text-yellow-800 border-yellow-200 mt-1'
+                        : 'bg-red-100 text-red-800 border-red-200 mt-1'
+                  }>
+                    {payment.state}
+                  </Badge>
+                </div>
               </div>
-              <div className="text-right">
-                <div className="font-bold text-green-600">{formatCurrency(payment.totalPaid)}</div>
-                <Badge className={
-                  payment.state === 'COMPLETED'
-                    ? 'bg-green-100 text-green-800 border-green-200 mt-1'
-                    : payment.state === 'INITIATED'
-                      ? 'bg-yellow-100 text-yellow-800 border-yellow-200 mt-1'
-                      : 'bg-red-100 text-red-800 border-red-200 mt-1'
-                }>
-                  {payment.state}
-                </Badge>
+
+              <div className="flex items-center justify-between text-sm text-gray-600 bg-gray-50 p-2 rounded-lg">
+                <div className="flex items-center">
+                  <CreditCard className="h-4 w-4 mr-2 text-gray-400" />
+                  <span>{payment.method}</span>
+                </div>
+                {payment.utr && <span className="font-mono text-xs">UTR: ****{payment.utr.slice(-4)}</span>}
               </div>
-            </div>
 
-            <div className="flex items-center justify-between text-sm text-gray-600 bg-gray-50 p-2 rounded-lg">
-              <div className="flex items-center">
-                <CreditCard className="h-4 w-4 mr-2 text-gray-400" />
-                <span>{payment.method}</span>
-              </div>
-              {payment.utr && <span className="font-mono text-xs">UTR: ****{payment.utr.slice(-4)}</span>}
-            </div>
-
-            <div className="grid grid-cols-2 gap-2 pt-1">
-              {(payment.state === 'INITIATED' || payment.state === 'OTP_SENT') && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleEnterOTP(payment)}
-                  className="w-full bg-yellow-50 text-yellow-700 border-yellow-200 hover:bg-yellow-100"
-                  disabled={isOTPExpired(payment)}
-                >
-                  {isOTPExpired(payment) ? 'Expired' : 'Enter OTP'}
-                </Button>
-              )}
-
-              {/* <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setLastPaymentId(payment.id);
-                  setLastPaymentAmount(payment.totalPaid);
-                  setShowReceiptInSuccess(true);
-                  setShowPaymentSuccess(true);
-                }}
-                className="w-full"
-              >
-                View Details
-              </Button> */}
-
-              {payment.state === 'COMPLETED' && (
-                <>
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                {(payment.state === 'INITIATED' || payment.state === 'OTP_SENT') && (
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => {
-                      setSelectedPaymentForCorrection(payment);
-                      setShowCorrectionModal(true);
-                    }}
-                    className="w-full"
-                    disabled={payment.verified === true}
+                    onClick={() => handleEnterOTP(payment)}
+                    className="w-full bg-yellow-50 text-yellow-700 border-yellow-200 hover:bg-yellow-100"
+                    disabled={isOTPExpired(payment)}
                   >
-                    Edit
+                    {isOTPExpired(payment) ? 'Expired' : 'Enter OTP'}
                   </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      setLastPaymentId(payment.id);
-                      setLastPaymentAmount(payment.totalPaid);
-                      setShowReceiptInSuccess(true);
-                      setShowPaymentSuccess(true);
-                    }}
-                    className="w-full"
-                  >
-                    <Share className="h-3 w-3 mr-2" />
-                    Receipt
-                  </Button>
-                </>
-              )}
+                )}
+
+                {payment.state === 'COMPLETED' && (
+                  <>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setSelectedPaymentForCorrection(payment);
+                        setShowCorrectionModal(true);
+                      }}
+                      className="w-full"
+                      disabled={payment.verified === true}
+                    >
+                      Edit
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setLastPaymentId(payment.id);
+                        setLastPaymentAmount(payment.totalPaid);
+                        setShowReceiptInSuccess(true);
+                        setShowPaymentSuccess(true);
+                      }}
+                      className="w-full"
+                    >
+                      <Share className="h-3 w-3 mr-2" />
+                      Receipt
+                    </Button>
+                  </>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
-        {filteredPayments.length === 0 && (
-          <div className="text-center py-8 text-gray-500 bg-white rounded-xl border border-dashed">
-            <p>No payments found</p>
-          </div>
-        )}
-      </div>
+          ))}
+          {filteredPayments.length === 0 && (
+            <div className="text-center py-8 text-gray-500 bg-white rounded-xl border border-dashed">
+              <p>No payments found</p>
+            </div>
+          )}
+        </div>
 
-      {/* Desktop View - Table */}
-      <div className="hidden md:block overflow-x-auto bg-white rounded-lg border shadow-sm">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Date</TableHead>
-              <TableHead>Code</TableHead>
-              <TableHead>Retailer</TableHead>
-              <TableHead>Area</TableHead>
-              <TableHead>Amount</TableHead>
-              <TableHead>Method</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filteredPayments.map((payment) => {
-              const retailer = retailers.find(r => r.id === payment.retailerId);
-              const area = retailer ? areas.find(a => a.id === retailer.areaId) : null;
+        {/* Desktop View - Table */}
+        <div className="hidden md:block overflow-x-auto bg-white rounded-lg border shadow-sm">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Date</TableHead>
+                <TableHead>Code</TableHead>
+                <TableHead>Retailer</TableHead>
+                <TableHead>Area</TableHead>
+                <TableHead>Amount</TableHead>
+                <TableHead>Method</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredPayments.slice(0, visiblePayments).map((payment) => {
+                const retailer = retailers.find(r => r.id === payment.retailerId);
+                const area = retailer ? areas.find(a => a.id === retailer.areaId) : null;
 
-              return (
-                <TableRow key={payment.id}>
-                  <TableCell>{formatTimestampWithTime(payment.createdAt)}</TableCell>
-                  <TableCell>
-                    {retailer?.code && (
-                      <Badge variant="outline" className="text-xs font-mono font-normal text-gray-500">
-                        {retailer.code}
-                      </Badge>
-                    )}
-                  </TableCell>
-                  <TableCell className="font-medium">{payment.retailerName}</TableCell>
-                  <TableCell className="text-gray-500 text-sm">{area?.name || '-'}</TableCell>
-                  <TableCell>{formatCurrency(payment.totalPaid)}</TableCell>
-                  <TableCell>{payment.method}</TableCell>
-                  <TableCell>
-                    <Badge className={
-                      payment.state === 'COMPLETED'
-                        ? 'bg-green-100 text-green-800'
-                        : payment.state === 'INITIATED'
-                          ? 'bg-yellow-100 text-yellow-800'
-                          : 'bg-red-100 text-red-800'
-                    }>
-                      {payment.state}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex space-x-1">
-                      {(payment.state === 'INITIATED' || payment.state === 'OTP_SENT') && (
-                        <>
-                          {isOTPExpired(payment) ? (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              disabled
-                              className="h-7 px-2 text-xs bg-gray-100 border-gray-300 text-gray-500 cursor-not-allowed"
-                            >
-                              Expired
-                            </Button>
-                          ) : (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleEnterOTP(payment)}
-                              className="h-7 px-2 text-xs bg-yellow-50 border-yellow-200 text-yellow-800 hover:bg-yellow-100"
-                            >
-                              Enter OTP
-                            </Button>
-                          )}
-                        </>
+                return (
+                  <TableRow key={payment.id}>
+                    <TableCell>{formatTimestampWithTime(payment.createdAt)}</TableCell>
+                    <TableCell>
+                      {retailer?.code && (
+                        <Badge variant="outline" className="text-xs font-mono font-normal text-gray-500">
+                          {retailer.code}
+                        </Badge>
                       )}
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setSelectedPaymentForCorrection(payment);
-                          setShowCorrectionModal(true);
-                        }}
-                        className="h-7 px-2 text-xs"
-                        disabled={payment.verified === true}
-                      >
-                        Edit
-                      </Button>
+                    </TableCell>
+                    <TableCell className="font-medium">{payment.retailerName}</TableCell>
+                    <TableCell className="text-gray-500 text-sm">{area?.name || '-'}</TableCell>
+                    <TableCell>{formatCurrency(payment.totalPaid)}</TableCell>
+                    <TableCell>{payment.method}</TableCell>
+                    <TableCell>
+                      <Badge className={
+                        payment.state === 'COMPLETED'
+                          ? 'bg-green-100 text-green-800'
+                          : payment.state === 'INITIATED'
+                            ? 'bg-yellow-100 text-yellow-800'
+                            : 'bg-red-100 text-red-800'
+                      }>
+                        {payment.state}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
                       {payment.state === 'COMPLETED' && (
+                        <div className="flex gap-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              setSelectedPaymentForCorrection(payment);
+                              setShowCorrectionModal(true);
+                            }}
+                            disabled={payment.verified === true}
+                          >
+                            Edit
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              setLastPaymentId(payment.id);
+                              setLastPaymentAmount(payment.totalPaid);
+                              setShowReceiptInSuccess(true);
+                              setShowPaymentSuccess(true);
+                            }}
+                          >
+                            <Share className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      )}
+                      {(payment.state === 'INITIATED' || payment.state === 'OTP_SENT') && (
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => {
-                            setLastPaymentId(payment.id);
-                            setLastPaymentAmount(payment.totalPaid);
-                            setShowReceiptInSuccess(true);
-                            setShowPaymentSuccess(true);
-                          }}
-                          className="h-7 px-2 text-xs"
+                          onClick={() => handleEnterOTP(payment)}
+                          disabled={isOTPExpired(payment)}
                         >
-                          <Share className="h-3 w-3 mr-1" />
-                          Receipt
+                          Enter OTP
                         </Button>
                       )}
-                    </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+              {filteredPayments.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={8} className="text-center py-8 text-gray-500">
+                    No payments found
                   </TableCell>
                 </TableRow>
-              );
-            })}
-            {filteredPayments.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={6} className="text-center py-8 text-gray-500">
-                  No payments found
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
+              )}
+            </TableBody>
+          </Table>
+        </div>
+
+        {/* Load More Button */}
+        {visiblePayments < filteredPayments.length && (
+          <div className="flex justify-center pt-4">
+            <Button
+              variant="outline"
+              onClick={() => setVisiblePayments(prev => prev + 20)}
+              className="min-w-[200px]"
+            >
+              Load More ({filteredPayments.length - visiblePayments} remaining)
+            </Button>
+          </div>
+        )}
       </div>
-    </div>
-  );
+    );
+  };
 
   if (!isOnline) {
     return <OfflineBlockingScreen />;
@@ -2028,7 +2027,7 @@ export function LineWorkerDashboard() {
       <DashboardNavigation
         navItems={navItems}
         activeNav={activeNav}
-        setActiveNav={setActiveNav}
+        setActiveNav={handleNavChange}
         title="Line Worker Dashboard"
         subtitle="Line Worker"
         user={user ? { displayName: user.displayName, email: user.email } : undefined}
@@ -2045,6 +2044,13 @@ export function LineWorkerDashboard() {
         onOpenChange={setShowLogoutConfirmation}
         onConfirm={logout}
         userName={user?.displayName || user?.email}
+      />
+
+      {/* Exit App Confirmation Modal */}
+      <ExitAppConfirmation
+        open={showExitConfirmation}
+        onOpenChange={setShowExitConfirmation}
+        onConfirm={handleExitApp}
       />
 
       {/* Main Content Area */}
@@ -2421,7 +2427,7 @@ export function LineWorkerDashboard() {
 
                   {/* Retailers List - Added pb-32 for mobile keyboard spacing */}
                   <div className="pb-32">
-                    <RetailerList />
+                    {renderRetailerList()}
                   </div>
                 </div>
               )}
@@ -2474,7 +2480,7 @@ export function LineWorkerDashboard() {
                           onChange={(range) => setPaymentsDateRange(range)}
                         />
                       </div>
-                      <PaymentHistoryTable />
+                      {renderPaymentHistoryTable()}
                     </TabsContent>
                   </Tabs>
                 </div>
@@ -2501,7 +2507,7 @@ export function LineWorkerDashboard() {
           setPreSelectedRetailerForPayment(null); // Reset pre-selected retailer when dialog closes
         }
       }}>
-        <DialogContent className="max-w-2xl max-h-[90vh] p-0 flex flex-col overflow-hidden gap-0" onInteractOutside={(e) => e.preventDefault()}>
+        <DialogContent className="max-w-2xl max-h-[90vh] p-0 flex flex-col overflow-hidden gap-0">
           <DialogHeader className="p-6 pb-4 flex-shrink-0">
             <DialogTitle>Collect Payment</DialogTitle>
             <DialogDescription>
@@ -2509,7 +2515,7 @@ export function LineWorkerDashboard() {
             </DialogDescription>
           </DialogHeader>
           <CollectPaymentForm
-            retailers={retailers}
+            retailers={leanRetailers as any}
             preSelectedRetailer={preSelectedRetailerForPayment}
             onCollectPayment={handleCollectPayment}
             onCancel={() => {
@@ -2518,14 +2524,14 @@ export function LineWorkerDashboard() {
             }}
             collectingPayment={isCollectingPayment}
             wholesalerUpiInfo={wholesalerUpiInfo}
-            key={formVersion}
+            isOpen={showPaymentDialog}
           />
         </DialogContent>
       </Dialog>
 
       {/* Confirmation Dialog */}
       <Dialog open={showConfirmationDialog} onOpenChange={(open) => setShowConfirmationDialog(open)}>
-        <DialogContent className="max-w-md" onInteractOutside={(e) => e.preventDefault()}>
+        <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="text-xl font-semibold">Confirm Payment Collection</DialogTitle>
             <DialogDescription className="text-sm text-gray-600">
@@ -2587,7 +2593,7 @@ export function LineWorkerDashboard() {
 
       {/* Payment Success Dialog */}
       <Dialog open={showPaymentSuccess} onOpenChange={(open) => { if (!open) { setShowPaymentSuccess(false); setShowReceiptInSuccess(false); } }}>
-        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto" onInteractOutside={(e) => e.preventDefault()}>
+        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
           <DialogTitle className="text-xl font-semibold text-center">Payment Completed Successfully!</DialogTitle>
           <div className="py-4 space-y-4">
             {!showReceiptInSuccess ? (

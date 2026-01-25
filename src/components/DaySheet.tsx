@@ -20,7 +20,9 @@ import {
   TrendingUp,
   Clock,
   X,
-  Building2
+  Building2,
+  Table as TableIcon,
+  List
 } from 'lucide-react';
 import { formatTimestamp, formatTimestampWithTime, formatCurrency, toDate, formatDateForExport } from '@/lib/timestamp-utils';
 import * as XLSX from 'xlsx';
@@ -74,6 +76,7 @@ export function DaySheet({
     const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
     return { startDate: startOfDay, endDate: endOfDay };
   });
+  const [viewMode, setViewMode] = useState<'table' | 'list'>('table');
 
   // Helper functions to filter data by date range
   const filterPaymentsByDateRange = (paymentsData: Payment[]) => {
@@ -638,37 +641,67 @@ export function DaySheet({
                       </CardDescription>
                     </div>
                     <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-                      <Button onClick={generateCSV} variant="outline" className="flex-1 sm:flex-none items-center space-x-2">
+                      {/* View Toggle - Mobile/Tablet only, hidden on Large Desktop where table is default */}
+                      <div className="flex items-center bg-gray-100 rounded-lg p-1 mr-2">
+                        <Button
+                          variant={viewMode === 'table' ? 'white' as any : 'ghost'}
+                          size="sm"
+                          className={`h-8 w-8 p-0 ${viewMode === 'table' ? 'bg-white shadow-sm' : ''}`}
+                          onClick={() => setViewMode('table')}
+                          title="Table View"
+                        >
+                          <TableIcon className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant={viewMode === 'list' ? 'white' as any : 'ghost'}
+                          size="sm"
+                          className={`h-8 w-8 p-0 ${viewMode === 'list' ? 'bg-white shadow-sm' : ''}`}
+                          onClick={() => setViewMode('list')}
+                          title="List View"
+                        >
+                          <List className="h-4 w-4" />
+                        </Button>
+                      </div>
+
+                      <Button
+                        onClick={generateCSV}
+                        variant="outline"
+                        className="flex-1 sm:flex-none items-center space-x-2"
+                        disabled={filteredData.length === 0}
+                      >
                         <FileText className="h-4 w-4" />
                         <span>Export CSV</span>
                       </Button>
-                      <Button onClick={generateExcel} className="flex-1 sm:flex-none items-center space-x-2">
+                      <Button
+                        onClick={generateExcel}
+                        className="flex-1 sm:flex-none items-center space-x-2"
+                        disabled={filteredData.length === 0}
+                      >
                         <FileSpreadsheet className="h-4 w-4" />
                         <span>Export Excel</span>
                       </Button>
                     </div>
                   </CardHeader>
                   <CardContent className="p-0">
-                    {/* Desktop Table View */}
-                    <div className="hidden lg:block">
+                    {/* Desktop/Tablet Table View - now also accessible on mobile via toggle */}
+                    {(viewMode === 'table' || (typeof window !== 'undefined' && window.innerWidth >= 1024)) && (
                       <div className="overflow-x-auto">
                         <Table>
                           <TableHeader>
                             <TableRow>
                               <TableHead className="whitespace-nowrap">Date</TableHead>
                               <TableHead className="whitespace-nowrap">Retailer Code</TableHead>
-                              <TableHead className="whitespace-nowrap">Line Worker</TableHead>
-                              {/* <TableHead className="whitespace-nowrap">Assigned Areas</TableHead> */}
-                              <TableHead className="whitespace-nowrap">Retailer</TableHead>
-                              <TableHead className="whitespace-nowrap">Retailer Area</TableHead>
+                              <TableHead className="whitespace-nowrap">Retailer Name</TableHead>
                               <TableHead className="whitespace-nowrap text-right">Amount</TableHead>
                               <TableHead className="whitespace-nowrap">Method</TableHead>
+                              <TableHead className="whitespace-nowrap">Retailer Area</TableHead>
+                              <TableHead className="whitespace-nowrap">Line Worker</TableHead>
                             </TableRow>
                           </TableHeader>
                           <TableBody>
                             {filteredData.length === 0 ? (
                               <TableRow>
-                                <TableCell colSpan={8} className="text-center py-8 text-gray-500">
+                                <TableCell colSpan={7} className="text-center py-8 text-gray-500">
                                   No collections found for the selected criteria
                                 </TableCell>
                               </TableRow>
@@ -676,109 +709,67 @@ export function DaySheet({
                               filteredData.map((item, index) => (
                                 <TableRow key={`${item.paymentId}-${index}`}>
                                   <TableCell>{formatTimestamp(item.date)}</TableCell>
-                                  <TableCell>{item.retailerCode}</TableCell>
-                                  <TableCell className="font-medium">{item.lineWorkerName}</TableCell>
-                                  {/* <TableCell className="text-sm text-gray-600">{item.lineWorkerArea}</TableCell> */}
+                                  <TableCell className="font-mono text-xs">{item.retailerCode}</TableCell>
                                   <TableCell className="font-medium">{item.retailerName}</TableCell>
-                                  <TableCell className="text-sm text-gray-600">{item.retailerArea}</TableCell>
-                                  <TableCell className="text-right font-bold">{formatCurrency(item.amount)}</TableCell>
+                                  <TableCell className="text-right font-bold text-green-600">{formatCurrency(item.amount)}</TableCell>
                                   <TableCell>
                                     <Badge variant="outline">{item.paymentMethod}</Badge>
                                   </TableCell>
+                                  <TableCell className="text-sm text-gray-600">{item.retailerArea}</TableCell>
+                                  <TableCell className="font-medium text-gray-700 text-xs">{item.lineWorkerName}</TableCell>
                                 </TableRow>
                               ))
                             )}
                           </TableBody>
                         </Table>
                       </div>
-                    </div>
+                    )}
 
-                    {/* Tablet View */}
-                    <div className="hidden md:block lg:hidden">
-                      <div className="overflow-x-auto">
-                        <Table>
-                          <TableHeader>
-                            <TableRow>
-                              <TableHead className="whitespace-nowrap">Date</TableHead>
-                              <TableHead className="whitespace-nowrap">Line Worker</TableHead>
-                              <TableHead className="whitespace-nowrap">Retailer</TableHead>
-                              <TableHead className="whitespace-nowrap text-right">Amount</TableHead>
-                              <TableHead className="whitespace-nowrap">Method</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {filteredData.length === 0 ? (
-                              <TableRow>
-                                <TableCell colSpan={5} className="text-center py-8 text-gray-500">
-                                  No collections found for the selected criteria
-                                </TableCell>
-                              </TableRow>
-                            ) : (
-                              filteredData.map((item, index) => (
-                                <TableRow key={`${item.paymentId}-${index}`}>
-                                  <TableCell>
-                                    <div>
-                                      <div className="font-medium">{formatTimestamp(item.date)}</div>
-                                      <div className="text-xs text-gray-500">{item.time}</div>
-                                    </div>
-                                  </TableCell>
-                                  <TableCell className="font-medium">{item.lineWorkerName}</TableCell>
-                                  <TableCell className="font-medium">{item.retailerName}</TableCell>
-                                  <TableCell className="text-right font-bold">{formatCurrency(item.amount)}</TableCell>
-                                  <TableCell>
-                                    <Badge variant="outline" className="text-xs">{item.paymentMethod}</Badge>
-                                  </TableCell>
-                                </TableRow>
-                              ))
-                            )}
-                          </TableBody>
-                        </Table>
+                    {/* Mobile/Tablet Card View - Toggled via icon */}
+                    {viewMode === 'list' && (
+                      <div className="lg:hidden p-4 space-y-3">
+                        {filteredData.length === 0 ? (
+                          <div className="text-center py-8 text-gray-500">
+                            No collections found for the selected criteria
+                          </div>
+                        ) : (
+                          filteredData.map((item, index) => (
+                            <Card key={`${item.paymentId}-${index}`} className="p-4">
+                              <div className="space-y-2">
+                                <div className="flex justify-between items-start">
+                                  <div className="flex-1">
+                                    <div className="font-semibold text-lg">{formatCurrency(item.amount)}</div>
+                                    <div className="text-sm text-gray-600">{item.paymentMethod}</div>
+                                  </div>
+                                  <div className="text-right text-sm text-gray-500">
+                                    <div>{formatTimestamp(item.date)}</div>
+                                    <div>{item.time}</div>
+                                  </div>
+                                </div>
+
+                                <div className="border-t pt-2 space-y-1">
+                                  <div className="flex justify-between">
+                                    <span className="text-sm font-medium">Line Worker:</span>
+                                    <span className="text-sm">{item.lineWorkerName}</span>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className="text-sm font-medium">Retailer:</span>
+                                    <span className="text-sm">{item.retailerName}</span>
+                                  </div>
+                                  <div className="text-xs text-gray-500 space-y-1">
+                                    {/* <div><strong>Worker Areas:</strong> {item.lineWorkerArea}</div> */}
+                                    <div><strong>Retailer Area:</strong> {item.retailerArea}</div>
+                                    {item.retailerAddress && (
+                                      <div><strong>Address:</strong> {item.retailerAddress}</div>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            </Card>
+                          ))
+                        )}
                       </div>
-                    </div>
-
-                    {/* Mobile Card View */}
-                    <div className="md:hidden p-4 space-y-3">
-                      {filteredData.length === 0 ? (
-                        <div className="text-center py-8 text-gray-500">
-                          No collections found for the selected criteria
-                        </div>
-                      ) : (
-                        filteredData.map((item, index) => (
-                          <Card key={`${item.paymentId}-${index}`} className="p-4">
-                            <div className="space-y-2">
-                              <div className="flex justify-between items-start">
-                                <div className="flex-1">
-                                  <div className="font-semibold text-lg">{formatCurrency(item.amount)}</div>
-                                  <div className="text-sm text-gray-600">{item.paymentMethod}</div>
-                                </div>
-                                <div className="text-right text-sm text-gray-500">
-                                  <div>{formatTimestamp(item.date)}</div>
-                                  <div>{item.time}</div>
-                                </div>
-                              </div>
-
-                              <div className="border-t pt-2 space-y-1">
-                                <div className="flex justify-between">
-                                  <span className="text-sm font-medium">Line Worker:</span>
-                                  <span className="text-sm">{item.lineWorkerName}</span>
-                                </div>
-                                <div className="flex justify-between">
-                                  <span className="text-sm font-medium">Retailer:</span>
-                                  <span className="text-sm">{item.retailerName}</span>
-                                </div>
-                                <div className="text-xs text-gray-500 space-y-1">
-                                  {/* <div><strong>Worker Areas:</strong> {item.lineWorkerArea}</div> */}
-                                  <div><strong>Retailer Area:</strong> {item.retailerArea}</div>
-                                  {item.retailerAddress && (
-                                    <div><strong>Address:</strong> {item.retailerAddress}</div>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                          </Card>
-                        ))
-                      )}
-                    </div>
+                    )}
                   </CardContent>
                 </Card>
 

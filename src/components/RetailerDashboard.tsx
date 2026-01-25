@@ -66,6 +66,7 @@ import ReportDialog from './ui/ReportDialog';
 import { RetailerProfileEdit } from './RetailerProfileEdit';
 import { RetailerProfileService } from '@/services/retailer-profile-service';
 import { LogoutConfirmation } from '@/components/LogoutConfirmation';
+import { ExitAppConfirmation } from '@/components/ExitAppConfirmation';
 
 export function RetailerDashboard() {
   const { user, logout } = useAuth();
@@ -75,6 +76,8 @@ export function RetailerDashboard() {
   const [tenantId, setTenantId] = useState<string | null>('all'); // Default to 'all' for consolidated view
   const [availableTenants, setAvailableTenants] = useState<string[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
+  // Master state for caching
+  const [allPayments, setAllPayments] = useState<Payment[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [activeOTPs, setActiveOTPs] = useState<Array<{
     code: string;
@@ -360,35 +363,15 @@ export function RetailerDashboard() {
   const handleTenantSwitch = async (newTenantId: string) => {
     if (!retailer || newTenantId === tenantId) return;
 
-    try {
-      console.log('🔄 Switching tenant from', tenantId, 'to', newTenantId);
+    console.log('🔄 Switching tenant from', tenantId, 'to', newTenantId);
+    setTenantId(newTenantId);
 
-      let paymentsData: Payment[] = [];
-
-      if (newTenantId === 'all') {
-        // Fetch consolidated payments from all tenants
-        paymentsData = await paymentService.getPaymentsByRetailerAcrossAllTenants(retailer.id);
-        setTenantId('all');
-      } else {
-        // Fetch payments for the specific tenant
-        paymentsData = await paymentService.getPaymentsByRetailer(newTenantId, retailer.id);
-        setTenantId(newTenantId);
-
-        // Fetch wholesaler name for the new tenant
-        await getWholesalerName(newTenantId);
-      }
-
-      setPayments(paymentsData);
-
-      console.log('✅ Tenant switched successfully', {
-        newTenantId,
-        isAll: newTenantId === 'all',
-        paymentsCount: paymentsData.length
-      });
-    } catch (error) {
-      console.error('❌ Error switching tenant:', error);
-      setError('Failed to switch wholesaler. Please try again.');
+    // Fetch wholesaler name for the new tenant metadata if needed
+    if (newTenantId !== 'all') {
+      getWholesalerName(newTenantId);
     }
+
+    // Payments are now filtered client-side via useEffect
   };
 
   // Navigation items
@@ -399,6 +382,54 @@ export function RetailerDashboard() {
   ];
 
   const [activeNav, setActiveNav] = useState('overview');
+  const [showExitConfirmation, setShowExitConfirmation] = useState(false);
+
+  // Custom navigation handler for physical back button support
+  const handleNavChange = useCallback((id: string) => {
+    if (id === activeNav) return;
+
+    // Push new tab to history stack
+    window.history.pushState({ id }, '');
+    setActiveNav(id);
+
+    // Scroll to top on tab change
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [activeNav]);
+
+  useEffect(() => {
+    // Initial history state setup
+    // Use replaceState to ensure the first entry is 'overview'
+    window.history.replaceState({ id: 'overview' }, '');
+
+    const handlePopState = (event: PopStateEvent) => {
+      if (event.state && event.state.id) {
+        // Navigate to the tab stored in history
+        setActiveNav(event.state.id);
+      } else {
+        // We reached the beginning of the app history
+        if (activeNav === 'overview') {
+          setShowExitConfirmation(true);
+          // Push state back so they don't leave the app immediately
+          window.history.pushState({ id: 'overview' }, '');
+        } else {
+          setActiveNav('overview');
+          window.history.replaceState({ id: 'overview' }, '');
+        }
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [activeNav]);
+
+  const handleExitApp = async () => {
+    // Attempt standard window close
+    window.close();
+    // For mobile PWA where window.close is restricted, navigate away
+    setTimeout(() => {
+      window.location.href = 'about:blank';
+    }, 200);
+  };
 
   // Enhanced notification callback with proper count updates
   const handleNotificationUpdate = useCallback((newNotifications: any[]) => {
@@ -678,6 +709,23 @@ export function RetailerDashboard() {
       }
     };
   }, [user, handleNotificationUpdate]);
+
+  // Client-side filtering effect - RUNS INSTANTLY without network calls
+  useEffect(() => {
+    let filtered = allPayments;
+
+    // Apply Tenant Filter
+    if (tenantId && tenantId !== 'all') {
+      filtered = filtered.filter(p => p.tenantId === tenantId);
+    }
+
+    setPayments(filtered);
+
+    // Note: Date filtering is handled by the filterPaymentsByDateRange helper in the render method,
+    // so we don't need to apply it here unless we want to persist it in 'payments' state.
+    // Given the previous architecture, keep 'payments' as 'payments for this tenant', 
+    // and let render do date filtering.
+  }, [allPayments, tenantId]);
 
   // Backup initialization for manual browser refresh - runs once on component mount
   useEffect(() => {
@@ -1397,6 +1445,10 @@ export function RetailerDashboard() {
       // Set state with fetched data
       setRetailer(retailerData);
       setRetailerUser(retailerUserData);
+      // Store master data
+      setAllPayments(paymentsData);
+      // Initialize view data (filtering will be handled by effect)
+      setPayments(paymentsData);
 
       // Fetch retailer profile
       try {
@@ -1724,7 +1776,7 @@ export function RetailerDashboard() {
       <DashboardNavigation
         navItems={navItems}
         activeNav={activeNav}
-        setActiveNav={setActiveNav}
+        setActiveNav={handleNavChange}
         title={activeNav === 'overview' ? 'Retailer Dashboard' :
           activeNav === 'payments' ? 'Payment History' :
             activeNav === 'settings' ? 'Settings' : 'Retailer Dashboard'}
@@ -1744,6 +1796,13 @@ export function RetailerDashboard() {
         onOpenChange={setShowLogoutConfirmation}
         onConfirm={logout}
         userName={user?.displayName || user?.email}
+      />
+
+      {/* Exit App Confirmation Modal */}
+      <ExitAppConfirmation
+        open={showExitConfirmation}
+        onOpenChange={setShowExitConfirmation}
+        onConfirm={handleExitApp}
       />
 
       {/* Wholesaler Selector - Full Width Below Navigation */}

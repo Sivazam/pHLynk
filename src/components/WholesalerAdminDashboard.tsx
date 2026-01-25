@@ -153,7 +153,11 @@ export function WholesalerAdminDashboard() {
   const [showLineWorkerSuccess, setShowLineWorkerSuccess] = useState(false);
   const [triggerLineWorkerConfetti, setTriggerLineWorkerConfetti] = useState(false);
   const [updatingLineWorker, setUpdatingLineWorker] = useState(false);
+
   const [updateProgress, setUpdateProgress] = useState('');
+
+  // Pagination State
+  const [visibleRetailersCount, setVisibleRetailersCount] = useState(20);
 
   // Logout confirmation state
   const [showLogoutConfirmation, setShowLogoutConfirmation] = useState(false);
@@ -210,6 +214,9 @@ export function WholesalerAdminDashboard() {
     const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
     return { startDate: startOfDay, endDate: endOfDay };
   });
+
+  // Master Data State (for caching)
+  const [allPayments, setAllPayments] = useState<Payment[]>([]);
 
   // Standardized loading state management
   const mainLoadingState = useLoadingState();
@@ -581,13 +588,80 @@ export function WholesalerAdminDashboard() {
     };
   }, [isWholesalerAdmin, user, selectedTenant]); // Restart when selected tenant changes
 
-  // Separate effect for data fetching when filters change - only affect Overview tab
+  // Initial Data Fetch Effect - Runs once on mount or when tenant changes
   useEffect(() => {
     const currentTenantId = getCurrentTenantId();
     if (isWholesalerAdmin && user?.uid && currentTenantId) {
+      console.log('🔄 Initial Dashboard Data Fetch');
       fetchDashboardData();
     }
-  }, [activeNav === 'overview' ? overviewDateRange : null, selectedLineWorker, selectedRetailer, selectedTenant]); // Only fetch when dateRange changes AND we're on overview tab
+  }, [isWholesalerAdmin, user, selectedTenant]);
+
+  // Client-side filtering effect - RUNS INSTANTLY without network calls
+  useEffect(() => {
+    let filtered = allPayments;
+
+    // 1. Apple Line Worker Filter
+    if (selectedLineWorker && selectedLineWorker !== "all") {
+      filtered = filtered.filter(p => p.lineWorkerId === selectedLineWorker);
+    }
+
+    // 2. Apply Retailer Filter
+    if (selectedRetailer && selectedRetailer !== "all") {
+      filtered = filtered.filter(p => p.retailerId === selectedRetailer);
+    }
+
+    // 3. Apply Area Filter (Indirectly via retailer)
+    if (selectedArea && selectedArea !== "all") {
+      // We need to look up retailer for each payment to check area
+      // Optimization: Create a Set of valid retailer IDs for this area first?
+      // Since we don't have that easily here without looping retailers, let's just lookup.
+      // Or relies on 'getFilteredRetailers' if we want? 
+      // But let's stick to the logic used before: filter payments whose retailer is in the area.
+      filtered = filtered.filter(p => {
+        const retailer = retailers.find(r => r.id === p.retailerId);
+        return retailer?.areaId === selectedArea;
+      });
+    }
+
+    // 4. Apply Date Range (Only for Overview Tab)
+    // Note: DaySheet likely needs all data, so we don't filter by date generally.
+    if (activeNav === 'overview' && overviewDateRange) {
+      filtered = filtered.filter(p => {
+        const paymentDate = toDate(p.createdAt);
+        return paymentDate >= overviewDateRange.startDate && paymentDate <= overviewDateRange.endDate;
+      });
+    }
+
+    setPayments(filtered);
+
+    // 5. Update Activity Logs based on the view
+    // Overview gets filtered logs (by date), others get logs based on worker/retailer selection
+    let logsSource = filtered;
+
+    // If NOT on overview, maybe we want to see ALL history for that worker? 
+    // The previous logic for non-overview tabs was:
+    /*
+      activityLogsData = paymentsData.filter(p => {
+          if (selectedLineWorker...) return ...
+          if (selectedRetailer...) return ...
+          return true;
+      });
+    */
+    // This matches 'filtered' (excluding the date filter part).
+    // But 'filtered' HAS date filter applied if activeNav === overview.
+    // If activeNav !== overview, 'filtered' has NO date filter.
+    // So 'filtered' is exactly what we want for logs too.
+
+    // Wait, the previous logic had a subtle difference:
+    // If activeNav === overview, logs usage 'paymentsQuery' (which had worker/retailer filters) AND date filter.
+    // If activeNav !== overview, logs usage 'paymentsData' (all) filtered by worker/retailer.
+    // So 'filtered' covers both cases correctly.
+
+    const logs = generateActivityLogs(filtered, retailers, lineWorkers);
+    setActivityLogs(logs);
+
+  }, [allPayments, selectedLineWorker, selectedRetailer, selectedArea, activeNav, overviewDateRange, retailers, lineWorkers]);
 
   // Effect to reset date range to "Today" when switching to Overview tab
   useEffect(() => {
@@ -719,106 +793,21 @@ export function WholesalerAdminDashboard() {
 
       // Fetch payments with filters - only apply date range filter for Overview tab
       setDataFetchProgress(60);
-      let paymentsData = await paymentService.getAll(currentTenantId);
-      let paymentsQuery = paymentsData;
-      if (selectedLineWorker && selectedLineWorker !== "all") {
-        paymentsQuery = paymentsQuery.filter(p => p.lineWorkerId === selectedLineWorker);
-      }
-      if (selectedRetailer && selectedRetailer !== "all") {
-        paymentsQuery = paymentsQuery.filter(p => p.retailerId === selectedRetailer);
-      }
-      // Date range filter removed from main query to allow DaySheet full access
-      // if (activeNav === 'overview' && dateRange) {
-      //   paymentsQuery = paymentsQuery.filter(p => {
-      //     const paymentDate = p.createdAt.toDate();
-      //     return paymentDate >= dateRange.startDate && paymentDate <= dateRange.endDate;
-      //   });
-      // }
+      // Fetch payments - fetch ALL for caching
+      setDataFetchProgress(60);
+      const paymentsData = await paymentService.getAll(currentTenantId);
 
       setAreas(areasData);
       setRetailers(retailersData);
       setLineWorkers(lineWorkersData);
-      console.log('📊 Fetched line workers:', lineWorkersData.map(w => ({
-        id: w.id,
-        displayName: w.displayName,
-        assignedAreas: w.assignedAreas
-      })));
+      console.log('📊 Fetched line workers:', lineWorkersData.length);
 
-      setPayments(paymentsQuery);
+      // Store MASTER data
+      setAllPayments(paymentsData);
+
+      // Initially set payments to all data - the filter effect will run immediately after and correct it
+      setPayments(paymentsData);
       setDashboardStats(stats);
-
-      // Generate activity logs - use filtered data only for Overview tab
-      let activityLogsData = paymentsQuery;
-
-      // If on Overview tab, use the filtered data for activity logs
-      // If on other tabs, use all data for activity logs
-      // If on Overview tab, use the filtered data for activity logs
-      // If on other tabs, use all data for activity logs
-      if (activeNav === 'overview' && overviewDateRange) {
-        // Apply date filter specifically for logs
-        activityLogsData = paymentsQuery.filter(p => {
-          const paymentDate = p.createdAt.toDate();
-          return paymentDate >= overviewDateRange.startDate && paymentDate <= overviewDateRange.endDate;
-        });
-      } else if (activeNav === 'overview') {
-        activityLogsData = paymentsQuery;
-      }
-      else {
-        // For other tabs, use all payments data (unfiltered by date range)
-        activityLogsData = paymentsData.filter(p => {
-          if (selectedLineWorker && selectedLineWorker !== "all") {
-            return p.lineWorkerId === selectedLineWorker;
-          }
-          if (selectedRetailer && selectedRetailer !== "all") {
-            return p.retailerId === selectedRetailer;
-          }
-          return true;
-        });
-      }
-
-      // Recompute retailer data for accuracy (BACKGROUND PROCESS)
-      // This is moved to background to prevent dashboard loading from getting stuck at 80%
-      // console.log('🔄 Starting background retailer recomputation...');
-
-      // Promise chain for background processing - non-blocking
-      // DISABLED: This causes massive re-rendering and log spam.
-      // We should only recompute single retailers when they are actually updated.
-      /*
-      Promise.all(retailersData.map(retailer =>
-        retailerService.recomputeRetailerData(retailer.id, currentTenantId)
-      )).then(async () => {
-        // Only proceed if component is still mounted/valid (implicit in React state updates usually, but good to be safe)
-        // Note: In functional components, state updates on unmounted components log a warning but don't crash.
-
-        console.log('✅ Background recomputation complete - fetching updates');
-        try {
-          const updatedRetailers = await retailerService.getAll(currentTenantId);
-          setRetailers(updatedRetailers);
-          console.log('✅ Retailer data recomputed and updated silently');
-
-          // Regenerate activity logs with updated retailer data to fix "Unknown" retailer names
-          // We use the functional update form of setActivityLogs if we needed previous state, 
-          // but here we are regenerating from source data + new retailers.
-          // Note: We need the *latest* activityLogsData. 
-          // Accessing 'activityLogsData' from this closure is safe as it captures the data from this render cycle's fetch.
-          const refreshedLogs = generateActivityLogs(activityLogsData, updatedRetailers, lineWorkersData);
-          setActivityLogs(refreshedLogs);
-          console.log('✅ Activity logs regenerated with updated retailer names');
-        } catch (err) {
-          console.error('❌ Failed to fetch updated retailers after background recompute:', err);
-        }
-      }).catch(error => {
-        console.warn('⚠️ Background recompute warning (non-fatal):', error);
-      });
-      */
-
-
-      // Generate initial activity logs (will be refreshed after retailer data update)
-      const logs = generateActivityLogs(activityLogsData, retailersData, lineWorkersData);
-      setActivityLogs(logs);
-
-      // Note: Notifications are now handled by real-time service only
-      // Local notification generation removed to prevent conflicts
 
       setLastUpdate(new Date());
       setDataFetchProgress(100);
@@ -829,7 +818,7 @@ export function WholesalerAdminDashboard() {
       setDataFetchProgress(100);
       mainLoadingState.setLoading(false);
     }
-  }, [selectedLineWorker, selectedRetailer, activeNav, overviewDateRange, mainLoadingState]);
+  }, [mainLoadingState]);
 
   const handleManualRefresh = async () => {
     const currentTenantId = getCurrentTenantId();
@@ -1542,22 +1531,6 @@ export function WholesalerAdminDashboard() {
     const currentTenantId = getCurrentTenantId();
     if (!currentTenantId || !editingLineWorker) return;
 
-    // Check for area conflicts
-    const areaConflicts = editingSelectedAreas.filter(areaId =>
-      isAreaAssignedToOtherWorker(areaId, editingLineWorker.id)
-    );
-
-    if (areaConflicts.length > 0) {
-      const conflictAreas = areaConflicts.map(areaId => {
-        const area = areas.find(a => a.id === areaId);
-        const worker = getAssignedWorkerForArea(areaId);
-        return `${area?.name || 'Unknown'} (assigned to ${worker?.displayName || 'another worker'})`;
-      }).join(', ');
-
-      setError(`Cannot save: The following areas are already assigned to other workers: ${conflictAreas}`);
-      return;
-    }
-
     try {
       const updateData: any = {
         active: data.active,
@@ -2055,6 +2028,9 @@ export function WholesalerAdminDashboard() {
       return name.includes(query) || code.includes(query);
     });
 
+    // Pagination Logic
+    const visibleRetailers = filteredRetailers.slice(0, visibleRetailersCount);
+
     return (
       <div className="space-y-6">
         <div className="flex flex-col sm:pt-8 sm:flex-row sm:justify-between sm:items-start gap-4">
@@ -2125,7 +2101,10 @@ export function WholesalerAdminDashboard() {
                 <Input
                   placeholder="Search by name or code..."
                   value={retailerSearchQuery}
-                  onChange={(e) => setRetailerSearchQuery(e.target.value)}
+                  onChange={(e) => {
+                    setRetailerSearchQuery(e.target.value);
+                    setVisibleRetailersCount(20); // Reset pagination on search
+                  }}
                   className="pl-8"
                 />
               </div>
@@ -2167,7 +2146,7 @@ export function WholesalerAdminDashboard() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredRetailers.map((retailer) => (
+                    {visibleRetailers.map((retailer) => (
                       <TableRow key={retailer.id}>
                         <TableCell className="font-mono text-sm">
                           {retailer.code || retailer.id.substring(0, 6).toUpperCase()}
@@ -2210,6 +2189,19 @@ export function WholesalerAdminDashboard() {
                     ))}
                   </TableBody>
                 </Table>
+
+                {/* Load More Button */}
+                {visibleRetailers.length < filteredRetailers.length && (
+                  <div className="flex justify-center pt-6 pb-2">
+                    <Button
+                      variant="outline"
+                      onClick={() => setVisibleRetailersCount(prev => prev + 20)}
+                      className="min-w-[200px]"
+                    >
+                      Load More ({filteredRetailers.length - visibleRetailers.length} remaining)
+                    </Button>
+                  </div>
+                )}
               </div>
             )}
           </CardContent>
@@ -2384,7 +2376,7 @@ export function WholesalerAdminDashboard() {
                     </div>
                     <div className="space-y-2">
                       <Label>Assigned Areas</Label>
-                      <p className="text-xs text-gray-500">Optional: Leave all unchecked to create worker without area assignments. Areas already assigned to other workers are disabled.</p>
+                      <p className="text-xs text-gray-500">Optional: Leave all unchecked to create worker without area assignments. Areas can be shared between multiple workers.</p>
                       <div className="space-y-2 max-h-32 overflow-y-auto">
                         {areas.map((area) => {
                           const isAssignedToOther = isAreaAssignedToOtherWorker(area.id);
@@ -2397,18 +2389,17 @@ export function WholesalerAdminDashboard() {
                                 id={`area-${area.id}`}
                                 value={area.id}
                                 className="rounded"
-                                disabled={creatingLineWorker || isAssignedToOther}
-                                style={{ opacity: isAssignedToOther ? 0.5 : 1 }}
+                                disabled={creatingLineWorker}
                               />
                               <label
                                 htmlFor={`area-${area.id}`}
-                                className={`text-sm ${isAssignedToOther ? 'text-gray-400 line-through' : ''}`}
-                                title={isAssignedToOther ? `Already assigned to: ${assignedWorker?.displayName || 'Unknown Worker'}` : ''}
+                                className="text-sm"
+                                title={isAssignedToOther ? `Also assigned to: ${assignedWorker?.displayName || 'Unknown Worker'}` : ''}
                               >
                                 {area.name}
                                 {isAssignedToOther && (
-                                  <span className="text-xs text-red-500 ml-2">
-                                    (Assigned to {assignedWorker?.displayName || 'Unknown'})
+                                  <span className="text-xs text-blue-500 ml-2">
+                                    (Shared with {assignedWorker?.displayName || 'Unknown'})
                                   </span>
                                 )}
                               </label>
@@ -2416,11 +2407,7 @@ export function WholesalerAdminDashboard() {
                           );
                         })}
                       </div>
-                      {areas.some(area => isAreaAssignedToOtherWorker(area.id)) && (
-                        <p className="text-xs text-amber-600">
-                          ⚠️ Some areas are already assigned to other line workers and cannot be selected.
-                        </p>
-                      )}
+
                     </div>
                     <div className="flex space-x-2">
                       <Button
@@ -3471,7 +3458,7 @@ export function WholesalerAdminDashboard() {
                         id={`edit-area-${area.id}`}
                         value={area.id}
                         defaultChecked={isCurrentlyAssigned}
-                        disabled={isAssignedToOther && !isCurrentlyAssigned}
+                        disabled={updatingLineWorker}
                         onChange={(e) => {
                           console.log('🔄 Area checkbox changed:', {
                             areaId: area.id,
@@ -3492,16 +3479,16 @@ export function WholesalerAdminDashboard() {
                             setEditingSelectedAreas(newSelectedAreas);
                           }
                         }}
-                        className={`rounded ${isAssignedToOther && !isCurrentlyAssigned ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        className="rounded"
                       />
                       <label
                         htmlFor={`edit-area-${area.id}`}
-                        className={`text-sm ${isAssignedToOther && !isCurrentlyAssigned ? 'text-gray-400' : ''}`}
+                        className="text-sm"
                       >
                         {area.name}
                         {isAssignedToOther && !isCurrentlyAssigned && (
-                          <span className="text-xs text-red-500 ml-2">
-                            (Assigned to {assignedWorker?.displayName || 'another worker'})
+                          <span className="text-xs text-blue-500 ml-2">
+                            (Shared with {assignedWorker?.displayName || 'another worker'})
                           </span>
                         )}
                       </label>
