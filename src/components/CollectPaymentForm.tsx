@@ -220,13 +220,13 @@ const CollectPaymentFormComponent = ({
       });
       setError(null);
       setPreviewUrl(null);
-      if (fileInputRef.current) fileInputRef.current.value = '';
+      setError(null);
+      setPreviewUrl(null);
     }
   }, [isOpen, preSelectedRetailer]);
 
   const [error, setError] = useState<string | null>(null);
   const [isUpiDetailsOpen, setIsUpiDetailsOpen] = useState(false); // Default collapsed
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   // Removed unnecessary camera permission checks as we use standard file input
@@ -270,10 +270,6 @@ const CollectPaymentFormComponent = ({
     if (previewUrl) {
       URL.revokeObjectURL(previewUrl);
       setPreviewUrl(null);
-    }
-    // Reset file input
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
     }
   };
 
@@ -519,27 +515,43 @@ const CollectPaymentFormComponent = ({
 
                     {/* Native File Input for Camera/Gallery */}
 
-                    {/* Hidden Native File Input */}
+                    {/* Hidden Inputs for Camera and Gallery */}
                     <input
                       type="file"
-                      id="proof-upload-input"
-                      ref={fileInputRef}
+                      id="camera-input"
+                      className="sr-only"
+                      accept="image/*"
+                      capture="environment"
+                      onChange={handleImageChange}
+                      onClick={(e) => { (e.target as HTMLInputElement).value = ''; }}
+                    />
+                    <input
+                      type="file"
+                      id="gallery-input"
                       className="sr-only"
                       accept="image/*"
                       onChange={handleImageChange}
-                      onClick={(e) => {
-                        (e.target as HTMLInputElement).value = '';
-                      }}
+                      onClick={(e) => { (e.target as HTMLInputElement).value = ''; }}
                     />
 
                     {!previewUrl ? (
-                      <label
-                        htmlFor="proof-upload-input"
-                        className="flex items-center justify-center w-full h-11 rounded-lg border-2 border-dashed border-gray-200 bg-white text-sm font-medium text-gray-600 cursor-pointer hover:bg-gray-50 hover:border-blue-400 hover:text-blue-600 transition-all duration-200 active:scale-[0.98]"
-                      >
-                        <Camera className="h-4 w-4 mr-2" />
-                        Capture / Upload Screenshot
-                      </label>
+                      <div className="grid grid-cols-2 gap-3">
+                        <label
+                          htmlFor="camera-input"
+                          className="flex flex-col items-center justify-center p-4 rounded-xl border-2 border-dashed border-blue-200 bg-blue-50/50 text-blue-700 cursor-pointer hover:bg-blue-100 hover:border-blue-300 transition-all duration-200 active:scale-[0.98]"
+                        >
+                          <Camera className="h-6 w-6 mb-2" />
+                          <span className="text-xs font-bold text-center">Take Photo</span>
+                        </label>
+
+                        <label
+                          htmlFor="gallery-input"
+                          className="flex flex-col items-center justify-center p-4 rounded-xl border-2 border-dashed border-gray-200 bg-gray-50/50 text-gray-700 cursor-pointer hover:bg-gray-100 hover:border-gray-300 transition-all duration-200 active:scale-[0.98]"
+                        >
+                          <Upload className="h-6 w-6 mb-2" />
+                          <span className="text-xs font-bold text-center">Upload Gallery</span>
+                        </label>
+                      </div>
                     ) : (
                       <div className="space-y-2">
                         {/* Visible Image Preview */}
@@ -553,7 +565,7 @@ const CollectPaymentFormComponent = ({
                             <div className="flex-1 min-w-0 flex flex-col justify-between h-16 py-1">
                               <div className="flex items-center gap-1.5 text-green-700 text-sm font-medium">
                                 <CheckCircle className="h-4 w-4" />
-                                Attached
+                                <span className="truncate">Attached successfully</span>
                               </div>
                               <Button
                                 type="button"
