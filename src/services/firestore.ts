@@ -1396,7 +1396,7 @@ export class RetailerService extends FirestoreService<Retailer> {
         assignedLineWorkerId: lineWorkerId,  // null is explicitly set, not deleted
         updatedAt: Timestamp.now()
       });
-      logger.success(`${lineWorkerId ? 'Assigned' : 'Unassigned'} retailer ${retailerId} ${lineWorkerId ? 'to' : 'from'} line worker ${lineWorkerId || '(unassigned)'}`, { context: 'RetailerService' });
+      // logger.success(`${lineWorkerId ? 'Assigned' : 'Unassigned'} retailer ${retailerId} ${lineWorkerId ? 'to' : 'from'} line worker ${lineWorkerId || '(unassigned)'}`, { context: 'RetailerService' });
     } catch (error) {
       logger.error('Error assigning line worker to retailer', error, { context: 'RetailerService' });
       throw error;

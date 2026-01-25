@@ -1,10 +1,10 @@
-import { 
-  collection, 
-  doc, 
-  onSnapshot, 
-  query, 
-  where, 
-  orderBy, 
+import {
+  collection,
+  doc,
+  onSnapshot,
+  query,
+  where,
+  orderBy,
   limit,
   Timestamp,
   DocumentData,
@@ -24,7 +24,7 @@ export class RealTimeNotificationService {
   private updateTimeouts: Map<string, NodeJS.Timeout> = new Map();
   private readonly UPDATE_DELAY = 3000; // 3 second delay between updates (increased from 1 second)
 
-  private constructor() {}
+  private constructor() { }
 
   static getInstance(): RealTimeNotificationService {
     if (!RealTimeNotificationService.instance) {
@@ -41,7 +41,7 @@ export class RealTimeNotificationService {
     callback: (notifications: NotificationItem[]) => void
   ): void {
     console.log('🔔 Starting notification listener for user:', userId, 'role:', role, 'tenant:', tenantId);
-    
+
     // Stop any existing listeners for this user
     this.stopListening(userId);
 
@@ -52,7 +52,7 @@ export class RealTimeNotificationService {
     // Immediately provide current notifications to the callback for this tenant
     const currentNotifications = notificationService.getNotifications(tenantId);
     console.log('🔔 Providing current notifications to callback:', currentNotifications.length, 'notifications for tenant:', tenantId);
-    
+
     // Only call callback if there are notifications to prevent unnecessary initial render
     if (currentNotifications.length > 0) {
       // Ensure callback is called asynchronously to prevent timing issues
@@ -91,14 +91,14 @@ export class RealTimeNotificationService {
       unsubscribe();
       this.unsubscribeFunctions.delete(userId);
     }
-    
+
     // Clear any pending update timeouts
     const timeout = this.updateTimeouts.get(userId);
     if (timeout) {
       clearTimeout(timeout);
       this.updateTimeouts.delete(userId);
     }
-    
+
     // Remove callback and tenantId mapping
     this.notificationCallbacks.delete(userId);
     this.userTenantIds.delete(userId);
@@ -116,11 +116,11 @@ export class RealTimeNotificationService {
     const timeout = setTimeout(() => {
       const callback = this.notificationCallbacks.get(userId);
       const tenantId = this.userTenantIds.get(userId);
-      
+
       if (callback && tenantId) {
         try {
           let notifications;
-          
+
           // For Super Admin (tenantId === 'all'), get all notifications across all tenants
           if (tenantId === 'all') {
             notifications = notificationService.getAllNotifications();
@@ -130,7 +130,7 @@ export class RealTimeNotificationService {
             notifications = notificationService.getNotifications(tenantId);
             console.log('🔔 Getting notifications for tenant:', tenantId, notifications.length, 'notifications');
           }
-          
+
           // Only trigger callback if there are actual notifications to prevent unnecessary re-renders
           if (notifications.length > 0) {
             console.log('🔔 Triggering callback for user', userId, 'with', notifications.length, 'notifications');
@@ -176,7 +176,7 @@ export class RealTimeNotificationService {
 
     // Listen to all invoice activities - DISABLED (invoices removed)
     console.log('🔔 Invoice listener disabled - invoices have been removed from the application');
-    const invoicesUnsubscribe = () => {}; // Empty unsubscribe function
+    const invoicesUnsubscribe = () => { }; // Empty unsubscribe function
 
     // Listen to user activities (new users, role changes)
     const usersUnsubscribe = onSnapshot(
@@ -231,7 +231,7 @@ export class RealTimeNotificationService {
 
     // Listen to invoices in this tenant - DISABLED (invoices removed)
     console.log('🔔 Invoice listener disabled - invoices have been removed from the application');
-    const invoicesUnsubscribe = () => {}; // Empty unsubscribe function
+    const invoicesUnsubscribe = () => { }; // Empty unsubscribe function
 
     // Listen to line worker activities in this tenant
     const workersQuery = query(
@@ -371,7 +371,7 @@ export class RealTimeNotificationService {
 
     // Listen to invoices for this retailer - DISABLED (invoices removed)
     console.log('🔔 Retailer invoice listener disabled - invoices have been removed from the application');
-    const invoicesUnsubscribe = () => {}; // Empty unsubscribe function
+    const invoicesUnsubscribe = () => { }; // Empty unsubscribe function
 
     // Listen to payments for this retailer
     const paymentsQuery = query(
@@ -429,11 +429,28 @@ export class RealTimeNotificationService {
     });
   }
 
+  // Helper to check if an event is new (prevent spamming old notifications on load)
+  private isNewEvent(timestamp: any): boolean {
+    if (!timestamp) return false;
+    const date = toDate(timestamp);
+    // If the event happened more than 2 minutes ago, consider it "old" for notification purposes
+    // This prevents flooding the user with notifications for past events on page load
+    const fiveMinutesAgo = new Date(Date.now() - 2 * 60 * 1000);
+    return date > fiveMinutesAgo;
+  }
+
   // Super Admin handlers
   private async handleSuperAdminPaymentChange(payment: DocumentData, paymentId: string): Promise<void> {
     console.log('🔔 Handling Super Admin payment change:', paymentId, payment.state);
-    
+
+    // Only notify for completed payments
     if (payment.state === 'COMPLETED') {
+      // Check if this is a new event or just initial load
+      if (!this.isNewEvent(payment.createdAt)) {
+        console.log('🔔 Skipping old payment notification:', paymentId);
+        return;
+      }
+
       const notification = {
         type: 'success' as const,
         title: 'Payment Completed',
@@ -473,27 +490,36 @@ export class RealTimeNotificationService {
 
   private handleSuperAdminUserChange(user: DocumentData, userId: string): void {
     console.log('🔔 Handling Super Admin user change:', userId, user.displayName);
-    
+
     // Handle user role changes, new user creation, etc.
     if (user.roles && user.roles.includes('LINE_WORKER')) {
-      const notification = {
-        type: 'info' as const,
-        title: 'Line Worker Activity',
-        message: `Line Worker ${user.displayName || 'Unknown'} updated in system`,
-        timestamp: new Date(),
-        read: false,
-        tenantId: user.tenantId,
-        workerName: user.displayName
-      };
-      this.addNotificationToService(notification);
+      // Only notify if this is recent
+      if (this.isNewEvent(new Date())) { // Use current time for user updates as they don't always have createdAt in the same format
+        const notification = {
+          type: 'info' as const,
+          title: 'Line Worker Activity',
+          message: `Line Worker ${user.displayName || 'Unknown'} updated in system`,
+          timestamp: new Date(),
+          read: false,
+          tenantId: user.tenantId,
+          workerName: user.displayName
+        };
+        this.addNotificationToService(notification);
+      }
     }
   }
 
   // Wholesaler Admin handlers
   private handleWholesalerPaymentChange(payment: DocumentData, paymentId: string, tenantId: string): void {
     console.log('🔔 Wholesaler payment change detected:', { paymentId, state: payment.state, tenantId });
-    
+
     if (payment.state === 'COMPLETED') {
+      // Check if this is a new event
+      if (!this.isNewEvent(payment.createdAt)) {
+        console.log('🔔 Skipping old payment notification:', paymentId);
+        return;
+      }
+
       const notification = {
         type: 'success' as const,
         title: 'Payment Collected',
@@ -503,10 +529,13 @@ export class RealTimeNotificationService {
         amount: payment.totalPaid,
         workerName: payment.lineWorkerName,
         retailerName: payment.retailerName,
-        collectionTime: formatTimestampWithTime(payment.createdAt)
+        collectionTime: formatTimestampWithTime(payment.createdAt),
+        tenantId: tenantId
       };
       this.addNotificationToService(notification);
     } else if (payment.state === 'FAILED') {
+      if (!this.isNewEvent(payment.createdAt)) return;
+
       const notification = {
         type: 'warning' as const,
         title: 'Payment Failed',
@@ -515,7 +544,8 @@ export class RealTimeNotificationService {
         read: false,
         amount: payment.totalPaid,
         workerName: payment.lineWorkerName,
-        retailerName: payment.retailerName
+        retailerName: payment.retailerName,
+        tenantId: tenantId
       };
       this.addNotificationToService(notification);
     }
@@ -528,16 +558,23 @@ export class RealTimeNotificationService {
 
   private handleWholesalerWorkerChange(worker: DocumentData, workerId: string, tenantId: string): void {
     console.log('🔔 Wholesaler worker change detected:', { workerId, displayName: worker.displayName, tenantId });
-    
+
     // Handle worker assignment changes, status updates, etc.
     if (worker.assignedAreas && worker.assignedAreas.length > 0) {
+      // Logic for worker updates is tricky because we don't track 'updatedAt' for assignments specifically
+      // So we might rely on the fact that 'modified' event only happens on write.
+      // But onSnapshot fires 'modified' sometimes? No, onSnapshot added initial docs as 'added'.
+      // Only subsequent writes are 'modified'. 
+      // So 'modified' events are generally safe to notify, BUT onSnapshot might fire 'modified' for local latency compensation.
+      // Let's debounce or trust it for now, as worker updates are rare compared to payments.
       const notification = {
         type: 'info' as const,
         title: 'Line Worker Updated',
         message: `${worker.displayName || 'Line Worker'} assignments updated`,
         timestamp: new Date(),
         read: false,
-        workerName: worker.displayName
+        workerName: worker.displayName,
+        tenantId: tenantId
       };
       this.addNotificationToService(notification);
     }
@@ -545,18 +582,20 @@ export class RealTimeNotificationService {
 
   private handleWholesalerRetailerChange(retailer: DocumentData, retailerId: string, tenantId: string): void {
     console.log('🔔 Wholesaler retailer change detected:', { retailerId, name: retailer.name, assignedLineWorkerId: retailer.assignedLineWorkerId, tenantId });
-    
+
     // Handle retailer assignment changes
     if (retailer.assignedLineWorkerId !== undefined) {
+      // Similar to workers, retailers update less frequently.
       const notification = {
         type: 'info' as const,
         title: retailer.assignedLineWorkerId ? 'Retailer Assigned' : 'Retailer Unassigned',
-        message: retailer.assignedLineWorkerId 
+        message: retailer.assignedLineWorkerId
           ? `${retailer.name || 'Retailer'} has been assigned to a line worker`
           : `${retailer.name || 'Retailer'} has been unassigned from line worker`,
         timestamp: new Date(),
         read: false,
-        retailerName: retailer.name
+        retailerName: retailer.name,
+        tenantId: tenantId
       };
       this.addNotificationToService(notification);
     }
@@ -565,8 +604,10 @@ export class RealTimeNotificationService {
   // Line Worker handlers
   private async handleLineWorkerPaymentChange(payment: DocumentData, paymentId: string, lineWorkerId: string): Promise<void> {
     console.log('🔔 Handling Line Worker payment change:', paymentId, payment.state);
-    
+
     if (payment.state === 'COMPLETED') {
+      if (!this.isNewEvent(payment.createdAt)) return;
+
       const notification = {
         type: 'success' as const,
         title: 'Payment Collected Successfully',
@@ -575,7 +616,8 @@ export class RealTimeNotificationService {
         read: false,
         amount: payment.totalPaid,
         retailerName: payment.retailerName,
-        paymentId: paymentId
+        paymentId: paymentId,
+        tenantId: payment.tenantId
       };
       this.addNotificationToService(notification);
 
@@ -596,6 +638,8 @@ export class RealTimeNotificationService {
         }
       }
     } else if (payment.state === 'FAILED') {
+      if (!this.isNewEvent(payment.createdAt)) return;
+
       const notification = {
         type: 'warning' as const,
         title: 'Payment Failed',
@@ -604,7 +648,8 @@ export class RealTimeNotificationService {
         read: false,
         amount: payment.totalPaid,
         retailerName: payment.retailerName,
-        paymentId: paymentId
+        paymentId: paymentId,
+        tenantId: payment.tenantId
       };
       this.addNotificationToService(notification);
     }
@@ -612,7 +657,7 @@ export class RealTimeNotificationService {
 
   private handleLineWorkerAssignmentChange(user: DocumentData, userId: string): void {
     console.log('🔔 Handling Line Worker assignment change:', userId, user.displayName);
-    
+
     // Handle new retailer or area assignments
     if (user.assignedAreas && user.assignedAreas.length > 0) {
       const notification = {
@@ -629,7 +674,7 @@ export class RealTimeNotificationService {
 
   private handleLineWorkerRetailerAssigned(retailer: DocumentData, retailerId: string, lineWorkerId: string): void {
     console.log('🔔 Handling Line Worker retailer assigned:', retailerId, retailer.name);
-    
+
     const notification = {
       type: 'success' as const,
       title: 'New Retailer Assigned',
@@ -644,7 +689,7 @@ export class RealTimeNotificationService {
 
   private handleLineWorkerRetailerUnassigned(retailer: DocumentData, retailerId: string, lineWorkerId: string): void {
     console.log('🔔 Handling Line Worker retailer unassigned:', retailerId, retailer.name);
-    
+
     const notification = {
       type: 'info' as const,
       title: 'Retailer Unassigned',
@@ -664,7 +709,7 @@ export class RealTimeNotificationService {
 
   private handleRetailerPaymentChange(payment: DocumentData, paymentId: string, retailerId: string): void {
     console.log('🔔 Handling Retailer payment change:', paymentId, payment.state);
-    
+
     if (payment.state === 'COMPLETED') {
       const notification = {
         type: 'success' as const,
@@ -683,7 +728,7 @@ export class RealTimeNotificationService {
 
   private handleRetailerOtpChange(otp: DocumentData, otpId: string, retailerId: string): void {
     console.log('🔔 Handling Retailer OTP change:', otpId, otp.status);
-    
+
     if (otp.status === 'SENT') {
       const notification = {
         type: 'info' as const,
@@ -715,26 +760,26 @@ export class RealTimeNotificationService {
   private addNotificationToService(notification: any): void {
     try {
       console.log('🔔 Adding notification to service:', notification);
-      
+
       // Add a unique identifier to prevent duplicates
       // Use a more deterministic ID based on content to prevent duplicates
       const contentHash = `${notification.title}_${notification.message}_${notification.type}_${notification.amount || 0}_${notification.retailerName || ''}_${notification.workerName || ''}`;
       const uniqueId = this.generateHash(contentHash);
-      
+
       const uniqueNotification = {
         ...notification,
         _timestamp: Date.now(), // Add unique timestamp
         _id: uniqueId // Add deterministic ID based on content
       };
-      
+
       // Extract tenantId from notification, default to 'system' for super admin
       const tenantId = notification.tenantId || 'system';
-      
+
       console.log('🔔 Extracted tenantId for notification:', tenantId);
-      
+
       const notificationId = notificationService.addNotification(uniqueNotification, tenantId);
       console.log('🔔 Notification added with ID:', notificationId, 'for tenant:', tenantId);
-      
+
       // Only trigger callbacks if a notification was actually added (not a duplicate)
       if (notificationId && notificationId !== '') {
         console.log('🔔 Notification was successfully added, triggering callbacks');
@@ -746,7 +791,7 @@ export class RealTimeNotificationService {
       } else {
         console.log('🔔 Notification was a duplicate, skipping callbacks');
       }
-      
+
     } catch (error) {
       console.error('Error adding notification to service:', error);
     }
@@ -769,13 +814,13 @@ export class RealTimeNotificationService {
       unsubscribe();
     });
     this.unsubscribeFunctions.clear();
-    
+
     // Clear all update timeouts
     this.updateTimeouts.forEach((timeout, userId) => {
       clearTimeout(timeout);
     });
     this.updateTimeouts.clear();
-    
+
     this.notificationCallbacks.clear();
   }
 }
