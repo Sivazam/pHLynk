@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -271,11 +271,17 @@ export function LineWorkerDashboard() {
   ];
 
   const [activeNav, setActiveNav] = useState('overview');
+  const activeNavRef = useRef(activeNav);
   const [showExitConfirmation, setShowExitConfirmation] = useState(false);
+
+  // Keep ref in sync
+  useEffect(() => {
+    activeNavRef.current = activeNav;
+  }, [activeNav]);
 
   // Custom navigation handler for physical back button support
   const handleNavChange = useCallback((id: string) => {
-    if (id === activeNav) return;
+    if (id === activeNavRef.current) return;
 
     // Push new tab to history stack
     window.history.pushState({ id }, '');
@@ -283,36 +289,44 @@ export function LineWorkerDashboard() {
 
     // Scroll to top on tab change
     window.scrollTo({ top: 0, behavior: 'smooth' });
-  }, [activeNav]);
+  }, []);
 
   useEffect(() => {
     // Initial history state setup
-    // Use replaceState to ensure the first entry is 'overview'
-    window.history.replaceState({ id: 'overview' }, '');
+    // Level 0: Bottom of stack (to trap the very last back button)
+    window.history.replaceState({ id: 'bottom' }, '');
+    // Level 1: Current state
+    window.history.pushState({ id: 'overview' }, '');
 
     const handlePopState = (event: PopStateEvent) => {
-      if (event.state && event.state.id) {
-        // Navigate to the tab stored in history
-        setActiveNav(event.state.id);
-      } else {
-        // We reached the beginning of the app history
-        // Use a ref-like check for activeNav because the listener is stable
-        const currentActive = activeNav;
+      const state = event.state;
+      const currentNav = activeNavRef.current;
 
-        if (currentActive === 'overview') {
+      console.log('🔄 PopState detected:', { state, currentNav });
+
+      if (state && state.id && state.id !== 'bottom') {
+        // Navigate to the tab stored in history
+        setActiveNav(state.id);
+      } else {
+        // We reached the 'bottom' or null state
+        if (currentNav === 'overview') {
+          // Trigger exit confirmation
           setShowExitConfirmation(true);
-          // Push state back so they don't leave the app immediately
+          // Push 'overview' back so they don't leave the app immediately
           window.history.pushState({ id: 'overview' }, '');
         } else {
+          // Navigate back to overview
           setActiveNav('overview');
-          window.history.replaceState({ id: 'overview' }, '');
+          // Update history to be back at overview level
+          window.history.replaceState({ id: 'bottom' }, '');
+          window.history.pushState({ id: 'overview' }, '');
         }
       }
     };
 
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [activeNav]); // Re-bind listener when activeNav changes to capture latest state
+  }, []);
 
   const handleExitApp = async () => {
     // Attempt standard window close
@@ -544,12 +558,21 @@ export function LineWorkerDashboard() {
       setDataFetchProgress(80);
       const assignedRetailers = allRetailers.filter(retailer => {
         // First check if retailer is directly assigned to this line worker
-        if (retailer.assignedLineWorkerId === user?.uid) {
+        const isDirectlyAssigned = retailer.assignedLineWorkerId === user?.uid ||
+          retailer.assignedLineWorkerIds?.includes(user?.uid || '');
+
+        if (isDirectlyAssigned) {
           return true;
         }
 
-        // If retailer is directly assigned to someone else, exclude it from area-based assignments
-        if (retailer.assignedLineWorkerId && retailer.assignedLineWorkerId !== user?.uid) {
+        // Check if retailer is directly assigned to someone else (and not to current user)
+        // If assignedLineWorkerIds exists, use it to check if user is NOT in the list
+        if (retailer.assignedLineWorkerIds && retailer.assignedLineWorkerIds.length > 0) {
+          if (!retailer.assignedLineWorkerIds.includes(user?.uid || '')) {
+            return false;
+          }
+        } else if (retailer.assignedLineWorkerId && retailer.assignedLineWorkerId !== user?.uid) {
+          // Legacy check
           return false;
         }
 
@@ -2021,7 +2044,7 @@ export function LineWorkerDashboard() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <StatusBarColor theme="blue" />
+      <StatusBarColor theme="white" />
 
       {/* Top Navigation */}
       <DashboardNavigation

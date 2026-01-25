@@ -1386,17 +1386,21 @@ export class RetailerService extends FirestoreService<Retailer> {
     return this.delete(retailerId, tenantId);
   }
 
-  async assignLineWorker(tenantId: string, retailerId: string, lineWorkerId: string | null): Promise<void> {
+  async assignLineWorker(tenantId: string, retailerId: string, lineWorkerId: string | null | string[]): Promise<void> {
     try {
-      // CRITICAL FIX: Use direct updateDoc to preserve null value
-      // The generic update() method converts null to deleteField(), which makes the field undefined
-      // This breaks visibility checks that rely on null !== undefined distinction
+      // Handle both single ID and array of IDs
+      const lineWorkerIds = Array.isArray(lineWorkerId)
+        ? lineWorkerId
+        : (lineWorkerId ? [lineWorkerId] : []);
+
+      const primaryId = lineWorkerIds.length > 0 ? lineWorkerIds[0] : null;
+
       const retailerRef = doc(db, COLLECTIONS.RETAILERS, retailerId);
       await updateDoc(retailerRef, {
-        assignedLineWorkerId: lineWorkerId,  // null is explicitly set, not deleted
+        assignedLineWorkerId: primaryId,  // Primary worker for legacy support
+        assignedLineWorkerIds: lineWorkerIds, // All assigned workers
         updatedAt: Timestamp.now()
       });
-      // logger.success(`${lineWorkerId ? 'Assigned' : 'Unassigned'} retailer ${retailerId} ${lineWorkerId ? 'to' : 'from'} line worker ${lineWorkerId || '(unassigned)'}`, { context: 'RetailerService' });
     } catch (error) {
       logger.error('Error assigning line worker to retailer', error, { context: 'RetailerService' });
       throw error;
@@ -1404,8 +1408,9 @@ export class RetailerService extends FirestoreService<Retailer> {
   }
 
   async getRetailersByLineWorker(tenantId: string, lineWorkerId: string): Promise<Retailer[]> {
+    // Return retailers where the worker is assigned either as primary or in the array
     return this.query(tenantId, [
-      where('assignedLineWorkerId', '==', lineWorkerId)
+      where('assignedLineWorkerIds', 'array-contains', lineWorkerId)
     ]);
   }
 
@@ -1963,7 +1968,7 @@ export class RetailerService extends FirestoreService<Retailer> {
   async reassignRetailerToLineWorker(
     retailerId: string,
     tenantId: string,
-    newLineWorkerId: string
+    newLineWorkerId: string | string[]
   ): Promise<void> {
     try {
       // Get current retailer data
@@ -1975,9 +1980,7 @@ export class RetailerService extends FirestoreService<Retailer> {
       const previousLineWorkerId = retailer.assignedLineWorkerId;
 
       // Update retailer assignment
-      await this.update(retailerId, {
-        assignedLineWorkerId: newLineWorkerId
-      }, tenantId);
+      await this.assignLineWorker(tenantId, retailerId, newLineWorkerId);
 
       logger.info(`Manually reassigned retailer ${retailer.name} from line worker ${previousLineWorkerId} to ${newLineWorkerId}`, {
         retailerId,

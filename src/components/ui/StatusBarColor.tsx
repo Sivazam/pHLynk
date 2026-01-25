@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect } from 'react';
-import Head from 'next/head';
 
 export type StatusBarTheme = 'blue' | 'white' | 'black';
 
@@ -79,27 +78,7 @@ export function StatusBarColor({ theme }: StatusBarColorProps) {
   }, [theme, colors]);
 
   return (
-    <Head>
-      {/* Static meta tags as fallback */}
-      <meta
-        name="theme-color"
-        media="(prefers-color-scheme: light)"
-        content={colors.light}
-      />
-      <meta
-        name="theme-color"
-        media="(prefers-color-scheme: dark)"
-        content={colors.dark}
-      />
-      {/* Additional meta tags for better mobile browser support */}
-      <meta
-        name="msapplication-TileColor"
-        content={colors.light}
-      />
-      <meta
-        name="apple-mobile-web-app-status-bar-style"
-        content={theme === 'blue' ? 'black-translucent' : 'default'}
-      />
+    <>
       {/* Force immediate application */}
       <script
         dangerouslySetInnerHTML={{
@@ -148,6 +127,6 @@ export function StatusBarColor({ theme }: StatusBarColorProps) {
           `
         }}
       />
-    </Head>
+    </>
   );
 }

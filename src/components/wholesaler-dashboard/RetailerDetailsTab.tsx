@@ -29,7 +29,7 @@ interface RetailerDetailCardProps {
     retailerPayments: Payment[]; // PRE-FILTERED payments for this retailer
     areas: Area[];
     lineWorkers: User[];
-    onAssignRetailer: (retailer: Retailer, currentWorkerId: string) => void;
+    onAssignRetailer: (retailer: Retailer, currentWorkerIds: string[]) => void;
 }
 
 const RetailerDetailCard = ({
@@ -59,15 +59,17 @@ const RetailerDetailCard = ({
     };
 
     // Assignments
-    const directlyAssignedWorker = retailer.assignedLineWorkerId
-        ? lineWorkers.find(worker => worker.id === retailer.assignedLineWorkerId)
-        : null;
+    const assignedIds = retailer.assignedLineWorkerIds || (retailer.assignedLineWorkerId ? [retailer.assignedLineWorkerId] : []);
 
-    const areaAssignedWorkers = !directlyAssignedWorker && retailer.areaId
+    const directlyAssignedWorkers = lineWorkers.filter(worker =>
+        assignedIds.includes(worker.id)
+    );
+
+    const areaAssignedWorkers = directlyAssignedWorkers.length === 0 && retailer.areaId
         ? getAssignedWorkersForArea(retailer.areaId)
         : [];
 
-    const isDirectAssignment = !!directlyAssignedWorker;
+    const isDirectAssignment = directlyAssignedWorkers.length > 0;
 
     return (
         <Card className="overflow-hidden">
@@ -98,9 +100,9 @@ const RetailerDetailCard = ({
                                 <span>🏷️ {retailer.zipcodes.join(', ')}</span>
                                 <span className="flex items-center gap-1">
                                     👤
-                                    <span className={directlyAssignedWorker || areaAssignedWorkers.length > 0 ? "font-medium text-green-700" : ""}>
-                                        {directlyAssignedWorker
-                                            ? directlyAssignedWorker.displayName || 'Unknown'
+                                    <span className={isDirectAssignment || areaAssignedWorkers.length > 0 ? "font-medium text-green-700" : ""}>
+                                        {isDirectAssignment
+                                            ? directlyAssignedWorkers.map(w => w.displayName || 'Unknown').join(', ')
                                             : areaAssignedWorkers.length > 0
                                                 ? areaAssignedWorkers.map(w => w.displayName || 'Unknown').join(', ')
                                                 : 'Unassigned'
@@ -113,13 +115,13 @@ const RetailerDetailCard = ({
                     <div className="text-right">
                         <div className="mt-2">
                             <Button
-                                variant={retailer.assignedLineWorkerId ? "default" : "outline"}
+                                variant={isDirectAssignment ? "default" : "outline"}
                                 size="sm"
-                                onClick={() => onAssignRetailer(retailer, retailer.assignedLineWorkerId || '')}
+                                onClick={() => onAssignRetailer(retailer, assignedIds)}
                                 className="text-xs"
                             >
                                 <UserIcon className="h-3 w-3 mr-1" />
-                                {retailer.assignedLineWorkerId ? 'Reassign' : 'Assign'}
+                                {isDirectAssignment ? 'Reassign' : 'Assign'}
                             </Button>
                         </div>
                     </div>
@@ -252,7 +254,7 @@ interface RetailerDetailsTabProps {
     onRefresh: () => void;
 
     // Actions
-    onAssignRetailer: (retailer: Retailer, currentWorkerId: string) => void;
+    onAssignRetailer: (retailer: Retailer, currentWorkerIds: string[]) => void;
 
     // Helper for clearing filters (optional, mimicking original behavior)
     onClearFilters: () => void;

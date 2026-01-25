@@ -12,8 +12,8 @@ interface AppLoadingScreenProps {
   stage?: string;
 }
 
-export function AppLoadingScreen({ 
-  message = "Loading application...", 
+export function AppLoadingScreen({
+  message = "Loading application...",
   fullScreen = true,
   variant = 'default',
   progress: externalProgress,
@@ -48,7 +48,7 @@ export function AppLoadingScreen({
       const fallbackTimer = setTimeout(() => {
         setProgress(prev => Math.max(prev, 15));
       }, 1000);
-      
+
       return () => clearTimeout(fallbackTimer);
     }
   }, [externalProgress, progress]);
@@ -85,10 +85,10 @@ export function AppLoadingScreen({
     <div className="flex flex-col items-center justify-center space-y-8">
       {/* Bouncing Logo */}
       <div className="animate-bounce">
-        <Image 
-          src="/PharmaLogo.png" 
-          alt="PharmaLync" 
-          width={120} 
+        <Image
+          src="/PharmaLogo.png"
+          alt="PharmaLync"
+          width={120}
           height={120}
           className="drop-shadow-lg"
           priority
@@ -98,7 +98,7 @@ export function AppLoadingScreen({
       {/* Progress Bar */}
       <div className="w-64 space-y-2">
         <div className="w-full bg-white/20 rounded-full h-2 overflow-hidden">
-          <div 
+          <div
             className="bg-white h-2 rounded-full transition-all duration-300 ease-out"
             style={{ width: `${Math.min(progress, 100)}%` }}
           ></div>
@@ -119,21 +119,18 @@ export function AppLoadingScreen({
     </div>
   );
 
-  if (fullScreen) {
-    return (
-      <div className={`fixed inset-0 ${bgColor} flex items-center justify-center z-50 loading-screen`}>
-        {content}
-      </div>
-    );
-  }
-
   return (
-     <>
-        <StatusBarColor theme="blue" />
-        
-    <div className={`${bgColor} rounded-lg p-8 flex items-center justify-center loading-screen`}>
-      {content}
-    </div>
+    <>
+      <StatusBarColor theme="blue" />
+      {fullScreen ? (
+        <div className={`fixed inset-0 ${bgColor} flex items-center justify-center z-50 loading-screen`}>
+          {content}
+        </div>
+      ) : (
+        <div className={`${bgColor} rounded-lg p-8 flex items-center justify-center loading-screen`}>
+          {content}
+        </div>
+      )}
     </>
   );
 }

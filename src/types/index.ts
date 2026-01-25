@@ -104,6 +104,7 @@ export interface Retailer extends BaseDocument {
 
   // Direct line worker assignment (optional, overrides area-based assignment)
   assignedLineWorkerId?: string | null;
+  assignedLineWorkerIds?: string[]; // Array of assigned line worker IDs for multi-worker support
 
   // Computed fields for performance
   totalPaidAmount?: number;

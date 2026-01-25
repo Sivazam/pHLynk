@@ -12,6 +12,8 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { DatePicker } from '@/components/ui/date-picker';
@@ -56,6 +58,7 @@ import { DaySheet } from '@/components/DaySheet';
 import { WholesalerProfileSettings } from '@/components/WholesalerProfileSettings';
 import { PaymentVerificationModal } from '@/components/PaymentVerificationModal';
 import { RetailerDetailsTab } from '@/components/wholesaler-dashboard/RetailerDetailsTab';
+import { ExitAppConfirmation } from '@/components/ExitAppConfirmation';
 import {
   // Navigation
   LayoutDashboard,
@@ -136,6 +139,63 @@ export function WholesalerAdminDashboard() {
 
   // UI States
   const [activeNav, setActiveNav] = useState('overview');
+  const activeNavRef = useRef(activeNav);
+  const [showExitConfirmation, setShowExitConfirmation] = useState(false);
+
+  // Keep ref in sync
+  useEffect(() => {
+    activeNavRef.current = activeNav;
+  }, [activeNav]);
+
+  // Custom navigation handler for physical back button support
+  const handleNavChange = useCallback((id: string) => {
+    if (id === activeNavRef.current) return;
+
+    // Push new tab to history stack
+    window.history.pushState({ id }, '');
+    setActiveNav(id);
+
+    // Scroll to top on tab change
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
+
+  useEffect(() => {
+    // Initial history state setup
+    // Level 0: Bottom of stack
+    window.history.replaceState({ id: 'bottom' }, '');
+    // Level 1: Current state
+    window.history.pushState({ id: 'overview' }, '');
+
+    const handlePopState = (event: PopStateEvent) => {
+      const state = event.state;
+      const currentNav = activeNavRef.current;
+
+      console.log('🔄 Wholesaler PopState:', { state, currentNav });
+
+      if (state && state.id && state.id !== 'bottom') {
+        setActiveNav(state.id);
+      } else {
+        if (currentNav === 'overview') {
+          setShowExitConfirmation(true);
+          window.history.pushState({ id: 'overview' }, '');
+        } else {
+          setActiveNav('overview');
+          window.history.replaceState({ id: 'bottom' }, '');
+          window.history.pushState({ id: 'overview' }, '');
+        }
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  const handleExitApp = async () => {
+    window.close();
+    setTimeout(() => {
+      window.location.href = 'about:blank';
+    }, 200);
+  };
   const [showCreateArea, setShowCreateArea] = useState(false);
   const [showCreateRetailer, setShowCreateRetailer] = useState(false);
   const [showBulkCreate, setShowBulkCreate] = useState(false);
@@ -447,15 +507,15 @@ export function WholesalerAdminDashboard() {
   // Retailer assignment state
   const [showRetailerAssignment, setShowRetailerAssignment] = useState(false);
   const [assigningRetailer, setAssigningRetailer] = useState<Retailer | null>(null);
-  const [selectedLineWorkerForAssignment, setSelectedLineWorkerForAssignment] = useState<string>('');
+  const [selectedLineWorkerIdsForAssignment, setSelectedLineWorkerIdsForAssignment] = useState<string[]>([]);
   const [isAssigning, setIsAssigning] = useState(false); // New loading state
   // Confirmation dialog for reassign/unassign actions
   const [showAssignmentConfirmation, setShowAssignmentConfirmation] = useState(false);
   const [pendingAssignment, setPendingAssignment] = useState<{
     retailerId: string;
     retailerName: string;
-    lineWorkerId: string | null;
-    lineWorkerName: string;
+    lineWorkerIds: string[];
+    lineWorkerNames: string;
     action: 'reassign' | 'unassign';
   } | null>(null);
 
@@ -1075,26 +1135,21 @@ export function WholesalerAdminDashboard() {
   };
 
   // Handler to show confirmation dialog before reassign/unassign
-  const handleConfirmAssignmentAction = (retailerId: string, lineWorkerId: string | null) => {
+  const handleConfirmAssignmentAction = (retailerId: string, lineWorkerIds: string[]) => {
     const retailer = retailers.find(r => r.id === retailerId);
     if (!retailer) return;
 
-    const currentAssignedWorker = retailer.assignedLineWorkerId
-      ? lineWorkers.find(worker => worker.id === retailer.assignedLineWorkerId)
-      : null;
-
-    const newWorker = lineWorkerId
-      ? lineWorkers.find(worker => worker.id === lineWorkerId)
-      : null;
+    const selectedWorkers = lineWorkers.filter(worker => lineWorkerIds.includes(worker.id));
+    const workerNames = selectedWorkers.length > 0
+      ? selectedWorkers.map(w => w.displayName || w.email).join(', ')
+      : 'Unassigned';
 
     setPendingAssignment({
       retailerId,
       retailerName: retailer.profile?.realName || retailer.name,
-      lineWorkerId,
-      lineWorkerName: lineWorkerId
-        ? newWorker?.displayName || newWorker?.email || 'Unassigned'
-        : (currentAssignedWorker?.displayName || currentAssignedWorker?.email || 'Unknown'),
-      action: lineWorkerId ? 'reassign' : 'unassign'
+      lineWorkerIds,
+      lineWorkerNames: workerNames,
+      action: lineWorkerIds.length > 0 ? 'reassign' : 'unassign'
     });
 
     setShowAssignmentConfirmation(true);
@@ -1105,7 +1160,7 @@ export function WholesalerAdminDashboard() {
     if (!pendingAssignment) return;
 
     setShowAssignmentConfirmation(false);
-    await handleAssignRetailer(pendingAssignment.retailerId, pendingAssignment.lineWorkerId);
+    await handleAssignRetailer(pendingAssignment.retailerId, pendingAssignment.lineWorkerIds);
     setPendingAssignment(null);
   };
 
@@ -1116,17 +1171,26 @@ export function WholesalerAdminDashboard() {
   };
 
   // Handler for retailer assignment
-  const handleAssignRetailer = async (retailerId: string, lineWorkerId: string | null) => {
+  const handleAssignRetailer = async (retailerId: string, lineWorkerIds: string[]) => {
     const currentTenantId = getCurrentTenantId();
     if (!currentTenantId) return;
 
     // Check if there's actually a change being made
     const retailer = retailers.find(r => r.id === retailerId);
-    if (retailer && retailer.assignedLineWorkerId === lineWorkerId) {
+    const currentIds = retailer?.assignedLineWorkerIds || (retailer?.assignedLineWorkerId ? [retailer.assignedLineWorkerId] : []);
+
+    // Sort both to compare arrays
+    const sortedCurrent = [...currentIds].sort();
+    const sortedNew = [...lineWorkerIds].sort();
+
+    const isSame = sortedCurrent.length === sortedNew.length &&
+      sortedCurrent.every((id, index) => id === sortedNew[index]);
+
+    if (retailer && isSame) {
       // No change needed, just close the dialog
       setShowRetailerAssignment(false);
       setAssigningRetailer(null);
-      setSelectedLineWorkerForAssignment('');
+      setSelectedLineWorkerIdsForAssignment([]);
       setError(null);
       return;
     }
@@ -1134,65 +1198,56 @@ export function WholesalerAdminDashboard() {
     setIsAssigning(true); // Start loading
 
     try {
-      // Use the enhanced reassign API for better consistency and validation
-      if (lineWorkerId) {
-        // Reassign to a new line worker
-        const response = await fetch('/api/wholesaler/reassign-retailer', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            retailerId,
-            tenantId: currentTenantId,
-            newLineWorkerId: lineWorkerId
-          })
-        });
+      // Use the enhanced reassign API
+      const response = await fetch('/api/wholesaler/reassign-retailer', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          retailerId,
+          tenantId: currentTenantId,
+          newLineWorkerIds: lineWorkerIds
+        })
+      });
 
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || 'Failed to reassign retailer');
-        }
-
-
-        const result = await response.json();
-        console.log('✅ Retailer reassigned successfully:', result);
-      } else {
-        // Unassign retailer
-        await retailerService.assignLineWorker(currentTenantId, retailerId, null);
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to reassign retailer');
       }
 
-      // Optimistic local update to improve responsiveness
+      // Optimistic local update
       setRetailers(prevRetailers =>
         prevRetailers.map(r =>
           r.id === retailerId
-            ? { ...r, assignedLineWorkerId: lineWorkerId }
+            ? {
+              ...r,
+              assignedLineWorkerId: lineWorkerIds.length > 0 ? lineWorkerIds[0] : null,
+              assignedLineWorkerIds: lineWorkerIds
+            }
             : r
         )
       );
 
       // Show success feedback
-      const workerName = lineWorkerId
-        ? lineWorkers.find(w => w.id === lineWorkerId)?.displayName
+      const workerNames = lineWorkerIds.length > 0
+        ? lineWorkerIds.map(id => lineWorkers.find(w => w.id === id)?.displayName || 'Unknown').join(', ')
         : 'Unassigned';
 
-      showSuccess(lineWorkerId
-        ? `Retailer assigned to ${workerName} successfully`
+      showSuccess(lineWorkerIds.length > 0
+        ? `Retailer assigned to ${workerNames} successfully`
         : 'Retailer unassigned successfully'
       );
 
-      // Background refresh (optional, but good for consistency)
-      // fetchDashboardData(); 
-
       setShowRetailerAssignment(false);
       setAssigningRetailer(null);
-      setSelectedLineWorkerForAssignment('');
+      setSelectedLineWorkerIdsForAssignment([]);
       setError(null);
     } catch (err: any) {
       console.error('❌ Error assigning retailer:', err);
       setError(err.message || 'Failed to assign retailer');
     } finally {
-      setIsAssigning(false); // Stop loading
+      setIsAssigning(false);
     }
   };
 
@@ -3550,24 +3605,16 @@ export function WholesalerAdminDashboard() {
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>
-              {currentAssignedWorker ? 'Reassign Retailer' : 'Assign Retailer'}
+              Assign Retailer to Line Worker(s)
             </DialogTitle>
             <DialogDescription asChild>
               <div className="space-y-2 text-sm text-muted-foreground">
                 {assigningRetailer ? (
                   <>
                     <div className="font-medium text-foreground">{assigningRetailer.profile ? assigningRetailer.profile.realName : assigningRetailer.name}</div>
-                    {currentAssignedWorker && (
-                      <div className="text-sm text-gray-600">
-                        Currently assigned to: <strong>{currentAssignedWorker.displayName || currentAssignedWorker.email}</strong>
-                      </div>
-                    )}
-                    {areaAssignedWorker && !currentAssignedWorker && (
-                      <div className="text-sm text-blue-600 flex items-center">
-                        <MapPin className="h-3 w-3 mr-1" />
-                        Assigned via Area: <strong>{areaAssignedWorker.displayName || areaAssignedWorker.email}</strong>
-                      </div>
-                    )}
+                    <div className="text-sm">
+                      Select one or more line workers to assign this retailer to.
+                    </div>
                   </>
                 ) : (
                   <div>Select a retailer to assign</div>
@@ -3578,31 +3625,64 @@ export function WholesalerAdminDashboard() {
           {assigningRetailer && (
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="lineWorkerSelect">
-                  {currentAssignedWorker ? 'Select New Line Worker' : 'Select Line Worker'}
-                </Label>
-                <Select value={selectedLineWorkerForAssignment} onValueChange={setSelectedLineWorkerForAssignment}>
-                  <SelectTrigger>
-                    <SelectValue placeholder={currentAssignedWorker ? "Choose a new line worker or unassign" : "Choose a line worker"} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {currentAssignedWorker && (
-                      <SelectItem value="unassign">Unassign (Remove Assignment)</SelectItem>
-                    )}
+                <Label>Active Line Workers</Label>
+                <ScrollArea className="h-[250px] border rounded-md p-2">
+                  <div className="space-y-3">
                     {lineWorkers
-                      .filter(worker => worker.active && worker.id !== currentAssignedWorker?.id)
-                      .map(worker => (
-                        <SelectItem key={worker.id} value={worker.id}>
-                          {worker.displayName || worker.email}
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
+                      .filter(worker => worker.active)
+                      .map(worker => {
+                        const isChecked = selectedLineWorkerIdsForAssignment.includes(worker.id);
+                        return (
+                          <div key={worker.id} className="flex items-center space-x-2 p-1 hover:bg-slate-50 rounded transition-colors">
+                            <Checkbox
+                              id={`worker-${worker.id}`}
+                              checked={isChecked}
+                              onCheckedChange={(checked) => {
+                                if (checked) {
+                                  setSelectedLineWorkerIdsForAssignment([...selectedLineWorkerIdsForAssignment, worker.id]);
+                                } else {
+                                  setSelectedLineWorkerIdsForAssignment(selectedLineWorkerIdsForAssignment.filter(id => id !== worker.id));
+                                }
+                              }}
+                            />
+                            <Label
+                              htmlFor={`worker-${worker.id}`}
+                              className="flex-1 cursor-pointer py-1"
+                            >
+                              <div className="font-medium text-sm">{worker.displayName || worker.email}</div>
+                              {worker.assignedAreas && worker.assignedAreas.length > 0 && (
+                                <div className="text-[10px] text-muted-foreground flex items-center">
+                                  <MapPin className="h-2 w-2 mr-1" />
+                                  {worker.assignedAreas.length} area(s) assigned
+                                </div>
+                              )}
+                            </Label>
+                          </div>
+                        );
+                      })}
+                  </div>
+                </ScrollArea>
               </div>
-              <div className="flex space-x-2">
+              <div className="flex justify-between items-center bg-slate-50 p-3 rounded-lg border">
+                <div className="text-xs text-muted-foreground">
+                  {selectedLineWorkerIdsForAssignment.length} worker(s) selected
+                </div>
+                {selectedLineWorkerIdsForAssignment.length > 0 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-xs h-7"
+                    onClick={() => setSelectedLineWorkerIdsForAssignment([])}
+                  >
+                    Clear All
+                  </Button>
+                )}
+              </div>
+              <div className="flex space-x-2 pt-2">
                 <Button
-                  onClick={() => handleConfirmAssignmentAction(assigningRetailer.id, selectedLineWorkerForAssignment === "unassign" ? null : selectedLineWorkerForAssignment || null)}
-                  disabled={isAssigning || (!selectedLineWorkerForAssignment && !currentAssignedWorker)}
+                  className="flex-1"
+                  onClick={() => handleConfirmAssignmentAction(assigningRetailer.id, selectedLineWorkerIdsForAssignment)}
+                  disabled={isAssigning}
                 >
                   {isAssigning ? (
                     <>
@@ -3610,15 +3690,13 @@ export function WholesalerAdminDashboard() {
                       Processing...
                     </>
                   ) : (
-                    selectedLineWorkerForAssignment === "unassign" ? 'Unassign' :
-                      selectedLineWorkerForAssignment ? 'Assign' :
-                        currentAssignedWorker ? 'Keep Current Assignment' : 'Assign'
+                    selectedLineWorkerIdsForAssignment.length === 0 ? 'Update (Unassign)' : 'Save Assignments'
                   )}
                 </Button>
-                <Button variant="outline" onClick={() => {
+                <Button variant="outline" className="flex-1" onClick={() => {
                   setShowRetailerAssignment(false);
                   setAssigningRetailer(null);
-                  setSelectedLineWorkerForAssignment('');
+                  setSelectedLineWorkerIdsForAssignment([]);
                   setError(null);
                 }} disabled={isAssigning}>
                   Cancel
@@ -3768,9 +3846,13 @@ export function WholesalerAdminDashboard() {
                 isLoading={mainLoadingState.loadingState.isRefreshing}
                 error={error}
                 onRefresh={handleManualRefresh}
-                onAssignRetailer={(retailer, currentWorkerId) => {
+                onAssignRetailer={(retailer, currentWorkerIds) => {
                   setAssigningRetailer(retailer);
-                  setSelectedLineWorkerForAssignment(currentWorkerId);
+                  // currentWorkerIds might be a single string from older data or already an array
+                  const ids = Array.isArray(currentWorkerIds)
+                    ? currentWorkerIds
+                    : (currentWorkerIds ? [currentWorkerIds] : []);
+                  setSelectedLineWorkerIdsForAssignment(ids);
                   setShowRetailerAssignment(true);
                 }}
                 onClearFilters={() => {
@@ -3882,15 +3964,17 @@ export function WholesalerAdminDashboard() {
                 <AlertDialogDescription>
                   {pendingAssignment?.action === 'unassign' ? (
                     <>
-                      Are you sure you want to unassign <strong>{pendingAssignment?.retailerName}</strong> from <strong>{pendingAssignment?.lineWorkerName}</strong>?
+                      Are you sure you want to unassign <strong>{pendingAssignment?.retailerName}</strong> from all workers?
                       <br /><br />
                       <span className="text-sm text-amber-600">
-                        This retailer will no longer be visible to this line worker unless assigned to an area they manage.
+                        This retailer will no longer be visible to any line workers unless assigned via their area.
                       </span>
                     </>
                   ) : (
                     <>
-                      Are you sure you want to reassign <strong>{pendingAssignment?.retailerName}</strong> from <strong>{pendingAssignment?.lineWorkerName}</strong> to a different line worker?
+                      Are you sure you want to update assignments for <strong>{pendingAssignment?.retailerName}</strong>?
+                      <br /><br />
+                      New assignments: <strong>{pendingAssignment?.lineWorkerNames}</strong>
                     </>
                   )}
                 </AlertDialogDescription>
@@ -3911,6 +3995,13 @@ export function WholesalerAdminDashboard() {
             show={feedback.show}
             message={feedback.message}
             onClose={hideSuccess}
+          />
+
+          {/* Exit App Confirmation */}
+          <ExitAppConfirmation
+            open={showExitConfirmation}
+            onOpenChange={setShowExitConfirmation}
+            onConfirm={handleExitApp}
           />
 
         </main>
