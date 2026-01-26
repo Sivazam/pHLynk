@@ -1427,421 +1427,427 @@ export function WholesalerAdminDashboard() {
         });
 
         try {
-          // Find all retailers in these areas who are not already assigned
-          const unassignedRetailersInAreas = retailers.filter(retailer =>
-            data.assignedAreas!.includes(retailer.areaId || '') &&
-            !retailer.assignedLineWorkerId
-          );
+          try {
+            // Find all retailers in these areas
+            const retailersInAreas = retailers.filter(retailer =>
+              data.assignedAreas!.includes(retailer.areaId || '')
+            );
 
-          console.log(`🎯 Found ${unassignedRetailersInAreas.length} unassigned retailers in assigned areas`);
+            console.log(`🎯 Found ${retailersInAreas.length} retailers in assigned areas`);
 
-          // Assign each retailer to this new Line Worker
-          for (const retailer of unassignedRetailersInAreas) {
-            await retailerService.assignLineWorker(currentTenantId, retailer.id, createdLineWorkerId);
-            console.log(`✅ Auto-assigned retailer "${retailer.profile?.realName || retailer.name}" to Line Worker`);
+            // Assign each retailer to this new Line Worker (merge with existing)
+            for (const retailer of retailersInAreas) {
+              const currentIds = retailer.assignedLineWorkerIds || (retailer.assignedLineWorkerId ? [retailer.assignedLineWorkerId] : []);
+              const newIds = Array.from(new Set([...currentIds, createdLineWorkerId]));
+
+              await retailerService.assignLineWorker(currentTenantId, retailer.id, newIds);
+              console.log(`✅ Auto-assigned retailer "${retailer.profile?.realName || retailer.name}" to Line Worker`);
+            }
+
+            if (retailersInAreas.length > 0) {
+              console.log(`🎉 Successfully auto-assigned ${retailersInAreas.length} retailers to new Line Worker`);
+            }
+          } catch (assignmentError) {
+            console.error('❌ Error auto-assigning retailers to Line Worker:', assignmentError);
+            // Don't fail the Line Worker creation, just log the error
+          }
+        }
+
+      await fetchDashboardData();
+
+        // Show success state and trigger confetti
+        setShowLineWorkerSuccess(true);
+        setTriggerLineWorkerConfetti(true);
+
+        // Close dialog and reset after success
+        setTimeout(() => {
+          setShowCreateLineWorker(false);
+          setShowLineWorkerSuccess(false);
+          showSuccess(`Line worker "${data.displayName || data.email}" created successfully!`);
+        }, 2000);
+      } catch (err: any) {
+        console.error('❌ Line Worker Creation Error:', err);
+
+        // Provide more specific error messages based on the error type
+        let errorMessage = 'Failed to create line worker';
+
+        if (err.code) {
+          switch (err.code) {
+            case 'auth/email-already-in-use':
+              errorMessage = 'A user with this email address already exists. Please use a different email.';
+              break;
+            case 'auth/invalid-email':
+              errorMessage = 'The email address is not valid. Please check and try again.';
+              break;
+            case 'auth/weak-password':
+              errorMessage = 'The password is too weak. Please choose a stronger password (at least 6 characters).';
+              break;
+            case 'auth/network-request-failed':
+              errorMessage = 'Network connection failed. Please check your internet connection and try again.';
+              break;
+            case 'auth/too-many-requests':
+              errorMessage = 'Too many attempts. Please wait a few minutes and try again.';
+              break;
+            case 'permission-denied':
+              errorMessage = 'You do not have permission to create line workers. Please contact your administrator.';
+              break;
+            case 'unavailable':
+              errorMessage = 'Service is temporarily unavailable. Please try again in a few minutes.';
+              break;
+            case 'deadline-exceeded':
+              errorMessage = 'Request timed out. Please check your connection and try again.';
+              break;
+            default:
+              errorMessage = `Failed to create line worker: ${err.message || 'Unknown error occurred'}`;
+          }
+        } else if (err.message) {
+          // Handle custom error messages from our validation
+          if (err.message.includes('already assigned to other line workers')) {
+            errorMessage = err.message;
+          } else if (err.message.includes('required fields')) {
+            errorMessage = 'Please fill in all required fields correctly.';
+          } else {
+            errorMessage = `Failed to create line worker: ${err.message}`;
+          }
+        }
+
+        setError(errorMessage);
+        throw err;
+      } finally {
+        setCreatingLineWorker(false);
+      }
+    };
+
+    const handleLineWorkerConfettiComplete = () => {
+      setTriggerLineWorkerConfetti(false);
+    };
+
+    const handleToggleArea = (areaId: string) => {
+      const area = areas.find(a => a.id === areaId);
+      if (area) {
+        setEditingArea(area);
+      }
+    };
+
+    const handleDeleteArea = async (areaId: string) => {
+      const currentTenantId = getCurrentTenantId();
+      if (!currentTenantId) return;
+
+      if (confirm('Are you sure you want to delete this area? This will affect all retailers in this area.')) {
+        try {
+          await areaService.delete(areaId, currentTenantId);
+          await fetchDashboardData();
+        } catch (err: any) {
+          setError(err.message || 'Failed to delete area');
+        }
+      }
+    };
+
+    const handleDeleteRetailer = async (retailerId: string) => {
+      const currentTenantId = getCurrentTenantId();
+      if (!currentTenantId) return;
+
+      if (confirm('Are you sure you want to remove this retailer from your business? This will remove their association with you but preserve all transaction history and their account for other wholesalers.')) {
+        try {
+          await retailerService.delete(retailerId, currentTenantId);
+          await fetchDashboardData();
+        } catch (err: any) {
+          setError(err.message || 'Failed to remove retailer');
+        }
+      }
+    };
+
+    const handleDeleteLineWorker = async (workerId: string) => {
+      const currentTenantId = getCurrentTenantId();
+      if (!currentTenantId) return;
+
+      if (confirm('Are you sure you want to delete this line worker? This action cannot be undone.')) {
+        try {
+          await userService.delete(workerId, currentTenantId);
+          await fetchDashboardData();
+        } catch (err: any) {
+          setError(err.message || 'Failed to delete line worker');
+        }
+      }
+    };
+
+    const handleToggleLineWorkerStatus = async (workerId: string, currentStatus: boolean) => {
+      const currentTenantId = getCurrentTenantId();
+      if (!currentTenantId) return;
+
+      try {
+        await userService.update(workerId, {
+          active: !currentStatus
+        }, currentTenantId);
+        await fetchDashboardData();
+      } catch (err: any) {
+        setError(err.message || 'Failed to update line worker status');
+      }
+    };
+
+    const handleUpdateLineWorker = async (data: { active?: boolean; displayName?: string; phone?: string }) => {
+      const currentTenantId = getCurrentTenantId();
+      if (!currentTenantId || !editingLineWorker) return;
+
+      try {
+        const updateData: any = {
+          active: data.active,
+          displayName: data.displayName,
+          phone: data.phone
+        };
+
+        // Handle assignedAreas - include if has values, explicitly delete if empty
+        if (editingSelectedAreas.length > 0) {
+          updateData.assignedAreas = editingSelectedAreas;
+        } else if (editingLineWorker.assignedAreas && editingLineWorker.assignedAreas.length > 0) {
+          // If worker currently has areas but we're removing them all, delete the field
+          updateData.assignedAreas = null; // This will remove the field from Firestore
+        }
+
+        console.log('🔧 Updating line worker:', {
+          workerId: editingLineWorker.id,
+          updateData,
+          currentAssignedAreas: editingLineWorker.assignedAreas,
+          newSelectedAreas: editingSelectedAreas
+        });
+
+        await userService.update(editingLineWorker.id, updateData, currentTenantId);
+
+        // 🔄 CRITICAL: Automatically assign/unassign retailers based on area changes
+        const oldAreas = editingLineWorker.assignedAreas || [];
+        const newAreas = editingSelectedAreas;
+
+        // Find newly added areas
+        const addedAreas = newAreas.filter(area => !oldAreas.includes(area));
+        // Find removed areas
+        const removedAreas = oldAreas.filter(area => !newAreas.includes(area));
+
+        console.log('🔄 Area changes detected:', {
+          oldAreas,
+          newAreas,
+          addedAreas,
+          removedAreas
+        });
+
+        setUpdatingLineWorker(true);
+        setUpdateProgress('Analyzing assignments...');
+
+        try {
+          // Assign retailers from newly added areas
+          if (addedAreas.length > 0) {
+            setUpdateProgress(`Assigning updated areas...`);
+
+            // Find ALL retailers in the added areas
+            const retailersInAddedAreas = retailers.filter(retailer =>
+              addedAreas.includes(retailer.areaId || '')
+            );
+
+            console.log(`🎯 Found ${retailersInAddedAreas.length} retailers in newly added areas`);
+
+            // Process in parallel with Promise.all
+            if (retailersInAddedAreas.length > 0) {
+              setUpdateProgress(`Updating assignments for ${retailersInAddedAreas.length} retailers...`);
+              await Promise.all(retailersInAddedAreas.map(retailer => {
+                // Calculate new assigned IDs
+                const currentIds = retailer.assignedLineWorkerIds || (retailer.assignedLineWorkerId ? [retailer.assignedLineWorkerId] : []);
+                const newIds = Array.from(new Set([...currentIds, editingLineWorker.id])); // Use Set to ensure uniqueness
+
+                console.log(`Updating retailer ${retailer.id}: ${currentIds.join(',')} -> ${newIds.join(',')}`);
+
+                return retailerService.assignLineWorker(currentTenantId, retailer.id, newIds)
+                  .catch(err => console.error(`Failed to assign retailer ${retailer.id}:`, err));
+              }));
+              console.log(`✅ Updated assignments for ${retailersInAddedAreas.length} retailers`);
+            }
           }
 
-          if (unassignedRetailersInAreas.length > 0) {
-            console.log(`🎉 Successfully auto-assigned ${unassignedRetailersInAreas.length} retailers to new Line Worker`);
+          // Unassign retailers from removed areas
+          if (removedAreas.length > 0) {
+            setUpdateProgress(`Processing removed areas...`);
+
+            // Find retailers in removed areas that are currently assigned to this worker
+            const retailersToUnassign = retailers.filter(retailer => {
+              const retailerInRemovedArea = removedAreas.includes(retailer.areaId || '');
+              const isAssignedToThisWorker = retailer.assignedLineWorkerId === editingLineWorker.id ||
+                retailer.assignedLineWorkerIds?.includes(editingLineWorker.id);
+
+              return retailerInRemovedArea && isAssignedToThisWorker;
+            });
+
+            console.log(`🎯 Found ${retailersToUnassign.length} retailers to unassign from removed areas`);
+
+            if (retailersToUnassign.length > 0) {
+              setUpdateProgress(`Unassigning ${retailersToUnassign.length} retailers...`);
+              await Promise.all(retailersToUnassign.map(retailer => {
+                // Calculate new assigned IDs
+                const currentIds = retailer.assignedLineWorkerIds || (retailer.assignedLineWorkerId ? [retailer.assignedLineWorkerId] : []);
+                const newIds = currentIds.filter(id => id !== editingLineWorker.id);
+
+                console.log(`Unassigning retailer ${retailer.id}: ${currentIds.join(',')} -> ${newIds.join(',')}`);
+
+                return retailerService.assignLineWorker(currentTenantId, retailer.id, newIds)
+                  .catch(err => console.error(`Failed to unassign retailer ${retailer.id}:`, err));
+              }));
+              console.log(`✅ Updated assignments for ${retailersToUnassign.length} retailers`);
+            }
+          }
+
+          if (addedAreas.length > 0 || removedAreas.length > 0) {
+            console.log(`🎉 Successfully processed area-based retailer assignments`);
           }
         } catch (assignmentError) {
-          console.error('❌ Error auto-assigning retailers to Line Worker:', assignmentError);
-          // Don't fail the Line Worker creation, just log the error
+          console.error('❌ Error processing area-based retailer assignments:', assignmentError);
+          // Don't fail the Line Worker update, just log the error
         }
-      }
 
-      await fetchDashboardData();
-
-      // Show success state and trigger confetti
-      setShowLineWorkerSuccess(true);
-      setTriggerLineWorkerConfetti(true);
-
-      // Close dialog and reset after success
-      setTimeout(() => {
-        setShowCreateLineWorker(false);
-        setShowLineWorkerSuccess(false);
-        showSuccess(`Line worker "${data.displayName || data.email}" created successfully!`);
-      }, 2000);
-    } catch (err: any) {
-      console.error('❌ Line Worker Creation Error:', err);
-
-      // Provide more specific error messages based on the error type
-      let errorMessage = 'Failed to create line worker';
-
-      if (err.code) {
-        switch (err.code) {
-          case 'auth/email-already-in-use':
-            errorMessage = 'A user with this email address already exists. Please use a different email.';
-            break;
-          case 'auth/invalid-email':
-            errorMessage = 'The email address is not valid. Please check and try again.';
-            break;
-          case 'auth/weak-password':
-            errorMessage = 'The password is too weak. Please choose a stronger password (at least 6 characters).';
-            break;
-          case 'auth/network-request-failed':
-            errorMessage = 'Network connection failed. Please check your internet connection and try again.';
-            break;
-          case 'auth/too-many-requests':
-            errorMessage = 'Too many attempts. Please wait a few minutes and try again.';
-            break;
-          case 'permission-denied':
-            errorMessage = 'You do not have permission to create line workers. Please contact your administrator.';
-            break;
-          case 'unavailable':
-            errorMessage = 'Service is temporarily unavailable. Please try again in a few minutes.';
-            break;
-          case 'deadline-exceeded':
-            errorMessage = 'Request timed out. Please check your connection and try again.';
-            break;
-          default:
-            errorMessage = `Failed to create line worker: ${err.message || 'Unknown error occurred'}`;
-        }
-      } else if (err.message) {
-        // Handle custom error messages from our validation
-        if (err.message.includes('already assigned to other line workers')) {
-          errorMessage = err.message;
-        } else if (err.message.includes('required fields')) {
-          errorMessage = 'Please fill in all required fields correctly.';
-        } else {
-          errorMessage = `Failed to create line worker: ${err.message}`;
-        }
-      }
-
-      setError(errorMessage);
-      throw err;
-    } finally {
-      setCreatingLineWorker(false);
-    }
-  };
-
-  const handleLineWorkerConfettiComplete = () => {
-    setTriggerLineWorkerConfetti(false);
-  };
-
-  const handleToggleArea = (areaId: string) => {
-    const area = areas.find(a => a.id === areaId);
-    if (area) {
-      setEditingArea(area);
-    }
-  };
-
-  const handleDeleteArea = async (areaId: string) => {
-    const currentTenantId = getCurrentTenantId();
-    if (!currentTenantId) return;
-
-    if (confirm('Are you sure you want to delete this area? This will affect all retailers in this area.')) {
-      try {
-        await areaService.delete(areaId, currentTenantId);
+        setUpdateProgress('Refreshing data...');
+        console.log('✅ Line worker updated, fetching fresh data...');
         await fetchDashboardData();
-      } catch (err: any) {
-        setError(err.message || 'Failed to delete area');
-      }
-    }
-  };
 
-  const handleDeleteRetailer = async (retailerId: string) => {
-    const currentTenantId = getCurrentTenantId();
-    if (!currentTenantId) return;
 
-    if (confirm('Are you sure you want to remove this retailer from your business? This will remove their association with you but preserve all transaction history and their account for other wholesalers.')) {
-      try {
-        await retailerService.delete(retailerId, currentTenantId);
-        await fetchDashboardData();
-      } catch (err: any) {
-        setError(err.message || 'Failed to remove retailer');
-      }
-    }
-  };
+        // Show success dialog with area assignment details
+        // (oldAreas, addedAreas, removedAreas already defined above)
+        const addedAreasInfo = addedAreas.map(id => areas.find(a => a.id === id)?.name || id);
+        const removedAreasInfo = removedAreas.map(id => areas.find(a => a.id === id)?.name || id);
 
-  const handleDeleteLineWorker = async (workerId: string) => {
-    const currentTenantId = getCurrentTenantId();
-    if (!currentTenantId) return;
+        let successMessage = `${editingLineWorker.displayName || 'Line Worker'} updated successfully!`;
+        const details: string[] = [];
 
-    if (confirm('Are you sure you want to delete this line worker? This action cannot be undone.')) {
-      try {
-        await userService.delete(workerId, currentTenantId);
-        await fetchDashboardData();
-      } catch (err: any) {
-        setError(err.message || 'Failed to delete line worker');
-      }
-    }
-  };
-
-  const handleToggleLineWorkerStatus = async (workerId: string, currentStatus: boolean) => {
-    const currentTenantId = getCurrentTenantId();
-    if (!currentTenantId) return;
-
-    try {
-      await userService.update(workerId, {
-        active: !currentStatus
-      }, currentTenantId);
-      await fetchDashboardData();
-    } catch (err: any) {
-      setError(err.message || 'Failed to update line worker status');
-    }
-  };
-
-  const handleUpdateLineWorker = async (data: { active?: boolean; displayName?: string; phone?: string }) => {
-    const currentTenantId = getCurrentTenantId();
-    if (!currentTenantId || !editingLineWorker) return;
-
-    try {
-      const updateData: any = {
-        active: data.active,
-        displayName: data.displayName,
-        phone: data.phone
-      };
-
-      // Handle assignedAreas - include if has values, explicitly delete if empty
-      if (editingSelectedAreas.length > 0) {
-        updateData.assignedAreas = editingSelectedAreas;
-      } else if (editingLineWorker.assignedAreas && editingLineWorker.assignedAreas.length > 0) {
-        // If worker currently has areas but we're removing them all, delete the field
-        updateData.assignedAreas = null; // This will remove the field from Firestore
-      }
-
-      console.log('🔧 Updating line worker:', {
-        workerId: editingLineWorker.id,
-        updateData,
-        currentAssignedAreas: editingLineWorker.assignedAreas,
-        newSelectedAreas: editingSelectedAreas
-      });
-
-      await userService.update(editingLineWorker.id, updateData, currentTenantId);
-
-      // 🔄 CRITICAL: Automatically assign/unassign retailers based on area changes
-      const oldAreas = editingLineWorker.assignedAreas || [];
-      const newAreas = editingSelectedAreas;
-
-      // Find newly added areas
-      const addedAreas = newAreas.filter(area => !oldAreas.includes(area));
-      // Find removed areas
-      const removedAreas = oldAreas.filter(area => !newAreas.includes(area));
-
-      console.log('🔄 Area changes detected:', {
-        oldAreas,
-        newAreas,
-        addedAreas,
-        removedAreas
-      });
-
-      setUpdatingLineWorker(true);
-      setUpdateProgress('Analyzing assignments...');
-
-      try {
-        // Assign retailers from newly added areas
         if (addedAreas.length > 0) {
-          setUpdateProgress(`Assigning updated areas...`);
-
-          // CRITICAL: Only auto-assign retailers that were NEVER assigned (undefined)
-          // Do NOT auto-assign retailers that were explicitly unassigned (null) - they were intentionally removed
-          const unassignedRetailersInAddedAreas = retailers.filter(retailer =>
-            addedAreas.includes(retailer.areaId || '') &&
-            retailer.assignedLineWorkerId === undefined  // Only never-assigned, not explicitly unassigned (null)
-          );
-
-          console.log(`🎯 Found ${unassignedRetailersInAddedAreas.length} unassigned retailers in newly added areas`);
-
-          // Process in parallel with Promise.all
-          if (unassignedRetailersInAddedAreas.length > 0) {
-            setUpdateProgress(`Assigning ${unassignedRetailersInAddedAreas.length} retailers...`);
-            await Promise.all(unassignedRetailersInAddedAreas.map(retailer =>
-              retailerService.assignLineWorker(currentTenantId, retailer.id, editingLineWorker.id)
-                .catch(err => console.error(`Failed to auto-assign retailer ${retailer.id}:`, err))
-            ));
-            console.log(`✅ Auto-assigned ${unassignedRetailersInAddedAreas.length} retailers to Line Worker`);
-          }
+          details.push(`✅ Assigned: ${addedAreasInfo.join(', ')}`);
         }
-
-        // Unassign retailers from removed areas
         if (removedAreas.length > 0) {
-          setUpdateProgress(`Processing removed areas...`);
-
-          // Two cases to handle:
-          // 1. Area-based assignment: retailer in removed area, no direct assignment
-          // 2. Direct assignment: retailer directly assigned to this worker AND retailer in removed area
-          const retailersToUnassign = retailers.filter(retailer => {
-            const retailerInRemovedArea = removedAreas.includes(retailer.areaId || '');
-
-            // Case 1: Area-based assignment (no direct assignment, retailer in removed area)
-            const case1 = !retailer.assignedLineWorkerId && retailerInRemovedArea;
-
-            // Case 2: Direct assignment to this worker, AND retailer in removed area
-            // When a retailer was directly assigned but the area connection is broken, unassign them
-            const case2 = retailer.assignedLineWorkerId === editingLineWorker.id && retailerInRemovedArea;
-
-            return case1 || case2;
-          });
-
-          console.log(`🎯 Found ${retailersToUnassign.length} retailers to unassign from removed areas`);
-
-          if (retailersToUnassign.length > 0) {
-            setUpdateProgress(`Unassigning ${retailersToUnassign.length} retailers...`);
-            await Promise.all(retailersToUnassign.map(retailer =>
-              retailerService.assignLineWorker(currentTenantId, retailer.id, null)
-                .catch(err => console.error(`Failed to auto-unassign retailer ${retailer.id}:`, err))
-            ));
-            console.log(`✅ Auto-unassigned ${retailersToUnassign.length} retailers from Line Worker`);
-          }
+          details.push(`❌ Removed: ${removedAreasInfo.join(', ')}`);
+        }
+        if (details.length > 0) {
+          successMessage += '\n' + details.join('\n');
         }
 
-        if (addedAreas.length > 0 || removedAreas.length > 0) {
-          console.log(`🎉 Successfully processed area-based retailer assignments`);
-        }
-      } catch (assignmentError) {
-        console.error('❌ Error processing area-based retailer assignments:', assignmentError);
-        // Don't fail the Line Worker update, just log the error
+        showSuccess(successMessage);
+
+        setShowEditLineWorkerDialog(false);
+        setEditingLineWorker(null);
+        setEditingSelectedAreas([]);
+        setEditingActiveStatus(true);
+      } catch (err: any) {
+        console.error('Update line worker error:', err);
+        setError(err.message || 'Failed to update line worker');
+      } finally {
+        setUpdatingLineWorker(false);
+        setUpdateProgress('');
       }
+    };
 
-      setUpdateProgress('Refreshing data...');
-      console.log('✅ Line worker updated, fetching fresh data...');
-      await fetchDashboardData();
-
-
-      // Show success dialog with area assignment details
-      // (oldAreas, addedAreas, removedAreas already defined above)
-      const addedAreasInfo = addedAreas.map(id => areas.find(a => a.id === id)?.name || id);
-      const removedAreasInfo = removedAreas.map(id => areas.find(a => a.id === id)?.name || id);
-
-      let successMessage = `${editingLineWorker.displayName || 'Line Worker'} updated successfully!`;
-      const details: string[] = [];
-
-      if (addedAreas.length > 0) {
-        details.push(`✅ Assigned: ${addedAreasInfo.join(', ')}`);
+    // Utility functions
+    const getRetailerName = (retailerId: string) => {
+      const retailer = retailers.find(r => r.id === retailerId);
+      if (retailer?.profile?.realName) {
+        return retailer.profile.realName;
       }
-      if (removedAreas.length > 0) {
-        details.push(`❌ Removed: ${removedAreasInfo.join(', ')}`);
-      }
-      if (details.length > 0) {
-        successMessage += '\n' + details.join('\n');
-      }
+      return retailer?.name || 'Unknown';
+    };
 
-      showSuccess(successMessage);
+    const getLineWorkerName = (workerId: string) => {
+      return lineWorkers.find(w => w.id === workerId)?.displayName || 'Unknown';
+    };
 
-      setShowEditLineWorkerDialog(false);
-      setEditingLineWorker(null);
-      setEditingSelectedAreas([]);
-      setEditingActiveStatus(true);
-    } catch (err: any) {
-      console.error('Update line worker error:', err);
-      setError(err.message || 'Failed to update line worker');
-    } finally {
-      setUpdatingLineWorker(false);
-      setUpdateProgress('');
-    }
-  };
+    // Stats Cards Component
+    const StatsCards = () => {
+      // Calculate filtered data for the selected date range
+      const filteredPayments = filterPaymentsByDateRange(payments);
+      const filteredCompletedPayments = filteredPayments.filter(p => p.state === 'COMPLETED');
+      const filteredRevenue = filteredCompletedPayments.reduce((sum, p) => sum + p.totalPaid, 0);
 
-  // Utility functions
-  const getRetailerName = (retailerId: string) => {
-    const retailer = retailers.find(r => r.id === retailerId);
-    if (retailer?.profile?.realName) {
-      return retailer.profile.realName;
-    }
-    return retailer?.name || 'Unknown';
-  };
+      return (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <Card className="hover:shadow-lg transition-shadow duration-300 border-l-4 border-l-blue-500">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-gray-600">Total Revenue</CardTitle>
+              <div className="bg-blue-100 p-2 rounded-full">
+                <DollarSign className="h-4 w-4 text-blue-600" />
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-gray-900">
+                {formatCurrency(filteredRevenue)}
+              </div>
+              <p className="text-xs text-gray-500">
+                Revenue (filtered)
+              </p>
+            </CardContent>
+          </Card>
 
-  const getLineWorkerName = (workerId: string) => {
-    return lineWorkers.find(w => w.id === workerId)?.displayName || 'Unknown';
-  };
+          <Card className="hover:shadow-lg transition-shadow duration-300 border-l-4 border-l-purple-500">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-gray-600">Completed Payments</CardTitle>
+              <div className="bg-purple-100 p-2 rounded-full">
+                <CheckCircle className="h-4 w-4 text-purple-600" />
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-gray-900">
+                {filteredCompletedPayments.length}
+              </div>
+              <p className="text-xs text-gray-500">
+                Payments completed (filtered)
+              </p>
+            </CardContent>
+          </Card>
 
-  // Stats Cards Component
-  const StatsCards = () => {
-    // Calculate filtered data for the selected date range
-    const filteredPayments = filterPaymentsByDateRange(payments);
-    const filteredCompletedPayments = filteredPayments.filter(p => p.state === 'COMPLETED');
-    const filteredRevenue = filteredCompletedPayments.reduce((sum, p) => sum + p.totalPaid, 0);
-
-    return (
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Card className="hover:shadow-lg transition-shadow duration-300 border-l-4 border-l-blue-500">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">Total Revenue</CardTitle>
-            <div className="bg-blue-100 p-2 rounded-full">
-              <DollarSign className="h-4 w-4 text-blue-600" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-gray-900">
-              {formatCurrency(filteredRevenue)}
-            </div>
-            <p className="text-xs text-gray-500">
-              Revenue (filtered)
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="hover:shadow-lg transition-shadow duration-300 border-l-4 border-l-purple-500">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">Completed Payments</CardTitle>
-            <div className="bg-purple-100 p-2 rounded-full">
-              <CheckCircle className="h-4 w-4 text-purple-600" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-gray-900">
-              {filteredCompletedPayments.length}
-            </div>
-            <p className="text-xs text-gray-500">
-              Payments completed (filtered)
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="hover:shadow-lg transition-shadow duration-300 border-l-4 border-l-teal-500">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">Today's Collections</CardTitle>
-            <div className="bg-teal-100 p-2 rounded-full">
-              <TrendingUp className="h-4 w-4 text-teal-600" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-gray-900">
-              {formatCurrency(dashboardStats?.todayCollections || 0)}
-            </div>
-            <p className="text-xs text-gray-500">
-              Collections today
-            </p>
-          </CardContent>
-        </Card>
+          <Card className="hover:shadow-lg transition-shadow duration-300 border-l-4 border-l-teal-500">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-gray-600">Today's Collections</CardTitle>
+              <div className="bg-teal-100 p-2 rounded-full">
+                <TrendingUp className="h-4 w-4 text-teal-600" />
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-gray-900">
+                {formatCurrency(dashboardStats?.todayCollections || 0)}
+              </div>
+              <p className="text-xs text-gray-500">
+                Collections today
+              </p>
+            </CardContent>
+          </Card>
 
 
 
-      </div>
-
-    );
-  };
-
-  // Overview Component - Render function to prevent remounting
-  const renderOverview = () => (
-    <div className="space-y-6 sm:pt-6 pt-2">
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">Dashboard Overview</h2>
-          <p className="text-gray-600">Welcome back! Here's what's happening with your business.</p>
         </div>
-        <div className="flex space-x-2">
-          <ModernDateRangePicker
-            startDate={overviewDateRange.startDate}
-            endDate={overviewDateRange.endDate}
-            onChange={(range) => setOverviewDateRange(range)}
-          />
-          <DaySheet
-            payments={payments}
-            lineWorkers={lineWorkers}
-            areas={areas}
-            retailers={retailers}
-            wholesalerBusinessName={isSuperAdmin && selectedTenant ?
-              tenants.find(t => t.id === selectedTenant)?.name || 'Unknown Wholesaler' :
-              currentTenantData?.name || user?.displayName || 'Wholesaler'
-            }
-            wholesalerAddress={isSuperAdmin && selectedTenant ?
-              tenants.find(t => t.id === selectedTenant)?.address || 'Address not provided' :
-              currentTenantData?.address || 'Address not provided'
-            }
-            tenantId={getCurrentTenantId() || ''}
-          />
-          {/* <LoadingButton
+
+      );
+    };
+
+    // Overview Component - Render function to prevent remounting
+    const renderOverview = () => (
+      <div className="space-y-6 sm:pt-6 pt-2">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900">Dashboard Overview</h2>
+            <p className="text-gray-600">Welcome back! Here's what's happening with your business.</p>
+          </div>
+          <div className="flex space-x-2">
+            <ModernDateRangePicker
+              startDate={overviewDateRange.startDate}
+              endDate={overviewDateRange.endDate}
+              onChange={(range) => setOverviewDateRange(range)}
+            />
+            <DaySheet
+              payments={payments}
+              lineWorkers={lineWorkers}
+              areas={areas}
+              retailers={retailers}
+              wholesalerBusinessName={isSuperAdmin && selectedTenant ?
+                tenants.find(t => t.id === selectedTenant)?.name || 'Unknown Wholesaler' :
+                currentTenantData?.name || user?.displayName || 'Wholesaler'
+              }
+              wholesalerAddress={isSuperAdmin && selectedTenant ?
+                tenants.find(t => t.id === selectedTenant)?.address || 'Address not provided' :
+                currentTenantData?.address || 'Address not provided'
+              }
+              tenantId={getCurrentTenantId() || ''}
+            />
+            {/* <LoadingButton
             isLoading={mainLoadingState.loadingState.isRefreshing}
             loadingText="Refreshing..."
             onClick={handleManualRefresh}
@@ -1849,785 +1855,169 @@ export function WholesalerAdminDashboard() {
           >
             <RefreshCw className="h-4 w-4" />
           </LoadingButton> */}
-        </div>
-      </div>
-      <StatsCards />
-
-      {/* Recent Activity */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Recent Activity</CardTitle>
-          <CardDescription>
-            {activeNav === 'overview'
-              ? 'Latest activities in your system (filtered by selected date range)'
-              : 'Latest activities in your system (all time)'
-            }
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {mainLoadingState.loadingState.isRefreshing ? (
-              <>
-                {[...Array(5)].map((_, index) => (
-                  <div key={index} className="flex items-center space-x-4 p-3 border rounded-lg">
-                    <Skeleton className="w-10 h-10 rounded-full animate-pulse" />
-                    <div className="flex-1 space-y-2">
-                      <Skeleton className="h-4 w-48 animate-pulse" />
-                      <Skeleton className="h-3 w-32 animate-pulse" />
-                    </div>
-                    <Skeleton className="h-4 w-16 animate-pulse" />
-                  </div>
-                ))}
-              </>
-            ) : activityLogs.length > 0 ? (
-              activityLogs.slice(0, 5).map((log) => (
-                <div key={log.id} className="flex items-center space-x-4 p-3 border rounded-lg">
-                  <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-                    {log.type === 'PAYMENT' && <DollarSign className="h-5 w-5 text-blue-600" />}
-                    {log.type === 'PAYMENT' && <CreditCard className="h-5 w-5 text-green-600" />}
-                    {log.type === 'RETAILER' && <Store className="h-5 w-5 text-blue-600" />}
-                    {log.type === 'LINEWORKER' && <Users className="h-5 w-5 text-blue-600" />}
-                  </div>
-                  <div className="flex-1">
-                    <div className="font-medium">{log.description}</div>
-                    <div className="text-sm text-gray-500">
-                      {log.actorName} • {formatTimestamp(log.timestamp)}
-                    </div>
-                  </div>
-                  {log.amount && (
-                    <div className="text-right">
-                      <div className="font-medium text-green-600">{formatCurrency(log.amount)}</div>
-                    </div>
-                  )}
-                </div>
-              ))
-            ) : (
-              <div className="text-center py-8">
-                <Clock className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                <h3 className="text-lg font-medium text-gray-900 mb-2">No recent activities</h3>
-                <p className="text-gray-500">There have been no payment activities in the last 7 days.</p>
-              </div>
-            )}
           </div>
-        </CardContent>
-      </Card>
-
-      {/* PWA Notification Manager */}
-      <PWANotificationManager userRole="WHOLESALER_ADMIN" />
-
-    </div>
-  );
-
-  // Areas Component
-  const Areas = () => (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:pt-8 sm:flex-row sm:justify-between sm:items-start gap-4">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">Areas Management</h2>
-          <p className="text-gray-600">Manage your service areas and zip codes</p>
         </div>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            onClick={handleManualRefresh}
-            disabled={mainLoadingState.loadingState.isRefreshing}
-          >
-            {mainLoadingState.loadingState.isRefreshing ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <RefreshCw className="h-4 w-4" />
-            )}
-            <span className="sr-only">Refresh</span>
-          </Button>
-          <Dialog key="area-dialog" open={showCreateArea} onOpenChange={handleAreaDialogChange}>
-            <DialogTrigger asChild>
-              <Button>
-                <Plus className="h-4 w-4 mr-2" />
-                Create Area
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-md">
-              <DialogHeader>
-                <DialogTitle>Create New Area</DialogTitle>
-                <DialogDescription>
-                  Add a new service area with zip codes
-                </DialogDescription>
-              </DialogHeader>
-              <CreateAreaForm
-                key="area-form"
-                onSubmit={handleCreateArea}
-                onCancel={() => setShowCreateArea(false)}
-              />
-            </DialogContent>
-          </Dialog>
-        </div>
-      </div>
+        <StatsCards />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>All Areas</CardTitle>
-          <CardDescription>Manage your service areas</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {mainLoadingState.loadingState.isRefreshing ? (
-              <>
-                {[...Array(5)].map((_, index) => (
-                  <div key={index} className="flex items-center justify-between p-4 border rounded-lg">
-                    <div className="flex items-center space-x-4">
+        {/* Recent Activity */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Recent Activity</CardTitle>
+            <CardDescription>
+              {activeNav === 'overview'
+                ? 'Latest activities in your system (filtered by selected date range)'
+                : 'Latest activities in your system (all time)'
+              }
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {mainLoadingState.loadingState.isRefreshing ? (
+                <>
+                  {[...Array(5)].map((_, index) => (
+                    <div key={index} className="flex items-center space-x-4 p-3 border rounded-lg">
                       <Skeleton className="w-10 h-10 rounded-full animate-pulse" />
-                      <div className="space-y-2">
-                        <Skeleton className="h-4 w-32 animate-pulse" />
-                        <Skeleton className="h-3 w-24 animate-pulse" />
+                      <div className="flex-1 space-y-2">
+                        <Skeleton className="h-4 w-48 animate-pulse" />
+                        <Skeleton className="h-3 w-32 animate-pulse" />
                       </div>
+                      <Skeleton className="h-4 w-16 animate-pulse" />
                     </div>
-                    <div className="flex items-center space-x-2">
-                      <Skeleton className="h-8 w-16 animate-pulse" />
-                      <Skeleton className="h-8 w-16 animate-pulse" />
-                    </div>
-                  </div>
-                ))}
-              </>
-            ) : (
-              areas.map((area) => (
-                <div key={area.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 border rounded-lg gap-4">
-                  <div className="flex items-center space-x-4">
+                  ))}
+                </>
+              ) : activityLogs.length > 0 ? (
+                activityLogs.slice(0, 5).map((log) => (
+                  <div key={log.id} className="flex items-center space-x-4 p-3 border rounded-lg">
                     <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-                      <MapPin className="h-5 w-5 text-blue-600" />
+                      {log.type === 'PAYMENT' && <DollarSign className="h-5 w-5 text-blue-600" />}
+                      {log.type === 'PAYMENT' && <CreditCard className="h-5 w-5 text-green-600" />}
+                      {log.type === 'RETAILER' && <Store className="h-5 w-5 text-blue-600" />}
+                      {log.type === 'LINEWORKER' && <Users className="h-5 w-5 text-blue-600" />}
                     </div>
-                    <div>
-                      <div className="font-medium">
-                        {area.name}
-                        <span className="text-gray-500 font-normal ml-2 text-sm">
-                          ({retailers.filter(r => r.areaId === area.id).length} retailers)
-                        </span>
-                      </div>
+                    <div className="flex-1">
+                      <div className="font-medium">{log.description}</div>
                       <div className="text-sm text-gray-500">
-                        {area.zipcodes.length} zip codes
+                        {log.actorName} • {formatTimestamp(log.timestamp)}
                       </div>
                     </div>
+                    {log.amount && (
+                      <div className="text-right">
+                        <div className="font-medium text-green-600">{formatCurrency(log.amount)}</div>
+                      </div>
+                    )}
                   </div>
-                  <div className="flex sm:items-center space-x-2 flex-wrap gap-y-2 sm:flex-nowrap">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleToggleArea(area.id)}
-                      className="flex-1 sm:flex-none"
-                    >
-                      <Edit className="h-4 w-4 mr-1" />
-                      Edit
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleDeleteArea(area.id)}
-                      className="flex-1 sm:flex-none"
-                    >
-                      <Trash2 className="h-4 w-4 mr-1" />
-                      Delete
-                    </Button>
-                  </div>
+                ))
+              ) : (
+                <div className="text-center py-8">
+                  <Clock className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">No recent activities</h3>
+                  <p className="text-gray-500">There have been no payment activities in the last 7 days.</p>
                 </div>
-              ))
-            )}
-          </div>
-        </CardContent>
-      </Card>
+              )}
+            </div>
+          </CardContent>
+        </Card>
 
-      {/* Edit Area Dialog */}
-      {editingArea && (
-        <Dialog open={!!editingArea} onOpenChange={() => setEditingArea(null)}>
-          <DialogContent className="max-w-md">
-            <DialogHeader>
-              <DialogTitle>Edit Area</DialogTitle>
-              <DialogDescription>
-                Update area information and zipcodes
-              </DialogDescription>
-            </DialogHeader>
-            {editingArea && (
-              <CreateAreaForm
-                onSubmit={async (data) => {
-                  const currentTenantId = getCurrentTenantId();
-                  if (!currentTenantId) return;
+        {/* PWA Notification Manager */}
+        <PWANotificationManager userRole="WHOLESALER_ADMIN" />
 
-                  try {
-                    await areaService.update(editingArea.id, {
-                      name: data.name,
-                      zipcodes: data.zipcodes
-                    }, currentTenantId);
-                    await fetchDashboardData();
-                    setEditingArea(null);
-                  } catch (err: any) {
-                    setError(err.message || 'Failed to update area');
-                  }
-                }}
-                onCancel={() => setEditingArea(null)}
-                initialData={editingArea}
-              />
-            )}
-          </DialogContent>
-        </Dialog>
-      )}
-    </div>
-  );
+      </div>
+    );
 
-  // Retailers Component
-  // Retailers Component (Render Function to avoid re-mounting)
-  const renderRetailers = () => {
-    // Filter retailers based on search query
-    const filteredRetailers = retailers.filter(retailer => {
-      if (!retailerSearchQuery) return true;
-      const query = retailerSearchQuery.toLowerCase();
-      const name = (retailer.profile?.realName || retailer.name || '').toLowerCase();
-      const code = String(retailer.code || retailer.id.slice(0, 6)).toLowerCase();
-      return name.includes(query) || code.includes(query);
-    });
-
-    // Pagination Logic
-    const visibleRetailers = filteredRetailers.slice(0, visibleRetailersCount);
-
-    return (
+    // Areas Component
+    const Areas = () => (
       <div className="space-y-6">
         <div className="flex flex-col sm:pt-8 sm:flex-row sm:justify-between sm:items-start gap-4">
           <div>
-            <h2 className="text-2xl font-bold text-gray-900">Retailers Management</h2>
-            <p className="text-gray-600">Manage your retailer network</p>
+            <h2 className="text-2xl font-bold text-gray-900">Areas Management</h2>
+            <p className="text-gray-600">Manage your service areas and zip codes</p>
           </div>
           <div className="flex gap-2">
-            <LoadingButton
-              isLoading={mainLoadingState.loadingState.isRefreshing}
-              loadingText="Refreshing..."
+            <Button
+              variant="outline"
               onClick={handleManualRefresh}
+              disabled={mainLoadingState.loadingState.isRefreshing}
             >
-              <RefreshCw className="h-4 w-4 mr-2" />
-            </LoadingButton>
-            <Button variant="outline" onClick={() => setShowBulkCreate(true)}>
-              <Upload className="h-4 w-4 mr-2" />
-              Bulk Create
+              {mainLoadingState.loadingState.isRefreshing ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4" />
+              )}
+              <span className="sr-only">Refresh</span>
             </Button>
-            <Dialog key="retailer-dialog" open={showCreateRetailer} onOpenChange={handleRetailerDialogChange}>
+            <Dialog key="area-dialog" open={showCreateArea} onOpenChange={handleAreaDialogChange}>
               <DialogTrigger asChild>
                 <Button>
                   <Plus className="h-4 w-4 mr-2" />
-                  Create Retailer
+                  Create Area
                 </Button>
               </DialogTrigger>
               <DialogContent className="max-w-md">
                 <DialogHeader>
-                  <DialogTitle>Create New Retailer</DialogTitle>
+                  <DialogTitle>Create New Area</DialogTitle>
                   <DialogDescription>
-                    Add a new retailer to your network
+                    Add a new service area with zip codes
                   </DialogDescription>
                 </DialogHeader>
-                <CreateRetailerForm
-                  key="retailer-form"
-                  onSubmit={handleCreateRetailer}
-                  onAddExistingRetailer={handleAddExistingRetailer}
-                  areas={areas}
-                  existingRetailers={retailers}
-                  onCancel={() => setShowCreateRetailer(false)}
+                <CreateAreaForm
+                  key="area-form"
+                  onSubmit={handleCreateArea}
+                  onCancel={() => setShowCreateArea(false)}
                 />
               </DialogContent>
             </Dialog>
-
-            <BulkCreateRetailerModal
-              isOpen={showBulkCreate}
-              onClose={() => setShowBulkCreate(false)}
-              onSuccess={() => {
-                setShowBulkCreate(false);
-                fetchDashboardData();
-                showSuccess('Bulk creation completed successfully');
-              }}
-              areas={areas}
-              tenantId={getCurrentTenantId() || ''}
-            />
           </div>
         </div>
 
         <Card>
           <CardHeader>
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-              <div>
-                <CardTitle>All Retailers</CardTitle>
-                <CardDescription>Manage your retailer network</CardDescription>
-              </div>
-              <div className="relative w-full sm:w-64">
-                <Search className="absolute left-2 top-2.5 h-4 w-4 text-gray-500" />
-                <Input
-                  placeholder="Search by name or code..."
-                  value={retailerSearchQuery}
-                  onChange={(e) => {
-                    setRetailerSearchQuery(e.target.value);
-                    setVisibleRetailersCount(20); // Reset pagination on search
-                  }}
-                  className="pl-8"
-                />
-              </div>
-            </div>
+            <CardTitle>All Areas</CardTitle>
+            <CardDescription>Manage your service areas</CardDescription>
           </CardHeader>
           <CardContent>
-            {mainLoadingState.loadingState.isRefreshing ? (
-              <div className="space-y-4">
-                {[...Array(5)].map((_, index) => (
-                  <div key={index} className="flex items-center space-x-4">
-                    <div className="space-y-2 flex-1">
-                      <Skeleton className="h-4 w-48 animate-pulse" />
-                      <Skeleton className="h-3 w-32 animate-pulse" />
-                    </div>
-                    <Skeleton className="h-4 w-24 animate-pulse" />
-                    <Skeleton className="h-4 w-20 animate-pulse" />
-                    <Skeleton className="h-4 w-16 animate-pulse" />
-                    <div className="flex space-x-2">
-                      <Skeleton className="h-8 w-16 animate-pulse" />
-                      <Skeleton className="h-8 w-16 animate-pulse" />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : filteredRetailers.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">
-                No retailers found matching "{retailerSearchQuery}"
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Code</TableHead>
-                      <TableHead>Retailer</TableHead>
-                      <TableHead>Area</TableHead>
-                      <TableHead>Phone</TableHead>
-                      <TableHead>Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {visibleRetailers.map((retailer) => (
-                      <TableRow key={retailer.id}>
-                        <TableCell className="font-mono text-sm">
-                          {retailer.code || retailer.id.substring(0, 6).toUpperCase()}
-                        </TableCell>
-                        <TableCell>
-                          <div className="font-medium">
-                            {retailer.profile?.realName || retailer.name}
-                          </div>
-                          <div className="text-sm text-gray-500">
-                            {retailer.profile?.address || retailer.address}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          {areas.find(a => a.id === retailer.areaId)?.name || 'Unassigned'}
-                        </TableCell>
-                        <TableCell>
-                          {retailer.profile?.phone || retailer.phone}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center space-x-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => setEditingRetailer(retailer)}
-                            >
-                              <Edit className="h-4 w-4 mr-1" />
-                              Edit
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleDeleteRetailer(retailer.id)}
-                            >
-                              <Trash2 className="h-4 w-4 mr-1" />
-                              Delete
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-
-                {/* Load More Button */}
-                {visibleRetailers.length < filteredRetailers.length && (
-                  <div className="flex justify-center pt-6 pb-2">
-                    <Button
-                      variant="outline"
-                      onClick={() => setVisibleRetailersCount(prev => prev + 20)}
-                      className="min-w-[200px]"
-                    >
-                      Load More ({filteredRetailers.length - visibleRetailers.length} remaining)
-                    </Button>
-                  </div>
-                )}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-
-        {/* Edit Retailer Dialog */}
-        {editingRetailer && (
-          <Dialog open={!!editingRetailer} onOpenChange={(open) => !open && setEditingRetailer(null)}>
-            <DialogContent className="max-w-lg">
-              <DialogHeader>
-                <DialogTitle>Edit Retailer Service Area</DialogTitle>
-                <DialogDescription>
-                  Update the service area for this retailer
-                </DialogDescription>
-              </DialogHeader>
-              {editingRetailer && (
-                <RetailerServiceAreaEdit
-                  retailer={editingRetailer}
-                  onSubmit={async (data) => {
-                    const currentTenantId = getCurrentTenantId();
-                    if (!currentTenantId) return;
-
-                    try {
-                      console.log('🔧 Starting retailer update...');
-
-                      // Update wholesaler assignment (area/zipcodes)
-                      await retailerService.updateWholesalerAssignment(
-                        editingRetailer.id,
-                        currentTenantId,
-                        data.areaId,
-                        data.zipcodes
-                      );
-                      console.log('✅ Wholesaler assignment updated successfully');
-
-                      // Update code if provided
-                      // Update code if provided using upsertWholesalerData to ensure isolation
-                      if (data.code !== undefined) {
-                        await retailerService.upsertWholesalerData(
-                          editingRetailer.id,
-                          currentTenantId,
-                          { code: data.code || '' } // Pass empty string if undefined/null to clear it
-                        );
-                        console.log('✅ Retailer code updated successfully (Wholesaler-Specific)');
-                      }
-
-                      // Add a small delay to ensure Firestore cache is updated
-                      await new Promise(resolve => setTimeout(resolve, 500));
-
-                      // Fetch the updated retailer with proper data merging
-                      const updatedRetailer = await retailerService.getRetailerForTenant(editingRetailer.id, currentTenantId);
-
-                      if (updatedRetailer) {
-                        // Update only the specific retailer in the existing retailers array
-                        setRetailers(prevRetailers =>
-                          prevRetailers.map(r =>
-                            r.id === editingRetailer.id ? updatedRetailer : r
-                          )
-                        );
-                        console.log('🔄 Updated retailer in state with new area/zipcodes');
-
-                        // Show success feedback with confetti
-                        const areaName = areas.find(a => a.id === data.areaId)?.name || 'Updated area';
-                        showSuccess(`Service area for "${editingRetailer.name}" updated to "${areaName}" successfully!`);
-                        setTriggerLineWorkerConfetti(true);
-
-                        // Close dialog after showing success
-                        setTimeout(() => {
-                          setEditingRetailer(null);
-                          setTriggerLineWorkerConfetti(false);
-                        }, 1500);
-                      } else {
-                        console.error('❌ Could not fetch updated retailer data');
-                      }
-                    } catch (err: any) {
-                      console.error('❌ Error updating retailer service area:', err);
-                      setError(err.message || 'Failed to update retailer service area');
-                    }
-                  }}
-                  onCancel={() => setEditingRetailer(null)}
-                  areas={areas}
-                />
-              )}
-            </DialogContent>
-          </Dialog>
-        )}
-      </div>
-    );
-  };
-
-  // Line Workers Component
-  const LineWorkers = () => (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:pt-8 sm:flex-row sm:justify-between sm:items-start gap-4">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">Line Workers Management</h2>
-          <p className="text-gray-600">Manage your line workers and their assignments</p>
-        </div>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            onClick={handleManualRefresh}
-            disabled={mainLoadingState.loadingState.isRefreshing}
-          >
-            {mainLoadingState.loadingState.isRefreshing ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <RefreshCw className="h-4 w-4" />
-            )}
-            <span className="sr-only">Refresh</span>
-          </Button>
-          <Dialog key="line-worker-dialog" open={showCreateLineWorker} onOpenChange={handleLineWorkerDialogChange}>
-            <DialogTrigger asChild>
-              <Button>
-                <Plus className="h-4 w-4 mr-2" />
-                Create Line Worker
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-md">
-              <Confetti trigger={triggerLineWorkerConfetti} onComplete={handleLineWorkerConfettiComplete} />
-              <DialogHeader>
-                <DialogTitle>Create New Line Worker</DialogTitle>
-                <DialogDescription>
-                  Add a new line worker to your team
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4">
-                {showLineWorkerSuccess ? (
-                  <div className="text-center py-8">
-                    <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
-                    <h3 className="text-lg font-semibold text-green-700 mb-2">Line Worker Created Successfully!</h3>
-                    <p className="text-gray-600">The new line worker has been created and is ready to use.</p>
-                  </div>
-                ) : (
-                  <>
-                    <div className="space-y-2">
-                      <Label htmlFor="workerEmail">Email</Label>
-                      <Input
-                        id="workerEmail"
-                        type="email"
-                        placeholder="Enter email address"
-                        required
-                        disabled={creatingLineWorker}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="workerPassword">Password</Label>
-                      <Input
-                        id="workerPassword"
-                        type="password"
-                        placeholder="Enter password"
-                        required
-                        disabled={creatingLineWorker}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="workerDisplayName">Display Name</Label>
-                      <Input
-                        id="workerDisplayName"
-                        placeholder="Enter display name"
-                        disabled={creatingLineWorker}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="workerPhone">Phone</Label>
-                      <Input
-                        id="workerPhone"
-                        type="tel"
-                        placeholder="Enter phone number"
-                        disabled={creatingLineWorker}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Assigned Areas</Label>
-                      <p className="text-xs text-gray-500">Optional: Leave all unchecked to create worker without area assignments. Areas can be shared between multiple workers.</p>
-                      <div className="space-y-2 max-h-32 overflow-y-auto">
-                        {areas.map((area) => {
-                          const isAssignedToOther = isAreaAssignedToOtherWorker(area.id);
-                          const assignedWorker = getAssignedWorkerForArea(area.id);
-
-                          return (
-                            <div key={area.id} className="flex items-center space-x-2">
-                              <input
-                                type="checkbox"
-                                id={`area-${area.id}`}
-                                value={area.id}
-                                className="rounded"
-                                disabled={creatingLineWorker}
-                              />
-                              <label
-                                htmlFor={`area-${area.id}`}
-                                className="text-sm"
-                                title={isAssignedToOther ? `Also assigned to: ${assignedWorker?.displayName || 'Unknown Worker'}` : ''}
-                              >
-                                {area.name}
-                                {isAssignedToOther && (
-                                  <span className="text-xs text-blue-500 ml-2">
-                                    (Shared with {assignedWorker?.displayName || 'Unknown'})
-                                  </span>
-                                )}
-                              </label>
-                            </div>
-                          );
-                        })}
-                      </div>
-
-                    </div>
-                    <div className="flex space-x-2">
-                      <Button
-                        onClick={async () => {
-                          const email = (document.getElementById('workerEmail') as HTMLInputElement)?.value;
-                          const password = (document.getElementById('workerPassword') as HTMLInputElement)?.value;
-                          const displayName = (document.getElementById('workerDisplayName') as HTMLInputElement)?.value;
-                          const phone = (document.getElementById('workerPhone') as HTMLInputElement)?.value;
-                          const assignedAreas: string[] = [];
-
-                          areas.forEach(area => {
-                            const checkbox = document.getElementById(`area-${area.id}`) as HTMLInputElement;
-                            if (checkbox?.checked) {
-                              assignedAreas.push(area.id);
-                            }
-                          });
-
-                          if (email && password) {
-                            const createData: any = {
-                              email,
-                              password,
-                              displayName: displayName || undefined,
-                              phone: phone || undefined
-                            };
-
-                            // Only include assignedAreas if it has values
-                            if (assignedAreas.length > 0) {
-                              createData.assignedAreas = assignedAreas;
-                            }
-
-                            try {
-                              await handleCreateLineWorker(createData);
-                            } catch (error) {
-                              // Show error to user
-                              const errorMessage = error instanceof Error ? error.message : 'Failed to create line worker';
-                              setError(errorMessage);
-                              setTimeout(() => setError(null), 5000);
-                            }
-                          } else {
-                            setError('Please fill in all required fields');
-                            setTimeout(() => setError(null), 5000);
-                          }
-                        }}
-                        disabled={creatingLineWorker}
-                      >
-                        {creatingLineWorker ? (
-                          <>
-                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                            Creating...
-                          </>
-                        ) : (
-                          'Create Line Worker'
-                        )}
-                      </Button>
-                      <Button
-                        variant="outline"
-                        onClick={() => setShowCreateLineWorker(false)}
-                        disabled={creatingLineWorker}
-                      >
-                        Cancel
-                      </Button>
-                    </div>
-                  </>
-                )}
-              </div>
-            </DialogContent>
-          </Dialog>
-        </div>
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>All Line Workers</CardTitle>
-          <CardDescription>Manage your line workers and their assignments</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {mainLoadingState.loadingState.isRefreshing ? (
-              <>
-                {[...Array(5)].map((_, index) => (
-                  <div key={index} className="flex items-center justify-between p-4 border rounded-lg">
-                    <div className="flex items-center space-x-4">
-                      <Skeleton className="w-10 h-10 rounded-full animate-pulse" />
-                      <div className="space-y-2">
-                        <Skeleton className="h-4 w-32 animate-pulse" />
-                        <Skeleton className="h-3 w-48 animate-pulse" />
-                        <Skeleton className="h-3 w-36 animate-pulse" />
-                      </div>
-                    </div>
-                    <div className="flex items-center space-x-4">
-                      <Skeleton className="h-6 w-16 animate-pulse" />
-                      <Skeleton className="h-8 w-20 animate-pulse" />
-                      <Skeleton className="h-8 w-16 animate-pulse" />
-                      <Skeleton className="h-8 w-16 animate-pulse" />
-                    </div>
-                  </div>
-                ))}
-              </>
-            ) : (
-              lineWorkers
-                .map((worker) => (
-                  <div key={worker.id} className="flex flex-col p-4 border rounded-lg gap-4">
-                    {/* Badge positioned at top-right corner */}
-                    <div className="self-end sm:self-auto">
-                      <Badge className={worker.active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}>
-                        {worker.active ? 'Active' : 'Inactive'}
-                      </Badge>
-                    </div>
-
-                    <div className="flex items-center space-x-4">
-                      <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-                        <Users className="h-5 w-5 text-blue-600" />
-                      </div>
-                      <div>
-                        <div className="font-medium">{worker.displayName}</div>
-                        <div className="text-sm text-gray-500">{worker.email}</div>
-                        <div className="text-sm text-gray-500">{worker.phone}</div>
-                      </div>
-                    </div>
-
-                    {/* Assigned Areas Chips */}
-                    {worker.assignedAreas && worker.assignedAreas.length > 0 && (
-                      <div className="mt-2">
-                        <Label className="text-xs text-gray-500 mb-1.5 block">Assigned Areas</Label>
-                        <div className="flex flex-wrap gap-2">
-                          {worker.assignedAreas.map(areaId => {
-                            const area = areas.find(a => a.id === areaId);
-                            return (
-                              <Badge key={areaId} variant="secondary" className="bg-blue-50 text-blue-700 hover:bg-blue-100 border-blue-200">
-                                {area?.name || 'Unknown Area'}
-                              </Badge>
-                            );
-                          })}
+            <div className="space-y-4">
+              {mainLoadingState.loadingState.isRefreshing ? (
+                <>
+                  {[...Array(5)].map((_, index) => (
+                    <div key={index} className="flex items-center justify-between p-4 border rounded-lg">
+                      <div className="flex items-center space-x-4">
+                        <Skeleton className="w-10 h-10 rounded-full animate-pulse" />
+                        <div className="space-y-2">
+                          <Skeleton className="h-4 w-32 animate-pulse" />
+                          <Skeleton className="h-3 w-24 animate-pulse" />
                         </div>
                       </div>
-                    )}
-
-                    <div className="flex space-x-2 flex-wrap gap-y-2 sm:flex-nowrap sm:items-center mt-2">
-                      <Button
-                        variant={worker.active ? "outline" : "default"}
-                        size="sm"
-                        onClick={() => handleToggleLineWorkerStatus(worker.id, worker.active)}
-                        className={worker.active ? "hover:bg-red-50 hover:text-red-600 hover:border-red-200 flex-1 sm:flex-none" : "hover:bg-green-50 hover:text-green-600 hover:border-green-200 flex-1 sm:flex-none"}
-                      >
-                        {worker.active ? (
-                          <>
-                            <XCircle className="h-4 w-4 mr-1" />
-                            Deactivate
-                          </>
-                        ) : (
-                          <>
-                            <CheckCircle className="h-4 w-4 mr-1" />
-                            Activate
-                          </>
-                        )}
-                      </Button>
+                      <div className="flex items-center space-x-2">
+                        <Skeleton className="h-8 w-16 animate-pulse" />
+                        <Skeleton className="h-8 w-16 animate-pulse" />
+                      </div>
+                    </div>
+                  ))}
+                </>
+              ) : (
+                areas.map((area) => (
+                  <div key={area.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 border rounded-lg gap-4">
+                    <div className="flex items-center space-x-4">
+                      <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                        <MapPin className="h-5 w-5 text-blue-600" />
+                      </div>
+                      <div>
+                        <div className="font-medium">
+                          {area.name}
+                          <span className="text-gray-500 font-normal ml-2 text-sm">
+                            ({retailers.filter(r => r.areaId === area.id).length} retailers)
+                          </span>
+                        </div>
+                        <div className="text-sm text-gray-500">
+                          {area.zipcodes.length} zip codes
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex sm:items-center space-x-2 flex-wrap gap-y-2 sm:flex-nowrap">
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => {
-                          setEditingLineWorker(worker);
-                          setEditingSelectedAreas(worker.assignedAreas || []);
-                          setEditingActiveStatus(worker.active);
-                          setShowEditLineWorkerDialog(true);
-                        }}
+                        onClick={() => handleToggleArea(area.id)}
                         className="flex-1 sm:flex-none"
                       >
                         <Edit className="h-4 w-4 mr-1" />
@@ -2636,7 +2026,7 @@ export function WholesalerAdminDashboard() {
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => handleDeleteLineWorker(worker.id)}
+                        onClick={() => handleDeleteArea(area.id)}
                         className="flex-1 sm:flex-none"
                       >
                         <Trash2 className="h-4 w-4 mr-1" />
@@ -2645,380 +2035,996 @@ export function WholesalerAdminDashboard() {
                     </div>
                   </div>
                 ))
-            )}
-          </div>
-        </CardContent>
-      </Card>
-    </div>
-  );
+              )}
+            </div>
+          </CardContent>
+        </Card>
 
-  // Transactions Component (Render Function to avoid re-mounting)
-  const renderTransactions = () => {
-    // Filter payments based on selected criteria and sort by most recent first
-    const filteredPayments = payments
-      .filter(payment => {
-        // Apply line worker filter
-        if (selectedLineWorker !== "all" && payment.lineWorkerId !== selectedLineWorker) {
-          return false;
-        }
+        {/* Edit Area Dialog */}
+        {editingArea && (
+          <Dialog open={!!editingArea} onOpenChange={() => setEditingArea(null)}>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle>Edit Area</DialogTitle>
+                <DialogDescription>
+                  Update area information and zipcodes
+                </DialogDescription>
+              </DialogHeader>
+              {editingArea && (
+                <CreateAreaForm
+                  onSubmit={async (data) => {
+                    const currentTenantId = getCurrentTenantId();
+                    if (!currentTenantId) return;
 
-        // Apply retailer filter
-        if (selectedRetailer !== "all" && payment.retailerId !== selectedRetailer) {
-          return false;
-        }
-
-        // Apply area filter
-        if (selectedArea !== "all") {
-          const retailer = retailers.find(r => r.id === payment.retailerId);
-          if (retailer?.areaId !== selectedArea) {
-            return false;
-          }
-        }
-
-        // Apply payment method filter
-        if (paymentMethodFilter !== 'all' && payment.method !== paymentMethodFilter) {
-          return false;
-        }
-
-        // Apply date range filter
-        const paymentDate = payment.createdAt.toDate();
-        if (paymentDate < transactionsDateRange.startDate || paymentDate > transactionsDateRange.endDate) {
-          return false;
-        }
-
-        return true;
-      })
-      .sort((a, b) => b.createdAt.toDate().getTime() - a.createdAt.toDate().getTime());
-
-    const completedPayments = filteredPayments.filter(payment => payment.state === 'COMPLETED');
-    const pendingCancelledPayments = filteredPayments.filter(payment =>
-      ['INITIATED', 'OTP_SENT', 'OTP_VERIFIED', 'CANCELLED', 'EXPIRED'].includes(payment.state)
+                    try {
+                      await areaService.update(editingArea.id, {
+                        name: data.name,
+                        zipcodes: data.zipcodes
+                      }, currentTenantId);
+                      await fetchDashboardData();
+                      setEditingArea(null);
+                    } catch (err: any) {
+                      setError(err.message || 'Failed to update area');
+                    }
+                  }}
+                  onCancel={() => setEditingArea(null)}
+                  initialData={editingArea}
+                />
+              )}
+            </DialogContent>
+          </Dialog>
+        )}
+      </div>
     );
 
-    // Get count of unverified UPI payments for the alert
-    const pendingVerificationCount = payments.filter(p =>
-      !p.verified &&
-      p.method === 'UPI' &&
-      p.state === 'COMPLETED'
-    ).length;
-
-    // Helper to prepare data for export
-    const getExportData = () => {
-      return payments.filter(p => {
-        let include = true;
-        // Filter by payment method
-        if (paymentMethodFilter !== 'all' && p.method !== paymentMethodFilter) include = false;
-        // Filter by line worker
-        if (selectedLineWorker !== 'all' && p.lineWorkerId !== selectedLineWorker) include = false;
-        // Filter by retailer
-        if (selectedRetailer !== 'all' && p.retailerId !== selectedRetailer) include = false;
-        // Filter by area
-        if (selectedArea !== 'all') {
-          const retailer = retailers.find(r => r.id === p.retailerId);
-          if (retailer?.areaId !== selectedArea) include = false;
-        }
-        // Filter by date range
-        const paymentDate = p.createdAt?.toDate?.() || new Date(0);
-        if (paymentDate < transactionsDateRange.startDate || paymentDate > transactionsDateRange.endDate) include = false;
-        return include;
-      })
-        .sort((a, b) => a.createdAt.toMillis() - b.createdAt.toMillis())
-        .map(p => {
-          // Look up details
-          const retailer = retailers.find(r => r.id === p.retailerId);
-          const retailerCode = retailer?.code || retailer?.id?.slice(0, 6).toUpperCase() || 'N/A';
-          const retailerName = retailer?.profile?.realName || p.retailerName || 'Unknown';
-
-          // Look up Area Name
-          const areaId = retailer?.areaId;
-          const area = areas.find(a => a.id === areaId);
-          const areaName = area?.name || 'Unknown Area';
-
-          // Calculate Status
-          let status: string = p.state;
-          if (p.method === 'CASH' || p.method === 'BANK_TRANSFER') {
-            status = 'Verified';
-          } else if (p.method === 'UPI') {
-            status = p.verified ? 'Verified' : 'Pending Verification';
-          } else if (p.verified) {
-            status = 'Verified';
-          }
-
-          return {
-            date: formatDateForExport(p.createdAt),
-            retailerCode,
-            retailerName,
-            amount: p.totalPaid,
-            method: p.method,
-            utr: p.utr || '',
-            chequeNumber: p.chequeNumber || '',
-            bankName: p.bankName || '',
-            chequeDate: p.chequeDate ? new Date(p.chequeDate).toLocaleDateString() : '',
-            lineWorker: p.lineWorkerName || 'Unknown',
-            serviceArea: areaName,
-            status: status
-          };
-        });
-    };
-
-    const handleDownloadReport = (format: 'csv' | 'excel') => {
-      const data = getExportData();
-
-      // Sort by payment method first, then by date
-      const sortedData = [...data].sort((a, b) => {
-        if (a.method !== b.method) {
-          return a.method.localeCompare(b.method);
-        }
-        return new Date(a.date).getTime() - new Date(b.date).getTime();
+    // Retailers Component
+    // Retailers Component (Render Function to avoid re-mounting)
+    const renderRetailers = () => {
+      // Filter retailers based on search query
+      const filteredRetailers = retailers.filter(retailer => {
+        if (!retailerSearchQuery) return true;
+        const query = retailerSearchQuery.toLowerCase();
+        const name = (retailer.profile?.realName || retailer.name || '').toLowerCase();
+        const code = String(retailer.code || retailer.id.slice(0, 6)).toLowerCase();
+        return name.includes(query) || code.includes(query);
       });
 
-      // Calculate totals
-      const totalAmount = sortedData.reduce((sum, row) => sum + row.amount, 0);
-      const cashTotal = sortedData.filter(row => row.method === 'CASH').reduce((sum, row) => sum + row.amount, 0);
-      const upiTotal = sortedData.filter(row => row.method === 'UPI').reduce((sum, row) => sum + row.amount, 0);
-      const bankTotal = sortedData.filter(row => row.method === 'BANK_TRANSFER').reduce((sum, row) => sum + row.amount, 0);
-      const chequeTotal = sortedData.filter(row => row.method === 'CHEQUE').reduce((sum, row) => sum + row.amount, 0);
+      // Pagination Logic
+      const visibleRetailers = filteredRetailers.slice(0, visibleRetailersCount);
 
-      const fileName = `Transactions_${formatTimestamp(transactionsDateRange.startDate)}_to_${formatTimestamp(transactionsDateRange.endDate)}`;
+      return (
+        <div className="space-y-6">
+          <div className="flex flex-col sm:pt-8 sm:flex-row sm:justify-between sm:items-start gap-4">
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900">Retailers Management</h2>
+              <p className="text-gray-600">Manage your retailer network</p>
+            </div>
+            <div className="flex gap-2">
+              <LoadingButton
+                isLoading={mainLoadingState.loadingState.isRefreshing}
+                loadingText="Refreshing..."
+                onClick={handleManualRefresh}
+              >
+                <RefreshCw className="h-4 w-4 mr-2" />
+              </LoadingButton>
+              <Button variant="outline" onClick={() => setShowBulkCreate(true)}>
+                <Upload className="h-4 w-4 mr-2" />
+                Bulk Create
+              </Button>
+              <Dialog key="retailer-dialog" open={showCreateRetailer} onOpenChange={handleRetailerDialogChange}>
+                <DialogTrigger asChild>
+                  <Button>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Create Retailer
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-md">
+                  <DialogHeader>
+                    <DialogTitle>Create New Retailer</DialogTitle>
+                    <DialogDescription>
+                      Add a new retailer to your network
+                    </DialogDescription>
+                  </DialogHeader>
+                  <CreateRetailerForm
+                    key="retailer-form"
+                    onSubmit={handleCreateRetailer}
+                    onAddExistingRetailer={handleAddExistingRetailer}
+                    areas={areas}
+                    existingRetailers={retailers}
+                    onCancel={() => setShowCreateRetailer(false)}
+                  />
+                </DialogContent>
+              </Dialog>
 
-      if (format === 'csv') {
-        // Generate CSV content
-        const csvRows: string[] = [];
+              <BulkCreateRetailerModal
+                isOpen={showBulkCreate}
+                onClose={() => setShowBulkCreate(false)}
+                onSuccess={() => {
+                  setShowBulkCreate(false);
+                  fetchDashboardData();
+                  showSuccess('Bulk creation completed successfully');
+                }}
+                areas={areas}
+                tenantId={getCurrentTenantId() || ''}
+              />
+            </div>
+          </div>
 
-        // 1. Report Title & Date Range
-        csvRows.push('Report: PharmaLync Transactions Report');
-        csvRows.push(`"Date Range: ${formatTimestamp(transactionsDateRange.startDate)} - ${formatTimestamp(transactionsDateRange.endDate)}"`);
+          <Card>
+            <CardHeader>
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <div>
+                  <CardTitle>All Retailers</CardTitle>
+                  <CardDescription>Manage your retailer network</CardDescription>
+                </div>
+                <div className="relative w-full sm:w-64">
+                  <Search className="absolute left-2 top-2.5 h-4 w-4 text-gray-500" />
+                  <Input
+                    placeholder="Search by name or code..."
+                    value={retailerSearchQuery}
+                    onChange={(e) => {
+                      setRetailerSearchQuery(e.target.value);
+                      setVisibleRetailersCount(20); // Reset pagination on search
+                    }}
+                    className="pl-8"
+                  />
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {mainLoadingState.loadingState.isRefreshing ? (
+                <div className="space-y-4">
+                  {[...Array(5)].map((_, index) => (
+                    <div key={index} className="flex items-center space-x-4">
+                      <div className="space-y-2 flex-1">
+                        <Skeleton className="h-4 w-48 animate-pulse" />
+                        <Skeleton className="h-3 w-32 animate-pulse" />
+                      </div>
+                      <Skeleton className="h-4 w-24 animate-pulse" />
+                      <Skeleton className="h-4 w-20 animate-pulse" />
+                      <Skeleton className="h-4 w-16 animate-pulse" />
+                      <div className="flex space-x-2">
+                        <Skeleton className="h-8 w-16 animate-pulse" />
+                        <Skeleton className="h-8 w-16 animate-pulse" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : filteredRetailers.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  No retailers found matching "{retailerSearchQuery}"
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Code</TableHead>
+                        <TableHead>Retailer</TableHead>
+                        <TableHead>Area</TableHead>
+                        <TableHead>Phone</TableHead>
+                        <TableHead>Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {visibleRetailers.map((retailer) => (
+                        <TableRow key={retailer.id}>
+                          <TableCell className="font-mono text-sm">
+                            {retailer.code || retailer.id.substring(0, 6).toUpperCase()}
+                          </TableCell>
+                          <TableCell>
+                            <div className="font-medium">
+                              {retailer.profile?.realName || retailer.name}
+                            </div>
+                            <div className="text-sm text-gray-500">
+                              {retailer.profile?.address || retailer.address}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            {areas.find(a => a.id === retailer.areaId)?.name || 'Unassigned'}
+                          </TableCell>
+                          <TableCell>
+                            {retailer.profile?.phone || retailer.phone}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center space-x-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setEditingRetailer(retailer)}
+                              >
+                                <Edit className="h-4 w-4 mr-1" />
+                                Edit
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleDeleteRetailer(retailer.id)}
+                              >
+                                <Trash2 className="h-4 w-4 mr-1" />
+                                Delete
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
 
-        // 2. Filter Details
-        if (paymentMethodFilter !== 'all') csvRows.push(`"Payment Method: ${paymentMethodFilter}"`);
-        if (selectedArea !== 'all') {
-          const area = areas.find(a => a.id === selectedArea);
-          csvRows.push(`"Service Area: ${area?.name || 'Unknown'}"`);
-        }
-        if (selectedLineWorker !== 'all') {
-          const worker = lineWorkers.find(w => w.id === selectedLineWorker);
-          csvRows.push(`"Line Worker: ${worker?.displayName || 'Unknown'}"`);
-        }
-        if (selectedRetailer !== 'all') {
-          const retailer = retailers.find(r => r.id === selectedRetailer);
-          const retailerName = retailer?.profile?.realName || retailer?.name || 'Unknown';
-          csvRows.push(`"Retailer: ${retailerName}"`);
-        }
-        csvRows.push(''); // Separator
+                  {/* Load More Button */}
+                  {visibleRetailers.length < filteredRetailers.length && (
+                    <div className="flex justify-center pt-6 pb-2">
+                      <Button
+                        variant="outline"
+                        onClick={() => setVisibleRetailersCount(prev => prev + 20)}
+                        className="min-w-[200px]"
+                      >
+                        Load More ({filteredRetailers.length - visibleRetailers.length} remaining)
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
-        // 3. Headers
-        const headers = [
-          'Date', 'Retailer Code', 'Retailer Name', 'Amount Collected',
-          'Payment Method', 'Ref No / Cheque No', 'Bank / Details', 'Line Worker', 'Service Area', 'Status'
-        ];
-        csvRows.push(headers.join(','));
 
-        // 4. Rows
-        sortedData.forEach(row => {
-          let refNo = row.utr || '';
-          let details = '';
+          {/* Edit Retailer Dialog */}
+          {editingRetailer && (
+            <Dialog open={!!editingRetailer} onOpenChange={(open) => !open && setEditingRetailer(null)}>
+              <DialogContent className="max-w-lg">
+                <DialogHeader>
+                  <DialogTitle>Edit Retailer Service Area</DialogTitle>
+                  <DialogDescription>
+                    Update the service area for this retailer
+                  </DialogDescription>
+                </DialogHeader>
+                {editingRetailer && (
+                  <RetailerServiceAreaEdit
+                    retailer={editingRetailer}
+                    onSubmit={async (data) => {
+                      const currentTenantId = getCurrentTenantId();
+                      if (!currentTenantId) return;
 
-          if (row.method === 'CHEQUE') {
-            refNo = row.chequeNumber || '';
-            details = `${row.bankName || ''} (${row.chequeDate || ''})`;
-          } else if (row.method === 'UPI') {
-            refNo = row.utr || '';
-          }
+                      try {
+                        console.log('🔧 Starting retailer update...');
 
-          const csvRow = [
-            `"${row.date}"`,
-            `"${row.retailerCode}"`,
-            `"${row.retailerName}"`,
-            row.amount.toString(),
-            row.method,
-            `"\t${refNo}"`,
-            `"${details}"`,
-            `"${row.lineWorker}"`,
-            `"${row.serviceArea}"`,
-            `"${row.status}"`
-          ];
-          csvRows.push(csvRow.join(','));
-        });
+                        // Update wholesaler assignment (area/zipcodes)
+                        await retailerService.updateWholesalerAssignment(
+                          editingRetailer.id,
+                          currentTenantId,
+                          data.areaId,
+                          data.zipcodes
+                        );
+                        console.log('✅ Wholesaler assignment updated successfully');
 
-        // 5. Totals
-        csvRows.push(''); // Empty row
-        csvRows.push(['', 'Total Cash', '', cashTotal.toString(), 'CASH', '', '', '', ''].join(','));
-        csvRows.push(['', 'Total UPI', '', upiTotal.toString(), 'UPI', '', '', '', ''].join(','));
-        csvRows.push(['', 'Total Bank Transfer', '', bankTotal.toString(), 'BANK_TRANSFER', '', '', '', ''].join(','));
-        csvRows.push(['', 'Total Cheque', '', chequeTotal.toString(), 'CHEQUE', '', '', '', ''].join(','));
-        csvRows.push(['', 'Grand Total', '', totalAmount.toString(), '', '', '', '', ''].join(','));
+                        // Update code if provided
+                        // Update code if provided using upsertWholesalerData to ensure isolation
+                        if (data.code !== undefined) {
+                          await retailerService.upsertWholesalerData(
+                            editingRetailer.id,
+                            currentTenantId,
+                            { code: data.code || '' } // Pass empty string if undefined/null to clear it
+                          );
+                          console.log('✅ Retailer code updated successfully (Wholesaler-Specific)');
+                        }
 
-        const blob = new Blob([csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
-        link.download = `${fileName}.csv`;
-        link.click();
+                        // Add a small delay to ensure Firestore cache is updated
+                        await new Promise(resolve => setTimeout(resolve, 500));
 
-      } else {
-        // Excel Export
-        // Create summary sheet data
-        const summaryData = [
-          ['Report', 'PharmaLync Transactions Report'],
-          ['Date Range', `${formatTimestamp(transactionsDateRange.startDate)} - ${formatTimestamp(transactionsDateRange.endDate)}`],
-          ['Generated At', new Date().toLocaleString()]
-        ];
+                        // Fetch the updated retailer with proper data merging
+                        const updatedRetailer = await retailerService.getRetailerForTenant(editingRetailer.id, currentTenantId);
 
-        // Add filter info to summary
-        if (paymentMethodFilter !== 'all') summaryData.push(['Payment Method', paymentMethodFilter]);
-        if (selectedArea !== 'all') {
-          const area = areas.find(a => a.id === selectedArea);
-          summaryData.push(['Service Area', area?.name || 'Unknown']);
-        }
-        if (selectedLineWorker !== 'all') {
-          const worker = lineWorkers.find(w => w.id === selectedLineWorker);
-          summaryData.push(['Line Worker', worker?.displayName || 'Unknown']);
-        }
+                        if (updatedRetailer) {
+                          // Update only the specific retailer in the existing retailers array
+                          setRetailers(prevRetailers =>
+                            prevRetailers.map(r =>
+                              r.id === editingRetailer.id ? updatedRetailer : r
+                            )
+                          );
+                          console.log('🔄 Updated retailer in state with new area/zipcodes');
 
-        // Prepare main data
-        const mainDataHeader = [
-          'Date', 'Retailer Code', 'Retailer Name', 'Amount Collected',
-          'Payment Method', 'Ref No / Cheque No', 'Bank / Details', 'Line Worker', 'Service Area', 'Status'
-        ];
+                          // Show success feedback with confetti
+                          const areaName = areas.find(a => a.id === data.areaId)?.name || 'Updated area';
+                          showSuccess(`Service area for "${editingRetailer.name}" updated to "${areaName}" successfully!`);
+                          setTriggerLineWorkerConfetti(true);
 
-        const mainDataRows = sortedData.map(row => {
-          let refNo = row.utr || '';
-          let details = '';
-
-          if (row.method === 'CHEQUE') {
-            refNo = row.chequeNumber || '';
-            details = `${row.bankName || ''} (${row.chequeDate || ''})`;
-          } else if (row.method === 'UPI') {
-            refNo = row.utr || 'UPI';
-          }
-
-          return [
-            row.date,
-            row.retailerCode,
-            row.retailerName,
-            row.amount,
-            row.method,
-            { t: 's', v: refNo }, // Force string format for Ref/Cheque No
-            details,
-            row.lineWorker,
-            row.serviceArea,
-            row.status
-          ];
-        });
-
-        // Total rows
-        const cashTotalRow = ['', 'Total Cash', '', cashTotal, 'CASH', '', '', '', '', ''];
-        const upiTotalRow = ['', 'Total UPI', '', upiTotal, 'UPI', '', '', '', '', ''];
-        const bankTotalRow = ['', 'Total Bank Transfer', '', bankTotal, 'BANK_TRANSFER', '', '', '', '', ''];
-        const chequeTotal = sortedData.filter(row => row.method === 'CHEQUE').reduce((sum, row) => sum + row.amount, 0);
-        const chequeTotalRow = ['', 'Total Cheque', '', chequeTotal, 'CHEQUE', '', '', '', '', ''];
-        const grandTotalRow = ['', 'Grand Total', '', totalAmount, '', '', '', '', '', ''];
-
-        // Create workbook
-        const wb = XLSX.utils.book_new();
-
-        // Add Main Data Sheet
-        // We can combine summary + empty row + headers + data + totals
-        const wsData = [
-          ...summaryData,
-          [], // Empty row
-          mainDataHeader,
-          ...mainDataRows,
-          [], // Empty row before totals
-          cashTotalRow,
-          upiTotalRow,
-          chequeTotalRow,
-          bankTotalRow,
-          grandTotalRow
-        ];
-
-        const ws = XLSX.utils.aoa_to_sheet(wsData);
-
-        // Adjust column widths
-        const wscols = [
-          { wch: 20 }, // Date
-          { wch: 15 }, // Code
-          { wch: 30 }, // Name
-          { wch: 15 }, // Amount
-          { wch: 15 }, // Method
-          { wch: 20 }, // Ref No
-          { wch: 30 }, // Bank Details
-          { wch: 20 }, // Worker
-          { wch: 20 }, // Area
-          { wch: 20 }  // Status
-        ];
-        ws['!cols'] = wscols;
-
-        XLSX.utils.book_append_sheet(wb, ws, "Transactions");
-        XLSX.writeFile(wb, `${fileName}.xlsx`);
-      }
-
-      setShowDownloadModal(false);
+                          // Close dialog after showing success
+                          setTimeout(() => {
+                            setEditingRetailer(null);
+                            setTriggerLineWorkerConfetti(false);
+                          }, 1500);
+                        } else {
+                          console.error('❌ Could not fetch updated retailer data');
+                        }
+                      } catch (err: any) {
+                        console.error('❌ Error updating retailer service area:', err);
+                        setError(err.message || 'Failed to update retailer service area');
+                      }
+                    }}
+                    onCancel={() => setEditingRetailer(null)}
+                    areas={areas}
+                  />
+                )}
+              </DialogContent>
+            </Dialog>
+          )}
+        </div>
+      );
     };
 
-    return (
+    // Line Workers Component
+    const LineWorkers = () => (
       <div className="space-y-6">
         <div className="flex flex-col sm:pt-8 sm:flex-row sm:justify-between sm:items-start gap-4">
           <div>
-            <h2 className="text-2xl font-bold text-gray-900">Transactions</h2>
-            <p className="text-gray-600">View and manage all payment transactions</p>
+            <h2 className="text-2xl font-bold text-gray-900">Line Workers Management</h2>
+            <p className="text-gray-600">Manage your line workers and their assignments</p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {/* Payment Method Filter */}
-            <Select value={paymentMethodFilter} onValueChange={(val: any) => setPaymentMethodFilter(val)}>
-              <SelectTrigger className="w-32">
-                <SelectValue placeholder="All Methods" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Methods</SelectItem>
-                <SelectItem value="CASH">Cash</SelectItem>
-                <SelectItem value="UPI">UPI</SelectItem>
-                <SelectItem value="BANK_TRANSFER">Bank Transfer</SelectItem>
-                <SelectItem value="CHEQUE">Cheque</SelectItem>
-              </SelectContent>
-            </Select>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={handleManualRefresh}
+              disabled={mainLoadingState.loadingState.isRefreshing}
+            >
+              {mainLoadingState.loadingState.isRefreshing ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4" />
+              )}
+              <span className="sr-only">Refresh</span>
+            </Button>
+            <Dialog key="line-worker-dialog" open={showCreateLineWorker} onOpenChange={handleLineWorkerDialogChange}>
+              <DialogTrigger asChild>
+                <Button>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Create Line Worker
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-md">
+                <Confetti trigger={triggerLineWorkerConfetti} onComplete={handleLineWorkerConfettiComplete} />
+                <DialogHeader>
+                  <DialogTitle>Create New Line Worker</DialogTitle>
+                  <DialogDescription>
+                    Add a new line worker to your team
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4">
+                  {showLineWorkerSuccess ? (
+                    <div className="text-center py-8">
+                      <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
+                      <h3 className="text-lg font-semibold text-green-700 mb-2">Line Worker Created Successfully!</h3>
+                      <p className="text-gray-600">The new line worker has been created and is ready to use.</p>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="space-y-2">
+                        <Label htmlFor="workerEmail">Email</Label>
+                        <Input
+                          id="workerEmail"
+                          type="email"
+                          placeholder="Enter email address"
+                          required
+                          disabled={creatingLineWorker}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="workerPassword">Password</Label>
+                        <Input
+                          id="workerPassword"
+                          type="password"
+                          placeholder="Enter password"
+                          required
+                          disabled={creatingLineWorker}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="workerDisplayName">Display Name</Label>
+                        <Input
+                          id="workerDisplayName"
+                          placeholder="Enter display name"
+                          disabled={creatingLineWorker}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="workerPhone">Phone</Label>
+                        <Input
+                          id="workerPhone"
+                          type="tel"
+                          placeholder="Enter phone number"
+                          disabled={creatingLineWorker}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Assigned Areas</Label>
+                        <p className="text-xs text-gray-500">Optional: Leave all unchecked to create worker without area assignments. Areas can be shared between multiple workers.</p>
+                        <div className="space-y-2 max-h-32 overflow-y-auto">
+                          {areas.map((area) => {
+                            const isAssignedToOther = isAreaAssignedToOtherWorker(area.id);
+                            const assignedWorker = getAssignedWorkerForArea(area.id);
 
-            <Select value={selectedArea} onValueChange={setSelectedArea}>
-              <SelectTrigger className="w-36">
-                <SelectValue placeholder="Area" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Areas</SelectItem>
-                {areas.map(area => (
-                  <SelectItem key={area.id} value={area.id}>{area.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+                            return (
+                              <div key={area.id} className="flex items-center space-x-2">
+                                <input
+                                  type="checkbox"
+                                  id={`area-${area.id}`}
+                                  value={area.id}
+                                  className="rounded"
+                                  disabled={creatingLineWorker}
+                                />
+                                <label
+                                  htmlFor={`area-${area.id}`}
+                                  className="text-sm"
+                                  title={isAssignedToOther ? `Also assigned to: ${assignedWorker?.displayName || 'Unknown Worker'}` : ''}
+                                >
+                                  {area.name}
+                                  {isAssignedToOther && (
+                                    <span className="text-xs text-blue-500 ml-2">
+                                      (Shared with {assignedWorker?.displayName || 'Unknown'})
+                                    </span>
+                                  )}
+                                </label>
+                              </div>
+                            );
+                          })}
+                        </div>
 
-            <Select value={selectedLineWorker} onValueChange={setSelectedLineWorker}>
-              <SelectTrigger className="w-36">
-                <SelectValue placeholder="Worker" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Workers</SelectItem>
-                {lineWorkers.filter(worker => worker.active).map((worker) => (
-                  <SelectItem key={worker.id} value={worker.id}>
-                    {worker.displayName}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={selectedRetailer} onValueChange={setSelectedRetailer}>
-              <SelectTrigger className="w-36">
-                <SelectValue placeholder="Retailer" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Retailers</SelectItem>
-                {retailers.map(retailer => (
-                  <SelectItem key={retailer.id} value={retailer.id}>{retailer.profile?.realName || retailer.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <ModernDateRangePicker
-              startDate={transactionsDateRange.startDate}
-              endDate={transactionsDateRange.endDate}
-              onChange={(range) => setTransactionsDateRange(range)}
-            />
-            {/* <Button
+                      </div>
+                      <div className="flex space-x-2">
+                        <Button
+                          onClick={async () => {
+                            const email = (document.getElementById('workerEmail') as HTMLInputElement)?.value;
+                            const password = (document.getElementById('workerPassword') as HTMLInputElement)?.value;
+                            const displayName = (document.getElementById('workerDisplayName') as HTMLInputElement)?.value;
+                            const phone = (document.getElementById('workerPhone') as HTMLInputElement)?.value;
+                            const assignedAreas: string[] = [];
+
+                            areas.forEach(area => {
+                              const checkbox = document.getElementById(`area-${area.id}`) as HTMLInputElement;
+                              if (checkbox?.checked) {
+                                assignedAreas.push(area.id);
+                              }
+                            });
+
+                            if (email && password) {
+                              const createData: any = {
+                                email,
+                                password,
+                                displayName: displayName || undefined,
+                                phone: phone || undefined
+                              };
+
+                              // Only include assignedAreas if it has values
+                              if (assignedAreas.length > 0) {
+                                createData.assignedAreas = assignedAreas;
+                              }
+
+                              try {
+                                await handleCreateLineWorker(createData);
+                              } catch (error) {
+                                // Show error to user
+                                const errorMessage = error instanceof Error ? error.message : 'Failed to create line worker';
+                                setError(errorMessage);
+                                setTimeout(() => setError(null), 5000);
+                              }
+                            } else {
+                              setError('Please fill in all required fields');
+                              setTimeout(() => setError(null), 5000);
+                            }
+                          }}
+                          disabled={creatingLineWorker}
+                        >
+                          {creatingLineWorker ? (
+                            <>
+                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                              Creating...
+                            </>
+                          ) : (
+                            'Create Line Worker'
+                          )}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={() => setShowCreateLineWorker(false)}
+                          disabled={creatingLineWorker}
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </DialogContent>
+            </Dialog>
+          </div>
+        </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>All Line Workers</CardTitle>
+            <CardDescription>Manage your line workers and their assignments</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {mainLoadingState.loadingState.isRefreshing ? (
+                <>
+                  {[...Array(5)].map((_, index) => (
+                    <div key={index} className="flex items-center justify-between p-4 border rounded-lg">
+                      <div className="flex items-center space-x-4">
+                        <Skeleton className="w-10 h-10 rounded-full animate-pulse" />
+                        <div className="space-y-2">
+                          <Skeleton className="h-4 w-32 animate-pulse" />
+                          <Skeleton className="h-3 w-48 animate-pulse" />
+                          <Skeleton className="h-3 w-36 animate-pulse" />
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-4">
+                        <Skeleton className="h-6 w-16 animate-pulse" />
+                        <Skeleton className="h-8 w-20 animate-pulse" />
+                        <Skeleton className="h-8 w-16 animate-pulse" />
+                        <Skeleton className="h-8 w-16 animate-pulse" />
+                      </div>
+                    </div>
+                  ))}
+                </>
+              ) : (
+                lineWorkers
+                  .map((worker) => (
+                    <div key={worker.id} className="flex flex-col p-4 border rounded-lg gap-4">
+                      {/* Badge positioned at top-right corner */}
+                      <div className="self-end sm:self-auto">
+                        <Badge className={worker.active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}>
+                          {worker.active ? 'Active' : 'Inactive'}
+                        </Badge>
+                      </div>
+
+                      <div className="flex items-center space-x-4">
+                        <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                          <Users className="h-5 w-5 text-blue-600" />
+                        </div>
+                        <div>
+                          <div className="font-medium">{worker.displayName}</div>
+                          <div className="text-sm text-gray-500">{worker.email}</div>
+                          <div className="text-sm text-gray-500">{worker.phone}</div>
+                        </div>
+                      </div>
+
+                      {/* Assigned Areas Chips */}
+                      {worker.assignedAreas && worker.assignedAreas.length > 0 && (
+                        <div className="mt-2">
+                          <Label className="text-xs text-gray-500 mb-1.5 block">Assigned Areas</Label>
+                          <div className="flex flex-wrap gap-2">
+                            {worker.assignedAreas.map(areaId => {
+                              const area = areas.find(a => a.id === areaId);
+                              return (
+                                <Badge key={areaId} variant="secondary" className="bg-blue-50 text-blue-700 hover:bg-blue-100 border-blue-200">
+                                  {area?.name || 'Unknown Area'}
+                                </Badge>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="flex space-x-2 flex-wrap gap-y-2 sm:flex-nowrap sm:items-center mt-2">
+                        <Button
+                          variant={worker.active ? "outline" : "default"}
+                          size="sm"
+                          onClick={() => handleToggleLineWorkerStatus(worker.id, worker.active)}
+                          className={worker.active ? "hover:bg-red-50 hover:text-red-600 hover:border-red-200 flex-1 sm:flex-none" : "hover:bg-green-50 hover:text-green-600 hover:border-green-200 flex-1 sm:flex-none"}
+                        >
+                          {worker.active ? (
+                            <>
+                              <XCircle className="h-4 w-4 mr-1" />
+                              Deactivate
+                            </>
+                          ) : (
+                            <>
+                              <CheckCircle className="h-4 w-4 mr-1" />
+                              Activate
+                            </>
+                          )}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setEditingLineWorker(worker);
+                            setEditingSelectedAreas(worker.assignedAreas || []);
+                            setEditingActiveStatus(worker.active);
+                            setShowEditLineWorkerDialog(true);
+                          }}
+                          className="flex-1 sm:flex-none"
+                        >
+                          <Edit className="h-4 w-4 mr-1" />
+                          Edit
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleDeleteLineWorker(worker.id)}
+                          className="flex-1 sm:flex-none"
+                        >
+                          <Trash2 className="h-4 w-4 mr-1" />
+                          Delete
+                        </Button>
+                      </div>
+                    </div>
+                  ))
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+
+    // Transactions Component (Render Function to avoid re-mounting)
+    const renderTransactions = () => {
+      // Filter payments based on selected criteria and sort by most recent first
+      const filteredPayments = payments
+        .filter(payment => {
+          // Apply line worker filter
+          if (selectedLineWorker !== "all" && payment.lineWorkerId !== selectedLineWorker) {
+            return false;
+          }
+
+          // Apply retailer filter
+          if (selectedRetailer !== "all" && payment.retailerId !== selectedRetailer) {
+            return false;
+          }
+
+          // Apply area filter
+          if (selectedArea !== "all") {
+            const retailer = retailers.find(r => r.id === payment.retailerId);
+            if (retailer?.areaId !== selectedArea) {
+              return false;
+            }
+          }
+
+          // Apply payment method filter
+          if (paymentMethodFilter !== 'all' && payment.method !== paymentMethodFilter) {
+            return false;
+          }
+
+          // Apply date range filter
+          const paymentDate = payment.createdAt.toDate();
+          if (paymentDate < transactionsDateRange.startDate || paymentDate > transactionsDateRange.endDate) {
+            return false;
+          }
+
+          return true;
+        })
+        .sort((a, b) => b.createdAt.toDate().getTime() - a.createdAt.toDate().getTime());
+
+      const completedPayments = filteredPayments.filter(payment => payment.state === 'COMPLETED');
+      const pendingCancelledPayments = filteredPayments.filter(payment =>
+        ['INITIATED', 'OTP_SENT', 'OTP_VERIFIED', 'CANCELLED', 'EXPIRED'].includes(payment.state)
+      );
+
+      // Get count of unverified UPI payments for the alert
+      const pendingVerificationCount = payments.filter(p =>
+        !p.verified &&
+        p.method === 'UPI' &&
+        p.state === 'COMPLETED'
+      ).length;
+
+      // Helper to prepare data for export
+      const getExportData = () => {
+        return payments.filter(p => {
+          let include = true;
+          // Filter by payment method
+          if (paymentMethodFilter !== 'all' && p.method !== paymentMethodFilter) include = false;
+          // Filter by line worker
+          if (selectedLineWorker !== 'all' && p.lineWorkerId !== selectedLineWorker) include = false;
+          // Filter by retailer
+          if (selectedRetailer !== 'all' && p.retailerId !== selectedRetailer) include = false;
+          // Filter by area
+          if (selectedArea !== 'all') {
+            const retailer = retailers.find(r => r.id === p.retailerId);
+            if (retailer?.areaId !== selectedArea) include = false;
+          }
+          // Filter by date range
+          const paymentDate = p.createdAt?.toDate?.() || new Date(0);
+          if (paymentDate < transactionsDateRange.startDate || paymentDate > transactionsDateRange.endDate) include = false;
+          return include;
+        })
+          .sort((a, b) => a.createdAt.toMillis() - b.createdAt.toMillis())
+          .map(p => {
+            // Look up details
+            const retailer = retailers.find(r => r.id === p.retailerId);
+            const retailerCode = retailer?.code || retailer?.id?.slice(0, 6).toUpperCase() || 'N/A';
+            const retailerName = retailer?.profile?.realName || p.retailerName || 'Unknown';
+
+            // Look up Area Name
+            const areaId = retailer?.areaId;
+            const area = areas.find(a => a.id === areaId);
+            const areaName = area?.name || 'Unknown Area';
+
+            // Calculate Status
+            let status: string = p.state;
+            if (p.method === 'CASH' || p.method === 'BANK_TRANSFER') {
+              status = 'Verified';
+            } else if (p.method === 'UPI') {
+              status = p.verified ? 'Verified' : 'Pending Verification';
+            } else if (p.verified) {
+              status = 'Verified';
+            }
+
+            return {
+              date: formatDateForExport(p.createdAt),
+              retailerCode,
+              retailerName,
+              amount: p.totalPaid,
+              method: p.method,
+              utr: p.utr || '',
+              chequeNumber: p.chequeNumber || '',
+              bankName: p.bankName || '',
+              chequeDate: p.chequeDate ? new Date(p.chequeDate).toLocaleDateString() : '',
+              lineWorker: p.lineWorkerName || 'Unknown',
+              serviceArea: areaName,
+              status: status
+            };
+          });
+      };
+
+      const handleDownloadReport = (format: 'csv' | 'excel') => {
+        const data = getExportData();
+
+        // Sort by payment method first, then by date
+        const sortedData = [...data].sort((a, b) => {
+          if (a.method !== b.method) {
+            return a.method.localeCompare(b.method);
+          }
+          return new Date(a.date).getTime() - new Date(b.date).getTime();
+        });
+
+        // Calculate totals
+        const totalAmount = sortedData.reduce((sum, row) => sum + row.amount, 0);
+        const cashTotal = sortedData.filter(row => row.method === 'CASH').reduce((sum, row) => sum + row.amount, 0);
+        const upiTotal = sortedData.filter(row => row.method === 'UPI').reduce((sum, row) => sum + row.amount, 0);
+        const bankTotal = sortedData.filter(row => row.method === 'BANK_TRANSFER').reduce((sum, row) => sum + row.amount, 0);
+        const chequeTotal = sortedData.filter(row => row.method === 'CHEQUE').reduce((sum, row) => sum + row.amount, 0);
+
+        const fileName = `Transactions_${formatTimestamp(transactionsDateRange.startDate)}_to_${formatTimestamp(transactionsDateRange.endDate)}`;
+
+        if (format === 'csv') {
+          // Generate CSV content
+          const csvRows: string[] = [];
+
+          // 1. Report Title & Date Range
+          csvRows.push('Report: PharmaLync Transactions Report');
+          csvRows.push(`"Date Range: ${formatTimestamp(transactionsDateRange.startDate)} - ${formatTimestamp(transactionsDateRange.endDate)}"`);
+
+          // 2. Filter Details
+          if (paymentMethodFilter !== 'all') csvRows.push(`"Payment Method: ${paymentMethodFilter}"`);
+          if (selectedArea !== 'all') {
+            const area = areas.find(a => a.id === selectedArea);
+            csvRows.push(`"Service Area: ${area?.name || 'Unknown'}"`);
+          }
+          if (selectedLineWorker !== 'all') {
+            const worker = lineWorkers.find(w => w.id === selectedLineWorker);
+            csvRows.push(`"Line Worker: ${worker?.displayName || 'Unknown'}"`);
+          }
+          if (selectedRetailer !== 'all') {
+            const retailer = retailers.find(r => r.id === selectedRetailer);
+            const retailerName = retailer?.profile?.realName || retailer?.name || 'Unknown';
+            csvRows.push(`"Retailer: ${retailerName}"`);
+          }
+          csvRows.push(''); // Separator
+
+          // 3. Headers
+          const headers = [
+            'Date', 'Retailer Code', 'Retailer Name', 'Amount Collected',
+            'Payment Method', 'Ref No / Cheque No', 'Bank / Details', 'Line Worker', 'Service Area', 'Status'
+          ];
+          csvRows.push(headers.join(','));
+
+          // 4. Rows
+          sortedData.forEach(row => {
+            let refNo = row.utr || '';
+            let details = '';
+
+            if (row.method === 'CHEQUE') {
+              refNo = row.chequeNumber || '';
+              details = `${row.bankName || ''} (${row.chequeDate || ''})`;
+            } else if (row.method === 'UPI') {
+              refNo = row.utr || '';
+            }
+
+            const csvRow = [
+              `"${row.date}"`,
+              `"${row.retailerCode}"`,
+              `"${row.retailerName}"`,
+              row.amount.toString(),
+              row.method,
+              `"\t${refNo}"`,
+              `"${details}"`,
+              `"${row.lineWorker}"`,
+              `"${row.serviceArea}"`,
+              `"${row.status}"`
+            ];
+            csvRows.push(csvRow.join(','));
+          });
+
+          // 5. Totals
+          csvRows.push(''); // Empty row
+          csvRows.push(['', 'Total Cash', '', cashTotal.toString(), 'CASH', '', '', '', ''].join(','));
+          csvRows.push(['', 'Total UPI', '', upiTotal.toString(), 'UPI', '', '', '', ''].join(','));
+          csvRows.push(['', 'Total Bank Transfer', '', bankTotal.toString(), 'BANK_TRANSFER', '', '', '', ''].join(','));
+          csvRows.push(['', 'Total Cheque', '', chequeTotal.toString(), 'CHEQUE', '', '', '', ''].join(','));
+          csvRows.push(['', 'Grand Total', '', totalAmount.toString(), '', '', '', '', ''].join(','));
+
+          const blob = new Blob([csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+          const link = document.createElement('a');
+          link.href = URL.createObjectURL(blob);
+          link.download = `${fileName}.csv`;
+          link.click();
+
+        } else {
+          // Excel Export
+          // Create summary sheet data
+          const summaryData = [
+            ['Report', 'PharmaLync Transactions Report'],
+            ['Date Range', `${formatTimestamp(transactionsDateRange.startDate)} - ${formatTimestamp(transactionsDateRange.endDate)}`],
+            ['Generated At', new Date().toLocaleString()]
+          ];
+
+          // Add filter info to summary
+          if (paymentMethodFilter !== 'all') summaryData.push(['Payment Method', paymentMethodFilter]);
+          if (selectedArea !== 'all') {
+            const area = areas.find(a => a.id === selectedArea);
+            summaryData.push(['Service Area', area?.name || 'Unknown']);
+          }
+          if (selectedLineWorker !== 'all') {
+            const worker = lineWorkers.find(w => w.id === selectedLineWorker);
+            summaryData.push(['Line Worker', worker?.displayName || 'Unknown']);
+          }
+
+          // Prepare main data
+          const mainDataHeader = [
+            'Date', 'Retailer Code', 'Retailer Name', 'Amount Collected',
+            'Payment Method', 'Ref No / Cheque No', 'Bank / Details', 'Line Worker', 'Service Area', 'Status'
+          ];
+
+          const mainDataRows = sortedData.map(row => {
+            let refNo = row.utr || '';
+            let details = '';
+
+            if (row.method === 'CHEQUE') {
+              refNo = row.chequeNumber || '';
+              details = `${row.bankName || ''} (${row.chequeDate || ''})`;
+            } else if (row.method === 'UPI') {
+              refNo = row.utr || 'UPI';
+            }
+
+            return [
+              row.date,
+              row.retailerCode,
+              row.retailerName,
+              row.amount,
+              row.method,
+              { t: 's', v: refNo }, // Force string format for Ref/Cheque No
+              details,
+              row.lineWorker,
+              row.serviceArea,
+              row.status
+            ];
+          });
+
+          // Total rows
+          const cashTotalRow = ['', 'Total Cash', '', cashTotal, 'CASH', '', '', '', '', ''];
+          const upiTotalRow = ['', 'Total UPI', '', upiTotal, 'UPI', '', '', '', '', ''];
+          const bankTotalRow = ['', 'Total Bank Transfer', '', bankTotal, 'BANK_TRANSFER', '', '', '', '', ''];
+          const chequeTotal = sortedData.filter(row => row.method === 'CHEQUE').reduce((sum, row) => sum + row.amount, 0);
+          const chequeTotalRow = ['', 'Total Cheque', '', chequeTotal, 'CHEQUE', '', '', '', '', ''];
+          const grandTotalRow = ['', 'Grand Total', '', totalAmount, '', '', '', '', '', ''];
+
+          // Create workbook
+          const wb = XLSX.utils.book_new();
+
+          // Add Main Data Sheet
+          // We can combine summary + empty row + headers + data + totals
+          const wsData = [
+            ...summaryData,
+            [], // Empty row
+            mainDataHeader,
+            ...mainDataRows,
+            [], // Empty row before totals
+            cashTotalRow,
+            upiTotalRow,
+            chequeTotalRow,
+            bankTotalRow,
+            grandTotalRow
+          ];
+
+          const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+          // Adjust column widths
+          const wscols = [
+            { wch: 20 }, // Date
+            { wch: 15 }, // Code
+            { wch: 30 }, // Name
+            { wch: 15 }, // Amount
+            { wch: 15 }, // Method
+            { wch: 20 }, // Ref No
+            { wch: 30 }, // Bank Details
+            { wch: 20 }, // Worker
+            { wch: 20 }, // Area
+            { wch: 20 }  // Status
+          ];
+          ws['!cols'] = wscols;
+
+          XLSX.utils.book_append_sheet(wb, ws, "Transactions");
+          XLSX.writeFile(wb, `${fileName}.xlsx`);
+        }
+
+        setShowDownloadModal(false);
+      };
+
+      return (
+        <div className="space-y-6">
+          <div className="flex flex-col sm:pt-8 sm:flex-row sm:justify-between sm:items-start gap-4">
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900">Transactions</h2>
+              <p className="text-gray-600">View and manage all payment transactions</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Payment Method Filter */}
+              <Select value={paymentMethodFilter} onValueChange={(val: any) => setPaymentMethodFilter(val)}>
+                <SelectTrigger className="w-32">
+                  <SelectValue placeholder="All Methods" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Methods</SelectItem>
+                  <SelectItem value="CASH">Cash</SelectItem>
+                  <SelectItem value="UPI">UPI</SelectItem>
+                  <SelectItem value="BANK_TRANSFER">Bank Transfer</SelectItem>
+                  <SelectItem value="CHEQUE">Cheque</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <Select value={selectedArea} onValueChange={setSelectedArea}>
+                <SelectTrigger className="w-36">
+                  <SelectValue placeholder="Area" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Areas</SelectItem>
+                  {areas.map(area => (
+                    <SelectItem key={area.id} value={area.id}>{area.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Select value={selectedLineWorker} onValueChange={setSelectedLineWorker}>
+                <SelectTrigger className="w-36">
+                  <SelectValue placeholder="Worker" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Workers</SelectItem>
+                  {lineWorkers.filter(worker => worker.active).map((worker) => (
+                    <SelectItem key={worker.id} value={worker.id}>
+                      {worker.displayName}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={selectedRetailer} onValueChange={setSelectedRetailer}>
+                <SelectTrigger className="w-36">
+                  <SelectValue placeholder="Retailer" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Retailers</SelectItem>
+                  {retailers.map(retailer => (
+                    <SelectItem key={retailer.id} value={retailer.id}>{retailer.profile?.realName || retailer.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <ModernDateRangePicker
+                startDate={transactionsDateRange.startDate}
+                endDate={transactionsDateRange.endDate}
+                onChange={(range) => setTransactionsDateRange(range)}
+              />
+              {/* <Button
               onClick={handleManualRefresh}
               disabled={mainLoadingState.loadingState.isRefreshing}
               size="sm"
@@ -3029,386 +3035,386 @@ export function WholesalerAdminDashboard() {
                 <RefreshCw className="h-4 w-4" />
               )}
             </Button> */}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowDownloadModal(true)}
-            >
-              <Download className="h-4 w-4 mr-1" />
-              Report
-            </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowDownloadModal(true)}
+              >
+                <Download className="h-4 w-4 mr-1" />
+                Report
+              </Button>
+            </div>
+          </div>
+
+          {/* Download Modal - defined inline here for access to handler */}
+          <Dialog open={showDownloadModal} onOpenChange={setShowDownloadModal}>
+            <DialogContent className="sm:max-w-md">
+              <DialogHeader>
+                <DialogTitle>Download Report</DialogTitle>
+                <DialogDescription>
+                  Select a format to download the transactions report.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid grid-cols-2 gap-4 py-4">
+                <Button
+                  variant="outline"
+                  className="h-24 flex flex-col items-center justify-center gap-2 hover:bg-green-50 hover:border-green-200 hover:text-green-700"
+                  onClick={() => handleDownloadReport('excel')}
+                >
+                  <div className="bg-green-100 p-2 rounded-full">
+                    <TableIcon className="h-6 w-6 text-green-600" />
+                  </div>
+                  <span className="font-medium">Excel (.xlsx)</span>
+                </Button>
+                <Button
+                  variant="outline"
+                  className="h-24 flex flex-col items-center justify-center gap-2 hover:bg-blue-50 hover:border-blue-200 hover:text-blue-700"
+                  onClick={() => handleDownloadReport('csv')}
+                >
+                  <div className="bg-blue-100 p-2 rounded-full">
+                    <Download className="h-6 w-6 text-blue-600" />
+                  </div>
+                  <span className="font-medium">CSV (.csv)</span>
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+
+          {/* Verification Alert Banner */}
+          {
+            pendingVerificationCount > 0 && (
+              <Alert className="bg-blue-50 border-blue-200 py-2 flex flex-col md:flex-row items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <AlertCircle className="h-5 w-5 text-blue-600" />
+                  <div className="flex items-center gap-2">
+                    <span className="text-blue-800 font-semibold text-sm">Payment Proofs Pending:</span>
+                    <span className="text-blue-600 text-sm">
+                      <strong>{pendingVerificationCount}</strong> unverified UPI payments.
+                    </span>
+                  </div>
+                </div>
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    // Find first unverified UPI payment
+                    const firstPending = payments.filter(p => !p.verified && p.method === 'UPI' && p.state === 'COMPLETED')
+                      .sort((a, b) => b.createdAt.toDate().getTime() - a.createdAt.toDate().getTime())[0];
+                    if (firstPending) handleOpenVerification(firstPending);
+                  }}
+                  className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm whitespace-nowrap w-full md:w-auto h-8 text-xs"
+                >
+                  Review Pending Proofs
+                </Button>
+              </Alert>
+            )
+          }
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Payment Transactions</CardTitle>
+              <CardDescription>All payment records in your system</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {/* Transaction Summary Header */}
+              <div className="mb-6 border-b pb-6">
+                {/* <h3 className="text-sm font-medium text-gray-500 mb-4 uppercase tracking-wider">Filtered Collection Summary</h3> */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+                  <div className="p-4 bg-gray-50 rounded-lg border border-gray-100">
+                    <div className="text-sm text-gray-500 mb-1">Total Collection</div>
+                    <div className="text-2xl font-bold text-gray-900">
+                      {formatCurrency(completedPayments.reduce((sum, p) => sum + p.totalPaid, 0))}
+                    </div>
+                    <div className="text-xs text-blue-600 mt-1 font-medium">
+                      {completedPayments.length} transactions
+                    </div>
+                  </div>
+                  <div className="p-4 bg-green-50 rounded-lg border border-green-100">
+                    <div className="text-sm text-green-700 mb-1">Cash Collection</div>
+                    <div className="text-2xl font-bold text-gray-900">
+                      {formatCurrency(completedPayments.filter(p => p.method === 'CASH').reduce((sum, p) => sum + p.totalPaid, 0))}
+                    </div>
+                    <div className="text-xs text-green-600 mt-1 font-medium">
+                      {completedPayments.filter(p => p.method === 'CASH').length} transactions
+                    </div>
+                  </div>
+                  <div className="p-4 bg-purple-50 rounded-lg border border-purple-100">
+                    <div className="text-sm text-purple-700 mb-1">UPI Collection</div>
+                    <div className="text-2xl font-bold text-gray-900">
+                      {formatCurrency(completedPayments.filter(p => p.method === 'UPI').reduce((sum, p) => sum + p.totalPaid, 0))}
+                    </div>
+                    <div className="text-xs text-purple-600 mt-1 font-medium">
+                      {completedPayments.filter(p => p.method === 'UPI').length} transactions
+                    </div>
+                  </div>
+                  <div className="p-4 bg-amber-50 rounded-lg border border-amber-100">
+                    <div className="text-sm text-amber-700 mb-1">Bank Transfer Collection</div>
+                    <div className="text-2xl font-bold text-gray-900">
+                      {formatCurrency(completedPayments.filter(p => p.method === 'BANK_TRANSFER').reduce((sum, p) => sum + p.totalPaid, 0))}
+                    </div>
+                    <div className="text-xs text-amber-600 mt-1 font-medium">
+                      {completedPayments.filter(p => p.method === 'BANK_TRANSFER').length} transactions
+                    </div>
+                  </div>
+                  <div className="p-4 bg-teal-50 rounded-lg border border-teal-100">
+                    <div className="text-sm text-teal-700 mb-1">Cheque Collection</div>
+                    <div className="text-2xl font-bold text-gray-900">
+                      {formatCurrency(completedPayments.filter(p => p.method === 'CHEQUE').reduce((sum, p) => sum + p.totalPaid, 0))}
+                    </div>
+                    <div className="text-xs text-teal-600 mt-1 font-medium">
+                      {completedPayments.filter(p => p.method === 'CHEQUE').length} transactions
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <Tabs value={paymentTab} onValueChange={setPaymentTab} className="w-full">
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger value="completed" className="flex items-center space-x-2">
+                    <CheckCircle className="h-4 w-4" />
+                    <span>Completed ({completedPayments.length})</span>
+                  </TabsTrigger>
+                  <TabsTrigger value="pending" className="flex items-center space-x-2">
+                    <Clock className="h-4 w-4" />
+                    <span>Pending/Cancelled ({pendingCancelledPayments.length})</span>
+                  </TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="completed" className="space-y-4">
+                  <div className="overflow-x-auto">
+                    {mainLoadingState.loadingState.isRefreshing ? (
+                      <div className="space-y-4">
+                        {[...Array(5)].map((_, index) => (
+                          <div key={index} className="flex items-center space-x-4">
+                            <Skeleton className="h-4 w-24 animate-pulse" />
+                            <Skeleton className="h-4 w-32 animate-pulse" />
+                            <Skeleton className="h-4 w-28 animate-pulse" />
+                            <Skeleton className="h-4 w-16 animate-pulse" />
+                            <Skeleton className="h-4 w-20 animate-pulse" />
+                            <Skeleton className="h-6 w-16 animate-pulse" />
+                            <Skeleton className="h-8 w-16 animate-pulse" />
+                          </div>
+                        ))}
+                      </div>
+                    ) : completedPayments.length > 0 ? (
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Date</TableHead>
+                            <TableHead>Retailer</TableHead>
+                            <TableHead>Line Worker</TableHead>
+                            <TableHead>Area</TableHead>
+                            <TableHead>Amount</TableHead>
+                            <TableHead>Method</TableHead>
+                            <TableHead>Status</TableHead>
+                            <TableHead>Actions</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {completedPayments.map((payment) => {
+                            const retailerExists = retailers.some(r => r.id === payment.retailerId);
+                            const retailer = retailers.find(r => r.id === payment.retailerId);
+                            const area = retailer?.areaId ? areas.find(a => a.id === retailer.areaId) : null;
+
+                            return (
+                              <TableRow key={payment.id} className={!payment.verified && payment.method === 'UPI' ? "bg-blue-50/50" : ""}>
+                                <TableCell>{formatTimestampWithTime(payment.createdAt)}</TableCell>
+                                <TableCell>
+                                  <div className="flex flex-col">
+                                    <div className="flex items-center gap-2">
+                                      {retailer?.code && (
+                                        <Badge variant="outline" className="text-xs font-mono font-normal text-gray-500 border-gray-300">
+                                          {retailer.code}
+                                        </Badge>
+                                      )}
+                                      <span>{payment.retailerName}</span>
+                                    </div>
+                                    {!retailerExists && (
+                                      <Badge variant="destructive" className="mt-1 text-xs w-fit">Deleted</Badge>
+                                    )}
+                                  </div>
+                                </TableCell>
+                                <TableCell>{payment.lineWorkerName}</TableCell>
+                                <TableCell className="text-gray-500 text-sm">{area?.name || '-'}</TableCell>
+                                <TableCell className="font-semibold">{formatCurrency(payment.totalPaid)}</TableCell>
+                                <TableCell>
+                                  <div className="flex flex-col gap-1">
+                                    <div className="flex items-center gap-2">
+                                      <Badge variant="outline">{payment.method}</Badge>
+                                      {payment.method === 'UPI' && (
+                                        payment.verified ? (
+                                          <span className="flex items-center text-xs text-green-600 font-medium">
+                                            <CheckCircle className="w-3 h-3 mr-1" />
+                                            Verified
+                                          </span>
+                                        ) : (
+                                          <span className="flex items-center text-xs text-amber-600 font-medium bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                                            Needs Review
+                                          </span>
+                                        )
+                                      )}
+                                    </div>
+                                    {payment.method === 'UPI' && payment.utr && (
+                                      <span className="text-xs text-gray-500 font-medium pl-1">
+                                        ({payment.utr})
+                                      </span>
+                                    )}
+                                    {payment.method === 'CHEQUE' && (
+                                      <div className="text-[10px] text-gray-500 font-mono pl-1">
+                                        <div className="font-bold">#{payment.chequeNumber}</div>
+                                        <div>{payment.bankName}</div>
+                                        {payment.chequeDate && <div>{new Date(payment.chequeDate).toLocaleDateString()}</div>}
+                                      </div>
+                                    )}
+                                  </div>
+                                </TableCell>
+                                <TableCell>
+                                  <Badge className="bg-green-100 text-green-800">
+                                    {payment.state}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell>
+                                  <div className="flex space-x-2">
+                                    {/* Verification Action */}
+                                    {payment.method === 'UPI' && !payment.verified && (
+                                      <Button
+                                        size="sm"
+                                        onClick={() => handleOpenVerification(payment)}
+                                        className="bg-blue-600 hover:bg-blue-700 text-white h-8 px-3"
+                                      >
+                                        Verify
+                                      </Button>
+                                    )}
+
+                                    {/* View Proof Button (if verified but maybe has URL? No, URL is deleted. Just UTR) */}
+                                    {payment.method === 'UPI' && payment.verified && (
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="text-gray-500 cursor-default hover:bg-transparent"
+                                        disabled
+                                      >
+                                        <CheckCircle className="w-4 h-4 text-green-500 mr-1" />
+                                        Verified
+                                      </Button>
+                                    )}
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                    ) : (
+                      <div className="text-center py-8 text-gray-500">
+                        No completed payments found matching your filters.
+                      </div>
+                    )}
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="pending" className="space-y-4">
+                  <div className="overflow-x-auto">
+                    {mainLoadingState.loadingState.isRefreshing ? (
+                      <div className="space-y-4">
+                        {[...Array(5)].map((_, index) => (
+                          <div key={index} className="flex items-center space-x-4">
+                            <Skeleton className="h-4 w-24 animate-pulse" />
+                            <Skeleton className="h-4 w-32 animate-pulse" />
+                            <Skeleton className="h-4 w-28 animate-pulse" />
+                            <Skeleton className="h-4 w-16 animate-pulse" />
+                            <Skeleton className="h-4 w-20 animate-pulse" />
+                            <Skeleton className="h-6 w-16 animate-pulse" />
+                            <Skeleton className="h-8 w-16 animate-pulse" />
+                          </div>
+                        ))}
+                      </div>
+                    ) : pendingCancelledPayments.length > 0 ? (
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Date</TableHead>
+                            <TableHead>Retailer</TableHead>
+                            <TableHead>Line Worker</TableHead>
+                            <TableHead>Amount</TableHead>
+                            <TableHead>Method</TableHead>
+                            <TableHead>Status</TableHead>
+                            <TableHead>Actions</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {pendingCancelledPayments.map((payment) => {
+                            const retailerExists = retailers.some(r => r.id === payment.retailerId);
+                            return (
+                              <TableRow key={payment.id}>
+                                <TableCell>{formatTimestampWithTime(payment.createdAt)}</TableCell>
+                                <TableCell>
+                                  <div className="flex flex-col">
+                                    <span>{payment.retailerName}</span>
+                                    {!retailerExists && (
+                                      <Badge variant="destructive" className="mt-1 text-xs">Deleted</Badge>
+                                    )}
+                                  </div>
+                                </TableCell>
+                                <TableCell>{getLineWorkerName(payment.lineWorkerId)}</TableCell>
+                                <TableCell>
+                                  <div className="text-right">
+                                    <div className="font-medium">{formatCurrency(payment.totalPaid)}</div>
+                                  </div>
+                                </TableCell>
+                                <TableCell>
+                                  <Badge variant="outline">{payment.method}</Badge>
+                                </TableCell>
+                                <TableCell>
+                                  <Badge className={
+                                    payment.state === 'INITIATED' ? 'bg-yellow-100 text-yellow-800' :
+
+                                      'bg-red-100 text-red-800'
+                                  }>
+                                    {payment.state}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell>
+                                  <Button variant="outline" size="sm" onClick={() => setViewingPayment(payment)}>
+                                    <Eye className="h-4 w-4 mr-1" />
+                                    View
+                                  </Button>
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                    ) : (
+                      <div className="text-center py-8">
+                        <Clock className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                        <h3 className="text-lg font-medium text-gray-900 mb-2">No pending or cancelled payments</h3>
+                        <p className="text-gray-500">There are no pending or cancelled payments in the system.</p>
+                      </div>
+                    )}
+                  </div>
+                </TabsContent>
+              </Tabs >
+
+
+            </CardContent >
+          </Card >
+        </div >
+      );
+    };
+
+    // Analytics Component
+    const AnalyticsComponent = () => (
+      <div className="space-y-6">
+        {/* Row 1: Heading and Description */}
+        <div className="flex flex-col sm:pt-8 sm:flex-row sm:justify-between sm:items-start gap-4">
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900">Analytics</h2>
+            <p className="text-gray-600">Comprehensive analytics and insights</p>
           </div>
         </div>
 
-        {/* Download Modal - defined inline here for access to handler */}
-        <Dialog open={showDownloadModal} onOpenChange={setShowDownloadModal}>
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle>Download Report</DialogTitle>
-              <DialogDescription>
-                Select a format to download the transactions report.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="grid grid-cols-2 gap-4 py-4">
-              <Button
-                variant="outline"
-                className="h-24 flex flex-col items-center justify-center gap-2 hover:bg-green-50 hover:border-green-200 hover:text-green-700"
-                onClick={() => handleDownloadReport('excel')}
-              >
-                <div className="bg-green-100 p-2 rounded-full">
-                  <TableIcon className="h-6 w-6 text-green-600" />
-                </div>
-                <span className="font-medium">Excel (.xlsx)</span>
-              </Button>
-              <Button
-                variant="outline"
-                className="h-24 flex flex-col items-center justify-center gap-2 hover:bg-blue-50 hover:border-blue-200 hover:text-blue-700"
-                onClick={() => handleDownloadReport('csv')}
-              >
-                <div className="bg-blue-100 p-2 rounded-full">
-                  <Download className="h-6 w-6 text-blue-600" />
-                </div>
-                <span className="font-medium">CSV (.csv)</span>
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
-
-        {/* Verification Alert Banner */}
-        {
-          pendingVerificationCount > 0 && (
-            <Alert className="bg-blue-50 border-blue-200 py-2 flex flex-col md:flex-row items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <AlertCircle className="h-5 w-5 text-blue-600" />
-                <div className="flex items-center gap-2">
-                  <span className="text-blue-800 font-semibold text-sm">Payment Proofs Pending:</span>
-                  <span className="text-blue-600 text-sm">
-                    <strong>{pendingVerificationCount}</strong> unverified UPI payments.
-                  </span>
-                </div>
-              </div>
-              <Button
-                size="sm"
-                onClick={() => {
-                  // Find first unverified UPI payment
-                  const firstPending = payments.filter(p => !p.verified && p.method === 'UPI' && p.state === 'COMPLETED')
-                    .sort((a, b) => b.createdAt.toDate().getTime() - a.createdAt.toDate().getTime())[0];
-                  if (firstPending) handleOpenVerification(firstPending);
-                }}
-                className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm whitespace-nowrap w-full md:w-auto h-8 text-xs"
-              >
-                Review Pending Proofs
-              </Button>
-            </Alert>
-          )
-        }
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Payment Transactions</CardTitle>
-            <CardDescription>All payment records in your system</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {/* Transaction Summary Header */}
-            <div className="mb-6 border-b pb-6">
-              {/* <h3 className="text-sm font-medium text-gray-500 mb-4 uppercase tracking-wider">Filtered Collection Summary</h3> */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-                <div className="p-4 bg-gray-50 rounded-lg border border-gray-100">
-                  <div className="text-sm text-gray-500 mb-1">Total Collection</div>
-                  <div className="text-2xl font-bold text-gray-900">
-                    {formatCurrency(completedPayments.reduce((sum, p) => sum + p.totalPaid, 0))}
-                  </div>
-                  <div className="text-xs text-blue-600 mt-1 font-medium">
-                    {completedPayments.length} transactions
-                  </div>
-                </div>
-                <div className="p-4 bg-green-50 rounded-lg border border-green-100">
-                  <div className="text-sm text-green-700 mb-1">Cash Collection</div>
-                  <div className="text-2xl font-bold text-gray-900">
-                    {formatCurrency(completedPayments.filter(p => p.method === 'CASH').reduce((sum, p) => sum + p.totalPaid, 0))}
-                  </div>
-                  <div className="text-xs text-green-600 mt-1 font-medium">
-                    {completedPayments.filter(p => p.method === 'CASH').length} transactions
-                  </div>
-                </div>
-                <div className="p-4 bg-purple-50 rounded-lg border border-purple-100">
-                  <div className="text-sm text-purple-700 mb-1">UPI Collection</div>
-                  <div className="text-2xl font-bold text-gray-900">
-                    {formatCurrency(completedPayments.filter(p => p.method === 'UPI').reduce((sum, p) => sum + p.totalPaid, 0))}
-                  </div>
-                  <div className="text-xs text-purple-600 mt-1 font-medium">
-                    {completedPayments.filter(p => p.method === 'UPI').length} transactions
-                  </div>
-                </div>
-                <div className="p-4 bg-amber-50 rounded-lg border border-amber-100">
-                  <div className="text-sm text-amber-700 mb-1">Bank Transfer Collection</div>
-                  <div className="text-2xl font-bold text-gray-900">
-                    {formatCurrency(completedPayments.filter(p => p.method === 'BANK_TRANSFER').reduce((sum, p) => sum + p.totalPaid, 0))}
-                  </div>
-                  <div className="text-xs text-amber-600 mt-1 font-medium">
-                    {completedPayments.filter(p => p.method === 'BANK_TRANSFER').length} transactions
-                  </div>
-                </div>
-                <div className="p-4 bg-teal-50 rounded-lg border border-teal-100">
-                  <div className="text-sm text-teal-700 mb-1">Cheque Collection</div>
-                  <div className="text-2xl font-bold text-gray-900">
-                    {formatCurrency(completedPayments.filter(p => p.method === 'CHEQUE').reduce((sum, p) => sum + p.totalPaid, 0))}
-                  </div>
-                  <div className="text-xs text-teal-600 mt-1 font-medium">
-                    {completedPayments.filter(p => p.method === 'CHEQUE').length} transactions
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <Tabs value={paymentTab} onValueChange={setPaymentTab} className="w-full">
-              <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="completed" className="flex items-center space-x-2">
-                  <CheckCircle className="h-4 w-4" />
-                  <span>Completed ({completedPayments.length})</span>
-                </TabsTrigger>
-                <TabsTrigger value="pending" className="flex items-center space-x-2">
-                  <Clock className="h-4 w-4" />
-                  <span>Pending/Cancelled ({pendingCancelledPayments.length})</span>
-                </TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="completed" className="space-y-4">
-                <div className="overflow-x-auto">
-                  {mainLoadingState.loadingState.isRefreshing ? (
-                    <div className="space-y-4">
-                      {[...Array(5)].map((_, index) => (
-                        <div key={index} className="flex items-center space-x-4">
-                          <Skeleton className="h-4 w-24 animate-pulse" />
-                          <Skeleton className="h-4 w-32 animate-pulse" />
-                          <Skeleton className="h-4 w-28 animate-pulse" />
-                          <Skeleton className="h-4 w-16 animate-pulse" />
-                          <Skeleton className="h-4 w-20 animate-pulse" />
-                          <Skeleton className="h-6 w-16 animate-pulse" />
-                          <Skeleton className="h-8 w-16 animate-pulse" />
-                        </div>
-                      ))}
-                    </div>
-                  ) : completedPayments.length > 0 ? (
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Date</TableHead>
-                          <TableHead>Retailer</TableHead>
-                          <TableHead>Line Worker</TableHead>
-                          <TableHead>Area</TableHead>
-                          <TableHead>Amount</TableHead>
-                          <TableHead>Method</TableHead>
-                          <TableHead>Status</TableHead>
-                          <TableHead>Actions</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {completedPayments.map((payment) => {
-                          const retailerExists = retailers.some(r => r.id === payment.retailerId);
-                          const retailer = retailers.find(r => r.id === payment.retailerId);
-                          const area = retailer?.areaId ? areas.find(a => a.id === retailer.areaId) : null;
-
-                          return (
-                            <TableRow key={payment.id} className={!payment.verified && payment.method === 'UPI' ? "bg-blue-50/50" : ""}>
-                              <TableCell>{formatTimestampWithTime(payment.createdAt)}</TableCell>
-                              <TableCell>
-                                <div className="flex flex-col">
-                                  <div className="flex items-center gap-2">
-                                    {retailer?.code && (
-                                      <Badge variant="outline" className="text-xs font-mono font-normal text-gray-500 border-gray-300">
-                                        {retailer.code}
-                                      </Badge>
-                                    )}
-                                    <span>{payment.retailerName}</span>
-                                  </div>
-                                  {!retailerExists && (
-                                    <Badge variant="destructive" className="mt-1 text-xs w-fit">Deleted</Badge>
-                                  )}
-                                </div>
-                              </TableCell>
-                              <TableCell>{payment.lineWorkerName}</TableCell>
-                              <TableCell className="text-gray-500 text-sm">{area?.name || '-'}</TableCell>
-                              <TableCell className="font-semibold">{formatCurrency(payment.totalPaid)}</TableCell>
-                              <TableCell>
-                                <div className="flex flex-col gap-1">
-                                  <div className="flex items-center gap-2">
-                                    <Badge variant="outline">{payment.method}</Badge>
-                                    {payment.method === 'UPI' && (
-                                      payment.verified ? (
-                                        <span className="flex items-center text-xs text-green-600 font-medium">
-                                          <CheckCircle className="w-3 h-3 mr-1" />
-                                          Verified
-                                        </span>
-                                      ) : (
-                                        <span className="flex items-center text-xs text-amber-600 font-medium bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
-                                          Needs Review
-                                        </span>
-                                      )
-                                    )}
-                                  </div>
-                                  {payment.method === 'UPI' && payment.utr && (
-                                    <span className="text-xs text-gray-500 font-medium pl-1">
-                                      ({payment.utr})
-                                    </span>
-                                  )}
-                                  {payment.method === 'CHEQUE' && (
-                                    <div className="text-[10px] text-gray-500 font-mono pl-1">
-                                      <div className="font-bold">#{payment.chequeNumber}</div>
-                                      <div>{payment.bankName}</div>
-                                      {payment.chequeDate && <div>{new Date(payment.chequeDate).toLocaleDateString()}</div>}
-                                    </div>
-                                  )}
-                                </div>
-                              </TableCell>
-                              <TableCell>
-                                <Badge className="bg-green-100 text-green-800">
-                                  {payment.state}
-                                </Badge>
-                              </TableCell>
-                              <TableCell>
-                                <div className="flex space-x-2">
-                                  {/* Verification Action */}
-                                  {payment.method === 'UPI' && !payment.verified && (
-                                    <Button
-                                      size="sm"
-                                      onClick={() => handleOpenVerification(payment)}
-                                      className="bg-blue-600 hover:bg-blue-700 text-white h-8 px-3"
-                                    >
-                                      Verify
-                                    </Button>
-                                  )}
-
-                                  {/* View Proof Button (if verified but maybe has URL? No, URL is deleted. Just UTR) */}
-                                  {payment.method === 'UPI' && payment.verified && (
-                                    <Button
-                                      size="sm"
-                                      variant="ghost"
-                                      className="text-gray-500 cursor-default hover:bg-transparent"
-                                      disabled
-                                    >
-                                      <CheckCircle className="w-4 h-4 text-green-500 mr-1" />
-                                      Verified
-                                    </Button>
-                                  )}
-                                </div>
-                              </TableCell>
-                            </TableRow>
-                          );
-                        })}
-                      </TableBody>
-                    </Table>
-                  ) : (
-                    <div className="text-center py-8 text-gray-500">
-                      No completed payments found matching your filters.
-                    </div>
-                  )}
-                </div>
-              </TabsContent>
-
-              <TabsContent value="pending" className="space-y-4">
-                <div className="overflow-x-auto">
-                  {mainLoadingState.loadingState.isRefreshing ? (
-                    <div className="space-y-4">
-                      {[...Array(5)].map((_, index) => (
-                        <div key={index} className="flex items-center space-x-4">
-                          <Skeleton className="h-4 w-24 animate-pulse" />
-                          <Skeleton className="h-4 w-32 animate-pulse" />
-                          <Skeleton className="h-4 w-28 animate-pulse" />
-                          <Skeleton className="h-4 w-16 animate-pulse" />
-                          <Skeleton className="h-4 w-20 animate-pulse" />
-                          <Skeleton className="h-6 w-16 animate-pulse" />
-                          <Skeleton className="h-8 w-16 animate-pulse" />
-                        </div>
-                      ))}
-                    </div>
-                  ) : pendingCancelledPayments.length > 0 ? (
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Date</TableHead>
-                          <TableHead>Retailer</TableHead>
-                          <TableHead>Line Worker</TableHead>
-                          <TableHead>Amount</TableHead>
-                          <TableHead>Method</TableHead>
-                          <TableHead>Status</TableHead>
-                          <TableHead>Actions</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {pendingCancelledPayments.map((payment) => {
-                          const retailerExists = retailers.some(r => r.id === payment.retailerId);
-                          return (
-                            <TableRow key={payment.id}>
-                              <TableCell>{formatTimestampWithTime(payment.createdAt)}</TableCell>
-                              <TableCell>
-                                <div className="flex flex-col">
-                                  <span>{payment.retailerName}</span>
-                                  {!retailerExists && (
-                                    <Badge variant="destructive" className="mt-1 text-xs">Deleted</Badge>
-                                  )}
-                                </div>
-                              </TableCell>
-                              <TableCell>{getLineWorkerName(payment.lineWorkerId)}</TableCell>
-                              <TableCell>
-                                <div className="text-right">
-                                  <div className="font-medium">{formatCurrency(payment.totalPaid)}</div>
-                                </div>
-                              </TableCell>
-                              <TableCell>
-                                <Badge variant="outline">{payment.method}</Badge>
-                              </TableCell>
-                              <TableCell>
-                                <Badge className={
-                                  payment.state === 'INITIATED' ? 'bg-yellow-100 text-yellow-800' :
-
-                                    'bg-red-100 text-red-800'
-                                }>
-                                  {payment.state}
-                                </Badge>
-                              </TableCell>
-                              <TableCell>
-                                <Button variant="outline" size="sm" onClick={() => setViewingPayment(payment)}>
-                                  <Eye className="h-4 w-4 mr-1" />
-                                  View
-                                </Button>
-                              </TableCell>
-                            </TableRow>
-                          );
-                        })}
-                      </TableBody>
-                    </Table>
-                  ) : (
-                    <div className="text-center py-8">
-                      <Clock className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                      <h3 className="text-lg font-medium text-gray-900 mb-2">No pending or cancelled payments</h3>
-                      <p className="text-gray-500">There are no pending or cancelled payments in the system.</p>
-                    </div>
-                  )}
-                </div>
-              </TabsContent>
-            </Tabs >
-
-
-          </CardContent >
-        </Card >
-      </div >
-    );
-  };
-
-  // Analytics Component
-  const AnalyticsComponent = () => (
-    <div className="space-y-6">
-      {/* Row 1: Heading and Description */}
-      <div className="flex flex-col sm:pt-8 sm:flex-row sm:justify-between sm:items-start gap-4">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">Analytics</h2>
-          <p className="text-gray-600">Comprehensive analytics and insights</p>
-        </div>
-      </div>
-
-      {/* Row 2: Refresh Button */}
-      {/* <div className="flex justify-start">
+        {/* Row 2: Refresh Button */}
+        {/* <div className="flex justify-start">
         <Button
           variant="outline"
           onClick={handleManualRefresh}
@@ -3423,339 +3429,221 @@ export function WholesalerAdminDashboard() {
         </Button>
       </div> */}
 
-      {/* Row 3: Dropdown and Export */}
-      <div className="flex flex-col sm:flex-row sm:justify-start sm:items-center gap-4">
-        <Select value={selectedDateRangeOption} onValueChange={handleSelectDateRangeChange}>
-          <SelectTrigger className="w-full sm:w-48">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="today">Today</SelectItem>
-            <SelectItem value="yesterday">Yesterday</SelectItem>
-            <SelectItem value="thisWeek">This Week</SelectItem>
-            <SelectItem value="lastWeek">Last Week</SelectItem>
-            <SelectItem value="thisMonth">This Month</SelectItem>
-            <SelectItem value="lastMonth">Last Month</SelectItem>
-            <SelectItem value="custom">Custom Range</SelectItem>
-          </SelectContent>
-        </Select>
+        {/* Row 3: Dropdown and Export */}
+        <div className="flex flex-col sm:flex-row sm:justify-start sm:items-center gap-4">
+          <Select value={selectedDateRangeOption} onValueChange={handleSelectDateRangeChange}>
+            <SelectTrigger className="w-full sm:w-48">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="today">Today</SelectItem>
+              <SelectItem value="yesterday">Yesterday</SelectItem>
+              <SelectItem value="thisWeek">This Week</SelectItem>
+              <SelectItem value="lastWeek">Last Week</SelectItem>
+              <SelectItem value="thisMonth">This Month</SelectItem>
+              <SelectItem value="lastMonth">Last Month</SelectItem>
+              <SelectItem value="custom">Custom Range</SelectItem>
+            </SelectContent>
+          </Select>
 
-        {/* <Button variant="outline" className="w-full sm:w-auto">
+          {/* <Button variant="outline" className="w-full sm:w-auto">
           <Download className="h-4 w-4 mr-2" />
           Export
         </Button> */}
+        </div>
+
+        <WholesalerAnalytics
+          retailers={retailers}
+          payments={payments.filter(p => {
+            // Filter by selected date range
+            const paymentDate = p.createdAt?.toDate?.() || new Date(0);
+            return paymentDate >= overviewDateRange.startDate && paymentDate <= overviewDateRange.endDate;
+          })}
+          lineWorkers={lineWorkers}
+          areas={areas}
+          onRefresh={handleManualRefresh}
+          refreshLoading={mainLoadingState.loadingState.isRefreshing}
+          tenantId={getCurrentTenantId() || undefined}
+        />
       </div>
-
-      <WholesalerAnalytics
-        retailers={retailers}
-        payments={payments.filter(p => {
-          // Filter by selected date range
-          const paymentDate = p.createdAt?.toDate?.() || new Date(0);
-          return paymentDate >= overviewDateRange.startDate && paymentDate <= overviewDateRange.endDate;
-        })}
-        lineWorkers={lineWorkers}
-        areas={areas}
-        onRefresh={handleManualRefresh}
-        refreshLoading={mainLoadingState.loadingState.isRefreshing}
-        tenantId={getCurrentTenantId() || undefined}
-      />
-    </div>
-  );
+    );
 
 
-  // View Payment Dialog Component
-  const ViewPaymentDialog = () => (
-    <Dialog open={!!viewingPayment} onOpenChange={(open) => !open && setViewingPayment(null)}>
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>Payment Details</DialogTitle>
-          <DialogDescription>
-            View detailed information about this payment
-          </DialogDescription>
-        </DialogHeader>
-        {viewingPayment && (
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label>Payment ID</Label>
-                <div className="font-medium">{viewingPayment.id}</div>
-              </div>
-              <div>
-                <Label>Status</Label>
-                <Badge className={
-                  viewingPayment.state === 'COMPLETED' ? 'bg-green-100 text-green-800' :
-                    viewingPayment.state === 'INITIATED' ? 'bg-yellow-100 text-yellow-800' :
-                      'bg-red-100 text-red-800'
-                }>
-                  {viewingPayment.state}
-                </Badge>
-              </div>
-              <div>
-                <Label>Date</Label>
-                <div className="font-medium">{formatTimestampWithTime(viewingPayment.createdAt)}</div>
-              </div>
-              <div>
-                <Label>Method</Label>
-                <div className="font-medium">{viewingPayment.method}</div>
-              </div>
-              <div>
-                <Label>Amount Paid</Label>
-                <div className="font-medium">{formatCurrency(viewingPayment.totalPaid)}</div>
-              </div>
-              <div>
-                <Label>Retailer</Label>
-                <div className="font-medium">{getRetailerName(viewingPayment.retailerId)}</div>
-              </div>
-              <div>
-                <Label>Line Worker</Label>
-                <div className="font-medium">{getLineWorkerName(viewingPayment.lineWorkerId)}</div>
-              </div>
-            </div>
-          </div>
-        )}
-      </DialogContent>
-    </Dialog>
-  );
-
-  // Edit Line Worker Dialog Component
-  const EditLineWorkerDialog = () => (
-    <Dialog open={showEditLineWorkerDialog} onOpenChange={setShowEditLineWorkerDialog}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>Edit Line Worker</DialogTitle>
-          <DialogDescription>
-            Update line worker information and status
-          </DialogDescription>
-        </DialogHeader>
-        {editingLineWorker && (
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="editDisplayName">Display Name</Label>
-              <Input
-                id="editDisplayName"
-                defaultValue={editingLineWorker.displayName}
-                placeholder="Enter display name"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="editPhone">Phone</Label>
-              <Input
-                id="editPhone"
-                type="tel"
-                defaultValue={editingLineWorker.phone}
-                placeholder="Enter phone number"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="editActive">Status</Label>
-              <Switch
-                id="editActive"
-                checked={editingActiveStatus}
-                onCheckedChange={setEditingActiveStatus}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Assigned Areas</Label>
-              <p className="text-xs text-gray-500">Uncheck areas to remove assignment. Areas can be unassigned from all workers.</p>
-              <div className="space-y-2 max-h-32 overflow-y-auto">
-                {areas.map((area) => {
-                  const isAssignedToOther = isAreaAssignedToOtherWorker(area.id, editingLineWorker?.id);
-                  const assignedWorker = getAssignedWorkerForArea(area.id);
-                  const isCurrentlyAssigned = editingSelectedAreas.includes(area.id);
-
-                  return (
-                    <div key={area.id} className="flex items-center space-x-2">
-                      <input
-                        type="checkbox"
-                        id={`edit-area-${area.id}`}
-                        value={area.id}
-                        defaultChecked={isCurrentlyAssigned}
-                        disabled={updatingLineWorker}
-                        onChange={(e) => {
-                          console.log('🔄 Area checkbox changed:', {
-                            areaId: area.id,
-                            areaName: area.name,
-                            checked: e.target.checked,
-                            currentSelectedAreas: editingSelectedAreas,
-                            isAssignedToOther,
-                            isCurrentlyAssigned
-                          });
-
-                          if (e.target.checked) {
-                            const newSelectedAreas = [...editingSelectedAreas, area.id];
-                            console.log('✅ Adding area to selection:', newSelectedAreas);
-                            setEditingSelectedAreas(newSelectedAreas);
-                          } else {
-                            const newSelectedAreas = editingSelectedAreas.filter(id => id !== area.id);
-                            console.log('❌ Removing area from selection:', newSelectedAreas);
-                            setEditingSelectedAreas(newSelectedAreas);
-                          }
-                        }}
-                        className="rounded"
-                      />
-                      <label
-                        htmlFor={`edit-area-${area.id}`}
-                        className="text-sm"
-                      >
-                        {area.name}
-                        {isAssignedToOther && !isCurrentlyAssigned && (
-                          <span className="text-xs text-blue-500 ml-2">
-                            (Shared with {assignedWorker?.displayName || 'another worker'})
-                          </span>
-                        )}
-                      </label>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-            <div className="flex space-x-2">
-              <Button
-                onClick={() => {
-                  const displayName = (document.getElementById('editDisplayName') as HTMLInputElement)?.value;
-                  const phone = (document.getElementById('editPhone') as HTMLInputElement)?.value;
-
-                  handleUpdateLineWorker({
-                    active: editingActiveStatus,
-                    displayName: displayName || undefined,
-                    phone: phone || undefined
-                  });
-                }}
-                disabled={updatingLineWorker}
-              >
-                {updatingLineWorker ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    {updateProgress || 'Updating...'}
-                  </>
-                ) : (
-                  'Update Line Worker'
-                )}
-              </Button>
-              <Button variant="outline" onClick={() => {
-                setShowEditLineWorkerDialog(false);
-                setEditingLineWorker(null);
-                setEditingSelectedAreas([]);
-                setEditingActiveStatus(true);
-              }}>
-                Cancel
-              </Button>
-            </div>
-          </div>
-        )}
-      </DialogContent>
-    </Dialog>
-  );
-
-  const RetailerAssignmentDialog = () => {
-
-    const currentAssignedWorker = assigningRetailer?.assignedLineWorkerId
-      ? lineWorkers.find(worker => worker.id === assigningRetailer.assignedLineWorkerId)
-      : null;
-
-    const areaAssignedWorker = !currentAssignedWorker && assigningRetailer?.areaId
-      ? getAssignedWorkerForArea(assigningRetailer.areaId)
-      : null;
-
-    return (
-      <Dialog open={showRetailerAssignment} onOpenChange={setShowRetailerAssignment}>
-        <DialogContent className="max-w-md">
+    // View Payment Dialog Component
+    const ViewPaymentDialog = () => (
+      <Dialog open={!!viewingPayment} onOpenChange={(open) => !open && setViewingPayment(null)}>
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>
-              Assign Retailer to Line Worker(s)
-            </DialogTitle>
-            <DialogDescription asChild>
-              <div className="space-y-2 text-sm text-muted-foreground">
-                {assigningRetailer ? (
-                  <>
-                    <div className="font-medium text-foreground">{assigningRetailer.profile ? assigningRetailer.profile.realName : assigningRetailer.name}</div>
-                    <div className="text-sm">
-                      Select one or more line workers to assign this retailer to.
-                    </div>
-                  </>
-                ) : (
-                  <div>Select a retailer to assign</div>
-                )}
-              </div>
+            <DialogTitle>Payment Details</DialogTitle>
+            <DialogDescription>
+              View detailed information about this payment
             </DialogDescription>
           </DialogHeader>
-          {assigningRetailer && (
+          {viewingPayment && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Payment ID</Label>
+                  <div className="font-medium">{viewingPayment.id}</div>
+                </div>
+                <div>
+                  <Label>Status</Label>
+                  <Badge className={
+                    viewingPayment.state === 'COMPLETED' ? 'bg-green-100 text-green-800' :
+                      viewingPayment.state === 'INITIATED' ? 'bg-yellow-100 text-yellow-800' :
+                        'bg-red-100 text-red-800'
+                  }>
+                    {viewingPayment.state}
+                  </Badge>
+                </div>
+                <div>
+                  <Label>Date</Label>
+                  <div className="font-medium">{formatTimestampWithTime(viewingPayment.createdAt)}</div>
+                </div>
+                <div>
+                  <Label>Method</Label>
+                  <div className="font-medium">{viewingPayment.method}</div>
+                </div>
+                <div>
+                  <Label>Amount Paid</Label>
+                  <div className="font-medium">{formatCurrency(viewingPayment.totalPaid)}</div>
+                </div>
+                <div>
+                  <Label>Retailer</Label>
+                  <div className="font-medium">{getRetailerName(viewingPayment.retailerId)}</div>
+                </div>
+                <div>
+                  <Label>Line Worker</Label>
+                  <div className="font-medium">{getLineWorkerName(viewingPayment.lineWorkerId)}</div>
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    );
+
+    // Edit Line Worker Dialog Component
+    const EditLineWorkerDialog = () => (
+      <Dialog open={showEditLineWorkerDialog} onOpenChange={setShowEditLineWorkerDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Line Worker</DialogTitle>
+            <DialogDescription>
+              Update line worker information and status
+            </DialogDescription>
+          </DialogHeader>
+          {editingLineWorker && (
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label>Active Line Workers</Label>
-                <ScrollArea className="h-[250px] border rounded-md p-2">
-                  <div className="space-y-3">
-                    {lineWorkers
-                      .filter(worker => worker.active)
-                      .map(worker => {
-                        const isChecked = selectedLineWorkerIdsForAssignment.includes(worker.id);
-                        return (
-                          <div key={worker.id} className="flex items-center space-x-2 p-1 hover:bg-slate-50 rounded transition-colors">
-                            <Checkbox
-                              id={`worker-${worker.id}`}
-                              checked={isChecked}
-                              onCheckedChange={(checked) => {
-                                if (checked) {
-                                  setSelectedLineWorkerIdsForAssignment([...selectedLineWorkerIdsForAssignment, worker.id]);
-                                } else {
-                                  setSelectedLineWorkerIdsForAssignment(selectedLineWorkerIdsForAssignment.filter(id => id !== worker.id));
-                                }
-                              }}
-                            />
-                            <Label
-                              htmlFor={`worker-${worker.id}`}
-                              className="flex-1 cursor-pointer py-1"
-                            >
-                              <div className="font-medium text-sm">{worker.displayName || worker.email}</div>
-                              {worker.assignedAreas && worker.assignedAreas.length > 0 && (
-                                <div className="text-[10px] text-muted-foreground flex items-center">
-                                  <MapPin className="h-2 w-2 mr-1" />
-                                  {worker.assignedAreas.length} area(s) assigned
-                                </div>
-                              )}
-                            </Label>
-                          </div>
-                        );
-                      })}
-                  </div>
-                </ScrollArea>
+                <Label htmlFor="editDisplayName">Display Name</Label>
+                <Input
+                  id="editDisplayName"
+                  defaultValue={editingLineWorker.displayName}
+                  placeholder="Enter display name"
+                />
               </div>
-              <div className="flex justify-between items-center bg-slate-50 p-3 rounded-lg border">
-                <div className="text-xs text-muted-foreground">
-                  {selectedLineWorkerIdsForAssignment.length} worker(s) selected
+              <div className="space-y-2">
+                <Label htmlFor="editPhone">Phone</Label>
+                <Input
+                  id="editPhone"
+                  type="tel"
+                  defaultValue={editingLineWorker.phone}
+                  placeholder="Enter phone number"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="editActive">Status</Label>
+                <Switch
+                  id="editActive"
+                  checked={editingActiveStatus}
+                  onCheckedChange={setEditingActiveStatus}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Assigned Areas</Label>
+                <p className="text-xs text-gray-500">Uncheck areas to remove assignment. Areas can be unassigned from all workers.</p>
+                <div className="space-y-2 max-h-32 overflow-y-auto">
+                  {areas.map((area) => {
+                    const isAssignedToOther = isAreaAssignedToOtherWorker(area.id, editingLineWorker?.id);
+                    const assignedWorker = getAssignedWorkerForArea(area.id);
+                    const isCurrentlyAssigned = editingSelectedAreas.includes(area.id);
+
+                    return (
+                      <div key={area.id} className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          id={`edit-area-${area.id}`}
+                          value={area.id}
+                          defaultChecked={isCurrentlyAssigned}
+                          disabled={updatingLineWorker}
+                          onChange={(e) => {
+                            console.log('🔄 Area checkbox changed:', {
+                              areaId: area.id,
+                              areaName: area.name,
+                              checked: e.target.checked,
+                              currentSelectedAreas: editingSelectedAreas,
+                              isAssignedToOther,
+                              isCurrentlyAssigned
+                            });
+
+                            if (e.target.checked) {
+                              const newSelectedAreas = [...editingSelectedAreas, area.id];
+                              console.log('✅ Adding area to selection:', newSelectedAreas);
+                              setEditingSelectedAreas(newSelectedAreas);
+                            } else {
+                              const newSelectedAreas = editingSelectedAreas.filter(id => id !== area.id);
+                              console.log('❌ Removing area from selection:', newSelectedAreas);
+                              setEditingSelectedAreas(newSelectedAreas);
+                            }
+                          }}
+                          className="rounded"
+                        />
+                        <label
+                          htmlFor={`edit-area-${area.id}`}
+                          className="text-sm"
+                        >
+                          {area.name}
+                          {isAssignedToOther && !isCurrentlyAssigned && (
+                            <span className="text-xs text-blue-500 ml-2">
+                              (Shared with {assignedWorker?.displayName || 'another worker'})
+                            </span>
+                          )}
+                        </label>
+                      </div>
+                    );
+                  })}
                 </div>
-                {selectedLineWorkerIdsForAssignment.length > 0 && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-xs h-7"
-                    onClick={() => setSelectedLineWorkerIdsForAssignment([])}
-                  >
-                    Clear All
-                  </Button>
-                )}
               </div>
-              <div className="flex space-x-2 pt-2">
+              <div className="flex space-x-2">
                 <Button
-                  className="flex-1"
-                  onClick={() => handleConfirmAssignmentAction(assigningRetailer.id, selectedLineWorkerIdsForAssignment)}
-                  disabled={isAssigning}
+                  onClick={() => {
+                    const displayName = (document.getElementById('editDisplayName') as HTMLInputElement)?.value;
+                    const phone = (document.getElementById('editPhone') as HTMLInputElement)?.value;
+
+                    handleUpdateLineWorker({
+                      active: editingActiveStatus,
+                      displayName: displayName || undefined,
+                      phone: phone || undefined
+                    });
+                  }}
+                  disabled={updatingLineWorker}
                 >
-                  {isAssigning ? (
+                  {updatingLineWorker ? (
                     <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Processing...
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      {updateProgress || 'Updating...'}
                     </>
                   ) : (
-                    selectedLineWorkerIdsForAssignment.length === 0 ? 'Update (Unassign)' : 'Save Assignments'
+                    'Update Line Worker'
                   )}
                 </Button>
-                <Button variant="outline" className="flex-1" onClick={() => {
-                  setShowRetailerAssignment(false);
-                  setAssigningRetailer(null);
-                  setSelectedLineWorkerIdsForAssignment([]);
-                  setError(null);
-                }} disabled={isAssigning}>
+                <Button variant="outline" onClick={() => {
+                  setShowEditLineWorkerDialog(false);
+                  setEditingLineWorker(null);
+                  setEditingSelectedAreas([]);
+                  setEditingActiveStatus(true);
+                }}>
                   Cancel
                 </Button>
               </div>
@@ -3764,320 +3652,438 @@ export function WholesalerAdminDashboard() {
         </DialogContent>
       </Dialog>
     );
-  };
 
-  // Main component return - no global loading state
+    const RetailerAssignmentDialog = () => {
 
-  if (!isWholesalerAdmin) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
-          <h2 className="text-xl font-bold text-gray-900 mb-2">Access Denied</h2>
-          <p className="text-gray-600">You don't have permission to access this dashboard.</p>
+      const currentAssignedWorker = assigningRetailer?.assignedLineWorkerId
+        ? lineWorkers.find(worker => worker.id === assigningRetailer.assignedLineWorkerId)
+        : null;
+
+      const areaAssignedWorker = !currentAssignedWorker && assigningRetailer?.areaId
+        ? getAssignedWorkerForArea(assigningRetailer.areaId)
+        : null;
+
+      return (
+        <Dialog open={showRetailerAssignment} onOpenChange={setShowRetailerAssignment}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>
+                Assign Retailer to Line Worker(s)
+              </DialogTitle>
+              <DialogDescription asChild>
+                <div className="space-y-2 text-sm text-muted-foreground">
+                  {assigningRetailer ? (
+                    <>
+                      <div className="font-medium text-foreground">{assigningRetailer.profile ? assigningRetailer.profile.realName : assigningRetailer.name}</div>
+                      <div className="text-sm">
+                        Select one or more line workers to assign this retailer to.
+                      </div>
+                    </>
+                  ) : (
+                    <div>Select a retailer to assign</div>
+                  )}
+                </div>
+              </DialogDescription>
+            </DialogHeader>
+            {assigningRetailer && (
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Active Line Workers</Label>
+                  <ScrollArea className="h-[250px] border rounded-md p-2">
+                    <div className="space-y-3">
+                      {lineWorkers
+                        .filter(worker => worker.active)
+                        .map(worker => {
+                          const isChecked = selectedLineWorkerIdsForAssignment.includes(worker.id);
+                          return (
+                            <div key={worker.id} className="flex items-center space-x-2 p-1 hover:bg-slate-50 rounded transition-colors">
+                              <Checkbox
+                                id={`worker-${worker.id}`}
+                                checked={isChecked}
+                                onCheckedChange={(checked) => {
+                                  if (checked) {
+                                    setSelectedLineWorkerIdsForAssignment([...selectedLineWorkerIdsForAssignment, worker.id]);
+                                  } else {
+                                    setSelectedLineWorkerIdsForAssignment(selectedLineWorkerIdsForAssignment.filter(id => id !== worker.id));
+                                  }
+                                }}
+                              />
+                              <Label
+                                htmlFor={`worker-${worker.id}`}
+                                className="flex-1 cursor-pointer py-1"
+                              >
+                                <div className="font-medium text-sm">{worker.displayName || worker.email}</div>
+                                {worker.assignedAreas && worker.assignedAreas.length > 0 && (
+                                  <div className="text-[10px] text-muted-foreground flex items-center">
+                                    <MapPin className="h-2 w-2 mr-1" />
+                                    {worker.assignedAreas.length} area(s) assigned
+                                  </div>
+                                )}
+                              </Label>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  </ScrollArea>
+                </div>
+                <div className="flex justify-between items-center bg-slate-50 p-3 rounded-lg border">
+                  <div className="text-xs text-muted-foreground">
+                    {selectedLineWorkerIdsForAssignment.length} worker(s) selected
+                  </div>
+                  {selectedLineWorkerIdsForAssignment.length > 0 && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-xs h-7"
+                      onClick={() => setSelectedLineWorkerIdsForAssignment([])}
+                    >
+                      Clear All
+                    </Button>
+                  )}
+                </div>
+                <div className="flex space-x-2 pt-2">
+                  <Button
+                    className="flex-1"
+                    onClick={() => handleConfirmAssignmentAction(assigningRetailer.id, selectedLineWorkerIdsForAssignment)}
+                    disabled={isAssigning}
+                  >
+                    {isAssigning ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Processing...
+                      </>
+                    ) : (
+                      selectedLineWorkerIdsForAssignment.length === 0 ? 'Update (Unassign)' : 'Save Assignments'
+                    )}
+                  </Button>
+                  <Button variant="outline" className="flex-1" onClick={() => {
+                    setShowRetailerAssignment(false);
+                    setAssigningRetailer(null);
+                    setSelectedLineWorkerIdsForAssignment([]);
+                    setError(null);
+                  }} disabled={isAssigning}>
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
+      );
+    };
+
+    // Main component return - no global loading state
+
+    if (!isWholesalerAdmin) {
+      return (
+        <div className="min-h-screen flex items-center justify-center">
+          <div className="text-center">
+            <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+            <h2 className="text-xl font-bold text-gray-900 mb-2">Access Denied</h2>
+            <p className="text-gray-600">You don't have permission to access this dashboard.</p>
+          </div>
         </div>
-      </div>
+      );
+    }
+
+    const getFilteredPayments = () => {
+      const filteredRetailerIds = getFilteredRetailers.map(r => r.id);
+      return payments.filter(payment => {
+        // Only include payments from filtered retailers
+        if (!filteredRetailerIds.includes(payment.retailerId)) {
+          return false;
+        }
+
+        // Date range filter - only apply for Overview tab
+        if (activeNav === 'overview' && transactionsDateRange) {
+          const paymentDate = toDate(payment.createdAt);
+          if (paymentDate < transactionsDateRange.startDate || paymentDate > transactionsDateRange.endDate) {
+            return false;
+          }
+        }
+
+        // Date filter for Retailer Details tab
+        if (activeNav === 'retailer-details' && filterDate?.from) {
+          const paymentDate = toDate(payment.createdAt);
+          const fromDate = new Date(filterDate.from);
+          fromDate.setHours(0, 0, 0, 0);
+
+          const toDateVal = filterDate.to ? new Date(filterDate.to) : new Date(fromDate);
+          toDateVal.setHours(23, 59, 59, 999);
+
+          if (paymentDate < fromDate || paymentDate > toDateVal) {
+            return false;
+          }
+        }
+
+        return true;
+      });
+    };
+
+    // Retailer Details Component - Complete detailed logs of retailers
+
+
+    return (
+      <>
+        <StatusBarColor theme="white" />
+
+        <StatusBarColor theme="white" />
+
+        {/* Loading Overlay - Inline to prevent double splash screen */}
+        {mainLoadingState.loadingState.isLoading && (
+          <div className="flex h-[80vh] items-center justify-center">
+            <LoadingOverlay
+              isLoading={true}
+              message="Loading dashboard data..."
+              progress={dataFetchProgress}
+              variant="inline"
+              className="bg-transparent"
+            />
+          </div>
+        )}
+
+        {/* Main Content - Only show when not loading */}
+        {!mainLoadingState.loadingState.isLoading && (
+          <div className="min-h-screen bg-gray-50 flex flex-col dashboard-screen">
+            {/* Navigation */}
+            <DashboardNavigation
+              activeNav={activeNav}
+              setActiveNav={setActiveNav}
+              navItems={navItems}
+              title="PharmaLync"
+              subtitle="Wholesaler Dashboard"
+              notificationCount={notificationCount}
+              notifications={notifications}
+              user={user ? { displayName: user.displayName, email: user.email } : undefined}
+              onLogout={() => setShowLogoutConfirmation(true)}
+            />
+
+            {/* Logout Confirmation Modal */}
+            <LogoutConfirmation
+              open={showLogoutConfirmation}
+              onOpenChange={setShowLogoutConfirmation}
+              onConfirm={logout}
+              userName={user?.displayName || user?.email}
+            />
+
+            {/* Tenant Selector for Super Admin */}
+            {isSuperAdmin && (
+              <div className="bg-white border-b border-gray-200 px-4 lg:px-6 py-3">
+                <div className="max-w-7xl mx-auto flex items-center space-x-4">
+                  <label className="text-sm font-medium text-gray-700">Working with Tenant:</label>
+                  <Select value={selectedTenant} onValueChange={setSelectedTenant}>
+                    <SelectTrigger className="w-64">
+                      <SelectValue placeholder="Select a tenant" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {tenants.map((tenant) => (
+                        <SelectItem key={tenant.id} value={tenant.id}>
+                          {tenant.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {!selectedTenant && (
+                    <p className="text-sm text-red-600">Please select a tenant to continue</p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Main Content */}
+            <main className="flex-1 pt-20 lg:pt-0 p-3 sm:p-4 lg:p-6 overflow-y-auto pb-20 lg:pb-6">
+              {error && (
+                <Alert className="border-red-200 bg-red-50 mb-4 sm:mb-6">
+                  <AlertCircle className="h-4 w-4 text-red-600" />
+                  <AlertDescription className="text-red-800 text-sm">{error}</AlertDescription>
+                </Alert>
+              )}
+
+              <div className="max-w-7xl mx-auto space-y-4 sm:space-y-6">
+                {activeNav === 'overview' && renderOverview()}
+                {activeNav === 'areas' && <Areas />}
+                {activeNav === 'retailers' && renderRetailers()}
+                {activeNav === 'retailer-details' && (
+                  <RetailerDetailsTab
+                    areas={areas}
+                    retailers={retailers}
+                    payments={payments}
+                    lineWorkers={lineWorkers}
+                    selectedArea={selectedArea}
+                    setSelectedArea={setSelectedArea}
+                    selectedRetailer={selectedRetailer}
+                    setSelectedRetailer={setSelectedRetailer}
+                    filterDate={filterDate}
+                    setFilterDate={setFilterDate}
+                    isLoading={mainLoadingState.loadingState.isRefreshing}
+                    error={error}
+                    onRefresh={handleManualRefresh}
+                    onAssignRetailer={(retailer, currentWorkerIds) => {
+                      setAssigningRetailer(retailer);
+                      // currentWorkerIds might be a single string from older data or already an array
+                      const ids = Array.isArray(currentWorkerIds)
+                        ? currentWorkerIds
+                        : (currentWorkerIds ? [currentWorkerIds] : []);
+                      setSelectedLineWorkerIdsForAssignment(ids);
+                      setShowRetailerAssignment(true);
+                    }}
+                    onClearFilters={() => {
+                      setSelectedArea("all");
+                      setSelectedRetailer("all");
+                      const today = new Date();
+                      const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+                      const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
+                      setTransactionsDateRange({ startDate: startOfDay, endDate: endOfDay });
+                      setSelectedDateRangeOption('today');
+                    }}
+                  />
+                )}
+                {activeNav === 'workers' && <LineWorkers />}
+                {activeNav === 'transactions' && renderTransactions()}
+                {activeNav === 'analytics' && <AnalyticsComponent />}
+                {activeNav === 'settings' && (
+                  <div className="sm:pt-8">
+                    <h2 className="text-2xl font-bold text-gray-900 mb-6">Settings</h2>
+                    <WholesalerProfileSettings
+                      tenantId={getCurrentTenantId() || ''}
+                      onProfileUpdated={() => fetchDashboardData()}
+                    />
+                  </div>
+                )}
+
+                <div >
+                  <div className="px-4 pb-20 pt-2 text-left">
+                    {/* Tagline */}
+                    <h2
+                      className="fw-bold lh-sm"
+                      style={{
+                        fontSize: "2.2rem",
+                        lineHeight: "1.2",
+                        color: "rgba(75, 75, 75, 1)",
+                        fontWeight: 700,
+                      }}
+                    >
+                      Payment <br />
+                      Collection Made<br />
+                      More Secure{" "}
+                      <Heart
+                        className="inline-block"
+                        size={30}
+                        fill="red"
+                        color="red"
+                      />
+                    </h2>
+
+                    {/* Divider line */}
+                    <hr
+                      style={{
+                        borderTop: "1px solid rgba(75, 75, 75, 1)",
+                        margin: "18px 0",
+                      }}
+                    />
+
+                    {/* App name */}
+                    <p
+                      style={{
+                        fontSize: "1rem",
+                        color: "rgba(75, 75, 75, 1)",
+                        fontWeight: 500,
+                      }}
+                    >
+                      PharmaLync
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+
+
+              {/* Payment Verification Modal */}
+              {/* Payment Verification Modal */}
+              <PaymentVerificationModal
+                payment={selectedPaymentForVerification}
+                isOpen={isVerificationModalOpen}
+                onClose={() => {
+                  setIsVerificationModalOpen(false);
+                  setSelectedPaymentForVerification(null);
+                }}
+                onVerify={handleVerifyPayment}
+                onSkip={handleSkipVerification}
+                isVerifying={isMarkingVerified}
+                retailerCode={(() => {
+                  if (!selectedPaymentForVerification) return undefined;
+                  const retailer = retailers.find(r => r.id === selectedPaymentForVerification.retailerId);
+                  return retailer?.code || retailer?.id?.slice(0, 6).toUpperCase() || 'N/A';
+                })()}
+              />
+
+              {/* Dialog Components */}
+              {ViewPaymentDialog()}
+
+              {/* Edit Line Worker Dialog */}
+              {EditLineWorkerDialog()}
+
+              {/* Retailer Assignment Dialog */}
+              {RetailerAssignmentDialog()}
+
+              {/* Assignment Confirmation Dialog */}
+              <AlertDialog open={showAssignmentConfirmation} onOpenChange={setShowAssignmentConfirmation}>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>
+                      {pendingAssignment?.action === 'unassign' ? 'Unassign Retailer' : 'Reassign Retailer'}
+                    </AlertDialogTitle>
+                    <AlertDialogDescription>
+                      {pendingAssignment?.action === 'unassign' ? (
+                        <>
+                          Are you sure you want to unassign <strong>{pendingAssignment?.retailerName}</strong> from all workers?
+                          <br /><br />
+                          <span className="text-sm text-amber-600">
+                            This retailer will no longer be visible to any line workers unless assigned via their area.
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          Are you sure you want to update assignments for <strong>{pendingAssignment?.retailerName}</strong>?
+                          <br /><br />
+                          New assignments: <strong>{pendingAssignment?.lineWorkerNames}</strong>
+                        </>
+                      )}
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel onClick={cancelPendingAssignment}>
+                      Cancel
+                    </AlertDialogCancel>
+                    <AlertDialogAction onClick={executeConfirmedAssignment}>
+                      {pendingAssignment?.action === 'unassign' ? 'Unassign' : 'Reassign'}
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+
+              {/* Success Feedback */}
+              <SuccessFeedback
+                show={feedback.show}
+                message={feedback.message}
+                onClose={hideSuccess}
+              />
+
+              {/* Exit App Confirmation */}
+              <ExitAppConfirmation
+                open={showExitConfirmation}
+                onOpenChange={setShowExitConfirmation}
+                onConfirm={handleExitApp}
+              />
+
+            </main>
+
+
+          </div>
+
+        )}
+      </>
     );
   }
 
-  const getFilteredPayments = () => {
-    const filteredRetailerIds = getFilteredRetailers.map(r => r.id);
-    return payments.filter(payment => {
-      // Only include payments from filtered retailers
-      if (!filteredRetailerIds.includes(payment.retailerId)) {
-        return false;
-      }
-
-      // Date range filter - only apply for Overview tab
-      if (activeNav === 'overview' && transactionsDateRange) {
-        const paymentDate = toDate(payment.createdAt);
-        if (paymentDate < transactionsDateRange.startDate || paymentDate > transactionsDateRange.endDate) {
-          return false;
-        }
-      }
-
-      // Date filter for Retailer Details tab
-      if (activeNav === 'retailer-details' && filterDate?.from) {
-        const paymentDate = toDate(payment.createdAt);
-        const fromDate = new Date(filterDate.from);
-        fromDate.setHours(0, 0, 0, 0);
-
-        const toDateVal = filterDate.to ? new Date(filterDate.to) : new Date(fromDate);
-        toDateVal.setHours(23, 59, 59, 999);
-
-        if (paymentDate < fromDate || paymentDate > toDateVal) {
-          return false;
-        }
-      }
-
-      return true;
-    });
-  };
-
-  // Retailer Details Component - Complete detailed logs of retailers
-
-
-  return (
-    <>
-      <StatusBarColor theme="white" />
-
-      <StatusBarColor theme="white" />
-
-      {/* Loading Overlay - Inline to prevent double splash screen */}
-      {mainLoadingState.loadingState.isLoading && (
-        <div className="flex h-[80vh] items-center justify-center">
-          <LoadingOverlay
-            isLoading={true}
-            message="Loading dashboard data..."
-            progress={dataFetchProgress}
-            variant="inline"
-            className="bg-transparent"
-          />
-        </div>
-      )}
-
-      {/* Main Content - Only show when not loading */}
-      {!mainLoadingState.loadingState.isLoading && (
-        <div className="min-h-screen bg-gray-50 flex flex-col dashboard-screen">
-          {/* Navigation */}
-          <DashboardNavigation
-            activeNav={activeNav}
-            setActiveNav={setActiveNav}
-            navItems={navItems}
-            title="PharmaLync"
-            subtitle="Wholesaler Dashboard"
-            notificationCount={notificationCount}
-            notifications={notifications}
-            user={user ? { displayName: user.displayName, email: user.email } : undefined}
-            onLogout={() => setShowLogoutConfirmation(true)}
-          />
-
-          {/* Logout Confirmation Modal */}
-          <LogoutConfirmation
-            open={showLogoutConfirmation}
-            onOpenChange={setShowLogoutConfirmation}
-            onConfirm={logout}
-            userName={user?.displayName || user?.email}
-          />
-
-          {/* Tenant Selector for Super Admin */}
-          {isSuperAdmin && (
-            <div className="bg-white border-b border-gray-200 px-4 lg:px-6 py-3">
-              <div className="max-w-7xl mx-auto flex items-center space-x-4">
-                <label className="text-sm font-medium text-gray-700">Working with Tenant:</label>
-                <Select value={selectedTenant} onValueChange={setSelectedTenant}>
-                  <SelectTrigger className="w-64">
-                    <SelectValue placeholder="Select a tenant" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {tenants.map((tenant) => (
-                      <SelectItem key={tenant.id} value={tenant.id}>
-                        {tenant.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {!selectedTenant && (
-                  <p className="text-sm text-red-600">Please select a tenant to continue</p>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Main Content */}
-          <main className="flex-1 pt-20 lg:pt-0 p-3 sm:p-4 lg:p-6 overflow-y-auto pb-20 lg:pb-6">
-            {error && (
-              <Alert className="border-red-200 bg-red-50 mb-4 sm:mb-6">
-                <AlertCircle className="h-4 w-4 text-red-600" />
-                <AlertDescription className="text-red-800 text-sm">{error}</AlertDescription>
-              </Alert>
-            )}
-
-            <div className="max-w-7xl mx-auto space-y-4 sm:space-y-6">
-              {activeNav === 'overview' && renderOverview()}
-              {activeNav === 'areas' && <Areas />}
-              {activeNav === 'retailers' && renderRetailers()}
-              {activeNav === 'retailer-details' && (
-                <RetailerDetailsTab
-                  areas={areas}
-                  retailers={retailers}
-                  payments={payments}
-                  lineWorkers={lineWorkers}
-                  selectedArea={selectedArea}
-                  setSelectedArea={setSelectedArea}
-                  selectedRetailer={selectedRetailer}
-                  setSelectedRetailer={setSelectedRetailer}
-                  filterDate={filterDate}
-                  setFilterDate={setFilterDate}
-                  isLoading={mainLoadingState.loadingState.isRefreshing}
-                  error={error}
-                  onRefresh={handleManualRefresh}
-                  onAssignRetailer={(retailer, currentWorkerIds) => {
-                    setAssigningRetailer(retailer);
-                    // currentWorkerIds might be a single string from older data or already an array
-                    const ids = Array.isArray(currentWorkerIds)
-                      ? currentWorkerIds
-                      : (currentWorkerIds ? [currentWorkerIds] : []);
-                    setSelectedLineWorkerIdsForAssignment(ids);
-                    setShowRetailerAssignment(true);
-                  }}
-                  onClearFilters={() => {
-                    setSelectedArea("all");
-                    setSelectedRetailer("all");
-                    const today = new Date();
-                    const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-                    const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
-                    setTransactionsDateRange({ startDate: startOfDay, endDate: endOfDay });
-                    setSelectedDateRangeOption('today');
-                  }}
-                />
-              )}
-              {activeNav === 'workers' && <LineWorkers />}
-              {activeNav === 'transactions' && renderTransactions()}
-              {activeNav === 'analytics' && <AnalyticsComponent />}
-              {activeNav === 'settings' && (
-                <div className="sm:pt-8">
-                  <h2 className="text-2xl font-bold text-gray-900 mb-6">Settings</h2>
-                  <WholesalerProfileSettings
-                    tenantId={getCurrentTenantId() || ''}
-                    onProfileUpdated={() => fetchDashboardData()}
-                  />
-                </div>
-              )}
-
-              <div >
-                <div className="px-4 pb-20 pt-2 text-left">
-                  {/* Tagline */}
-                  <h2
-                    className="fw-bold lh-sm"
-                    style={{
-                      fontSize: "2.2rem",
-                      lineHeight: "1.2",
-                      color: "rgba(75, 75, 75, 1)",
-                      fontWeight: 700,
-                    }}
-                  >
-                    Payment <br />
-                    Collection Made<br />
-                    More Secure{" "}
-                    <Heart
-                      className="inline-block"
-                      size={30}
-                      fill="red"
-                      color="red"
-                    />
-                  </h2>
-
-                  {/* Divider line */}
-                  <hr
-                    style={{
-                      borderTop: "1px solid rgba(75, 75, 75, 1)",
-                      margin: "18px 0",
-                    }}
-                  />
-
-                  {/* App name */}
-                  <p
-                    style={{
-                      fontSize: "1rem",
-                      color: "rgba(75, 75, 75, 1)",
-                      fontWeight: 500,
-                    }}
-                  >
-                    PharmaLync
-                  </p>
-                </div>
-              </div>
-            </div>
-
-
-
-            {/* Payment Verification Modal */}
-            {/* Payment Verification Modal */}
-            <PaymentVerificationModal
-              payment={selectedPaymentForVerification}
-              isOpen={isVerificationModalOpen}
-              onClose={() => {
-                setIsVerificationModalOpen(false);
-                setSelectedPaymentForVerification(null);
-              }}
-              onVerify={handleVerifyPayment}
-              onSkip={handleSkipVerification}
-              isVerifying={isMarkingVerified}
-              retailerCode={(() => {
-                if (!selectedPaymentForVerification) return undefined;
-                const retailer = retailers.find(r => r.id === selectedPaymentForVerification.retailerId);
-                return retailer?.code || retailer?.id?.slice(0, 6).toUpperCase() || 'N/A';
-              })()}
-            />
-
-            {/* Dialog Components */}
-            {ViewPaymentDialog()}
-
-            {/* Edit Line Worker Dialog */}
-            {EditLineWorkerDialog()}
-
-            {/* Retailer Assignment Dialog */}
-            {RetailerAssignmentDialog()}
-
-            {/* Assignment Confirmation Dialog */}
-            <AlertDialog open={showAssignmentConfirmation} onOpenChange={setShowAssignmentConfirmation}>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>
-                    {pendingAssignment?.action === 'unassign' ? 'Unassign Retailer' : 'Reassign Retailer'}
-                  </AlertDialogTitle>
-                  <AlertDialogDescription>
-                    {pendingAssignment?.action === 'unassign' ? (
-                      <>
-                        Are you sure you want to unassign <strong>{pendingAssignment?.retailerName}</strong> from all workers?
-                        <br /><br />
-                        <span className="text-sm text-amber-600">
-                          This retailer will no longer be visible to any line workers unless assigned via their area.
-                        </span>
-                      </>
-                    ) : (
-                      <>
-                        Are you sure you want to update assignments for <strong>{pendingAssignment?.retailerName}</strong>?
-                        <br /><br />
-                        New assignments: <strong>{pendingAssignment?.lineWorkerNames}</strong>
-                      </>
-                    )}
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel onClick={cancelPendingAssignment}>
-                    Cancel
-                  </AlertDialogCancel>
-                  <AlertDialogAction onClick={executeConfirmedAssignment}>
-                    {pendingAssignment?.action === 'unassign' ? 'Unassign' : 'Reassign'}
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-
-            {/* Success Feedback */}
-            <SuccessFeedback
-              show={feedback.show}
-              message={feedback.message}
-              onClose={hideSuccess}
-            />
-
-            {/* Exit App Confirmation */}
-            <ExitAppConfirmation
-              open={showExitConfirmation}
-              onOpenChange={setShowExitConfirmation}
-              onConfirm={handleExitApp}
-            />
-
-          </main>
-
-
-        </div>
-
-      )}
-    </>
-  );
-}
-
-export default WholesalerAdminDashboard;
+  export default WholesalerAdminDashboard;
