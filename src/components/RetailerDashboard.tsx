@@ -1863,12 +1863,18 @@ export function RetailerDashboard() {
             </Alert>
           )}
 
-          {/* Loading Overlay */}
-          <LoadingOverlay
-            isLoading={mainLoadingState.loadingState.isLoading}
-            progress={dataFetchProgress}
-            message="Loading retailer data..."
-          />
+          {/* Loading Overlay - Inline to prevent double splash screen */}
+          {mainLoadingState.loadingState.isLoading && (
+            <div className="flex h-[80vh] items-center justify-center">
+              <LoadingOverlay
+                isLoading={true}
+                progress={dataFetchProgress}
+                message="Loading retailer data..."
+                variant="inline"
+                className="bg-transparent"
+              />
+            </div>
+          )}
 
           {/* Dashboard Content */}
           {!mainLoadingState.loadingState.isLoading && retailer && (

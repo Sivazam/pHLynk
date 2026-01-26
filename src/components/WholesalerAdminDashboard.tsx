@@ -3802,257 +3802,263 @@ export function WholesalerAdminDashboard() {
     <>
       <StatusBarColor theme="white" />
 
-      {/* Loading Overlay */}
-      <LoadingOverlay
-        isLoading={mainLoadingState.loadingState.isLoading}
-        message="Loading dashboard data..."
-        progress={dataFetchProgress}
-        variant="fullscreen"
-      />
+      <StatusBarColor theme="white" />
 
-      <div className="min-h-screen bg-gray-50 flex flex-col dashboard-screen">
-        {/* Navigation */}
-        <DashboardNavigation
-          activeNav={activeNav}
-          setActiveNav={setActiveNav}
-          navItems={navItems}
-          title="PharmaLync"
-          subtitle="Wholesaler Dashboard"
-          notificationCount={notificationCount}
-          notifications={notifications}
-          user={user ? { displayName: user.displayName, email: user.email } : undefined}
-          onLogout={() => setShowLogoutConfirmation(true)}
-        />
+      {/* Loading Overlay - Inline to prevent double splash screen */}
+      {mainLoadingState.loadingState.isLoading && (
+        <div className="flex h-[80vh] items-center justify-center">
+          <LoadingOverlay
+            isLoading={true}
+            message="Loading dashboard data..."
+            progress={dataFetchProgress}
+            variant="inline"
+            className="bg-transparent"
+          />
+        </div>
+      )}
 
-        {/* Logout Confirmation Modal */}
-        <LogoutConfirmation
-          open={showLogoutConfirmation}
-          onOpenChange={setShowLogoutConfirmation}
-          onConfirm={logout}
-          userName={user?.displayName || user?.email}
-        />
+      {/* Main Content - Only show when not loading */}
+      {!mainLoadingState.loadingState.isLoading && (
+        <div className="min-h-screen bg-gray-50 flex flex-col dashboard-screen">
+          {/* Navigation */}
+          <DashboardNavigation
+            activeNav={activeNav}
+            setActiveNav={setActiveNav}
+            navItems={navItems}
+            title="PharmaLync"
+            subtitle="Wholesaler Dashboard"
+            notificationCount={notificationCount}
+            notifications={notifications}
+            user={user ? { displayName: user.displayName, email: user.email } : undefined}
+            onLogout={() => setShowLogoutConfirmation(true)}
+          />
 
-        {/* Tenant Selector for Super Admin */}
-        {isSuperAdmin && (
-          <div className="bg-white border-b border-gray-200 px-4 lg:px-6 py-3">
-            <div className="max-w-7xl mx-auto flex items-center space-x-4">
-              <label className="text-sm font-medium text-gray-700">Working with Tenant:</label>
-              <Select value={selectedTenant} onValueChange={setSelectedTenant}>
-                <SelectTrigger className="w-64">
-                  <SelectValue placeholder="Select a tenant" />
-                </SelectTrigger>
-                <SelectContent>
-                  {tenants.map((tenant) => (
-                    <SelectItem key={tenant.id} value={tenant.id}>
-                      {tenant.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {!selectedTenant && (
-                <p className="text-sm text-red-600">Please select a tenant to continue</p>
-              )}
+          {/* Logout Confirmation Modal */}
+          <LogoutConfirmation
+            open={showLogoutConfirmation}
+            onOpenChange={setShowLogoutConfirmation}
+            onConfirm={logout}
+            userName={user?.displayName || user?.email}
+          />
+
+          {/* Tenant Selector for Super Admin */}
+          {isSuperAdmin && (
+            <div className="bg-white border-b border-gray-200 px-4 lg:px-6 py-3">
+              <div className="max-w-7xl mx-auto flex items-center space-x-4">
+                <label className="text-sm font-medium text-gray-700">Working with Tenant:</label>
+                <Select value={selectedTenant} onValueChange={setSelectedTenant}>
+                  <SelectTrigger className="w-64">
+                    <SelectValue placeholder="Select a tenant" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {tenants.map((tenant) => (
+                      <SelectItem key={tenant.id} value={tenant.id}>
+                        {tenant.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {!selectedTenant && (
+                  <p className="text-sm text-red-600">Please select a tenant to continue</p>
+                )}
+              </div>
             </div>
-          </div>
-        )}
-
-        {/* Main Content */}
-        <main className="flex-1 pt-20 lg:pt-0 p-3 sm:p-4 lg:p-6 overflow-y-auto pb-20 lg:pb-6">
-          {error && (
-            <Alert className="border-red-200 bg-red-50 mb-4 sm:mb-6">
-              <AlertCircle className="h-4 w-4 text-red-600" />
-              <AlertDescription className="text-red-800 text-sm">{error}</AlertDescription>
-            </Alert>
           )}
 
-          <div className="max-w-7xl mx-auto space-y-4 sm:space-y-6">
-            {activeNav === 'overview' && renderOverview()}
-            {activeNav === 'areas' && <Areas />}
-            {activeNav === 'retailers' && renderRetailers()}
-            {activeNav === 'retailer-details' && (
-              <RetailerDetailsTab
-                areas={areas}
-                retailers={retailers}
-                payments={payments}
-                lineWorkers={lineWorkers}
-                selectedArea={selectedArea}
-                setSelectedArea={setSelectedArea}
-                selectedRetailer={selectedRetailer}
-                setSelectedRetailer={setSelectedRetailer}
-                filterDate={filterDate}
-                setFilterDate={setFilterDate}
-                isLoading={mainLoadingState.loadingState.isRefreshing}
-                error={error}
-                onRefresh={handleManualRefresh}
-                onAssignRetailer={(retailer, currentWorkerIds) => {
-                  setAssigningRetailer(retailer);
-                  // currentWorkerIds might be a single string from older data or already an array
-                  const ids = Array.isArray(currentWorkerIds)
-                    ? currentWorkerIds
-                    : (currentWorkerIds ? [currentWorkerIds] : []);
-                  setSelectedLineWorkerIdsForAssignment(ids);
-                  setShowRetailerAssignment(true);
-                }}
-                onClearFilters={() => {
-                  setSelectedArea("all");
-                  setSelectedRetailer("all");
-                  const today = new Date();
-                  const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-                  const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
-                  setTransactionsDateRange({ startDate: startOfDay, endDate: endOfDay });
-                  setSelectedDateRangeOption('today');
-                }}
-              />
-            )}
-            {activeNav === 'workers' && <LineWorkers />}
-            {activeNav === 'transactions' && renderTransactions()}
-            {activeNav === 'analytics' && <AnalyticsComponent />}
-            {activeNav === 'settings' && (
-              <div className="sm:pt-8">
-                <h2 className="text-2xl font-bold text-gray-900 mb-6">Settings</h2>
-                <WholesalerProfileSettings
-                  tenantId={getCurrentTenantId() || ''}
-                  onProfileUpdated={() => fetchDashboardData()}
-                />
-              </div>
+          {/* Main Content */}
+          <main className="flex-1 pt-20 lg:pt-0 p-3 sm:p-4 lg:p-6 overflow-y-auto pb-20 lg:pb-6">
+            {error && (
+              <Alert className="border-red-200 bg-red-50 mb-4 sm:mb-6">
+                <AlertCircle className="h-4 w-4 text-red-600" />
+                <AlertDescription className="text-red-800 text-sm">{error}</AlertDescription>
+              </Alert>
             )}
 
-            <div >
-              <div className="px-4 pb-20 pt-2 text-left">
-                {/* Tagline */}
-                <h2
-                  className="fw-bold lh-sm"
-                  style={{
-                    fontSize: "2.2rem",
-                    lineHeight: "1.2",
-                    color: "rgba(75, 75, 75, 1)",
-                    fontWeight: 700,
+            <div className="max-w-7xl mx-auto space-y-4 sm:space-y-6">
+              {activeNav === 'overview' && renderOverview()}
+              {activeNav === 'areas' && <Areas />}
+              {activeNav === 'retailers' && renderRetailers()}
+              {activeNav === 'retailer-details' && (
+                <RetailerDetailsTab
+                  areas={areas}
+                  retailers={retailers}
+                  payments={payments}
+                  lineWorkers={lineWorkers}
+                  selectedArea={selectedArea}
+                  setSelectedArea={setSelectedArea}
+                  selectedRetailer={selectedRetailer}
+                  setSelectedRetailer={setSelectedRetailer}
+                  filterDate={filterDate}
+                  setFilterDate={setFilterDate}
+                  isLoading={mainLoadingState.loadingState.isRefreshing}
+                  error={error}
+                  onRefresh={handleManualRefresh}
+                  onAssignRetailer={(retailer, currentWorkerIds) => {
+                    setAssigningRetailer(retailer);
+                    // currentWorkerIds might be a single string from older data or already an array
+                    const ids = Array.isArray(currentWorkerIds)
+                      ? currentWorkerIds
+                      : (currentWorkerIds ? [currentWorkerIds] : []);
+                    setSelectedLineWorkerIdsForAssignment(ids);
+                    setShowRetailerAssignment(true);
                   }}
-                >
-                  Payment <br />
-                  Collection Made<br />
-                  More Secure{" "}
-                  <Heart
-                    className="inline-block"
-                    size={30}
-                    fill="red"
-                    color="red"
+                  onClearFilters={() => {
+                    setSelectedArea("all");
+                    setSelectedRetailer("all");
+                    const today = new Date();
+                    const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+                    const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
+                    setTransactionsDateRange({ startDate: startOfDay, endDate: endOfDay });
+                    setSelectedDateRangeOption('today');
+                  }}
+                />
+              )}
+              {activeNav === 'workers' && <LineWorkers />}
+              {activeNav === 'transactions' && renderTransactions()}
+              {activeNav === 'analytics' && <AnalyticsComponent />}
+              {activeNav === 'settings' && (
+                <div className="sm:pt-8">
+                  <h2 className="text-2xl font-bold text-gray-900 mb-6">Settings</h2>
+                  <WholesalerProfileSettings
+                    tenantId={getCurrentTenantId() || ''}
+                    onProfileUpdated={() => fetchDashboardData()}
                   />
-                </h2>
+                </div>
+              )}
 
-                {/* Divider line */}
-                <hr
-                  style={{
-                    borderTop: "1px solid rgba(75, 75, 75, 1)",
-                    margin: "18px 0",
-                  }}
-                />
+              <div >
+                <div className="px-4 pb-20 pt-2 text-left">
+                  {/* Tagline */}
+                  <h2
+                    className="fw-bold lh-sm"
+                    style={{
+                      fontSize: "2.2rem",
+                      lineHeight: "1.2",
+                      color: "rgba(75, 75, 75, 1)",
+                      fontWeight: 700,
+                    }}
+                  >
+                    Payment <br />
+                    Collection Made<br />
+                    More Secure{" "}
+                    <Heart
+                      className="inline-block"
+                      size={30}
+                      fill="red"
+                      color="red"
+                    />
+                  </h2>
 
-                {/* App name */}
-                <p
-                  style={{
-                    fontSize: "1rem",
-                    color: "rgba(75, 75, 75, 1)",
-                    fontWeight: 500,
-                  }}
-                >
-                  PharmaLync
-                </p>
+                  {/* Divider line */}
+                  <hr
+                    style={{
+                      borderTop: "1px solid rgba(75, 75, 75, 1)",
+                      margin: "18px 0",
+                    }}
+                  />
+
+                  {/* App name */}
+                  <p
+                    style={{
+                      fontSize: "1rem",
+                      color: "rgba(75, 75, 75, 1)",
+                      fontWeight: 500,
+                    }}
+                  >
+                    PharmaLync
+                  </p>
+                </div>
               </div>
             </div>
-          </div>
 
 
 
-          {/* Payment Verification Modal */}
-          {/* Payment Verification Modal */}
-          <PaymentVerificationModal
-            payment={selectedPaymentForVerification}
-            isOpen={isVerificationModalOpen}
-            onClose={() => {
-              setIsVerificationModalOpen(false);
-              setSelectedPaymentForVerification(null);
-            }}
-            onVerify={handleVerifyPayment}
-            onSkip={handleSkipVerification}
-            isVerifying={isMarkingVerified}
-            retailerCode={(() => {
-              if (!selectedPaymentForVerification) return undefined;
-              const retailer = retailers.find(r => r.id === selectedPaymentForVerification.retailerId);
-              return retailer?.code || retailer?.id?.slice(0, 6).toUpperCase() || 'N/A';
-            })()}
-          />
+            {/* Payment Verification Modal */}
+            {/* Payment Verification Modal */}
+            <PaymentVerificationModal
+              payment={selectedPaymentForVerification}
+              isOpen={isVerificationModalOpen}
+              onClose={() => {
+                setIsVerificationModalOpen(false);
+                setSelectedPaymentForVerification(null);
+              }}
+              onVerify={handleVerifyPayment}
+              onSkip={handleSkipVerification}
+              isVerifying={isMarkingVerified}
+              retailerCode={(() => {
+                if (!selectedPaymentForVerification) return undefined;
+                const retailer = retailers.find(r => r.id === selectedPaymentForVerification.retailerId);
+                return retailer?.code || retailer?.id?.slice(0, 6).toUpperCase() || 'N/A';
+              })()}
+            />
 
-          {/* Dialog Components */}
-          {ViewPaymentDialog()}
+            {/* Dialog Components */}
+            {ViewPaymentDialog()}
 
-          {/* Edit Line Worker Dialog */}
-          {EditLineWorkerDialog()}
+            {/* Edit Line Worker Dialog */}
+            {EditLineWorkerDialog()}
 
-          {/* Retailer Assignment Dialog */}
-          {RetailerAssignmentDialog()}
+            {/* Retailer Assignment Dialog */}
+            {RetailerAssignmentDialog()}
 
-          {/* Assignment Confirmation Dialog */}
-          <AlertDialog open={showAssignmentConfirmation} onOpenChange={setShowAssignmentConfirmation}>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>
-                  {pendingAssignment?.action === 'unassign' ? 'Unassign Retailer' : 'Reassign Retailer'}
-                </AlertDialogTitle>
-                <AlertDialogDescription>
-                  {pendingAssignment?.action === 'unassign' ? (
-                    <>
-                      Are you sure you want to unassign <strong>{pendingAssignment?.retailerName}</strong> from all workers?
-                      <br /><br />
-                      <span className="text-sm text-amber-600">
-                        This retailer will no longer be visible to any line workers unless assigned via their area.
-                      </span>
-                    </>
-                  ) : (
-                    <>
-                      Are you sure you want to update assignments for <strong>{pendingAssignment?.retailerName}</strong>?
-                      <br /><br />
-                      New assignments: <strong>{pendingAssignment?.lineWorkerNames}</strong>
-                    </>
-                  )}
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel onClick={cancelPendingAssignment}>
-                  Cancel
-                </AlertDialogCancel>
-                <AlertDialogAction onClick={executeConfirmedAssignment}>
-                  {pendingAssignment?.action === 'unassign' ? 'Unassign' : 'Reassign'}
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+            {/* Assignment Confirmation Dialog */}
+            <AlertDialog open={showAssignmentConfirmation} onOpenChange={setShowAssignmentConfirmation}>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>
+                    {pendingAssignment?.action === 'unassign' ? 'Unassign Retailer' : 'Reassign Retailer'}
+                  </AlertDialogTitle>
+                  <AlertDialogDescription>
+                    {pendingAssignment?.action === 'unassign' ? (
+                      <>
+                        Are you sure you want to unassign <strong>{pendingAssignment?.retailerName}</strong> from all workers?
+                        <br /><br />
+                        <span className="text-sm text-amber-600">
+                          This retailer will no longer be visible to any line workers unless assigned via their area.
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        Are you sure you want to update assignments for <strong>{pendingAssignment?.retailerName}</strong>?
+                        <br /><br />
+                        New assignments: <strong>{pendingAssignment?.lineWorkerNames}</strong>
+                      </>
+                    )}
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel onClick={cancelPendingAssignment}>
+                    Cancel
+                  </AlertDialogCancel>
+                  <AlertDialogAction onClick={executeConfirmedAssignment}>
+                    {pendingAssignment?.action === 'unassign' ? 'Unassign' : 'Reassign'}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
 
-          {/* Success Feedback */}
-          <SuccessFeedback
-            show={feedback.show}
-            message={feedback.message}
-            onClose={hideSuccess}
-          />
+            {/* Success Feedback */}
+            <SuccessFeedback
+              show={feedback.show}
+              message={feedback.message}
+              onClose={hideSuccess}
+            />
 
-          {/* Exit App Confirmation */}
-          <ExitAppConfirmation
-            open={showExitConfirmation}
-            onOpenChange={setShowExitConfirmation}
-            onConfirm={handleExitApp}
-          />
+            {/* Exit App Confirmation */}
+            <ExitAppConfirmation
+              open={showExitConfirmation}
+              onOpenChange={setShowExitConfirmation}
+              onConfirm={handleExitApp}
+            />
 
-        </main>
+          </main>
 
 
-      </div>
+        </div>
 
+      )}
     </>
-
-
   );
-
-
-};
+}
 
 export default WholesalerAdminDashboard;

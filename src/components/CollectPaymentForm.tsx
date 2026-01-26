@@ -647,34 +647,47 @@ const CollectPaymentFormComponent = ({
                   {/* Cheque Date */}
                   <div className="space-y-1.5">
                     <Label className="text-sm font-medium text-gray-700">Cheque Date *</Label>
-                    <Popover open={isChequeDateOpen} onOpenChange={setIsChequeDateOpen}>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant={"outline"}
-                          className={cn(
-                            "w-full h-11 justify-start text-left font-normal",
-                            !formData.chequeDate && "text-muted-foreground"
-                          )}
-                        >
-                          <CalendarIcon className="mr-2 h-4 w-4" />
-                          {formData.chequeDate ? format(formData.chequeDate, "PPP") : <span>Pick a date</span>}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <CalendarComponent
-                          mode="single"
-                          selected={formData.chequeDate}
-                          onSelect={(date) => {
-                            updateField('chequeDate', date);
-                            setIsChequeDateOpen(false);
-                          }}
-                          initialFocus
-                          disabled={(date) =>
-                            date < new Date("1900-01-01")
-                          }
-                        />
-                      </PopoverContent>
-                    </Popover>
+                    {/* Mobile: Native Date Input */}
+                    <div className="md:hidden">
+                      <Input
+                        type="date"
+                        value={formData.chequeDate ? format(formData.chequeDate, 'yyyy-MM-dd') : ''}
+                        onChange={(e) => updateField('chequeDate', e.target.value ? new Date(e.target.value) : undefined)}
+                        className="w-full"
+                      />
+                    </div>
+
+                    {/* Desktop: Custom Popover Calendar */}
+                    <div className="hidden md:block">
+                      <Popover open={isChequeDateOpen} onOpenChange={setIsChequeDateOpen}>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant={"outline"}
+                            className={cn(
+                              "w-full h-11 justify-start text-left font-normal",
+                              !formData.chequeDate && "text-muted-foreground"
+                            )}
+                          >
+                            <CalendarIcon className="mr-2 h-4 w-4" />
+                            {formData.chequeDate ? format(formData.chequeDate, "PPP") : <span>Pick a date</span>}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <CalendarComponent
+                            mode="single"
+                            selected={formData.chequeDate}
+                            onSelect={(date) => {
+                              updateField('chequeDate', date);
+                              setIsChequeDateOpen(false);
+                            }}
+                            initialFocus
+                            disabled={(date) =>
+                              date < new Date("1900-01-01")
+                            }
+                          />
+                        </PopoverContent>
+                      </Popover>
+                    </div>
                   </div>
                 </div>
               )}

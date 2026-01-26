@@ -2139,134 +2139,145 @@ export function SuperAdminDashboard() {
     <>
       <StatusBarColor theme="white" />
 
-      {/* Loading Overlay */}
-      <LoadingOverlay
-        isLoading={mainLoadingState.loadingState.isLoading}
-        message="Loading dashboard data..."
-        progress={dataFetchProgress}
-        variant="fullscreen"
-      />
+      <StatusBarColor theme="white" />
 
-      <div className="min-h-screen bg-gray-50 flex flex-col dashboard-screen">
-        {/* Navigation */}
-        <DashboardNavigation
-          activeNav={activeNav}
-          setActiveNav={setActiveNav}
-          navItems={navItems}
-          title="PharmaLync"
-          subtitle="Super Admin Dashboard"
-          notificationCount={notificationCount}
-          notifications={notifications}
-          user={user ? { displayName: user.displayName, email: user.email } : undefined}
-          onLogout={() => setShowLogoutConfirmation(true)}
-          onNotificationRead={markNotificationAsRead}
-          onAllNotificationsRead={markAllNotificationsAsRead}
-        />
+      {/* Loading Overlay - Inline to prevent double splash screen */}
+      {mainLoadingState.loadingState.isLoading && (
+        <div className="flex h-[80vh] items-center justify-center">
+          <LoadingOverlay
+            isLoading={true}
+            message="Loading dashboard data..."
+            progress={dataFetchProgress}
+            variant="inline"
+            className="bg-transparent"
+          />
+        </div>
+      )}
 
-        {/* Logout Confirmation Modal */}
-        <LogoutConfirmation
-          open={showLogoutConfirmation}
-          onOpenChange={setShowLogoutConfirmation}
-          onConfirm={logout}
-          userName={user?.displayName || user?.email}
-        />
+      {/* Main Content - Only show when not loading */}
+      {!mainLoadingState.loadingState.isLoading && (
+        <div className="min-h-screen bg-gray-50 flex flex-col dashboard-screen">
+          {/* Navigation */}
+          <DashboardNavigation
+            activeNav={activeNav}
+            setActiveNav={setActiveNav}
+            navItems={navItems}
+            title="PharmaLync"
+            subtitle="Super Admin Dashboard"
+            notificationCount={notificationCount}
+            notifications={notifications}
+            user={user ? { displayName: user.displayName, email: user.email } : undefined}
+            onLogout={() => setShowLogoutConfirmation(true)}
+            onNotificationRead={markNotificationAsRead}
+            onAllNotificationsRead={markAllNotificationsAsRead}
+          />
 
-        {/* Main Content */}
-        <main className="flex-1 pt-20 sm:pt-16 p-3 sm:p-4 lg:p-6 overflow-y-auto pb-20 lg:pb-6">
-          {/* Header with refresh */}
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4 sm:mb-6">
-            <div className="flex-1 min-w-0">
-              <h1 className="text-xl sm:text-2xl font-bold text-gray-900 truncate">
-                {navItems.find(item => item.id === activeNav)?.label || 'Dashboard'}
-              </h1>
-              <p className="text-sm text-gray-500 mt-1">
-                Last updated: {formatTimestampWithTime(lastUpdate)}
-              </p>
-            </div>
-            <LoadingButton
-              isLoading={mainLoadingState.loadingState.isRefreshing}
-              loadingText="Refreshing..."
-              onClick={refreshData}
-              variant="outline"
-              className="flex items-center space-x-2"
-            >
-              <RefreshCw className="h-4 w-4" />
-              <span>Refresh Data</span>
-            </LoadingButton>
-          </div>
+          {/* Logout Confirmation Modal */}
+          <LogoutConfirmation
+            open={showLogoutConfirmation}
+            onOpenChange={setShowLogoutConfirmation}
+            onConfirm={logout}
+            userName={user?.displayName || user?.email}
+          />
 
-          {error && (
-            <Alert variant="destructive" className="mb-6">
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
-
-          {/* Content based on active navigation */}
-          <div className="space-y-6">
-            {activeNav === 'overview' && <Overview />}
-            {activeNav === 'tenants' && <TenantsManagement />}
-            {activeNav === 'users' && <UsersOverview />}
-            {activeNav === 'line-workers' && <LineWorkers />}
-            {activeNav === 'payments' && <Payments />}
-            {activeNav === 'analytics' && <Analytics />}
-            {activeNav === 'activity' && <Activity />}
-            {activeNav === 'settings' && <Settings />}
-
-            <div>
-              <div className="px-4 pb-20 pt-2 text-left">
-
-                {/* Tagline */}
-                <h2
-                  className="fw-bold lh-sm"
-                  style={{
-                    fontSize: "2.2rem",
-                    lineHeight: "1.2",
-                    color: "rgba(75, 75, 75, 1)",
-                    fontWeight: 700,
-                  }}
-                >
-                  Payment <br />s
-                  Collection Made<br />
-                  More Secure{" "}
-                  <Heart
-                    className="inline-block"
-                    size={30}
-                    fill="red"
-                    color="red"
-                  />
-                </h2>
-
-                {/* Divider line */}
-                <hr
-                  style={{
-                    borderTop: "1px solid rgba(75, 75, 75, 1)",
-                    margin: "18px 0",
-                  }}
-                />
-
-                {/* App name */}
-                <p
-                  style={{
-                    fontSize: "1rem",
-                    color: "rgba(75, 75, 75, 1)",
-                    fontWeight: 500,
-                  }}
-                >
-                  PharmaLync
+          {/* Main Content */}
+          <main className="flex-1 pt-20 sm:pt-16 p-3 sm:p-4 lg:p-6 overflow-y-auto pb-20 lg:pb-6">
+            {/* Header with refresh */}
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4 sm:mb-6">
+              <div className="flex-1 min-w-0">
+                <h1 className="text-xl sm:text-2xl font-bold text-gray-900 truncate">
+                  {navItems.find(item => item.id === activeNav)?.label || 'Dashboard'}
+                </h1>
+                <p className="text-sm text-gray-500 mt-1">
+                  Last updated: {formatTimestampWithTime(lastUpdate)}
                 </p>
               </div>
+              <LoadingButton
+                isLoading={mainLoadingState.loadingState.isRefreshing}
+                loadingText="Refreshing..."
+                onClick={refreshData}
+                variant="outline"
+                className="flex items-center space-x-2"
+              >
+                <RefreshCw className="h-4 w-4" />
+                <span>Refresh Data</span>
+              </LoadingButton>
             </div>
-          </div>
-        </main>
 
-        {/* Success Feedback */}
-        <SuccessFeedback
-          show={feedback.show}
-          message={feedback.message}
-          onClose={hideSuccess}
-        />
-      </div>
+            {error && (
+              <Alert variant="destructive" className="mb-6">
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            )}
 
+            {/* Content based on active navigation */}
+            <div className="space-y-6">
+              {activeNav === 'overview' && <Overview />}
+              {activeNav === 'tenants' && <TenantsManagement />}
+              {activeNav === 'users' && <UsersOverview />}
+              {activeNav === 'line-workers' && <LineWorkers />}
+              {activeNav === 'payments' && <Payments />}
+              {activeNav === 'analytics' && <Analytics />}
+              {activeNav === 'activity' && <Activity />}
+              {activeNav === 'settings' && <Settings />}
+
+              <div>
+                <div className="px-4 pb-20 pt-2 text-left">
+
+                  {/* Tagline */}
+                  <h2
+                    className="fw-bold lh-sm"
+                    style={{
+                      fontSize: "2.2rem",
+                      lineHeight: "1.2",
+                      color: "rgba(75, 75, 75, 1)",
+                      fontWeight: 700,
+                    }}
+                  >
+                    Payment <br />s
+                    Collection Made<br />
+                    More Secure{" "}
+                    <Heart
+                      className="inline-block"
+                      size={30}
+                      fill="red"
+                      color="red"
+                    />
+                  </h2>
+
+                  {/* Divider line */}
+                  <hr
+                    style={{
+                      borderTop: "1px solid rgba(75, 75, 75, 1)",
+                      margin: "18px 0",
+                    }}
+                  />
+
+                  {/* App name */}
+                  <p
+                    style={{
+                      fontSize: "1rem",
+                      color: "rgba(75, 75, 75, 1)",
+                      fontWeight: 500,
+                    }}
+                  >
+                    PharmaLync
+                  </p>
+                </div>
+              </div>
+            </div>
+          </main>
+
+          {/* Success Feedback */}
+          <SuccessFeedback
+            show={feedback.show}
+            message={feedback.message}
+            onClose={hideSuccess}
+          />
+        </div>
+
+
+      )}
     </>
   );
 }

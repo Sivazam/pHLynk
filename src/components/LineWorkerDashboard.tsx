@@ -2204,12 +2204,18 @@ export function LineWorkerDashboard() {
             </Alert>
           )}
 
-          {/* Loading Overlay */}
-          <LoadingOverlay
-            isLoading={mainLoadingState.loadingState.isLoading}
-            progress={dataFetchProgress}
-            message="Loading line worker data..."
-          />
+          {/* Loading Overlay - Inline to prevent double splash screen */}
+          {mainLoadingState.loadingState.isLoading && (
+            <div className="flex h-[80vh] items-center justify-center">
+              <LoadingOverlay
+                isLoading={true}
+                progress={dataFetchProgress}
+                message="Loading line worker data..."
+                variant="inline"
+                className="bg-transparent"
+              />
+            </div>
+          )}
 
           {/* Dashboard Content */}
           {!mainLoadingState.loadingState.isLoading && (
