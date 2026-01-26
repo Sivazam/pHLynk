@@ -244,7 +244,7 @@ export function DaySheet({
         item.retailerName,
         item.amount,
         item.paymentMethod,
-        refNo,
+        { t: 's', v: refNo }, // Force string format for Ref/Cheque No
         details
       ];
       if (showLineWorkerColumn) row.push(item.lineWorkerName);
@@ -386,7 +386,7 @@ export function DaySheet({
         `"${item.retailerName}"`,
         item.amount.toString(),
         item.paymentMethod,
-        `"${refNo}"`,
+        `"\t${refNo}"`,
         `"${details}"`
       ];
       if (showLineWorkerColumn) rowData.push(`"${item.lineWorkerName}"`);

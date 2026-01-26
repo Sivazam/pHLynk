@@ -2777,6 +2777,7 @@ export function WholesalerAdminDashboard() {
       const cashTotal = sortedData.filter(row => row.method === 'CASH').reduce((sum, row) => sum + row.amount, 0);
       const upiTotal = sortedData.filter(row => row.method === 'UPI').reduce((sum, row) => sum + row.amount, 0);
       const bankTotal = sortedData.filter(row => row.method === 'BANK_TRANSFER').reduce((sum, row) => sum + row.amount, 0);
+      const chequeTotal = sortedData.filter(row => row.method === 'CHEQUE').reduce((sum, row) => sum + row.amount, 0);
 
       const fileName = `Transactions_${formatTimestamp(transactionsDateRange.startDate)}_to_${formatTimestamp(transactionsDateRange.endDate)}`;
 
@@ -2830,7 +2831,7 @@ export function WholesalerAdminDashboard() {
             `"${row.retailerName}"`,
             row.amount.toString(),
             row.method,
-            `"${refNo}"`,
+            `"\t${refNo}"`,
             `"${details}"`,
             `"${row.lineWorker}"`,
             `"${row.serviceArea}"`,
@@ -2838,13 +2839,13 @@ export function WholesalerAdminDashboard() {
           ];
           csvRows.push(csvRow.join(','));
         });
-        // I'll pause this replacement chunk to verify sortedData creation first.
 
         // 5. Totals
         csvRows.push(''); // Empty row
         csvRows.push(['', 'Total Cash', '', cashTotal.toString(), 'CASH', '', '', '', ''].join(','));
         csvRows.push(['', 'Total UPI', '', upiTotal.toString(), 'UPI', '', '', '', ''].join(','));
         csvRows.push(['', 'Total Bank Transfer', '', bankTotal.toString(), 'BANK_TRANSFER', '', '', '', ''].join(','));
+        csvRows.push(['', 'Total Cheque', '', chequeTotal.toString(), 'CHEQUE', '', '', '', ''].join(','));
         csvRows.push(['', 'Grand Total', '', totalAmount.toString(), '', '', '', '', ''].join(','));
 
         const blob = new Blob([csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
@@ -2891,8 +2892,16 @@ export function WholesalerAdminDashboard() {
           }
 
           return [
-            row.date, row.retailerCode, row.retailerName, row.amount,
-            row.method, refNo, details, row.lineWorker, row.serviceArea, row.status
+            row.date,
+            row.retailerCode,
+            row.retailerName,
+            row.amount,
+            row.method,
+            { t: 's', v: refNo }, // Force string format for Ref/Cheque No
+            details,
+            row.lineWorker,
+            row.serviceArea,
+            row.status
           ];
         });
 
@@ -2964,6 +2973,7 @@ export function WholesalerAdminDashboard() {
                 <SelectItem value="CASH">Cash</SelectItem>
                 <SelectItem value="UPI">UPI</SelectItem>
                 <SelectItem value="BANK_TRANSFER">Bank Transfer</SelectItem>
+                <SelectItem value="CHEQUE">Cheque</SelectItem>
               </SelectContent>
             </Select>
 
@@ -3102,7 +3112,7 @@ export function WholesalerAdminDashboard() {
             {/* Transaction Summary Header */}
             <div className="mb-6 border-b pb-6">
               {/* <h3 className="text-sm font-medium text-gray-500 mb-4 uppercase tracking-wider">Filtered Collection Summary</h3> */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
                 <div className="p-4 bg-gray-50 rounded-lg border border-gray-100">
                   <div className="text-sm text-gray-500 mb-1">Total Collection</div>
                   <div className="text-2xl font-bold text-gray-900">
@@ -3137,6 +3147,15 @@ export function WholesalerAdminDashboard() {
                   </div>
                   <div className="text-xs text-amber-600 mt-1 font-medium">
                     {completedPayments.filter(p => p.method === 'BANK_TRANSFER').length} transactions
+                  </div>
+                </div>
+                <div className="p-4 bg-teal-50 rounded-lg border border-teal-100">
+                  <div className="text-sm text-teal-700 mb-1">Cheque Collection</div>
+                  <div className="text-2xl font-bold text-gray-900">
+                    {formatCurrency(completedPayments.filter(p => p.method === 'CHEQUE').reduce((sum, p) => sum + p.totalPaid, 0))}
+                  </div>
+                  <div className="text-xs text-teal-600 mt-1 font-medium">
+                    {completedPayments.filter(p => p.method === 'CHEQUE').length} transactions
                   </div>
                 </div>
               </div>

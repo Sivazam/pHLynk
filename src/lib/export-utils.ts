@@ -19,8 +19,8 @@ export const exportToCSV = (data: ExportData) => {
     headers.join(','),
     ...rows.map(row =>
       row.map(cell =>
-        // Escape commas and quotes in cell content
-        typeof cell === 'string' && (cell.includes(',') || cell.includes('"'))
+        // Escape commas, quotes, and tabs in cell content
+        typeof cell === 'string' && (cell.includes(',') || cell.includes('"') || cell.includes('\t'))
           ? `"${cell.replace(/"/g, '""')}"`
           : cell
       ).join(',')
@@ -96,6 +96,10 @@ export const preparePaymentDataForExport = (payments: any[], retailers: any[], l
     const retailer = retailers.find(r => r.id === payment.retailerId);
     const lineWorker = lineWorkers.find(lw => lw.uid === payment.lineWorkerId);
 
+    // Prefix UTR/Cheque with tab to force text format in Excel
+    const refNo = payment.utr || payment.chequeNumber || '';
+    const formattedRefNo = refNo ? `\t${refNo}` : '';
+
     return [
       payment.id,
       formatDateForExport(payment.createdAt),
@@ -104,7 +108,7 @@ export const preparePaymentDataForExport = (payments: any[], retailers: any[], l
       formatCurrencyForExport(payment.totalPaid),
       payment.method,
       payment.state,
-      payment.utr || payment.chequeNumber || '',
+      formattedRefNo,
       payment.bankName ? `${payment.bankName} (${payment.chequeDate ? formatDateForExport(payment.chequeDate) : ''})` : '',
       payment.timeline?.completedAt ? formatDateForExport(payment.timeline.completedAt) : '',
       payment.timeline?.otpVerifiedAt ? formatDateForExport(payment.timeline.otpVerifiedAt) : ''
